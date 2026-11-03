@@ -13,6 +13,7 @@ const permission = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
   isAdmin: auth.admin, isOwner: false, sectionCan: () => auth.edit,
+  featureCan: (_feature: string, action: string) => action === "view" || auth.edit,
 }) }));
 vi.mock("@/hooks/useEditPermission", () => ({ useEditPermission: () => permission }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));

@@ -1,14 +1,14 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "./db";
-import { appSettings, roles, roleTicks, userRoles, userTickChanges, users, type User } from "@shared/schema";
+import {
+  appSettings, roles, roleTicks, sites, userPermissions, userRoles, userSiteAccess,
+  userTickChanges, users,
+} from "@shared/schema";
 import {
   DEFAULT_ROLE_TICKS,
   FEATURES,
   FEATURE_ACTIONS,
-  FEATURE_ROUTE_ALIASES,
-  LEGACY_FEATURE_KEYS,
   ROLE_NAMES,
-  can,
   legacyFeatureTick,
   type EntryScope,
   type FeatureAccessState,
@@ -18,7 +18,7 @@ import {
   type PersonalTickChanges,
   type RoleName,
 } from "@shared/featureAccess";
-import type { PermissionMatrix, SectionKey } from "@shared/permissions";
+import { emptyMatrix, SECTION_KEYS, type PermissionMatrix, type SectionKey } from "@shared/permissions";
 
 export const ROLES_SETUP_SETTING = "feature_access_roles_initialized";
 
@@ -124,7 +124,8 @@ export async function getRolesWithTicks() {
 
 export async function seedDefaultRoles(): Promise<void> {
   await db.transaction(async tx => {
-    for (const [index, name] of ROLE_NAMES.entries()) {
+    for (let index = 0; index < ROLE_NAMES.length; index++) {
+      const name = ROLE_NAMES[index];
       await tx.insert(roles).values({
         name,
         scopeDefault: ROLE_SCOPES[name],
@@ -146,16 +147,13 @@ export async function seedDefaultRoles(): Promise<void> {
 }
 
 export async function getRoleSetupPreview() {
-  await seedDefaultRoles();
-  const allUsers = await db.select().from(users).orderBy(users.id);
+  const allUsers = await db.select().from(users).where(eq(users.isActive, true)).orderBy(users.id);
   const roleRows = await getRolesWithTicks();
   const roleIdByName = new Map(roleRows.map(role => [role.name, role.id]));
   const roleDefaultsById = new Map(roleRows.map(role => [role.id, role.ticks]));
   const previewUsers = [];
   for (const user of allUsers) {
-    const currentMatrixRows = await db.select().from((await import("@shared/schema")).userPermissions)
-      .where(eq((await import("@shared/schema")).userPermissions.userId, user.id));
-    const { emptyMatrix, SECTION_KEYS } = await import("@shared/permissions");
+    const currentMatrixRows = await db.select().from(userPermissions).where(eq(userPermissions.userId, user.id));
     const matrix = emptyMatrix();
     for (const row of currentMatrixRows) {
       if ((SECTION_KEYS as readonly string[]).includes(row.sectionKey)) {
@@ -169,9 +167,12 @@ export async function getRoleSetupPreview() {
     const suggestions = suggestedNames.map(name => roleIdByName.get(name)).filter((id): id is number => id !== undefined);
     const suggestedRoleTicks = mergeRoleTicks(suggestions.map(id => roleDefaultsById.get(id) ?? {}));
     const legacyAccess: PersonalTickChanges = {};
+    const legacyTicks: FeatureTicks = {};
     for (const feature of FEATURES) {
       for (const action of feature.actions) {
         const oldAllowed = legacyFeatureTick(matrix, feature.id, action);
+        legacyTicks[feature.id] ??= {};
+        legacyTicks[feature.id]![action] = oldAllowed;
         const roleAllowed = suggestedRoleTicks[feature.id]?.[action] === true;
         if (oldAllowed !== roleAllowed) {
           legacyAccess[feature.id] ??= {};
@@ -179,6 +180,12 @@ export async function getRoleSetupPreview() {
         }
       }
     }
+    const selectedSites = await db.select({
+      siteId: userSiteAccess.siteId,
+      siteName: sites.name,
+    }).from(userSiteAccess)
+      .leftJoin(sites, eq(userSiteAccess.siteId, sites.id))
+      .where(eq(userSiteAccess.userId, user.id));
     previewUsers.push({
       id: user.id,
       fullName: user.fullName,
@@ -188,15 +195,28 @@ export async function getRoleSetupPreview() {
       isOwner: user.isOwner,
       businessRole: user.businessRole,
       suggestedRoleIds: suggestions,
+      legacyTicks,
       legacyAccess,
       canUnlockRecords: user.canUnlockRecords,
       currentSiteScope: user.isOwner || user.isAdmin || user.allSitesAccess
         ? "All sites"
-        : `Selected sites (${(await import("./storage")).storage ? (await import("./storage")).storage.getUserSiteAccess(user.id).then(r => r.length) : 0})`,
+        : `Selected sites: ${selectedSites.map(site => site.siteName ?? `#${site.siteId}`).join(", ") || "None"}`,
       allSitesAccess: user.isOwner || user.isAdmin || user.allSitesAccess,
     });
   }
   return { roles: roleRows, users: previewUsers, rolesConfigured: await rolesHaveBeenConfigured() };
+}
+
+export async function getUserFeatureAccess(userId: number) {
+  const [assignments, changes] = await Promise.all([
+    db.select({ roleId: userRoles.roleId }).from(userRoles).where(eq(userRoles.userId, userId)),
+    db.select({ feature: userTickChanges.feature, action: userTickChanges.action, granted: userTickChanges.granted })
+      .from(userTickChanges).where(eq(userTickChanges.userId, userId)),
+  ]);
+  return {
+    roleIds: assignments.map(row => row.roleId),
+    personalChanges: mapPersonalChanges(changes),
+  };
 }
 
 function suggestRoleNames(raw: string | null | undefined): RoleName[] {
@@ -258,7 +278,8 @@ export async function saveUserFeatureAccess(
     await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("update");
     await tx.delete(userRoles).where(eq(userRoles.userId, userId));
     if (roleIds.length) {
-      await tx.insert(userRoles).values([...new Set(roleIds)].map(roleId => ({ userId, roleId })));
+      const uniqueRoleIds = roleIds.filter((roleId, index) => roleIds.indexOf(roleId) === index);
+      await tx.insert(userRoles).values(uniqueRoleIds.map(roleId => ({ userId, roleId })));
     }
     await tx.delete(userTickChanges).where(eq(userTickChanges.userId, userId));
     const rows = Object.entries(changes).flatMap(([feature, actions]) =>
@@ -308,7 +329,7 @@ export async function removeRole(roleId: number): Promise<"deleted" | "in_use" |
   return "deleted";
 }
 
-export async function markRolesConfigured(actor: User): Promise<void> {
+export async function markRolesConfigured(): Promise<void> {
   await db.insert(appSettings).values({
     key: ROLES_SETUP_SETTING,
     value: "true",

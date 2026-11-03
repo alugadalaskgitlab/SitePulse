@@ -32,10 +32,11 @@ import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterT
 export default function PlantDispatches() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, featureCan, user } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
-  const canCreate = sectionCan("plant_production", "create");
-  const canEdit = sectionCan("plant_production", "edit");
+  const canCreate = featureCan("hmp_rmc", "add");
+  const canEdit = featureCan("hmp_rmc", "edit");
+  const canOverrideTolerance = featureCan("hmp_rmc", "verify");
   const canExport = sectionCan("plant_production", "export");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1197,8 +1198,8 @@ export default function PlantDispatches() {
                 ) : null}
               </div>
 
-              {/* Admin override for LDO tolerance on new dispatches */}
-              {!editingDispatch && validationStatus.ldo === "error" && isAdmin && (
+              {/* Verification permission can override LDO tolerance on new dispatches */}
+              {!editingDispatch && validationStatus.ldo === "error" && canOverrideTolerance && (
                 <div className="p-2 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-300 dark:border-orange-700">
                   <label className="flex items-start gap-2 cursor-pointer">
                     <input
@@ -1251,7 +1252,7 @@ export default function PlantDispatches() {
                     Tolerance: ±{TOLERANCE_PERCENT}% from theoretical. Stock deduction uses theoretical values. Adjustments are logged for audit.
                   </p>
 
-                  {hasToleranceViolation && isAdmin && (
+                  {hasToleranceViolation && canOverrideTolerance && (
                     <div className="mt-3 p-2 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-300 dark:border-orange-700">
                       <label className="flex items-start gap-2 cursor-pointer">
                         <input

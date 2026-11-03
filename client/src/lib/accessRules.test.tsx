@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   user: null as any,
   permissions: {} as any,
-  accessRulesV2: false,
+  featureAccess: {} as any,
 }));
 
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => state }));
@@ -19,10 +19,11 @@ afterEach(() => {
 });
 
 describe("useAccessRule", () => {
-  it("keeps roleless users hidden on role-only controls when OFF and uses saved permissions when ON", () => {
-    state.user = { id: 7, isAdmin: false, isOwner: false, isFieldEngineer: false };
+  it("uses legacy permissions before setup, then the shared role resolver on screen and server", async () => {
+    const { canAccessRule } = await import("@shared/featureAccess");
+    state.user = { id: 7, isActive: true, isAdmin: false, isOwner: false };
     state.permissions = {};
-    state.accessRulesV2 = false;
+    state.featureAccess = { rolesConfigured: false, legacyPermissions: {} };
     const roleOnlyControls = [
       "site_req_review_ui",
       "site_req_status_api",
@@ -42,24 +43,28 @@ describe("useAccessRule", () => {
       expect(result.result.current, id).toBe(false);
       result.unmount();
     }
-    const managerBased = renderHook(() => useAccessRule("dashboard_nav"));
-    expect(managerBased.result.current).toBe(true);
-    managerBased.unmount();
-
-    state.user = { ...state.user, role: "manager" };
-    const actualRole = renderHook(() => useAccessRule("site_req_review_ui"));
-    expect(actualRole.result.current).toBe(true);
-    actualRole.unmount();
-
-    state.user = { id: 7, isAdmin: false, isOwner: false, isFieldEngineer: false };
-    state.accessRulesV2 = true;
-    const denied = renderHook(() => useAccessRule("site_req_review_ui"));
-    expect(denied.result.current).toBe(false);
-    denied.unmount();
-
-    state.permissions = { site_dprs: { approve: true } };
-    const granted = renderHook(() => useAccessRule("site_req_review_ui"));
-    expect(granted.result.current).toBe(true);
+    const configured: any = {
+      rolesConfigured: true,
+      userRoles: [3],
+      roleTicks: { 3: { site_requirements: { verify: true, edit: true } } },
+      personalChanges: { site_requirements: { approve: false } },
+      legacyPermissions: { site_dprs: { approve: true } },
+    };
+    state.featureAccess = configured;
+    for (const id of roleOnlyControls) {
+      const screen = renderHook(() => useAccessRule(id));
+      expect(screen.result.current, id).toBe(canAccessRule(id, state.user, configured));
+      screen.unmount();
+    }
+    expect(renderHook(() => useAccessRule("site_req_review_ui")).result.current).toBe(true);
+    expect(renderHook(() => useAccessRule("site_req_outcome")).result.current).toBe(false);
+    state.featureAccess = {
+      rolesConfigured: true,
+      userRoles: [],
+      roleTicks: {},
+      legacyPermissions: { site_dprs: { approve: true } },
+    };
+    expect(renderHook(() => useAccessRule("site_req_review_ui")).result.current).toBe(false);
   });
 
   it("wires the reviewed controls to the role-only checks", () => {

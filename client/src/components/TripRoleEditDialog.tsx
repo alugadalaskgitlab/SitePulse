@@ -25,9 +25,10 @@ type Props = {
 
 /** One ordinary edit/save; exceptional reviewed corrections remain separate. */
 export function TripRoleEditDialog({ trip: originalTrip, vendors, equipment, vendorsLoading, vendorsError, onRetryVendors, onClose, onSaved, sitesList = [] }: Props) {
-  const { sectionCan, isAdmin, isOwner } = useAuth();
+  const { featureCan } = useAuth();
   // Match the server's assertEdit guard; a UI unlock is not an edit right.
-  const canEdit = isAdmin || isOwner || sectionCan("site_materials", "edit");
+  const canEdit = featureCan("site_materials", "edit");
+  const canConfirm = featureCan("site_materials", "verify");
   const [trip, setTrip] = useState(originalTrip);
   const [exceptional, setExceptional] = useState(false);
   const [linksBusy, setLinksBusy] = useState(false);
@@ -148,7 +149,7 @@ export function TripRoleEditDialog({ trip: originalTrip, vendors, equipment, ven
         <DialogFooter><Button type="button" variant="outline" disabled={save.isPending} onClick={onClose}>Cancel</Button>{canEdit && <Button type="submit" disabled={save.isPending} data-testid="button-save-trip-roles">{save.isPending ? "Saving…" : "Save"}</Button>}</DialogFooter>
       </form> : <div className="space-y-4">
         <p className="text-xs text-muted-foreground">Authorised correction of conflicting or protected identities. Routine selections are saved in Edit.</p>
-        <TripIdentityLinks trip={trip} vendors={vendors} canConfirm={canEdit && (isAdmin || isOwner)} blocked={linksBusy || save.isPending || evidence.isFetching} vendorsLoading={vendorsLoading} vendorsError={vendorsError} onSaved={setTrip} onBusyChange={setLinksBusy} onRefresh={() => void evidence.refetch()} />
+                <TripIdentityLinks trip={trip} vendors={vendors} canConfirm={canEdit && canConfirm} blocked={linksBusy || save.isPending || evidence.isFetching} vendorsLoading={vendorsLoading} vendorsError={vendorsError} onSaved={setTrip} onBusyChange={setLinksBusy} onRefresh={() => void evidence.refetch()} />
         {trip.transportType !== "in_house" && <TripHireLinkReview trip={trip} blocked={save.isPending} onBusyChange={setLinksBusy} />}
       </div>}
       {canEdit && <Button type="button" variant="ghost" className="text-xs" disabled={save.isPending || linksBusy} onClick={() => {

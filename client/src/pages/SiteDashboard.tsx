@@ -77,7 +77,7 @@ import { getBaseSiteName } from "@shared/siteName";
 
 export default function SiteDashboard() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("site_dprs", "create");
   const canEdit = sectionCan("site_dprs", "edit");

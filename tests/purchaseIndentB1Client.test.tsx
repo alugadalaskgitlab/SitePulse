@@ -9,7 +9,7 @@ import PurchaseIndents from "@/pages/PurchaseIndents";
 vi.mock("@/lib/auth-context", () => ({
   useAuth: () => ({
     isAdmin: true, isOwner: true, isAuthenticated: true,
-    sectionCan: () => true, sectionVisible: () => true, canApprove: () => true,
+    sectionCan: () => true, sectionVisible: () => true, featureCan: () => true, canApprove: () => true,
     user: { id: 1, fullName: "SYNTHETIC REVIEWER" }, permissions: {},
   }),
 }));

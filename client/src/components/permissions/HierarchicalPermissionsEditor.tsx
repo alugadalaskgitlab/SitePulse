@@ -141,7 +141,7 @@ export function HierarchicalPermissionsEditor(props: HierarchicalPermissionsEdit
         Privileged account: ordinary permission switches cannot restrict existing Administrator/Owner bypass. A nominal Deny is never a real revocation here. Owner promotion is not available.
       </p>}
       {target?.isFieldEngineer && <p className="authority-note authority-warning">
-        The field-user flag is a label with access_rules_v2 ON; when OFF, legacy restrictions hide Payables Preview and Dispatches Today, including conflicting Admin/Owner accounts. No flags are automatically changed.
+        The field-user flag is retained for compatibility; feature access is controlled by assigned roles after setup. Account flags are not changed by this editor.
       </p>}
       {props.conflict && <p role="alert" className="authority-note authority-warning">The loaded server matrix differs from the initial snapshot. Save is blocked by the host; preserve your draft and reload/discard deliberately. The current API has no atomic version token.</p>}
       {readOnly && <p className="authority-note">{props.context === "creation" ? "Creation preview uses the applied template and existing setup contract. Individual persisted edits are available after creation through this same editor. Proposed choices below are never part of account setup." : "Read-only review. Persisted controls cannot be edited."}</p>}

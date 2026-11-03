@@ -38,7 +38,7 @@ interface Props { isNew?: boolean; detailId?: number }
 
 export default function StoresIssue({ isNew, detailId }: Props) {
   const { toast } = useToast();
-  const { isAdmin } = useAuth();
+  const { featureCan } = useAuth();
   const [, navigate] = useLocation();
   const search = useSearch();
   const returnTo = new URLSearchParams(search).get("returnTo") || "/stores";
@@ -273,7 +273,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                   <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700 text-[12px] px-2 py-1">
                     CANCELLED{selectedIssue.cancellationReason ? `: ${selectedIssue.cancellationReason}` : ""}
                   </Badge>
-                ) : isAdmin ? (
+                ) : featureCan("issues_stock", "cancel") ? (
                   <Button variant="ghost" size="sm" className="text-amber-600 gap-1"
                     onClick={() => { setCancelDialogId(selectedIssue.id); setCancelReason(""); }}
                     data-testid="button-cancel-detail-issue">

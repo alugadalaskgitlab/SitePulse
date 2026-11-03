@@ -7,16 +7,10 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PERMISSION_GROUPS, SECTION_LABELS, PUSH_ACTIVE_SECTIONS, type SectionKey, type PermissionMatrix } from "@shared/permissions";
-
-function hasViewOrCreate(matrix: PermissionMatrix, key: SectionKey): boolean {
-  const row = matrix[key];
-  if (!row) return false;
-  return row.view || row.create;
-}
+import { PERMISSION_GROUPS, SECTION_LABELS, PUSH_ACTIVE_SECTIONS, type SectionKey } from "@shared/permissions";
 
 export default function NotificationPreferences() {
-  const { permissions, isAdmin, refresh } = useAuth();
+  const { permissions, sectionVisible, refresh } = useAuth();
   const { toast } = useToast();
 
   const [notifyMap, setNotifyMap] = useState<Record<string, boolean>>({});
@@ -59,8 +53,7 @@ export default function NotificationPreferences() {
 
   const visibleGroups = PERMISSION_GROUPS.filter((g) => {
     if (g.id === "legacy") return false;
-    if (isAdmin) return g.sections.length > 0;
-    return g.sections.some((s) => hasViewOrCreate(permissions, s));
+    return g.sections.some((s) => sectionVisible(s));
   });
 
   const subscribedCount = (Object.keys(notifyMap) as SectionKey[]).filter(
@@ -116,9 +109,7 @@ export default function NotificationPreferences() {
       ) : (
         <div className="space-y-4">
           {visibleGroups.map((group) => {
-            const sections = isAdmin
-              ? group.sections
-              : group.sections.filter((s) => hasViewOrCreate(permissions, s));
+            const sections = group.sections.filter((s) => sectionVisible(s));
             if (sections.length === 0) return null;
 
             const activeSections = sections.filter((s) => PUSH_ACTIVE_SECTIONS.has(s));

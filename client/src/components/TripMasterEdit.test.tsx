@@ -10,7 +10,9 @@ vi.mock("@/lib/queryClient", async () => {
   const { QueryClient } = await import("@tanstack/react-query");
   return { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } }), apiRequest: vi.fn() };
 });
-vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ sectionCan: () => true, isAdmin: true, isOwner: false }) }));
+vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
+  sectionCan: () => true, featureCan: () => true, isAdmin: true, isOwner: false,
+}) }));
 vi.mock("@/hooks/use-site-material-suggestions", () => ({ invalidateSiteMaterialSuggestions: vi.fn() }));
 vi.mock("./ReceiptWorkContext", () => ({ ReceiptWorkContext: () => <div>Existing BOQ context</div> }));
 vi.mock("./TripIdentityLinks", () => ({ TripIdentityLinks: () => <div>Exceptional vendor correction</div> }));

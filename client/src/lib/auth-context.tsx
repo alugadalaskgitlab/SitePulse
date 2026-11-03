@@ -11,7 +11,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { bindDprEntryModeUser } from "@/lib/dprEntryMode";
 import { bindWorkspaceModeUser } from "@/lib/workspaceMode";
-import { can as canFeature, canLegacySection, type FeatureAccessState, type FeatureAction, type FeatureId } from "@shared/featureAccess";
+import { can as canFeature, canLegacySection, projectFeaturePermissions, type FeatureAccessState, type FeatureAction, type FeatureId } from "@shared/featureAccess";
 import {
   STRICT_IDLE_MINUTES,
   type PermissionMatrix,
@@ -27,6 +27,7 @@ export type AuthUser = {
   fullName: string;
   businessRole?: string | null;
   isAdmin: boolean;
+  isAdminAccount?: boolean;
   // Company Owner / Primary Admin — always has full control across every
   // module regardless of permission toggles, and cannot be locked out.
   isOwner: boolean;
@@ -149,12 +150,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [meQuery.data?.user?.sessionPolicy, meQuery]);
 
   const value = useMemo<AuthContextType>(() => {
-    const u = meQuery.data?.user ?? null;
-    const perms = meQuery.data?.permissions ?? emptyMatrix();
+    const rawUser = meQuery.data?.user ?? null;
+    const rawPerms = meQuery.data?.permissions ?? emptyMatrix();
     const featureAccess = meQuery.data?.featureAccess ?? {
       rolesConfigured: false,
-      legacyPermissions: perms,
+      legacyPermissions: rawPerms,
     };
+    const rolesConfigured = featureAccess.rolesConfigured;
+    const u = rawUser ? {
+      ...rawUser,
+      isAdminAccount: !!rawUser.isAdmin,
+      isAdmin: !!rawUser.isAdmin && (!rolesConfigured || !!rawUser.isOwner),
+    } : null;
+    const perms = projectFeaturePermissions(u, rawPerms, featureAccess, location);
 
     const featureCan = (feature: FeatureId, action: FeatureAction): boolean =>
       canFeature(u, feature, action, { ...featureAccess, legacyPermissions: perms });
@@ -172,9 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return sectionCan(section, "approve");
     };
 
-    const rolesConfigured = featureAccess.rolesConfigured;
     const canManagePermissions = !!u && (
-      sectionCan("user_management", "view") ||
       sectionCan("user_management", "create") ||
       sectionCan("user_management", "edit")
     );

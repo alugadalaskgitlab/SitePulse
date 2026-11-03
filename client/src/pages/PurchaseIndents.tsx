@@ -603,15 +603,15 @@ function IndentAuditTrail({ indent }: { indent: PurchaseIndentWithItems }) {
 
 export default function PurchaseIndents() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin, canApprove, user: currentUser } = useAuth();
+  const { featureCan, user: currentUser } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
-  const canCreate = sectionCan("site_procurement", "create") || sectionCan("purchase_indents_raise", "create");
-  const canEdit = sectionCan("site_procurement", "edit") || sectionCan("purchase_indents_raise", "edit") || isAdmin;
-  const canViewStores = sectionCan("stores_inventory", "view");
-  const canCreateStores = sectionCan("stores_inventory", "create");
-  const isApprover = canApprove("purchase_indents_approve");
-  const canDelete = isAdmin;
-  const canForceClose = isAdmin;
+  const canCreate = featureCan("purchase_indent", "add");
+  const canEdit = featureCan("purchase_indent", "edit");
+  const canViewStores = featureCan("issues_stock", "view");
+  const canCreateStores = featureCan("issues_stock", "add");
+  const isApprover = featureCan("purchase_indent", "approve");
+  const canDelete = featureCan("purchase_indent", "cancel");
+  const canForceClose = currentUser?.isOwner === true;
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
 
@@ -2994,7 +2994,7 @@ export default function PurchaseIndents() {
                       <Warehouse className="w-3 h-3 mr-1.5" /> STORE / SPARES / CONSUMABLES
                     </Badge>
                   )}
-                  {isAdmin && (
+                  {(canCreate || canEdit) && (
                     <button
                       type="button"
                       className="text-sm text-muted-foreground underline hover:text-foreground"
@@ -3461,7 +3461,7 @@ export default function PurchaseIndents() {
                         size="sm"
                       />
                     )}
-                    {(selectedIndent.status !== "completed" || isAdmin) && canEdit && (
+                    {(selectedIndent.status !== "completed" || currentUser?.isOwner) && canEdit && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -3949,7 +3949,7 @@ export default function PurchaseIndents() {
                           )
                         )}
                         <button onClick={() => handlePrintIndent(selectedIndent)} className="text-xs text-teal-200 underline hover:text-white flex items-center gap-0.5" data-testid="button-print-indent-purchase"><Printer className="w-3 h-3" /> Print</button>
-                        {(selectedIndent.status !== "completed" || isAdmin) && canEdit && (
+                        {(selectedIndent.status !== "completed" || currentUser?.isOwner) && canEdit && (
                           <button onClick={handleEditIndent} className="text-xs text-teal-200 underline hover:text-white" data-testid="button-edit-indent-purchase">Edit</button>
                         )}
                         {canDelete && (
@@ -4749,7 +4749,7 @@ export default function PurchaseIndents() {
                                     emptyText="No invoice or challan attached yet."
                                     className="grid grid-cols-3 sm:grid-cols-4 gap-2"
                                   />
-                                  {(canEdit || isAdmin) && (
+                                  {canEdit && (
                                     <AttachmentUploader
                                       moduleType="pi_purchaser_action"
                                       linkedRecordId={paTx.id}

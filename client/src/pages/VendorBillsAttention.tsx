@@ -363,10 +363,10 @@ export function BillAttentionCard({ row, sites }: { row: BillAttentionRow; sites
 }
 
 export default function VendorBillsAttention() {
-  const { isAdmin, user } = useAuth();
+  const { user } = useAuth();
   const [filter, setFilter] = useState<AttentionKind | "all">("all");
   const [vendorSearch, setVendorSearch] = useState("");
-  const authorized = isAdmin || !!user?.isOwner;
+  const authorized = user?.isOwner === true;
   const attentionQuery = useQuery<AttentionResponse>({
     queryKey: ["/api/vendor-bills/attention"],
     queryFn: async () => {

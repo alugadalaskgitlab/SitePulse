@@ -53,17 +53,17 @@ function classifyReadingSource(r: { sourceShiftLogId?: number | null; sourceHeat
 
 export default function PlantLdoFlowMeter() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin: isAdminUser } = useAuth();
-  const canCreate = sectionCan("plant_stock", "create");
-  const canEdit = sectionCan("plant_stock", "edit");
-  const canDelete = isAdminUser;
-  const canExport = sectionCan("plant_ldo", "export");
+  const { sectionCan, user, featureCan } = useAuth();
+  const isOwner = user?.isOwner === true;
+  const canCreate = featureCan("plant_receipts", "add");
+  const canEdit = featureCan("plant_receipts", "edit");
+  const canDelete = isOwner;
+  const canExport = featureCan("plant_receipts", "export");
   const { appendOrigin, getPlantBackLink } = useOrigin();
   const searchString = useSearch();
   const sp = new URLSearchParams(searchString || window.location.search);
-  const urlRole = sp.get("role");
-  const pageRole: "manager" | "admin" | null = (urlRole === "manager" || urlRole === "admin") ? urlRole : isAdminUser ? "admin" : "manager";
-  const isAdmin = pageRole === "admin";
+  const pageRole: "manager" | "admin" | null = isOwner ? "admin" : "manager";
+  const isAdmin = isOwner;
   const urlPlant = sp.get("plant") || "Main Plant";
   const backLink = getPlantBackLink({ defaultTab: "stock", role: pageRole });
   const [, setLocation] = useLocation();
@@ -2095,7 +2095,7 @@ export default function PlantLdoFlowMeter() {
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle className="text-sm font-medium">All Flow Readings</CardTitle>
-            {isAdmin && (
+            {canExport && (
               <div className="flex gap-2 flex-wrap">
                 {canExport && <><Button variant="outline" size="sm" onClick={() => exportExcel()} data-testid="button-export-excel">
                   <Download className="w-4 h-4 mr-1" /> Excel

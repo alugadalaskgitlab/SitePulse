@@ -62,10 +62,12 @@ const normLedger = (e: ReceiptDatedLedgerEntry): ReceiptDatedLedgerEntry => ({
 
 export default function PlantStock() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, featureCan, user } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
-  const canExport = sectionCan("plant_stock", "export");
-  const canReconcile = isAdmin;
+  const canExport = featureCan("issues_stock", "export");
+  const canReconcile = featureCan("issues_stock", "verify");
+  const isOwner = user?.isOwner === true;
+  const tabColumnClass = isOwner ? "grid-cols-5" : canExport ? "grid-cols-4" : "grid-cols-3";
   const { getPlantBackLink, appendPlantContext } = useOrigin();
   const queryClient = useQueryClient();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
@@ -1619,7 +1621,7 @@ export default function PlantStock() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-5' : (isAdmin || canExport) ? 'grid-cols-4' : 'grid-cols-3'}`}>
+        <TabsList className={`grid w-full ${tabColumnClass}`}>
           <TabsTrigger value="summary" className="gap-2 text-sm sm:text-sm">
             <Layers className="w-4 h-4" />
             <span className="hidden sm:inline">Stock Summary</span>
@@ -1635,14 +1637,14 @@ export default function PlantStock() {
             <span className="hidden sm:inline">Ledger Details</span>
             <span className="sm:hidden">Ledger</span>
           </TabsTrigger>
-          {(isAdmin || canExport) && (
+          {canExport && (
             <TabsTrigger value="statement" className="gap-2 text-sm sm:text-sm" data-testid="tab-party-statement">
               <ClipboardList className="w-4 h-4" />
               <span className="hidden sm:inline">Party Statement</span>
               <span className="sm:hidden">Statement</span>
             </TabsTrigger>
           )}
-          {isAdmin && (
+          {isOwner && (
             <TabsTrigger value="hlc-recon" className="gap-2 text-sm sm:text-sm" data-testid="tab-hlc-recon">
               <GitCompare className="w-4 h-4" />
               <span className="hidden sm:inline">HLC Reconciliation</span>
@@ -1803,7 +1805,7 @@ export default function PlantStock() {
                     All-time stock positions. Click on a card to view ledger details.
                   </p>
                 </div>
-                {(isAdmin || sectionCan("stock_reconciliation", "view")) && (
+                {canReconcile && (
                   <Button variant="outline" size="sm" onClick={() => navigate("/plant/stock-reconciliation")} data-testid="button-stock-reconciliation">
                     <Scale className="w-4 h-4 mr-2" />
                     Physical Stock Reconciliation
@@ -2294,7 +2296,7 @@ export default function PlantStock() {
         </TabsContent>
 
         {/* ── HLC Borrow Reconciliation ── */}
-        {isAdmin && (
+        {isOwner && (
         <TabsContent value="hlc-recon" className="mt-6">
           <Card>
             <CardHeader>
@@ -2597,7 +2599,7 @@ export default function PlantStock() {
         )}
 
         {/* ── Party Supply Obligation Statement ── */}
-        {(isAdmin || canExport) && (
+        {canExport && (
         <TabsContent value="statement" className="mt-6">
           <Card>
             <CardHeader>

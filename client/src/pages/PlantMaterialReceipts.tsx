@@ -57,13 +57,12 @@ function invalidateDieselRequirementQueries() {
 export default function PlantMaterialReceipts() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
-  const { sectionCan, isOwner, isAdmin, user } = useAuth();
-  const isOwnerOrAdmin = isOwner || isAdmin;
+  const { sectionCan, featureCan, user } = useAuth();
   const { companyName, companyInfo, logoFile } = useFeatureFlags();
-  const canCreate = sectionCan("plant_stock", "create");
-  const canEdit = sectionCan("plant_stock", "edit");
-  const canDirectEditSubmittedReceipt = isOwnerOrAdmin || sectionCan("plant_materials", "edit");
-  const canExport = sectionCan("plant_materials", "export");
+  const canCreate = featureCan("plant_receipts", "add");
+  const canEdit = featureCan("plant_receipts", "edit");
+  const canDirectEditSubmittedReceipt = canEdit;
+  const canExport = featureCan("plant_receipts", "export");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<MaterialReceipt | null>(null);
@@ -452,7 +451,7 @@ export default function PlantMaterialReceipts() {
     return m?.name || "";
   }, [materials, materialId]);
   const isSelectedDiesel = /^(diesel|hsd)$/i.test(selectedMaterialName.trim());
-  const canRecordStandaloneDiesel = isOwnerOrAdmin || sectionCan("site_diesel", "edit") || sectionCan("diesel_req_raise", "edit");
+  const canRecordStandaloneDiesel = featureCan("plant_receipts", "add") || featureCan("diesel_issue", "edit");
   const { data: dieselRequirements = [] } = useQuery<any[]>({
     queryKey: ["/api/diesel-requirements"],
     enabled: dialogOpen && isSelectedDiesel,
@@ -2216,7 +2215,7 @@ export default function PlantMaterialReceipts() {
                                     size="sm"
                                   />
                                 )}
-                                {(canEdit || isOwnerOrAdmin || sectionCan("plant_materials", "delete")) && (receipt as any).documentStatus !== "submitted" && (
+                                {(canEdit || featureCan("plant_receipts", "cancel")) && (receipt as any).documentStatus !== "submitted" && (
                                   <>
                                     {/* 06M-D: a cancelled receipt is terminal — no edit or re-cancel;
                                         its stock was already reversed. Delete stays (admin-gated). */}
@@ -2230,7 +2229,7 @@ export default function PlantMaterialReceipts() {
                                         </Button>}
                                       </>
                                     )}
-                                    {isOwnerOrAdmin && <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(receipt.id)} data-testid={`button-delete-receipt-${receipt.id}`}>
+                                    {featureCan("plant_receipts", "cancel") && <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(receipt.id)} data-testid={`button-delete-receipt-${receipt.id}`}>
                                       <Trash2 className="w-4 h-4 text-destructive" />
                                     </Button>}
                                   </>

@@ -315,7 +315,7 @@ function ProjectCard({
   onDuplicate: (id: number) => void;
 }) {
   const [, navigate] = useLocation();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, featureCan } = useAuth();
   const destination = sectionCan("qto_boq", "view") ? `/work-program/${project.id}`
     : sectionCan("work_programme", "view") ? `/work-program/${project.id}/programme`
     : sectionCan("work_programme_review", "view") ? `/work-program/${project.id}/demand`
@@ -409,7 +409,7 @@ function ProjectCard({
           >
             <Copy className="w-3.5 h-3.5" />
           </button></>}
-          {isAdmin && <button
+          {featureCan("boq_programme", "cancel") && <button
             className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
             onClick={() => onDelete(project.id)}
             title="Delete project"

@@ -115,9 +115,10 @@ const ALL_PLANTS = "__ALL__";
 
 export default function RmcBatchRecords() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
-  const canCreate = sectionCan("plant_production", "create");
-  const canEdit = sectionCan("plant_production", "edit");
+  const { featureCan, user } = useAuth();
+  const canCreate = featureCan("hmp_rmc", "add");
+  const canEdit = featureCan("hmp_rmc", "edit");
+  const canCancel = featureCan("hmp_rmc", "cancel");
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -304,7 +305,7 @@ export default function RmcBatchRecords() {
               <FileDown className="w-4 h-4 mr-2" />Export Excel
             </Button>
           )}
-          {isAdmin && (
+          {user?.isOwner && (
             <Button
               variant="outline"
               onClick={() => {
@@ -383,7 +384,7 @@ export default function RmcBatchRecords() {
                       <Pencil className="w-4 h-4" />
                     </Button>
                   )}
-                  {isAdmin && (
+                  {canCancel && (
                     <Button
                       variant="outline" size="sm"
                       className="text-destructive hover:bg-destructive/10"

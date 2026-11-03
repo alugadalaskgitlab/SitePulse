@@ -21,7 +21,6 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { Site } from "@shared/schema";
-import { useAuth } from "@/lib/auth-context";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -135,7 +134,6 @@ import { ReportExportGate } from "@/components/ReportExportGate";
 
 export default function ManagementReport() {
   const { toast } = useToast();
-  const { isAdmin } = useAuth();
   const search = useSearch();
   const _sp = new URLSearchParams(search);
   const _returnTo = _sp.get("returnTo");

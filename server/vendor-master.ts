@@ -2,7 +2,8 @@ import type { Express, Request, Response } from "express";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db";
-import { assertAdmin, assertView } from "./auth-routes";
+import { assertView } from "./auth-routes";
+import { can as canFeature, type FeatureAction, type FeatureId } from "@shared/featureAccess";
 import { vendors, vendorBills, vendorBillItems, vendorRateCards, vendorAliases, purchaseIndentItems, purchaseIndents, plantMaterials, siteMaterialTrips, sites, equipmentMaster, auditLogs } from "@shared/schema";
 import { equipmentVendorIdentities, EQUIPMENT_VENDOR_LINK, ownerNameKey } from "./equipmentVendorIdentity";
 import { siteMatchesPermitted } from "@shared/siteName";
@@ -73,8 +74,17 @@ function error(res: Response, err: unknown) {
 
 export function registerVendorMasterRoutes(app: Express, permittedSites: (req: Request) => Promise<string[] | null>) {
   const canView = (req: Request, res: Response) => assertView(req, res, "master_parties");
-  const canManage = (req: Request, res: Response) => !!req.authUser?.isOwner || assertAdmin(req, res);
-  const isSensitive = (req: Request) => !!(req.authUser?.isAdmin || req.authUser?.isOwner);
+  const featureAllowed = (req: Request, feature: FeatureId, action: FeatureAction) =>
+    canFeature(req.authUser, feature, action, {
+      ...(req.authFeatureAccess ?? { rolesConfigured: false }),
+      legacyPermissions: req.authPermissions,
+    });
+  const canManage = (req: Request, res: Response, action: "add" | "edit") => {
+    if (featureAllowed(req, "masters", action)) return true;
+    res.status(403).json({ error: "forbidden", feature: "masters", action });
+    return false;
+  };
+  const isSensitive = (req: Request) => featureAllowed(req, "payables", "view");
   async function visibleVendorIds(req: Request): Promise<Set<number> | null> {
     const allowed = await permittedSites(req);
     if (allowed === null) return null;
@@ -105,7 +115,7 @@ export function registerVendorMasterRoutes(app: Express, permittedSites: (req: R
     } catch (e) { error(res, e); }
   });
   app.post("/api/vendor-master", async (req, res) => {
-    if (!canManage(req, res)) return;
+    if (!canManage(req, res, "add")) return;
     try {
       const input = fields.parse(req.body);
       const [saved] = await db.insert(vendors).values(input).returning();
@@ -113,7 +123,7 @@ export function registerVendorMasterRoutes(app: Express, permittedSites: (req: R
     } catch (e) { error(res, e); }
   });
   app.patch("/api/vendor-master/:id", async (req, res) => {
-    if (!canManage(req, res)) return;
+    if (!canManage(req, res, "edit")) return;
     try {
       const input = fields.partial().parse(req.body);
       if (!Object.keys(input).length) return res.status(400).json({ message: "No fields supplied" });
@@ -124,7 +134,7 @@ export function registerVendorMasterRoutes(app: Express, permittedSites: (req: R
   });
 
   app.get("/api/vendor-master/review", async (req, res) => {
-    if (!canManage(req, res)) return;
+    if (!canManage(req, res, "edit")) return;
     try {
       const confirmed = req.query.status === "confirmed";
       const master = await db.select({ id: vendors.id, name: vendors.name, isActive: vendors.isActive }).from(vendors);
@@ -187,7 +197,7 @@ export function registerVendorMasterRoutes(app: Express, permittedSites: (req: R
     } catch (e) { error(res, e); }
   });
   app.post("/api/vendor-master/review/confirm", async (req, res) => {
-    if (!canManage(req, res)) return;
+    if (!canManage(req, res, "edit")) return;
     try {
       if (req.body.role === "equipment") {
         const input = z.object({ name: z.string(), ids: z.array(z.number().int().positive()).length(1),

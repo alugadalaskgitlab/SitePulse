@@ -529,11 +529,11 @@ export default function DieselRequirements() {
   const [approvalItems, setApprovalItems] = useState<ApprovalItem[]>([]);
   const [rejectionReason, setRejectionReason] = useState("");
 
-  const { sectionCan, isAdmin } = useAuth();
-  const canEdit = sectionCan("site_diesel", "edit") || sectionCan("diesel_req_raise", "edit");
-  const canCreate = sectionCan("site_diesel", "create") || sectionCan("diesel_req_raise", "create");
-  const canApprove = sectionCan("site_diesel", "edit") || sectionCan("diesel_req_approve", "approve");
-  const canDelete = isAdmin;
+  const { featureCan, sectionCan } = useAuth();
+  const canEdit = featureCan("diesel_issue", "edit");
+  const canCreate = featureCan("diesel_issue", "add");
+  const canApprove = featureCan("diesel_issue", "approve");
+  const canDelete = featureCan("diesel_issue", "cancel");
 
   const [purchaseQty, setPurchaseQty] = useState("");
   const [purchaseSupplier, setPurchaseSupplier] = useState("");
@@ -595,7 +595,7 @@ export default function DieselRequirements() {
   const [, navigate] = useLocation();
   const { data: plantMaterialsList } = useQuery<{ id: number; name: string; defaultUom: string | null }[]>({
     queryKey: ["/api/plant-module/materials"],
-    enabled: isAdmin || sectionCan("plant_materials", "create"),
+    enabled: featureCan("plant_receipts", "add"),
   });
   const dieselMaterial = useMemo(
     () => (plantMaterialsList || []).find((m) => {
@@ -619,7 +619,7 @@ export default function DieselRequirements() {
   });
   // Matches the server gate on POST /api/plant-module/material-receipts
   // (assertCreate "plant_materials") — do not show an action that would 403.
-  const canRecordReceipt = isAdmin || sectionCan("plant_materials", "create");
+  const canRecordReceipt = featureCan("plant_receipts", "add");
   // Post-purchase prompt: PURCHASE RECORDED → [RECORD MATERIAL RECEIPT] [NOT NOW]
   const [postPurchase, setPostPurchase] = useState<{ id: number; qty: number; supplier: string } | null>(null);
   const goToMaterialReceipt = (reqId: number, suggestedQty: number, supplier?: string | null) => {
@@ -1159,7 +1159,7 @@ export default function DieselRequirements() {
               </div>
             </div>
             <div className="flex gap-2">
-              {isAdmin || sectionCan("site_diesel", "view") || sectionCan("stores_inventory", "view") || sectionCan("site_diesel", "create") || sectionCan("site_diesel", "edit") || sectionCan("diesel_req_raise", "view") || sectionCan("diesel_req_raise", "create") || sectionCan("diesel_req_raise", "edit") ? (
+              {featureCan("diesel_issue", "view") || featureCan("issues_stock", "view") || featureCan("diesel_issue", "add") || featureCan("diesel_issue", "edit") ? (
                 <Button variant="outline" size="sm" onClick={() => setView("daily-report")} data-testid="button-daily-report">DAILY REPORT</Button>
               ) : null}
               {sectionCan("site_diesel", "export") && (

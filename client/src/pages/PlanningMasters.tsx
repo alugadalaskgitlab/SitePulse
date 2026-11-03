@@ -315,7 +315,7 @@ function LabourTypeDialog({
 
 function EquipmentTypesTab() {
   const { toast } = useToast();
-  const { isAdmin } = useAuth();
+  const { featureCan } = useAuth();
   const [dialogItem, setDialogItem] = useState<PlanningEquipmentType | null | "new">(undefined as any);
 
   const { data: types = [], isLoading } = useQuery<PlanningEquipmentType[]>({
@@ -366,7 +366,7 @@ function EquipmentTypesTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end gap-2">
-        {isAdmin && (
+        {featureCan("boq_programme", "edit") && (
           <Button
             size="sm"
             variant="outline"

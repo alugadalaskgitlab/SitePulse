@@ -40,7 +40,7 @@ import {
   SESSION_COOKIE_NAME,
   DEVICE_COOKIE_NAME,
 } from "@shared/permissions";
-import { canLegacySection, type FeatureAccessState } from "@shared/featureAccess";
+import { canLegacySection, projectFeaturePermissions, type FeatureAccessState } from "@shared/featureAccess";
 import { loadFeatureAccessState } from "./featureAccess";
 import { and, eq, gt, isNull, desc, sql } from "drizzle-orm";
 import * as crypto from "crypto";
@@ -596,11 +596,14 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
   try {
     const sess = await lookupSessionFromCookie(req.headers.cookie);
     if (sess.kind === "ok") {
-      req.authUser = sess.user;
       req.authSessionId = sess.sessionId;
       req.authDeviceId = sess.deviceId;
-      req.authPermissions = await loadUserPermissionsMatrix(sess.user.id);
-      req.authFeatureAccess = await loadFeatureAccessState(sess.user.id, req.authPermissions);
+      const legacyPermissions = await loadUserPermissionsMatrix(sess.user.id);
+      req.authFeatureAccess = await loadFeatureAccessState(sess.user.id, legacyPermissions);
+      req.authPermissions = projectFeaturePermissions(sess.user, legacyPermissions, req.authFeatureAccess, req.path);
+      req.authUser = req.authFeatureAccess.rolesConfigured && !sess.user.isOwner
+        ? { ...sess.user, isAdmin: false }
+        : sess.user;
       touchSessionActivity(sess.sessionId, sess.deviceId).catch(() => {});
     }
   } catch {
@@ -621,11 +624,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         : "not_authenticated";
       return res.status(401).json({ error: reason });
     }
-    req.authUser = sess.user;
     req.authSessionId = sess.sessionId;
     req.authDeviceId = sess.deviceId;
-    req.authPermissions = await loadUserPermissionsMatrix(sess.user.id);
-    req.authFeatureAccess = await loadFeatureAccessState(sess.user.id, req.authPermissions);
+    const legacyPermissions = await loadUserPermissionsMatrix(sess.user.id);
+    req.authFeatureAccess = await loadFeatureAccessState(sess.user.id, legacyPermissions);
+    req.authPermissions = projectFeaturePermissions(sess.user, legacyPermissions, req.authFeatureAccess, req.path);
+    req.authUser = req.authFeatureAccess.rolesConfigured && !sess.user.isOwner
+      ? { ...sess.user, isAdmin: false }
+      : sess.user;
     // Touch activity asynchronously (not awaited) — never blocks the request.
     touchSessionActivity(sess.sessionId, sess.deviceId).catch(() => {});
     next();

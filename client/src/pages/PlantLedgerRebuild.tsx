@@ -25,7 +25,8 @@ type RebuildResult = {
 export default function PlantLedgerRebuild() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
-  const { isAdmin } = useAuth();
+  const { user } = useAuth();
+  const isOwner = user?.isOwner === true;
   const backLink = getPlantBackLink({ defaultTab: "stock" });
 
   const nowLocal = () => {
@@ -81,7 +82,7 @@ export default function PlantLedgerRebuild() {
     setFromTime(time);
   };
 
-  if (!isAdmin) {
+  if (!isOwner) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4 text-center p-8">
         <ShieldAlert className="w-12 h-12 text-destructive" />

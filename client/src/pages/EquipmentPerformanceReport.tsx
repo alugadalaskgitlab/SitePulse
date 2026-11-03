@@ -49,8 +49,8 @@ function selectOptions(data: AnyRow | undefined, name: string) {
 }
 
 export default function EquipmentPerformanceReport() {
-  const { isAdmin, isOwner } = useAuth();
-  const canReview = isAdmin || isOwner;
+  const { featureCan } = useAuth();
+  const canReview = featureCan("equipment_usage", "verify");
   const defaultFilters = useMemo<Filters>(
     () => ({ ...EMPTY_EQUIPMENT_PERFORMANCE_FILTERS, dateTo: format(new Date(), "yyyy-MM-dd") }),
     [],

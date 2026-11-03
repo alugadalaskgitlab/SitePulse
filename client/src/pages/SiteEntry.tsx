@@ -27,7 +27,6 @@ import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDeviceType } from "@/hooks/use-device-type";
-import { useAuth } from "@/lib/auth-context";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { ChevronLeft, ChevronRight, Plus, Trash2, Eye, Loader2, UserPlus, X, Shield, AlertTriangle, Check, Camera, LayoutList, Image as ImageIcon, Paperclip } from "lucide-react";
@@ -347,7 +346,6 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   // on the Classic page sees the classic layout, with an explicit toggle.
   const isMobileViewport = useIsMobile();
   const deviceType = useDeviceType();
-  const { isAdmin, isFieldEngineer } = useAuth();
   // Batch 06C-P §3: the legacy internal step-wizard (guidedMode/guidedStep/
   // showStep) is gone — /site/guided is the one real Guided experience and
   // this page is always the continuous Classic/Detailed form.

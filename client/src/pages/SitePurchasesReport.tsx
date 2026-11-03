@@ -40,8 +40,10 @@ interface SitePurchaseItem {
 
 export default function SitePurchasesReport() {
   const { toast } = useToast();
-  const { isOwner, isAdmin, sectionCan } = useAuth();
-  const isOwnerOrAdmin = isOwner || isAdmin;
+  const { featureCan } = useAuth();
+  const canEditPurchase = featureCan("site_materials", "edit");
+  const canEditSubmittedPurchase = featureCan("site_materials", "verify");
+  const canCancelPurchase = featureCan("site_materials", "cancel");
   const search = useSearch();
   const sp = new URLSearchParams(search);
   const returnTo = sp.get("returnTo") || "/site/dashboard";
@@ -359,7 +361,7 @@ export default function SitePurchasesReport() {
                             </AuditHistoryButton>
                             {p.source !== 'diesel' ? (
                               <>
-                                {p.documentStatus !== "submitted" && (
+                                {p.documentStatus !== "submitted" && canEditPurchase && (
                                   <Button
                                     variant="ghost"
                                     size="icon"
@@ -371,7 +373,7 @@ export default function SitePurchasesReport() {
                                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                                   </Button>
                                 )}
-                                {(p.documentStatus !== "submitted" || isOwnerOrAdmin) && (
+                                {canEditPurchase && (p.documentStatus !== "submitted" || canEditSubmittedPurchase) && (
                                   <>
                                     <Button
                                       variant="ghost"
@@ -381,7 +383,7 @@ export default function SitePurchasesReport() {
                                     >
                                       <Pencil className="w-4 h-4" />
                                     </Button>
-                                    {sectionCan("site_materials", "delete") && <Button
+                                    {canCancelPurchase && <Button
                                       variant="ghost"
                                       size="icon"
                                       onClick={() => setCancelItem(p)}

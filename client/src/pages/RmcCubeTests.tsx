@@ -47,7 +47,7 @@ import { ReportExportGate } from "@/components/ReportExportGate";
 
 export default function RmcCubeTests() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, featureCan } = useAuth();
   const canCreate = sectionCan("plant_production", "create");
   const canEdit = sectionCan("plant_production", "edit");
 
@@ -394,7 +394,7 @@ export default function RmcCubeTests() {
                       <Pencil className="w-4 h-4" />
                     </Button>
                   )}
-                  {isAdmin && (
+                  {featureCan("hmp_rmc", "cancel") && (
                     <Button
                       variant="outline" size="sm"
                       className="text-destructive hover:bg-destructive/10"

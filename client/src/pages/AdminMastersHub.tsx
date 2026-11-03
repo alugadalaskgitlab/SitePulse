@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 const HUB = "/masters/hub";
 
 export default function AdminMastersHub() {
-  const { sectionVisible, isAdmin } = useAuth();
+  const { sectionVisible, user } = useAuth();
 
   return (
     <HubShell
@@ -122,7 +122,7 @@ export default function AdminMastersHub() {
           </div>
         </div>
 
-        {isAdmin && (
+        {user?.isOwner && (
           <div>
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
               System Configuration

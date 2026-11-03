@@ -75,11 +75,13 @@ export default function IrnDetailPage() {
   const { id: idParam } = useParams<{ id: string }>();
   const id = parseInt(idParam ?? "0");
   const [, navigate] = useLocation();
-  const { sectionCan, user, isAdmin } = useAuth();
+  const { featureCan } = useAuth();
   const { toast } = useToast();
-  const canVerify = sectionCan("stores_inventory", "create");
-  const canApprove = sectionCan("irn_approve", "create");
-  const canClose = sectionCan("irn_approve", "approve") || sectionCan("stores_inventory", "create");
+  const canVerify = featureCan("irn", "verify");
+  const canApprove = featureCan("irn", "approve");
+  const canClose = featureCan("irn", "cancel");
+  const canEditIrn = featureCan("irn", "edit");
+  const canCancelIrn = featureCan("irn", "cancel");
 
   const { data: irn, isLoading } = useQuery<InternalRequisitionWithItems>({
     queryKey: ["/api/irn", id],
@@ -96,7 +98,7 @@ export default function IrnDetailPage() {
     conversionFactor?: number | null; conversionFromUom?: string | null; conversionToUom?: string | null;
   }[]>({
     queryKey: ["/api/irn/stock-lookup"],
-    enabled: (canVerify && irn?.status === "pending_stores") || (canApprove && irn?.status === "stores_verified") || isAdmin,
+    enabled: (canVerify && irn?.status === "pending_stores") || (canApprove && irn?.status === "stores_verified"),
   });
 
   // Store items for the Issue Voucher form (to link store items for stock deduction)
@@ -565,9 +567,9 @@ export default function IrnDetailPage() {
   const isRejected = irn.status === "rejected";
   const allItemsIssued = irn.items.length > 0 && irn.items.every((i) => i.itemStatus === "issued");
 
-  const adminBar = isAdmin ? (
+  const adminBar = canEditIrn || canCancelIrn ? (
     <div className="ml-auto flex items-center gap-1.5">
-      {!deleteConfirm && (
+      {canEditIrn && !deleteConfirm && (
         <button
           onClick={() => navigate(`/irn/raise?editId=${id}&returnTo=/irn/${id}`)}
           className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-2 py-1 bg-white"
@@ -576,7 +578,7 @@ export default function IrnDetailPage() {
           <Pencil className="h-3 w-3" /> Edit
         </button>
       )}
-      {!deleteConfirm ? (
+      {canCancelIrn && (!deleteConfirm ? (
         <button
           onClick={() => setDeleteConfirm(true)}
           className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 border border-red-200 rounded px-2 py-1 bg-white"
@@ -597,7 +599,7 @@ export default function IrnDetailPage() {
           </button>
           <button onClick={() => setDeleteConfirm(false)} className="text-gray-500 hover:text-gray-700">Cancel</button>
         </div>
-      )}
+      ))}
     </div>
   ) : null;
 
@@ -1420,7 +1422,7 @@ export default function IrnDetailPage() {
                   {irn.closedBy}
                   {irn.closedAt ? ` · ${format(new Date(irn.closedAt), "dd MMM yyyy, h:mm a")}` : ""}
                 </span>
-                {(isAdmin || canClose) && (
+                {canClose && (
                   <Button
                     variant="outline"
                     size="sm"

@@ -32,9 +32,9 @@ export default function DprDetails() {
   const [, setLocation] = useLocation();
   const id = parseInt(params?.id || "0");
   const { data: dpr, isLoading, error } = useDpr(id);
-  const { sectionCan, isAdmin, user } = useAuth();
+  const { sectionCan, featureCan, user } = useAuth();
   const canEdit = sectionCan("site_dprs", "edit");
-  const canDelete = isAdmin;
+  const canDelete = featureCan("dpr", "cancel");
   const canViewPerformance = sectionCan("equipment_performance_report", "view") || sectionCan("plant_equipment", "view");
   const completePerformanceContext = hasCompleteDprPerformanceContext(user);
   const performance = useDprEquipmentPerformance(dpr, canViewPerformance, user?.id, completePerformanceContext);
@@ -242,7 +242,7 @@ export default function DprDetails() {
             </div>
             {user?.fullName && (
               <p className="text-sm text-muted-foreground mt-1">
-                {isAdmin ? "Admin" : user.fullName}
+                {user.isOwner ? "Owner" : user.fullName}
               </p>
             )}
           </div>

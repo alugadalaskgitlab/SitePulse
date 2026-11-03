@@ -452,7 +452,7 @@ function SearchPanel({ sectorFilter }: { sectorFilter?: string }) {
 
 export default function NormsLibrary() {
   const { toast } = useToast();
-  const { isAdmin } = useAuth();
+  const { featureCan } = useAuth();
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [tab, setTab] = useState<"browse" | "search">("browse");
   const [sectorFilter, setSectorFilter] = useState<string>("");
@@ -537,7 +537,7 @@ export default function NormsLibrary() {
           </div>
 
           {/* Admin buttons */}
-          {isAdmin && (
+          {featureCan("boq_programme", "edit") && (
             <>
               <Button
                 variant="outline"

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { PermissionReview, RetainedAccessReview, RoleChangeList, businessRoleLabel, proposeRole } from "@/components/user-role-review";
 import { HierarchicalPermissionsEditor } from "@/components/permissions/HierarchicalPermissionsEditor";
+import { FeaturePermissionsDialog } from "@/components/permissions/FeaturePermissionsDialog";
+import { CreatePersonDialog } from "@/components/permissions/CreatePersonDialog";
 import { SiteScopeSummary } from "@/components/permissions/SiteScopeSummary";
 import { hasObservedConflict, legacySaveBody, previewChanges, changedCells, type PreviewOverrides } from "@/components/permissions/model";
 import { Link } from "wouter";
@@ -52,6 +54,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import type { FeatureTicks } from "@shared/featureAccess";
 import {
   Loader2,
   ShieldCheck,
@@ -82,6 +85,8 @@ type SafeUser = {
   sessionPolicy: SessionPolicy;
   canManagePermissions: boolean;
   permissionManagerScope: "full" | "partial" | null;
+  reportsToUserId?: number | null;
+  entryScope?: "own" | "team" | "all" | null;
   setupComplete?: boolean;
   createdAt?: string;
 };
@@ -124,14 +129,16 @@ function friendlyUserError(raw: string): string {
 }
 
 export default function UserManagement() {
-  const { user, permissions, isAdmin, canManagePermissions, permissionManagerScope } = useAuth();
+  const {
+    user, isAdmin, isOwner, canManagePermissions, permissionManagerScope, featureAccess,
+    featureCan,
+  } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const userMgmt = permissions["user_management"];
-  const canView = isAdmin || canManagePermissions || !!userMgmt?.view;
-  const canCreate = isAdmin || !!userMgmt?.create;
-  const canEdit = isAdmin || canManagePermissions || !!userMgmt?.edit;
+  const canView = featureCan("users_permissions", "view");
+  const canCreate = featureCan("users_permissions", "add");
+  const canEdit = featureCan("users_permissions", "edit");
 
   const usersQ = useQuery<SafeUser[]>({ queryKey: ["/api/auth/users"] });
 
@@ -157,8 +164,8 @@ export default function UserManagement() {
 
   // Partial permission managers only see non-admin users.
   const visibleUsers = (usersQ.data ?? []).filter((u) => {
-    if (isAdmin) return true;
-    if (canManagePermissions && permissionManagerScope === "partial") return !u.isAdmin;
+    if (!featureAccess.rolesConfigured && (isOwner || isAdmin)) return true;
+    if (!featureAccess.rolesConfigured && canManagePermissions && permissionManagerScope === "partial") return !u.isAdmin;
     return true;
   });
 
@@ -221,7 +228,7 @@ export default function UserManagement() {
                   <tr className="text-left">
                     <th className="py-2 pr-4">Name</th>
                     <th className="py-2 pr-4">Email / Phone</th>
-                    <th className="py-2 pr-4">Role</th>
+                    <th className="py-2 pr-4">Account</th>
                     <th className="py-2 pr-4">Session</th>
                     <th className="py-2 pr-4">Active</th>
                     <th className="py-2 pr-4">Notif.</th>
@@ -234,7 +241,7 @@ export default function UserManagement() {
                       key={u.id}
                       user={u}
                       canEdit={canEdit}
-                      canManagePerms={isAdmin || canManagePermissions}
+                      canManagePerms={canEdit && (isOwner || (u.id !== user?.id && !u.isOwner))}
                       currentUserId={user?.id ?? 0}
                       deviceCount={subCountByUser[u.id] ?? 0}
                       onEdit={() => setEditUserId(u.id)}
@@ -249,12 +256,13 @@ export default function UserManagement() {
         </CardContent>
       </Card>
 
-      {createOpen && <CreateUserDialog open={createOpen} onClose={() => setCreateOpen(false)} onAdvanced={(id) => { setCreateOpen(false); setPermsUserId(id); }} />}
+      {createOpen && <CreatePersonDialog open={createOpen} onClose={() => setCreateOpen(false)} />}
       {permsUserId !== null && (
-        <PermissionsDialog
+        <FeaturePermissionsDialog
           userId={permsUserId}
-          users={usersQ.data ?? []}
+          fullName={usersQ.data?.find(person => person.id === permsUserId)?.fullName ?? "User"}
           onClose={() => setPermsUserId(null)}
+          onSaved={() => { setPermsUserId(null); usersQ.refetch(); }}
         />
       )}
       {pwUserId !== null && (
@@ -308,7 +316,6 @@ function UserRow({
       </td>
       <td className="py-2 pr-4">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="basis-full" data-testid={`business-role-${user.id}`}>{businessRoleLabel(user.businessRole)}</span>
           {user.isAdmin ? (
             <Badge variant="default">Admin</Badge>
           ) : (
@@ -319,7 +326,7 @@ function UserRow({
           {user.isFieldEngineer && <Badge variant="outline">Engineer / field user</Badge>}
           {user.isFieldEngineer && (user.isAdmin || user.isOwner) && (
             <p role="status" className="basis-full text-sm text-amber-700 dark:text-amber-400" data-testid={`role-conflict-${user.id}`}>
-              Role conflict: Admin/Owner and field user are both enabled. With access_rules_v2 OFF, field-user restrictions hide Payables Preview and Dispatches Today; with it ON, the permission matrix controls those checks and whole-bill exports. Review these flags; no automatic changes are made.
+              This account has both legacy Admin and field-user flags. These flags are retained for compatibility; access is assigned through features and roles.
             </p>
           )}
           {user.canManagePermissions && !user.isAdmin && (
@@ -665,7 +672,7 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
               siteSummary={<p>Sites: {isAdmin ? "All sites (Administrator)" : siteMode === "all" ? "All sites (explicit draft grant)" : `${siteIds.size} selected: ${activeSites.filter(s => siteIds.has(s.id)).map(s => s.name).join(", ")}`}. Saved only by the existing Create / Retry setup workflow.</p>}
             />
             {!isAdmin && creationProposal.capped.length > 0 && <p role="status" className="text-amber-700" data-testid="wizard-role-capped">This review shows the effective permissions capped to your own grants. {creationProposal.capped.length} template grants cannot be assigned by you.</p>}
-            {isFieldEngineer && <p className="text-muted-foreground">The field-user flag is a label with access_rules_v2 ON; when OFF, legacy restrictions hide Payables Preview and Dispatches Today.</p>}
+            {isFieldEngineer && <p className="text-muted-foreground">The field-user flag is retained for compatibility. Feature access is controlled by assigned roles after setup.</p>}
             <p className="text-muted-foreground">Step 5 — Advanced permissions: {canAdjust ? "after creation, optionally fine-tune the account with the existing matrix and Save permissions." : "ask an administrator or permission manager to fine-tune this account after creation."} The account will exist before these optional adjustments.</p>
             {setupError && failedUserId != null && (
               <div className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-amber-800" data-testid="banner-setup-incomplete">
@@ -715,18 +722,36 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
 export function EditUserDialog({ userId, users, onClose, onPermissions }: { userId: number; users: SafeUser[]; onClose: () => void; onPermissions?: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { user: currentUser, refresh, isAdmin, canManagePermissions } = useAuth();
+  const { user: currentUser, refresh } = useAuth();
   const target = users.find((u) => u.id === userId);
+  const canManageFeatureAccess = !!currentUser?.isOwner || (currentUser?.id !== userId && !target?.isOwner);
+  const accessQ = useQuery<{
+    roleIds: number[];
+    personalChanges: FeatureTicks;
+    roles: { id: number; name: string }[];
+    rolesConfigured: boolean;
+  }>({
+    queryKey: ["/api/auth/users", userId, "feature-access"],
+    enabled: !!target && canManageFeatureAccess,
+    queryFn: async () => {
+      const response = await fetch(`/api/auth/users/${userId}/feature-access`, { credentials: "include" });
+      if (!response.ok) throw new Error(`Could not load roles (${response.status})`);
+      return response.json();
+    },
+  });
 
   const [fullName, setFullName] = useState(target?.fullName ?? "");
   const [email, setEmail] = useState(target?.email ?? "");
   const [phone, setPhone] = useState(target?.phone ?? "");
-  const [isAdminVal, setIsAdminVal] = useState(target?.isAdmin ?? false);
-  const [isFieldEngineerVal, setIsFieldEngineerVal] = useState(target?.isFieldEngineer ?? false);
-  const [notifEnabled, setNotifEnabled] = useState(target?.notificationsEnabled ?? false);
-  const [policy, setPolicy] = useState<SessionPolicy>(target?.sessionPolicy ?? "strict");
-  const [canMgmtPerms, setCanMgmtPerms] = useState(target?.canManagePermissions ?? false);
-  const [permScope, setPermScope] = useState<"full" | "partial">(target?.permissionManagerScope ?? "partial");
+  const [isOwnerVal, setIsOwnerVal] = useState(target?.isOwner ?? false);
+  const [reportsToUserId, setReportsToUserId] = useState(target?.reportsToUserId?.toString() ?? "");
+  const [entryScope, setEntryScope] = useState<"own" | "team" | "all">(target?.entryScope ?? "own");
+  const [selectedRoleIds, setSelectedRoleIds] = useState<number[] | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+
+  useEffect(() => {
+    if (accessQ.data && selectedRoleIds === null) setSelectedRoleIds(accessQ.data.roleIds);
+  }, [accessQ.data, selectedRoleIds]);
 
   function buildPatch(): Record<string, unknown> {
     if (!target) return {};
@@ -739,23 +764,41 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
     const trimmedPhone = phone.trim();
     const targetPhone = target.phone ?? "";
     if (trimmedPhone !== targetPhone) patch.phone = trimmedPhone || null;
-    if (isAdminVal !== target.isAdmin) patch.isAdmin = isAdminVal;
-    if (isFieldEngineerVal !== target.isFieldEngineer) patch.isFieldEngineer = isFieldEngineerVal;
-    if (notifEnabled !== target.notificationsEnabled) patch.notificationsEnabled = notifEnabled;
-    if (policy !== target.sessionPolicy) patch.sessionPolicy = policy;
-    if (canMgmtPerms !== target.canManagePermissions) patch.canManagePermissions = canMgmtPerms;
-    if (canMgmtPerms && permScope !== target.permissionManagerScope) patch.permissionManagerScope = permScope;
+    if (currentUser?.isOwner && isOwnerVal !== target.isOwner) patch.isOwner = isOwnerVal;
+    const reportingId = reportsToUserId ? Number(reportsToUserId) : null;
+    if (reportingId !== (target.reportsToUserId ?? null)) patch.reportsToUserId = reportingId;
+    if (entryScope !== (target.entryScope ?? "own")) patch.entryScope = entryScope;
     return patch;
   }
 
   const save = useMutation({
     mutationFn: async () => {
-      const r = await apiRequest("PATCH", `/api/auth/users/${userId}`, buildPatch());
-      return r.json();
+      if (!fullName.trim()) throw new Error("Enter the person's name.");
+      if (!email.trim() && !phone.trim()) throw new Error("At least one contact method is required.");
+      if (newPassword && newPassword.length < 8) throw new Error("Password must contain at least 8 characters.");
+      const patch = buildPatch();
+      if (Object.keys(patch).length) {
+        await apiRequest("PATCH", `/api/auth/users/${userId}`, patch);
+      }
+      const originalRoleIds = accessQ.data?.roleIds ?? [];
+      const nextRoleIds = selectedRoleIds ?? originalRoleIds;
+      const rolesChanged = originalRoleIds.length !== nextRoleIds.length ||
+        originalRoleIds.some(id => !nextRoleIds.includes(id));
+      if (rolesChanged) {
+        if (!accessQ.data?.rolesConfigured) throw new Error("Set up roles before assigning them.");
+        await apiRequest("PUT", `/api/auth/users/${userId}/feature-access`, {
+          roleIds: nextRoleIds,
+          personalChanges: accessQ.data.personalChanges,
+        });
+      }
+      if (newPassword) {
+        await apiRequest("POST", `/api/auth/users/${userId}/password`, { newPassword });
+      }
     },
     onSuccess: async () => {
       toast({ title: "User updated" });
       qc.invalidateQueries({ queryKey: ["/api/auth/users"] });
+      qc.invalidateQueries({ queryKey: ["/api/auth/users", userId, "feature-access"] });
       if (currentUser?.id === userId) await refresh();
       onClose();
     },
@@ -765,7 +808,11 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
   });
 
   if (!target) return null;
-  const dirty = Object.keys(buildPatch()).length > 0;
+  const originalRoleIds = accessQ.data?.roleIds ?? [];
+  const nextRoleIds = selectedRoleIds ?? originalRoleIds;
+  const rolesDirty = originalRoleIds.length !== nextRoleIds.length ||
+    originalRoleIds.some(id => !nextRoleIds.includes(id));
+  const dirty = Object.keys(buildPatch()).length > 0 || rolesDirty || newPassword.length > 0;
   const hasContact = !!email.trim() || !!phone.trim();
   function leave(action: () => void) {
     if (save.isPending) return;
@@ -776,14 +823,13 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
   return (
     <Dialog open={true} onOpenChange={(v) => !v && leave(onClose)}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Edit user — {target.fullName}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Edit person — {target.fullName}</DialogTitle>
+        </DialogHeader>
         <div className="space-y-3">
-          <div className="rounded-md border bg-muted/30 p-3 space-y-2">
-            <Label>Business role designation</Label>
-            <p data-testid="edit-business-role" className="font-medium">{businessRoleLabel(target.businessRole)}</p>
-            <p className="text-sm text-muted-foreground">Designation is not effective access. Individual permissions and the account flags below remain separate.</p>
-            <p className="text-sm">Administrator: {target.isAdmin ? "enabled" : "off"} · Owner: {target.isOwner ? "enabled" : "off"} · Permission manager: {target.canManagePermissions ? "enabled" : "off"} · Record unlock: {target.canUnlockRecords === undefined ? "not reported" : target.canUnlockRecords ? "enabled" : "off"}</p>
-            {(isAdmin || canManagePermissions) && onPermissions && <Button size="sm" variant="outline" onClick={() => leave(onPermissions)} data-testid="button-edit-role">Change role / reviewed permissions</Button>}
+          <div className="flex flex-wrap gap-2">
+            {onPermissions && (currentUser?.isOwner || (currentUser?.id !== userId && !target.isOwner)) &&
+              <Button size="sm" variant="outline" onClick={() => leave(onPermissions)} data-testid="button-edit-role">Feature permissions</Button>}
           </div>
           <div>
             <Label>Full name</Label>
@@ -796,65 +842,72 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
           <div>
             <Label>Phone</Label>
             <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" data-testid="input-edit-phone" />
-            <p className="text-sm text-muted-foreground mt-1">At least one of email or phone is required for sign-in.</p>
-          </div>
-          {isAdmin && (
-            <div className="flex items-center justify-between">
-              <Label htmlFor="edit-isAdmin">Admin</Label>
-              <Switch id="edit-isAdmin" checked={isAdminVal} onCheckedChange={setIsAdminVal} data-testid="switch-edit-admin" />
-            </div>
-          )}
-          <div className="flex items-center justify-between">
-            <Label htmlFor="edit-isFieldEngineer">Engineer / field user</Label>
-            <Switch id="edit-isFieldEngineer" checked={isFieldEngineerVal} onCheckedChange={setIsFieldEngineerVal} data-testid="switch-edit-field-engineer" />
-          </div>
-          {isFieldEngineerVal && (isAdminVal || target.isOwner) && (
-            <p role="alert" className="text-sm text-amber-700 dark:text-amber-400" data-testid="edit-role-conflict">
-              Role conflict: Admin/Owner and field user are both enabled. With access_rules_v2 OFF, field-user restrictions hide Payables Preview and Dispatches Today; with it ON, the permission matrix controls those checks and whole-bill exports. Review these flags; saving will not automatically clear either role.
-            </p>
-          )}
-          <div className="flex items-center justify-between">
-            <Label htmlFor="edit-notif">Push notifications</Label>
-            <Switch id="edit-notif" checked={notifEnabled} onCheckedChange={setNotifEnabled} data-testid="switch-edit-notif" />
           </div>
           <div>
-            <Label>Session policy</Label>
-            <Select value={policy} onValueChange={(v) => setPolicy(v as SessionPolicy)}>
-              <SelectTrigger data-testid="select-edit-policy"><SelectValue /></SelectTrigger>
+            <Label>New password</Label>
+            <Input type="password" autoComplete="new-password" value={newPassword} onChange={event => setNewPassword(event.target.value)} data-testid="input-edit-password" />
+          </div>
+          {currentUser?.isOwner && (
+            <div className="flex items-center justify-between rounded border p-3">
+              <Label htmlFor="edit-isOwner">Owner</Label>
+              <Switch id="edit-isOwner" checked={isOwnerVal} onCheckedChange={setIsOwnerVal} data-testid="switch-edit-owner" />
+            </div>
+          )}
+          <div>
+            <Label>Reports to</Label>
+            <Select value={reportsToUserId || "none"} onValueChange={value => setReportsToUserId(value === "none" ? "" : value)}>
+              <SelectTrigger data-testid="select-edit-reports-to"><SelectValue placeholder="No reporting line" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="strict">Strict — 5 min idle, tab close ends session</SelectItem>
-                <SelectItem value="sticky">Sticky — 30 days max, tab close ends session</SelectItem>
+                <SelectItem value="none">No reporting line</SelectItem>
+                {users.filter(person => person.id !== userId && person.isActive).map(person => (
+                  <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
-          {isAdmin && (
-            <div className="border rounded p-3 space-y-2.5 bg-muted/30">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="edit-can-mgmt-perms" className="text-sm font-medium">Permission Manager</Label>
-                  <p className="text-sm text-muted-foreground">Can edit other users' permissions without being admin</p>
-                </div>
-                <Switch
-                  id="edit-can-mgmt-perms"
-                  checked={canMgmtPerms}
-                  onCheckedChange={setCanMgmtPerms}
-                  data-testid="switch-edit-can-manage-perms"
-                />
-              </div>
-              {canMgmtPerms && (
-                <div>
-                  <Label className="text-sm text-muted-foreground mb-1 block">Scope</Label>
-                  <Select value={permScope} onValueChange={(v) => setPermScope(v as "full" | "partial")}>
-                    <SelectTrigger className="h-8" data-testid="select-edit-perm-scope"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="partial">Partial — only non-admin users, capped to own permissions</SelectItem>
-                      <SelectItem value="full">Full — any user (same as admin for permissions)</SelectItem>
-                    </SelectContent>
-                  </Select>
+          <div>
+            <Label>Whose entries</Label>
+            <Select value={entryScope} onValueChange={value => setEntryScope(value as "own" | "team" | "all")}>
+              <SelectTrigger data-testid="select-edit-entry-scope"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="own">Own</SelectItem>
+                <SelectItem value="team">Team</SelectItem>
+                <SelectItem value="all">All</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {canManageFeatureAccess && (
+            <section className="space-y-2">
+              <h3 className="font-medium">Roles</h3>
+              {accessQ.isLoading ? <p className="text-sm text-muted-foreground">Loading roles…</p> : null}
+              {accessQ.isError ? <p role="alert" className="text-sm text-destructive">Roles could not be loaded.</p> : null}
+              {accessQ.data?.rolesConfigured === false ? <p className="text-sm text-muted-foreground">Set up roles first.</p> : null}
+              {accessQ.data?.rolesConfigured && (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {accessQ.data.roles.map(role => (
+                    <label key={role.id} className="flex items-center gap-2 rounded border p-2 text-sm">
+                      <input
+                        type="checkbox"
+                        data-testid={`checkbox-edit-role-${role.id}`}
+                        checked={nextRoleIds.includes(role.id)}
+                        onChange={event => setSelectedRoleIds(current => {
+                          const selected = current ?? accessQ.data?.roleIds ?? [];
+                          return event.target.checked
+                            ? [...selected, role.id]
+                            : selected.filter(id => id !== role.id);
+                        })}
+                      />
+                      {role.name}
+                    </label>
+                  ))}
                 </div>
               )}
-            </div>
+            </section>
           )}
+          <div className="border-t pt-3">
+            <h3 className="mb-2 font-medium">Site access</h3>
+            <SiteAccessTab userId={userId} isAdmin={target.isAdmin} />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => leave(onClose)} data-testid="button-edit-cancel">Cancel</Button>

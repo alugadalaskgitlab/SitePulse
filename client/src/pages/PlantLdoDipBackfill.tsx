@@ -156,7 +156,7 @@ export default function PlantLdoDipBackfill() {
   const pageRole: "manager" | "admin" | null = urlRole === "manager" || urlRole === "admin" ? urlRole : null;
   const backLink = getPlantBackLink({ defaultTab: "stock", role: pageRole });
 
-  const isAdmin = !!user?.isAdmin;
+  const isOwner = !!user?.isOwner;
 
   const today = format(new Date(), "yyyy-MM-dd");
   const [from, setFrom] = useState(DEFAULT_FROM);
@@ -181,14 +181,14 @@ export default function PlantLdoDipBackfill() {
       if (!res.ok) throw new Error((await res.text()) || "Failed to load");
       return res.json();
     },
-    enabled: isAdmin && !!from && !!to,
+    enabled: isOwner && !!from && !!to,
   });
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isOwner) return;
     if (!dateRange.length) { setGrid([]); return; }
     setGrid(buildGridFromReadings(dateRange, readings || []));
-  }, [dateRange, readings, isAdmin]);
+  }, [dateRange, readings, isOwner]);
 
   const updateCell = (rowIdx: number, tank: 1 | 2, kind: "opening" | "closing", value: string) => {
     setGrid(prev => {
@@ -429,7 +429,7 @@ export default function PlantLdoDipBackfill() {
     saveMutation.mutate({ plant, rows: payload });
   };
 
-  if (!isAdmin) {
+  if (!isOwner) {
     return (
       <div className="space-y-4 max-w-2xl mx-auto py-12">
         <Link href={backLink}>

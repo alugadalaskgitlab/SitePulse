@@ -30,8 +30,16 @@ describe("resolvePermittedSiteIds — deny-by-default semantics", () => {
     expect(resolvePermittedSiteIds({ ...plain, allSitesAccess: true }, [])).toBeNull();
   });
 
-  it("admin → null regardless of rows/grants", () => {
+  it("legacy admin stays unrestricted before feature roles are configured", () => {
     expect(resolvePermittedSiteIds({ ...plain, isAdmin: true }, [])).toBeNull();
+  });
+
+  it("non-owner Admin follows explicit site scope after feature roles are configured", () => {
+    const admin = { ...plain, isAdmin: true };
+    expect(resolvePermittedSiteIds(admin, [3, 7], true)).toEqual([3, 7]);
+    expect(resolvePermittedSiteIds(admin, [], true)).toEqual([]);
+    expect(resolvePermittedSiteIds({ ...admin, allSitesAccess: true }, [], true)).toBeNull();
+    expect(resolvePermittedSiteIds({ ...admin, isOwner: true }, [], true)).toBeNull();
   });
 
   it("owner (isOwner without isAdmin) retains unrestricted access", () => {

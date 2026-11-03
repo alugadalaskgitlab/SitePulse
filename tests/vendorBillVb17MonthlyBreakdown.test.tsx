@@ -7,7 +7,7 @@ import { queryClient } from "@/lib/queryClient";
 import VendorBills from "@/pages/VendorBills";
 
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
-  isAdmin: true, sectionCan: () => true, sectionVisible: () => true,
+  isAdmin: true, sectionCan: () => true, featureCan: () => true, sectionVisible: () => true,
 }) }));
 vi.mock("@/lib/featureFlags", () => ({ useFeatureFlags: () => ({ companyName: "VB17 Test", logoFile: null }) }));
 vi.mock("@/hooks/use-origin", () => ({ useOrigin: () => ({ getPlantBackLink: () => "/plant" }) }));

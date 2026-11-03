@@ -10,10 +10,10 @@ export function AdminModeButton() {
 
   return (
     <div className="flex items-center gap-2">
-      {user.isAdmin ? (
+      {user.isOwner ? (
         <Badge variant="default" className="gap-1 bg-green-600">
           <ShieldCheck className="w-3 h-3" />
-          Admin
+          Owner
         </Badge>
       ) : (
         <Badge variant="secondary" className="gap-1">

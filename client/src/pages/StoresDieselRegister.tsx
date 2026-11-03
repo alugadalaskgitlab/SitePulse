@@ -125,9 +125,9 @@ function RequirementRow({
 }
 
 export default function StoresDieselRegister() {
-  const { sectionVisible, sectionCan, isAdmin } = useAuth();
+  const { sectionVisible, featureCan } = useAuth();
   const canViewRegister = sectionVisible("diesel_req_view") || sectionVisible("site_diesel") || sectionVisible("stores_inventory");
-  const canRecordReceipt = isAdmin || sectionCan("plant_materials", "create");
+  const canRecordReceipt = featureCan("plant_receipts", "add");
   const { data: requirements = [], isLoading } = useQuery<DieselRequirementWithItems[]>({ queryKey: ["/api/diesel-requirements"] });
   const { data: sites } = useQuery<{ id: number; name: string }[]>({ queryKey: ["/api/sites"] });
   const { data: materials = [] } = useQuery<PlantMaterial[]>({

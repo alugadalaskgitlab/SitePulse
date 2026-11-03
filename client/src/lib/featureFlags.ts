@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
 interface AppConfig {
-  accessRulesV2: boolean;
   rmcEnabled: boolean;
   companyName: string;
   companyShortName: string;
@@ -30,7 +29,6 @@ export function useFeatureFlags() {
   const companyGstin = data?.companyGstin ?? "";
   const companyPhone = data?.companyPhone ?? "";
   return {
-    accessRulesV2: data?.accessRulesV2 ?? false,
     rmcEnabled: data?.rmcEnabled ?? false,
     companyName,
     companyShortName: data?.companyShortName ?? "HLC",

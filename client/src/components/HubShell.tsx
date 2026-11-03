@@ -10,7 +10,6 @@ import { useQuery } from "@tanstack/react-query";
 import { AdminNotifications } from "@/components/AdminNotifications";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
-import { useAccessRule } from "@/lib/accessRules";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -34,13 +33,12 @@ interface NavItem {
 }
 
 export function HubShell({ children, title, subtitle, backHref, backLabel }: HubShellProps) {
-  const { user, isAdmin, isFieldEngineer, logout, sectionVisible } = useAuth();
+  const { user, logout, sectionVisible, featureCan } = useAuth();
   const { rmcEnabled, companyName, moduleAllowed } = useFeatureFlags();
-  const canSeeDashboardNav = useAccessRule("dashboard_nav");
-  const canSeeHmpNav = useAccessRule("hmp_nav");
-  const canSeeRmcNav = useAccessRule("rmc_nav");
-  const canSeeMastersNav = useAccessRule("masters_nav");
-  const canSeeSettingsNav = useAccessRule("settings_nav");
+  const canSeeHmpNav = featureCan("hmp_rmc", "view");
+  const canSeeRmcNav = canSeeHmpNav;
+  const canSeeMastersNav = featureCan("masters", "view");
+  const canSeeSettingsNav = user?.isOwner === true;
   const [location] = useLocation();
   const searchString = useSearch();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -72,9 +70,9 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
     purchaseIndents: unknown[];
   }>({
     queryKey: ["/api/admin/site-backfill/unassigned"],
-    enabled: isAdmin,
+    enabled: user?.isOwner === true,
   });
-  const unassignedCount = isAdmin
+  const unassignedCount = user?.isOwner
     ? (unassignedData?.dieselRequirements?.length ?? 0) + (unassignedData?.purchaseIndents?.length ?? 0)
     : 0;
 
@@ -105,46 +103,30 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
   });
   const pendingIrnCount = pendingIrns?.length ?? 0;
 
-  // Task #1247 — isManager is true for every non-admin authenticated user
-  // (see auth-context.tsx), so the old `isManager ? "Manager" : "Engineer"`
-  // branch never actually resolved to "Engineer". Use the explicit
-  // isFieldEngineer flag for the label instead.
-  const roleLabel = isAdmin ? "Admin" : isFieldEngineer ? "Engineer" : "Manager";
+  const roleLabel = user?.isOwner ? "Owner" : user?.businessRole || "User";
   const initials = user?.fullName
     ? user.fullName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
     : user?.email?.slice(0, 2).toUpperCase() ?? "?";
 
   const isHome = location === "/";
 
-  // Task #1248 — canSeeEstimator was previously `isAdmin || isManager`, and
-  // since isManager is true for every non-admin user this exposed the
-  // Estimator/mix/concrete/QTO/rate-card modules to everyone regardless of
-  // actual permissions. Gate on the real permission section keys instead so
-  // only users explicitly granted access to one of the calculator modules
-  // see the nav entry.
-  const canSeeEstimator = isAdmin || (
-    sectionVisible("estimator_portal") ||
-    sectionVisible("mix_calculator") ||
-    sectionVisible("concrete_calculator") ||
-    sectionVisible("qto_boq") ||
-    sectionVisible("rate_cards")
-  );
+  const canSeeEstimator = featureCan("estimating", "view");
 
   const mainNavItems: NavItem[] = [
-    ...(canSeeDashboardNav ? [{ href: "/", icon: LayoutDashboard, label: "Dashboard" }] : []),
-    ...(sectionVisible("site_hub") || isAdmin ? [{ href: "/site/hub", icon: HardHat, label: "Site Operations", matchPrefix: "/site", contextKey: "site" }] : []),
+    { href: "/", icon: LayoutDashboard, label: "Dashboard" },
+    ...(sectionVisible("site_hub") ? [{ href: "/site/hub", icon: HardHat, label: "Site Operations", matchPrefix: "/site", contextKey: "site" }] : []),
     ...(canSeeHmpNav && moduleAllowed("hmp") ? [{ href: "/plant/hub", icon: Factory, label: "HMP Operations", matchPrefix: "/plant", contextKey: "hmp" }] : []),
     ...(canSeeRmcNav && rmcEnabled && moduleAllowed("rmc") ? [{ href: "/rmc/hub", icon: Building2, label: "RMC Operations", matchPrefix: "/rmc", contextKey: "rmc" }] : []),
-    ...(sectionVisible("equipment_hub") || sectionVisible("equipment_performance_report") || sectionVisible("plant_equipment") || isAdmin ? [{ href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment", contextKey: "equipment" }] : []),
+    ...(sectionVisible("equipment_hub") || sectionVisible("equipment_performance_report") || sectionVisible("plant_equipment") ? [{ href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment", contextKey: "equipment" }] : []),
     // Dedicated readers need a direct entry without unrelated hub grants.
-    ...(sectionVisible("diesel_req_view") && !sectionVisible("site_hub") && !isAdmin ? [{ href: "/plant/diesel-requirements", icon: Receipt, label: "Diesel Requirements", matchPrefix: "/plant/diesel-requirements" }] : []),
-    ...(sectionVisible("plant_maintenance") && !sectionVisible("equipment_hub") && !sectionVisible("plant_equipment") && !isAdmin ? [{ href: "/plant/maintenance", icon: Wrench, label: "Equipment Maintenance", matchPrefix: "/plant/maintenance" }] : []),
-    ...(sectionVisible("stores_hub") || sectionVisible("stores_inventory") || isAdmin ? [{ href: "/stores/hub", icon: Package, label: "Stores & Inventory", matchPrefix: "/stores", contextKey: "stores" }] : []),
-    ...(sectionVisible("finance_hub") || isAdmin ? [{ href: "/finance/hub", icon: Receipt, label: "Procurement & Billing", matchPrefix: "/finance" }] : []),
+    ...(sectionVisible("diesel_req_view") && !sectionVisible("site_hub") ? [{ href: "/plant/diesel-requirements", icon: Receipt, label: "Diesel Requirements", matchPrefix: "/plant/diesel-requirements" }] : []),
+    ...(sectionVisible("plant_maintenance") && !sectionVisible("equipment_hub") && !sectionVisible("plant_equipment") ? [{ href: "/plant/maintenance", icon: Wrench, label: "Equipment Maintenance", matchPrefix: "/plant/maintenance" }] : []),
+    ...(sectionVisible("stores_hub") || sectionVisible("stores_inventory") ? [{ href: "/stores/hub", icon: Package, label: "Stores & Inventory", matchPrefix: "/stores", contextKey: "stores" }] : []),
+    ...(sectionVisible("finance_hub") ? [{ href: "/finance/hub", icon: Receipt, label: "Procurement & Billing", matchPrefix: "/finance" }] : []),
     ...(canSeeIrn ? [{ href: "/irn", icon: ClipboardList, label: "Requisitions", matchPrefix: "/irn" }] : []),
-    ...(WP_ENABLED && (sectionVisible("qto_boq") || sectionVisible("work_programme") || sectionVisible("work_programme_review") || sectionVisible("planning_masters") || isAdmin) ? [{ href: "/work-program", icon: FileSpreadsheet, label: "Work Program & BOQ", matchPrefix: "/work-program" }] : []),
+    ...(WP_ENABLED && (sectionVisible("qto_boq") || sectionVisible("work_programme") || sectionVisible("work_programme_review") || sectionVisible("planning_masters")) ? [{ href: "/work-program", icon: FileSpreadsheet, label: "Work Program & BOQ", matchPrefix: "/work-program" }] : []),
     ...(WP_ENABLED && sectionVisible("norms_library") ? [{ href: "/norms", icon: BookOpen, label: "Norms Library (SNL)", matchPrefix: "/norms" }] : []),
-    ...(sectionVisible("reports_hub") || isAdmin ? [{ href: "/reports/hub", icon: BarChart2, label: "Reports", matchPrefix: "/reports", contextKey: "reports" }] : []),
+    ...(sectionVisible("reports_hub") ? [{ href: "/reports/hub", icon: BarChart2, label: "Reports", matchPrefix: "/reports", contextKey: "reports" }] : []),
     ...(sectionVisible("edit_requests_review") ? [{ href: "/edit-requests", icon: ShieldCheck, label: "Edit Requests", matchPrefix: "/edit-requests" }] : []),
   ];
 

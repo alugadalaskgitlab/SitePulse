@@ -1370,7 +1370,7 @@ export interface IStorage {
   getUsersToNotify(sectionKey: string): Promise<number[]>;
   
   // User Site Access (Permission System v2)
-  getUserPermittedSiteIds(userId: number): Promise<number[] | null>;
+  getUserPermittedSiteIds(userId: number, rolesConfigured?: boolean): Promise<number[] | null>;
   getUserSiteAccess(userId: number): Promise<UserSiteAccess[]>;
   setUserSiteAccess(userId: number, siteIds: number[]): Promise<void>;
 
@@ -13800,7 +13800,7 @@ export class DatabaseStorage implements IStorage {
   // null = unrestricted ONLY for admin/owner or an explicit all-sites grant;
   // zero rows for a plain non-admin user now means NO sites ([]), and
   // setup-incomplete users are denied everything.
-  async getUserPermittedSiteIds(userId: number): Promise<number[] | null> {
+  async getUserPermittedSiteIds(userId: number, rolesConfigured = false): Promise<number[] | null> {
     const [userRow] = await db.select({
       isAdmin: users.isAdmin, isOwner: users.isOwner,
       allSitesAccess: users.allSitesAccess, setupComplete: users.setupComplete,
@@ -13808,7 +13808,7 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.select({ siteId: userSiteAccess.siteId })
       .from(userSiteAccess)
       .where(eq(userSiteAccess.userId, userId));
-    return resolvePermittedSiteIds(userRow, rows.map((r) => r.siteId));
+    return resolvePermittedSiteIds(userRow, rows.map((r) => r.siteId), rolesConfigured);
   }
 
   async setUserAllSitesAccess(userId: number, allSites: boolean): Promise<void> {

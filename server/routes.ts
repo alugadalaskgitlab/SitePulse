@@ -1,15 +1,5 @@
 import { DPR_SECTIONS, DPR_SECTION_FIELDS, normalizeDprSectionContext } from "../shared/dprSections";
-import {
-  ACCESS_RULES_V2,
-  ACCESS_RULES_V2_SETTING_KEY,
-  buildAccessChangesPreview,
-  hasLegacyStaleGrnPushSubscription,
-  parseAccessRulesV2Setting,
-  evaluateAccessRule,
-  type AccessRulePermissions,
-  type AccessRuleId,
-  type AccessRuleActor,
-} from "../shared/accessRulesV2";
+import { can as canFeature, canAccessRule, type AccessRuleId, type FeatureAction, type FeatureId } from "@shared/featureAccess";
 import { requirementApprovalBlock, isRequirementDecision } from "../shared/siteRequirementApproval";
 import { attachVendorBillEquipmentEvidence, resolveSavedEquipmentEvidenceSources } from "./vendorBillEquipmentEvidence";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, readSectionAggregate, saveDprSection, sectionSnapshot } from "./dprSections";
@@ -140,7 +130,7 @@ import { classifyWorkType, STANDARD_CONCRETE_DESIGNS, isStructureOrLocationSched
 import { suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
-import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
+import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendPushToUser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { normalizedEquipmentTypeName, plannedHoursInDateRange } from "./dprActualTheoretical";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
@@ -198,27 +188,24 @@ import { PROGRAMME_BAR_OUTCOMES, PROGRAMME_BAR_OUTCOME_REASONS, programmeBarOutc
 
 const ESTIMATOR_COOKIE = 'hlc_est_role';
 
-async function accessRulesV2Enabled(): Promise<boolean> {
-  try {
-    return parseAccessRulesV2Setting(await storage.getSetting(ACCESS_RULES_V2_SETTING_KEY));
-  } catch {
-    // Missing/unavailable setting must preserve the legacy behavior.
-    return false;
-  }
+function requestAccessRuleAllowed(req: Request, id: AccessRuleId, _enabled = true): boolean {
+  return canAccessRule(id, req.authUser, {
+    ...(req.authFeatureAccess ?? { rolesConfigured: false }),
+    legacyPermissions: req.authPermissions,
+  });
 }
 
-function requestAccessRuleAllowed(req: Request, id: AccessRuleId, enabled: boolean): boolean {
-  const user = req.authUser;
-  const actor: AccessRuleActor | null = user ? {
-    id: user.id,
-    isAdmin: user.isAdmin,
-    isOwner: user.isOwner,
-    isFieldEngineer: user.isFieldEngineer,
-    businessRole: user.businessRole,
-    legacyRole: (req as any).session?.role ?? (user as any).role ?? null,
-    authenticated: true,
-  } : null;
-  return evaluateAccessRule(id, enabled, actor, req.authPermissions as AccessRulePermissions | undefined);
+function requestFeatureAllowed(req: Request, feature: FeatureId, action: FeatureAction): boolean {
+  return canFeature(req.authUser, feature, action, {
+    ...(req.authFeatureAccess ?? { rolesConfigured: false }),
+    legacyPermissions: req.authPermissions,
+  });
+}
+
+function assertFeatureAction(req: Request, res: Response, feature: FeatureId, action: FeatureAction): boolean {
+  if (requestFeatureAllowed(req, feature, action)) return true;
+  res.status(403).json({ error: "forbidden", feature, action });
+  return false;
 }
 
 function parseCookie(header: string | undefined, name: string): string | undefined {
@@ -245,11 +232,10 @@ function assertMixCalcWrite(req: Request, res: Response, action: MixCalcAction):
     res.status(401).json({ message: "Authentication required" });
     return false;
   }
-  if (req.authUser.isAdmin) return true;
-  const perm = req.authPermissions?.["mix_calculator"];
-  const allowed = action === 'create' ? !!perm?.create
-    : action === 'edit' ? (!!perm?.edit || !!perm?.create)
-    : !!perm?.delete;
+  const featureAction: FeatureAction =
+    action === "create" ? "add" : action === "edit" ? "edit" : "cancel";
+  const allowed = requestFeatureAllowed(req, "estimating", featureAction) ||
+    (action === "edit" && requestFeatureAllowed(req, "estimating", "add"));
   if (!allowed) {
     res.status(403).json({ message: "You don't have permission to perform this action." });
     return false;
@@ -477,18 +463,8 @@ export async function registerRoutes(
       res.status(401).json({ error: "not_authenticated" });
       return false;
     }
-    const canView = !!(
-      req.authUser.isAdmin ||
-      req.authUser.isOwner ||
-      (allowDedicatedView && req.authPermissions?.diesel_req_view?.view) ||
-      req.authPermissions?.site_diesel?.view ||
-      req.authPermissions?.stores_inventory?.view ||
-      req.authPermissions?.site_diesel?.create ||
-      req.authPermissions?.site_diesel?.edit ||
-      req.authPermissions?.diesel_req_raise?.view ||
-      req.authPermissions?.diesel_req_raise?.create ||
-      req.authPermissions?.diesel_req_raise?.edit
-    );
+    const canView = requestFeatureAllowed(req, "diesel_issue", "view") ||
+      requestFeatureAllowed(req, "issues_stock", "view");
     if (!canView) {
       res.status(403).json({ error: "forbidden", action: "view" });
       return false;
@@ -499,8 +475,8 @@ export async function registerRoutes(
   // Dedicated View covers records, not the legacy company-wide reports.
   // Site identity is the saved site_id, never inferred from equipment or names.
   async function dieselReadSiteIds(req: any): Promise<number[] | null> {
-    if (req.authUser?.isAdmin || req.authUser?.isOwner) return null;
-    return storage.getUserPermittedSiteIds(req.authUser.id);
+    if (req.authUser?.isOwner || (req.authUser?.isAdmin && !req.authFeatureAccess?.rolesConfigured)) return null;
+    return storage.getUserPermittedSiteIds(req.authUser.id, !!req.authFeatureAccess?.rolesConfigured);
   }
   async function visibleDieselRequirements(req: any, rows: any[]) {
     const ids = await dieselReadSiteIds(req);
@@ -563,14 +539,10 @@ export async function registerRoutes(
   app.get("/api/config", async (_req, res) => {
     try {
       const cfg = await getCompanyConfig();
-      const accessRulesV2 = parseAccessRulesV2Setting(
-        await storage.getSetting(ACCESS_RULES_V2_SETTING_KEY),
-      );
-      res.json({ rmcEnabled: RMC_ENABLED, accessRulesV2, ...cfg });
+      res.json({ rmcEnabled: RMC_ENABLED, ...cfg });
     } catch {
       res.json({
         rmcEnabled: RMC_ENABLED,
-        accessRulesV2: false,
         companyName: "High Lane Constructions Pvt Ltd",
         companyShortName: "HLC",
         appTagline: "Live Ops. Not Just Logs.",
@@ -579,141 +551,6 @@ export async function registerRoutes(
         companyGstin: "",
         companyPhone: "",
       });
-    }
-  });
-
-  app.get("/api/admin/access-changes-preview", requireAuth, async (req, res) => {
-    try {
-      if (!assertAdmin(req, res)) return;
-      const [enabledRaw, auditRows, activePushSubscriptions] = await Promise.all([
-        storage.getSetting(ACCESS_RULES_V2_SETTING_KEY),
-        db.select().from(auditLogsTable)
-          .where(and(eq(auditLogsTable.module, "access_rules_v2"), eq(auditLogsTable.transactionId, 0)))
-          .orderBy(desc(auditLogsTable.createdAt)),
-        storage.getActivePushSubscriptions(),
-      ]);
-      const rows = await db
-        .select({
-          id: users.id,
-          fullName: users.fullName,
-          isAdmin: users.isAdmin,
-          isOwner: users.isOwner,
-          isFieldEngineer: users.isFieldEngineer,
-          permissionUserId: userPermissions.userId,
-          sectionKey: userPermissions.sectionKey,
-          canView: userPermissions.canView,
-          canCreate: userPermissions.canCreate,
-          canEdit: userPermissions.canEdit,
-          canDelete: userPermissions.canDelete,
-          canViewReports: userPermissions.canViewReports,
-          canExport: userPermissions.canExport,
-          canApprove: userPermissions.canApprove,
-          canNotify: userPermissions.canNotify,
-        })
-        .from(users)
-        .leftJoin(userPermissions, eq(users.id, userPermissions.userId))
-        .where(eq(users.isActive, true))
-        .orderBy(asc(users.fullName), asc(users.id));
-
-      const grouped = new Map<number, {
-        user: {
-          id: number;
-          fullName: string;
-          isAdmin: boolean;
-          isOwner: boolean;
-          isFieldEngineer: boolean;
-          legacyRole: null;
-          legacyStaleGrnPushAudience: boolean;
-        };
-        permissions: AccessRulePermissions;
-      }>();
-      for (const row of rows) {
-        let entry = grouped.get(row.id);
-        if (!entry) {
-          entry = {
-            user: {
-              id: row.id,
-              fullName: row.fullName,
-              isAdmin: row.isAdmin,
-              isOwner: row.isOwner,
-              isFieldEngineer: row.isFieldEngineer,
-              legacyRole: null,
-              legacyStaleGrnPushAudience: hasLegacyStaleGrnPushSubscription(row.id, activePushSubscriptions),
-            },
-            permissions: {},
-          };
-          grouped.set(row.id, entry);
-        }
-        if (row.permissionUserId != null && row.sectionKey) {
-          entry.permissions[row.sectionKey] = {
-            view: row.canView ?? false,
-            create: row.canCreate ?? false,
-            edit: row.canEdit ?? false,
-            delete: row.canDelete ?? false,
-            view_reports: row.canViewReports ?? false,
-            export: row.canExport ?? false,
-            approve: row.canApprove ?? false,
-            notify: row.canNotify ?? false,
-          };
-        }
-      }
-
-      const audit = auditRows.map(row => ({
-        from: (row.oldValues as any)?.enabled === true,
-        to: (row.newValues as any)?.enabled === true,
-        actorUserId: row.userId,
-        actorName: row.userName,
-        at: row.createdAt?.toISOString() ?? null,
-      }));
-      res.setHeader("Cache-Control", "no-store");
-      res.json({
-        enabled: parseAccessRulesV2Setting(enabledRaw),
-        rules: ACCESS_RULES_V2,
-        users: buildAccessChangesPreview(Array.from(grouped.values())),
-        audit,
-        canToggle: !!req.authUser?.isOwner,
-      });
-    } catch (error) {
-      console.error("[access-rules-v2] preview failed", error);
-      res.status(500).json({ error: "access_preview_unavailable" });
-    }
-  });
-
-  app.post("/api/admin/access-rules-v2", requireAuth, async (req, res) => {
-    try {
-      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
-      if (!req.authUser.isOwner) return res.status(403).json({ error: "owner_required" });
-      if (typeof req.body?.enabled !== "boolean") {
-        return res.status(400).json({ error: "enabled_must_be_boolean" });
-      }
-      const enabled = req.body.enabled as boolean;
-      const result = await db.transaction(async tx => {
-        await tx.insert(appSettings).values({ key: ACCESS_RULES_V2_SETTING_KEY, value: "false" }).onConflictDoNothing();
-        const [setting] = await tx.select().from(appSettings)
-          .where(eq(appSettings.key, ACCESS_RULES_V2_SETTING_KEY)).for("update");
-        const previous = parseAccessRulesV2Setting(setting?.value);
-        if (previous === enabled) return { enabled, changed: false };
-        await tx.update(appSettings)
-          .set({ value: String(enabled), updatedAt: new Date() })
-          .where(eq(appSettings.key, ACCESS_RULES_V2_SETTING_KEY));
-        await storage.logAudit({
-          module: "access_rules_v2",
-          transactionId: 0,
-          action: "toggle",
-          userId: req.authUser!.id,
-          userName: currentUserName(req),
-          userRole: "owner",
-          oldValues: { enabled: previous },
-          newValues: { enabled },
-          reason: "Owner changed the access_rules_v2 setting",
-        }, tx);
-        return { enabled, changed: true };
-      });
-      res.setHeader("Cache-Control", "no-store");
-      res.json(result);
-    } catch (error) {
-      console.error("[access-rules-v2] setting update failed", error);
-      res.status(500).json({ error: "access_rules_update_failed" });
     }
   });
 
@@ -744,7 +581,7 @@ export async function registerRoutes(
       if (!Array.isArray(licensedModules)) {
         return res.status(400).json({ message: "licensedModules must be an array" });
       }
-      const allowed = ["roads", "hmp", "rmc"];
+      const allowed = ["roads", "hmp", "rmc", "estimating"];
       const filtered = licensedModules.filter((m: string) => allowed.includes(m));
       await storage.setSetting("licensed_modules", JSON.stringify(filtered));
       // Bust the /api/config cache by returning the new value
@@ -878,10 +715,14 @@ export async function registerRoutes(
       const sess = await lookupSessionFromCookie(req.headers.cookie);
       if (sess.kind === 'ok') {
         const matrix = await loadUserPermissionsMatrix(sess.user.id);
-        const mp = matrix['mix_calculator'];
-        const canAccess = sess.user.isAdmin || mp?.view || mp?.create || mp?.edit;
+        const { loadFeatureAccessState } = await import("./featureAccess");
+        const accessState = await loadFeatureAccessState(sess.user.id, matrix);
+        const canView = canFeature(sess.user, "estimating", "view", accessState);
+        const canEdit = canFeature(sess.user, "estimating", "add", accessState) ||
+          canFeature(sess.user, "estimating", "edit", accessState);
+        const canAccess = canView || canEdit;
         if (canAccess) {
-          mainAppRole = (sess.user.isAdmin || mp?.create || mp?.edit) ? 'admin' : 'manager';
+          mainAppRole = canEdit ? 'admin' : 'manager';
         }
       }
     } catch {
@@ -920,28 +761,41 @@ export async function registerRoutes(
   // Permission System v2 helper — resolves permitted site names for the current user.
   // Returns null for admins or users with no site restrictions (all sites).
   // Returns string[] of permitted site names when the user is restricted.
-  async function getPermittedSiteNames(req: Express.Request): Promise<string[] | null> {
+  async function getPermittedSiteNames(req: any): Promise<string[] | null> {
     const financialScope = financialSites(req);
     if (financialScope !== undefined) return financialScope;
-    if (!req.authUser || req.authUser.isAdmin || req.authUser.isOwner) return null;
-    const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+    if (!req.authUser || req.authUser.isOwner || (req.authUser.isAdmin && !req.authFeatureAccess?.rolesConfigured)) return null;
+    const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id, !!req.authFeatureAccess?.rolesConfigured);
     if (permittedIds === null) return null;
     const allSites = await storage.getSites();
     return allSites.filter((s) => permittedIds.includes(s.id)).map((s) => s.name);
+  }
+
+  async function getRequestPermittedSiteIds(req: any): Promise<number[] | null> {
+    if (!req.authUser) return [];
+    if (req.authUser.isOwner ||
+        (req.authUser.isAdmin && !req.authFeatureAccess?.rolesConfigured)) return null;
+    return storage.getUserPermittedSiteIds(
+      req.authUser.id,
+      !!req.authFeatureAccess?.rolesConfigured,
+    );
   }
   registerVendorMasterRoutes(app, getPermittedSiteNames);
 
   // A plant name alone is not a site grant. Unmapped/shared plants are visible
   // only to all-sites users; never infer their site from a display name.
-  async function permittedReportPlants(req: Express.Request): Promise<Set<string> | null> {
-    const permitted = await getPermittedSiteNames(req);
-    if (permitted === null) return null;
+  async function permittedReportPlants(req: any): Promise<Set<string> | null> {
+    const permittedSiteIds = await getRequestPermittedSiteIds(req);
+    if (permittedSiteIds === null) return null;
     const plants = await storage.listPlantSettings();
-    return new Set(plants.filter(plant => plant.siteName &&
-      siteMatchesPermitted(plant.siteName, permitted)).map(plant => plant.plantName));
+    return new Set(
+      plants
+        .filter(plant => plant.siteId != null && permittedSiteIds.includes(plant.siteId))
+        .map(plant => plant.plantName),
+    );
   }
 
-  async function assertReportPlant(req: Express.Request, res: Express.Response, plant: string): Promise<boolean> {
+  async function assertReportPlant(req: any, res: any, plant: string): Promise<boolean> {
     const permitted = await permittedReportPlants(req);
     if (permitted === null || permitted.has(plant)) return true;
     res.status(403).json({ message: "Access denied for this plant's site" });
@@ -950,7 +804,7 @@ export async function registerRoutes(
 
   /** Site trips are operational records: both their current record and their
    * requested destination must be in the caller's site scope. */
-  async function assertTripSiteAccess(req: Express.Request, res: Express.Response, site: string | null | undefined): Promise<boolean> {
+  async function assertTripSiteAccess(req: any, res: any, site: string | null | undefined): Promise<boolean> {
     const permittedSiteNames = await getPermittedSiteNames(req);
     if (!site || (permittedSiteNames !== null && !siteMatchesPermitted(site, permittedSiteNames))) {
       res.status(403).json({ message: "Access denied for this site" });
@@ -962,23 +816,23 @@ export async function registerRoutes(
   /** Suggestions are available to any authenticated site-materials user who
    * can view, create, or edit trips. Site scope is checked separately below.
    */
-  function assertSiteMaterialSuggestionsAccess(req: Express.Request, res: Express.Response): boolean {
+  function assertSiteMaterialSuggestionsAccess(req: any, res: any): boolean {
     if (!req.authUser) {
       res.status(401).json({ error: "not_authenticated" });
       return false;
     }
-    if (req.authUser.isAdmin || req.authUser.isOwner) return true;
-    const permission = req.authPermissions?.site_materials;
-    if (!permission?.view && !permission?.create && !permission?.edit) {
+    if (["view", "add", "edit"].some(action =>
+      requestFeatureAllowed(req, "site_materials", action as FeatureAction))) return true;
+    {
       res.status(403).json({ error: "forbidden", section: "site_materials", action: "view" });
       return false;
     }
-    return true;
   }
 
   // List DPRs with filters
   app.get(api.dprs.list.path, async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "dpr", "view")) return;
       const permittedSiteNames = await getPermittedSiteNames(req);
       const filters: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] } = {
         site: req.query.site as string | undefined,
@@ -998,8 +852,8 @@ export async function registerRoutes(
   app.get("/api/dprs/labour-contractors", async (req, res) => {
     try {
       if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
-      if (!req.authUser.isAdmin && !req.authUser.isOwner &&
-          !["view", "create", "edit"].some(action => (req.authPermissions?.site_dprs as any)?.[action])) {
+      if (!["view", "add", "edit"].some(action =>
+        requestFeatureAllowed(req, "dpr", action as FeatureAction))) {
         return res.status(403).json({ message: "Access denied" });
       }
       const site = typeof req.query.site === "string" ? req.query.site.trim() : "";
@@ -1166,11 +1020,7 @@ export async function registerRoutes(
       if ("vehicleSuppliers" in suggestions) {
         res.json({
           ...suggestions,
-          canCorrectVehicleSupplier: !!(
-            req.authUser?.isAdmin ||
-            req.authUser?.isOwner ||
-            req.authPermissions?.site_materials?.edit
-          ),
+          canCorrectVehicleSupplier: requestFeatureAllowed(req, "site_materials", "verify"),
         });
       } else {
         res.json(suggestions);
@@ -1517,8 +1367,7 @@ export async function registerRoutes(
 
   // Create a new site material trip
   app.post("/api/site-material-trips/:id/identity-links", async (req, res) => {
-    if (!req.authUser?.isOwner && !assertAdmin(req, res)) return;
-    if (!assertEdit(req, res, "site_materials")) return;
+    if (!assertFeatureAction(req, res, "site_materials", "edit")) return;
     try {
       const input = tripIdentityLinksInput.parse(req.body);
       const trip = await storage.getSiteMaterialTripById(Number(req.params.id));
@@ -1634,10 +1483,10 @@ export async function registerRoutes(
       const existing = await storage.getSiteMaterialTripById(id);
       if (!existing) return res.status(404).json({ message: "Site material trip not found" });
       if (!await assertTripSiteAccess(req, res, existing.site)) return;
-      if (!masterSelection && !req.authUser?.isAdmin && !req.authUser?.isOwner &&
+      if (!masterSelection && !requestFeatureAllowed(req, "site_materials", "verify") &&
           (["supplierVendorId", "materialSourceVendorId"] as const).some(key =>
             input[key] != null && input[key] !== existing[key])) {
-        return res.status(403).json({ message: "An Administrator/Owner must confirm historical Vendor Master identities." });
+        return res.status(403).json({ message: "A user with Material Received verification permission must confirm historical Vendor Master identities." });
       }
       if (("materialSourceType" in input ? input.materialSourceType : existing.materialSourceType) === "own_source") {
         input.materialSourceSupplier = null;
@@ -1689,7 +1538,7 @@ export async function registerRoutes(
   // Delete a site material trip
   app.delete("/api/site-material-trips/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "site_materials", "cancel")) return;
       const id = Number(req.params.id);
       await storage.deleteSiteMaterialTrip(id);
       await storage.logAudit({
@@ -1758,11 +1607,11 @@ export async function registerRoutes(
   app.get("/api/sites", async (req, res) => {
     try {
       let sitesList = await storage.getSites();
-      // Permission System v2: non-admin users with explicit site-access
-      // restrictions should only see their permitted sites. Users with no
-      // restriction rows (including managers) continue to see all sites.
-      if (req.authUser && !req.authUser.isAdmin) {
-        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+      // Feature roles do not grant site scope: only explicit all-sites access
+      // or the pre-role legacy Admin bypass can see every site.
+      if (req.authUser && !req.authUser.isOwner &&
+          !(req.authUser.isAdmin && !req.authFeatureAccess?.rolesConfigured)) {
+        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id, !!req.authFeatureAccess?.rolesConfigured);
         if (permittedIds !== null) {
           const idSet = new Set(permittedIds);
           sitesList = sitesList.filter((s) => idSet.has(s.id));
@@ -1813,7 +1662,7 @@ export async function registerRoutes(
 
   app.delete("/api/sites/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "masters", "cancel")) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteSite(id);
       if (!deleted) return res.status(404).json({ message: "Site not found" });
@@ -1848,9 +1697,9 @@ export async function registerRoutes(
   app.post("/api/edit-requests", requireAuth, async (req, res) => {
     try {
       const u = req.authUser!;
-      // Owner/Admin bypass: they don't need to request edit permission
-      if (u.isAdmin || u.isOwner) {
-        return res.status(400).json({ error: "Admins and owners do not need edit permission requests." });
+      // Owner and pre-role legacy Admin accounts do not need edit requests.
+      if (u.isOwner || (u.isAdmin && !req.authFeatureAccess?.rolesConfigured)) {
+        return res.status(400).json({ error: "Owners do not need edit permission requests." });
       }
       const { recordType, recordId, requestReason } = req.body;
       if (!recordType || !recordId || !requestReason?.trim()) {
@@ -1873,13 +1722,13 @@ export async function registerRoutes(
         requestedByName: currentUserName(req),
         requestReason: requestReason.trim(),
       });
-      // Notify managers/admins via push + in-app notification
+      // Edit-request review is Owner-only.
       const label = recordType.replace(/_/g, " ");
       sendPushToAudience(
         "Edit Request",
         `${currentUserName(req)} wants to edit a ${label} (ID ${recordId})`,
         "/edit-requests",
-        "managers",
+        "owners",
       ).catch(() => {});
       await storage.createNotification({
         type: "warning",
@@ -1953,11 +1802,11 @@ export async function registerRoutes(
       const updated = await storage.approveEditPermissionRequest(id, u.id, currentUserName(req), req.body.note);
       if (!updated) return res.status(409).json({ error: "Request is no longer pending." });
       // Notify the requester via push
-      sendPushToAudience(
+      sendPushToUser(
+        reqRecord.requestedBy,
         "Edit Request Approved",
         `Your edit request for ${reqRecord.recordType.replace(/_/g, " ")} #${reqRecord.recordId} was approved. You have 2 hours.`,
         "/edit-requests/mine",
-        "all",
       ).catch(() => {});
       res.json(updated);
     } catch (err) {
@@ -2170,9 +2019,8 @@ export async function registerRoutes(
       // (master_personnel.create) or as a quick-add while filing a DPR
       // (site_dprs.create) — a field engineer submitting a DPR needs to be
       // able to add a person on the fly without master-data access.
-      const m = req.authPermissions;
-      const canViaMaster = req.authUser.isAdmin || !!m?.master_personnel?.create;
-      const canViaDpr = req.authUser.isAdmin || !!m?.site_dprs?.create;
+      const canViaMaster = requestFeatureAllowed(req, "masters", "add");
+      const canViaDpr = requestFeatureAllowed(req, "dpr", "add");
       if (!canViaMaster && !canViaDpr) {
         return res.status(403).json({ message: "You don't have permission to add personnel.", error: "forbidden", section: "master_personnel", action: "create" });
       }
@@ -2224,7 +2072,7 @@ export async function registerRoutes(
 
   app.delete("/api/personnel/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "masters", "cancel")) return;
       const id = Number(req.params.id);
       const hasHistory = await storage.hasPersonnelUsageHistory(id);
       if (hasHistory) {
@@ -2244,14 +2092,20 @@ export async function registerRoutes(
 
   app.get("/api/site-purchases", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "reports", "view")) return;
+      if (!assertFeatureAction(req, res, "purchase_orders", "view")) return;
       const filters = {
         site: req.query.site as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         workType: req.query.workType as string | undefined,
       };
+      const permittedSiteNames = await getPermittedSiteNames(req);
       const purchases = await storage.getAllSitePurchases(filters);
-      res.json(purchases);
+      const scopedPurchases = permittedSiteNames === null
+        ? purchases
+        : purchases.filter(purchase => !!purchase.site && siteMatchesPermitted(purchase.site, permittedSiteNames));
+      res.json(scopedPurchases);
     } catch (err) {
       console.error("Error fetching site purchases:", err);
       res.status(500).json({ message: "Failed to fetch site purchases" });
@@ -2260,9 +2114,7 @@ export async function registerRoutes(
 
   app.put("/api/site-purchases/:id", async (req, res) => {
     try {
-      // Permission Panel: users with report_site_purchases.edit may edit
-      // directly (admins/owners still bypass inside assertEdit).
-      if (!assertEdit(req, res, "report_site_purchases")) return;
+      if (!assertFeatureAction(req, res, "site_materials", "edit")) return;
       const id = Number(req.params.id);
       const { data } = req.body;
 
@@ -2277,13 +2129,11 @@ export async function registerRoutes(
 
       const validatedData = updateSchema.parse(data);
 
-      // Locked once Final Submitted, unless Owner/Admin (assertAdmin above
-      // already guarantees that for this route, but keep the check explicit
-      // so the rule holds if this route is ever opened up to more roles).
-      const isOwnerOrAdmin = !!(req.authUser!.isOwner || req.authUser!.isAdmin);
+      // Final-submitted edits require the separate verification action.
       const existing = await storage.getSitePurchase(id);
-      if (existing && existing.documentStatus === "submitted" && !isOwnerOrAdmin) {
-        return res.status(403).json({ message: "This purchase has been Final Submitted and is locked. Contact an admin/owner to make changes." });
+      if (existing && existing.documentStatus === "submitted" &&
+          !requestFeatureAllowed(req, "site_materials", "verify")) {
+        return res.status(403).json({ message: "This purchase has been Final Submitted and requires Material Received verification permission to change." });
       }
 
       const updated = await storage.updateSitePurchase(id, validatedData);
@@ -2337,17 +2187,18 @@ export async function registerRoutes(
   });
 
   // Final Submit: locks the purchase for normal-user edits once required
-  // documents (bill/invoice/receipt) are attached. Owner/Admin can
+  // documents (bill/invoice/receipt) are attached. Owner can
   // force-submit without a document for testing/edge cases (spec §H, §F).
   app.post("/api/site-purchases/:id/final-submit", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_materials")) return;
+      if (!assertFeatureAction(req, res, "site_materials", "edit")) return;
       const id = Number(req.params.id);
       const before = await storage.getSitePurchase(id);
       if (!before) return res.status(404).json({ message: "Site purchase not found" });
       if (before.documentStatus === "submitted") return res.status(400).json({ message: "This purchase is already Final Submitted" });
-      const isOwnerOrAdmin = !!(req.authUser!.isOwner || req.authUser!.isAdmin);
-      if (!isOwnerOrAdmin) {
+      const isOwnerOrLegacyAdmin = !!req.authUser!.isOwner ||
+        (!!req.authUser!.isAdmin && !req.authFeatureAccess?.rolesConfigured);
+      if (!isOwnerOrLegacyAdmin) {
         const docs = await storage.getAttachments("site_purchase", id);
         const requiredTypes = ["bill", "invoice", "receipt"];
         const hasRequiredDoc = docs.some(d => requiredTypes.includes((d as any).docType));
@@ -2398,7 +2249,7 @@ export async function registerRoutes(
 
   app.post("/api/notifications", async (req, res) => {
     try {
-      if (!assertCreateEither(req, res, "admin_notifications_manage", "admin_settings")) return;
+      if (!assertAdmin(req, res)) return;
       const input = insertAdminNotificationSchema.parse(req.body);
       const notification = await storage.createNotification(input);
       res.status(201).json(notification);
@@ -2456,8 +2307,8 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "dashboard")) return;
       const user = req.authUser;
-      // Only allow subscribe if the admin has enabled notifications for this user.
-      if (!user?.notificationsEnabled && !user?.isAdmin) {
+      // Only users explicitly enabled for notifications may subscribe.
+      if (!user?.notificationsEnabled) {
         return res.status(403).json({ message: "notifications_disabled", detail: "Push notifications are not enabled for your account. Ask an admin to enable them." });
       }
       const { subscription } = req.body;
@@ -2745,8 +2596,13 @@ export async function registerRoutes(
       return s;
     };
     const authUser = req?.authUser;
-    const canOverride = !!authUser && (authUser.isAdmin || authUser.isOwner ||
-      (req.authPermissions?.project_scope?.approve === true));
+    const canOverride = !!authUser && (
+      authUser.isOwner ||
+      (authUser.isAdmin && !req.authFeatureAccess?.rolesConfigured) ||
+      (req.authFeatureAccess?.rolesConfigured
+        ? requestFeatureAllowed(req, "boq_programme", "approve")
+        : req.authPermissions?.project_scope?.approve === true)
+    );
     for (const p of rows) {
       const boqItem: any = await storage.getBoqItem(Number(p.boqItemId));
       if (!boqItem?.boqProjectId) continue;
@@ -4174,10 +4030,10 @@ export async function registerRoutes(
           };
         });
       }
-      const authenticatedIsAdmin = req.authUser?.isAdmin === true;
+      const canOverrideGeometry = requestFeatureAllowed(req, "dpr", "verify");
       const geometryError = await validateVersionProgressGeometry(input.data, {
-        allowLengthOverride: authenticatedIsAdmin,
-        allowUomOverride: authenticatedIsAdmin,
+        allowLengthOverride: canOverrideGeometry,
+        allowUomOverride: canOverrideGeometry,
         sourceProgress: Array.isArray(versionOriginal.progress) ? versionOriginal.progress : [],
       });
       if (geometryError) {
@@ -4201,9 +4057,9 @@ export async function registerRoutes(
         Array.isArray(versionOriginal.equipment) ? versionOriginal.equipment : [],
         Array.isArray((input.data as any).equipment) ? (input.data as any).equipment : [],
       );
-      if (adminOnlyLinkedFieldConflict != null && !authenticatedIsAdmin) {
+      if (adminOnlyLinkedFieldConflict != null && !canOverrideGeometry) {
         return res.status(403).json({
-          message: "Opening meter, start time, diesel, and diesel source on a dispatched equipment segment can only be corrected by an administrator.",
+          message: "Opening meter, start time, diesel, and diesel source on a dispatched equipment segment require DPR verification permission.",
           error: "LINKED_EQUIPMENT_ADMIN_EDIT_REQUIRED",
           equipmentUsageId: adminOnlyLinkedFieldConflict,
         });
@@ -4212,7 +4068,7 @@ export async function registerRoutes(
         Array.isArray(versionOriginal.equipment) ? versionOriginal.equipment : [],
         Array.isArray((input.data as any).equipment) ? (input.data as any).equipment : [],
       );
-      if (unownedLinkedConflicts.length > 0 && !authenticatedIsAdmin) {
+      if (unownedLinkedConflicts.length > 0 && !canOverrideGeometry) {
         return res.status(409).json({
           message: "This linked equipment usage is historical and has no editable canonical owner. Its source facts cannot be changed in a DPR version.",
           error: "EQUIPMENT_USAGE_IMMUTABLE",
@@ -4222,7 +4078,7 @@ export async function registerRoutes(
       const movedUsageConflict = await movedEquipmentVersionConflict(
         Array.isArray(versionOriginal.equipment) ? versionOriginal.equipment : [],
         Array.isArray((input.data as any).equipment) ? (input.data as any).equipment : [],
-        authenticatedIsAdmin,
+        canOverrideGeometry,
       );
       if (movedUsageConflict != null) {
         return res.status(409).json({
@@ -4292,7 +4148,8 @@ export async function registerRoutes(
       const authenticatedRole = String((req.authUser as any)?.role ?? "").toLowerCase();
       const authenticatedIsEngineer =
         authenticatedRole === "engineer" || (req.authUser as any)?.isFieldEngineer === true;
-      const editedBy = authenticatedIsAdmin
+      const legacyAdmin = req.authUser?.isAdmin && !req.authFeatureAccess?.rolesConfigured;
+      const editedBy = legacyAdmin
         ? "admin"
         : authenticatedIsEngineer
           ? "engineer"
@@ -4336,8 +4193,8 @@ export async function registerRoutes(
           userName: req.authUser ? currentUserName(req) : input.data.engineer,
           closedAt: new Date(),
           allowMovedSourceReuse: true,
-          allowMovedSourceCorrection: authenticatedIsAdmin,
-          allowUnownedLinkedCorrectionIds: authenticatedIsAdmin ? unownedLinkedConflicts : [],
+          allowMovedSourceCorrection: canOverrideGeometry,
+          allowUnownedLinkedCorrectionIds: canOverrideGeometry ? unownedLinkedConflicts : [],
         },
         scopeVersionToken,
       );
@@ -4452,7 +4309,7 @@ export async function registerRoutes(
   // Delete DPR (admin only)
   app.delete("/api/dprs/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "dpr", "cancel")) return;
       const id = Number(req.params.id);
       const dprToDelete = await storage.getDpr(id);
       const deleted = await storage.deleteDpr(id);
@@ -4604,7 +4461,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "hmp_rmc", "cancel")) return;
       const id = Number(req.params.id);
       const deleted = await storage.deletePlantReport(id);
       if (!deleted) {
@@ -4662,7 +4519,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/parties/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "masters", "cancel")) return;
       const deleted = await storage.deleteParty(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Party not found" });
       res.status(204).send();
@@ -4706,7 +4563,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/materials/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "masters", "cancel")) return;
       const deleted = await storage.deletePlantMaterial(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Material not found" });
       res.status(204).send();
@@ -4816,7 +4673,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/mix-types/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "masters", "cancel")) return;
       const deleted = await storage.deleteMixType(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Mix type not found" });
       res.status(204).send();
@@ -4900,7 +4757,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/mix-templates/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "masters", "cancel")) return;
       const deleted = await storage.deleteMixTemplate(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Mix template not found" });
       res.status(204).send();
@@ -5262,7 +5119,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/equipment/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "masters", "cancel")) return;
       const id = Number(req.params.id);
       const hasHistory = await storage.hasEquipmentUsageHistory(id);
       if (hasHistory) {
@@ -5306,12 +5163,14 @@ export async function registerRoutes(
   const isDieselMaterialName = (name: string | null | undefined) =>
     /^(diesel|hsd)$/i.test((name ?? "").trim());
 
-  const canRecordStandaloneDieselReceipt = (req: any) => !!(
-    req.authUser?.isOwner ||
-    req.authUser?.isAdmin ||
-    req.authPermissions?.site_diesel?.edit ||
-    req.authPermissions?.diesel_req_raise?.edit
-  );
+  const canRecordStandaloneDieselReceipt = (req: any) => req.authFeatureAccess?.rolesConfigured
+    ? requestFeatureAllowed(req, "plant_receipts", "add") || requestFeatureAllowed(req, "diesel_issue", "add")
+    : !!(
+      req.authUser?.isOwner ||
+      req.authUser?.isAdmin ||
+      req.authPermissions?.site_diesel?.edit ||
+      req.authPermissions?.diesel_req_raise?.edit
+    );
 
   async function validateDieselReceiptControl(
     req: any,
@@ -5431,6 +5290,7 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/material-receipts", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "plant_receipts", "view")) return;
       const filters = {
         partyId: req.query.partyId ? Number(req.query.partyId) : undefined,
         dateFrom: req.query.dateFrom as string | undefined,
@@ -5460,7 +5320,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/material-receipts", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "plant_materials")) return;
+      if (!assertFeatureAction(req, res, "plant_receipts", "add")) return;
       const body = { ...req.body };
       if (typeof body.isPlantCommon === 'boolean') {
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
@@ -5572,11 +5432,8 @@ export async function registerRoutes(
       const existing = await storage.getMaterialReceipt(id);
       if (!existing) return res.status(404).json({ message: "Receipt not found" });
       const { editPermissionRequestId, ...body } = req.body ?? {};
-      const directEditor = !!(
-        req.authUser!.isOwner ||
-        req.authUser!.isAdmin ||
-        req.authPermissions?.plant_materials?.edit
-      );
+      const directEditor = requestFeatureAllowed(req, "plant_receipts", "edit") ||
+        requestFeatureAllowed(req, "diesel_issue", "edit");
       let approvedRequestId: number | null = null;
       if (existing.documentStatus === "submitted") {
         if (directEditor) {
@@ -5681,21 +5538,22 @@ export async function registerRoutes(
   // normal-user Final Submit; party-owned stock is not a purchase.
   app.post("/api/plant-module/material-receipts/:id/final-submit", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "plant_materials")) return;
+      if (!assertFeatureAction(req, res, "plant_receipts", "edit")) return;
       const id = Number(req.params.id);
       const before = await storage.getMaterialReceipt(id);
       if (!before) return res.status(404).json({ message: "Receipt not found" });
       if (before.documentStatus === "submitted") return res.status(400).json({ message: "This receipt is already Final Submitted" });
-      const isOwnerOrAdmin = !!(req.authUser!.isOwner || req.authUser!.isAdmin);
+      const isOwnerOrLegacyAdmin = !!req.authUser!.isOwner ||
+        (!!req.authUser!.isAdmin && !req.authFeatureAccess?.rolesConfigured);
       let hlcPartyId: number | null = null;
-      if (!isOwnerOrAdmin) {
+      if (!isOwnerOrLegacyAdmin) {
         try {
           hlcPartyId = await storage.getHlcPartyId();
         } catch (error) {
           console.error("Could not resolve HLC party for receipt Final Submit; retaining document requirement.", error);
         }
       }
-      if (!isOwnerOrAdmin && !isPartyNonPurchaseReceipt(before, hlcPartyId)) {
+      if (!isOwnerOrLegacyAdmin && !isPartyNonPurchaseReceipt(before, hlcPartyId)) {
         const docs = await storage.getAttachments("material_receipt", id);
         const requiredTypes = ["bill", "challan", "dc", "invoice", "receipt"];
         const hasRequiredDoc = docs.some(d => requiredTypes.includes((d as any).docType));
@@ -5723,7 +5581,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/material-receipts/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "plant_receipts", "cancel")) return;
       const id = Number(req.params.id);
       const before = await storage.getMaterialReceipt(id);
       const deleted = await storage.deleteMaterialReceipt(id);
@@ -5758,7 +5616,7 @@ export async function registerRoutes(
   // Cancel a material receipt (stock-affecting: flagged for reversal, not hard-deleted)
   app.post("/api/plant-module/material-receipts/:id/cancel", async (req, res) => {
     try {
-      if (!assertDeleteOrCancel(req, res, "plant_materials")) return;
+      if (!assertFeatureAction(req, res, "plant_receipts", "cancel")) return;
       const id = Number(req.params.id);
       const reason = String(req.body?.reason || "").trim();
       if (!reason) return res.status(400).json({ message: "Cancellation reason is required" });
@@ -5867,7 +5725,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/material-issues/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "issues_stock", "cancel")) return;
       const deleted = await storage.deleteMaterialIssue(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Issue not found" });
       sendPushToSection("plant_materials", "Material Issue Deleted", `Issue #${req.params.id} deleted`, "/plant").catch(() => {});
@@ -5956,7 +5814,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/material-returns/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "issues_stock", "cancel")) return;
       const deleted = await storage.deleteMaterialReturn(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Return not found" });
       sendPushToSection("plant_materials", "Material Return Deleted", `Return #${req.params.id} deleted`, "/plant/material-returns").catch(() => {});
@@ -6028,7 +5886,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/opening-stocks/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "issues_stock", "cancel")) return;
       const deleted = await storage.deleteMaterialOpeningStock(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Opening stock not found" });
       sendPushToSection("plant_stock", "Opening Stock Deleted", `Opening stock #${req.params.id} deleted`, "/plant").catch(() => {});
@@ -6099,12 +5957,17 @@ export async function registerRoutes(
       // Fix: use `!= null` (loose equality) so both `null` and `undefined`
       // correctly skip the tolerance block when no actual value was entered.
       const TOLERANCE_PERCENT = 10;
-      // Admin/manager override: if the client sends overrideTolerance=true and
-      // the authenticated user is an admin, skip the tolerance block entirely
+      // Explicit verification permission can override the tolerance after
+      // feature roles are configured; legacy Admin behavior remains until then.
+      const canOverrideTolerance = !!(
+        req.authUser?.isOwner ||
+        (req.authUser?.isAdmin && !req.authFeatureAccess?.rolesConfigured) ||
+        requestFeatureAllowed(req, "hmp_rmc", "verify")
+      );
       // and annotate the record so the deviation is auditable.
-      const isAdminOverride = overrideTolerance === true && req.authUser?.isAdmin;
-      if (overrideTolerance === true && !req.authUser?.isAdmin) {
-        return res.status(403).json({ message: "Only admins can override the tolerance limit." });
+      const isAdminOverride = overrideTolerance === true && canOverrideTolerance;
+      if (overrideTolerance === true && !canOverrideTolerance) {
+        return res.status(403).json({ message: "HMP/RMC verification permission is required to override the tolerance limit." });
       }
 
       // Fetch the current dispatch once — used both for tolerance validation
@@ -6209,7 +6072,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/dispatches/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "hmp_rmc", "cancel")) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteTruckDispatch(id);
       if (!deleted) {
@@ -6324,13 +6187,8 @@ export async function registerRoutes(
 
   app.get("/api/reports/equipment-status", requireAuth, async (req, res) => {
     try {
-      const canView = !!(
-        req.authUser?.isAdmin
-        || req.authUser?.isOwner
-        || req.authPermissions?.equipment_hub?.view
-        || req.authPermissions?.plant_equipment?.view
-        || req.authPermissions?.equipment_performance_report?.view
-      );
+      const canView = requestFeatureAllowed(req, "reports", "view") &&
+        requestFeatureAllowed(req, "equipment_usage", "view");
       if (!canView) return res.status(403).json({ error: "forbidden", action: "view" });
       const dateFrom = typeof req.query.dateFrom === "string" ? req.query.dateFrom : "";
       const dateTo = typeof req.query.dateTo === "string" ? req.query.dateTo : "";
@@ -6367,7 +6225,7 @@ export async function registerRoutes(
   // or mutates a canonical equipment_usage row.
   app.post("/api/reports/equipment-performance/logs/:id/confirm", requireAuth, async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "equipment_usage", "verify")) return;
       const id = Number(req.params.id);
       const equipmentId = Number(req.body?.equipmentId);
       if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(equipmentId) || equipmentId <= 0) {
@@ -6501,11 +6359,11 @@ export async function registerRoutes(
       }
       const inclusive = req.query.inclusive === "1" || req.query.inclusive === "true";
       const siteName = typeof req.query.site === "string" ? req.query.site.trim() : "";
-      const unrestricted = !!(req.authUser?.isAdmin || req.authUser?.isOwner);
+      const permittedSites = await getPermittedSiteNames(req);
       if (siteName) {
-        if (!assertView(req, res, "site_dprs")) return;
+        if (!assertFeatureAction(req, res, "dpr", "view")) return;
         if (!await assertTripSiteAccess(req, res, siteName)) return;
-      } else if (!unrestricted && !req.authPermissions?.plant_equipment?.view) {
+      } else if (permittedSites !== null || !requestFeatureAllowed(req, "equipment_usage", "view")) {
         return res.status(400).json({ message: "site is required for site equipment continuity" });
       }
       const excludeSource = req.query.excludeSource === "plant_usage" || req.query.excludeSource === "dpr_log"
@@ -6867,7 +6725,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/equipment-usage/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "equipment_usage", "cancel")) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteEquipmentUsage(id);
       if (!deleted) {
@@ -7070,6 +6928,7 @@ export async function registerRoutes(
   // Stock Balances
   app.get("/api/plant-module/stock-balances", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "issues_stock", "view")) return;
       const partyId = req.query.partyId !== undefined ? Number(req.query.partyId) : undefined;
       const balances = await storage.getStockBalances(partyId);
       res.json(balances);
@@ -7117,11 +6976,10 @@ export async function registerRoutes(
 
   // ── Physical Stock Reconciliation (Task #1385) ──────────────────────────
   // Batch, ledger-backed, idempotent. Posting requires Owner/Admin or the
-  // explicit stock_reconciliation "create" permission (assertCreate bypasses
-  // for admin/owner automatically).
+  // Posting a physical reconciliation is a verification action.
   app.post("/api/plant-module/stock-reconciliation", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "stock_reconciliation")) return;
+      if (!assertFeatureAction(req, res, "issues_stock", "verify")) return;
       const { countDate, clientRequestId, notes, items, draftId } = req.body ?? {};
       // Draft posts derive their items from the saved draft server-side;
       // direct posts must carry the items themselves.
@@ -7158,15 +7016,18 @@ export async function registerRoutes(
     }
   });
 
-  // Draft save / submit-for-approval. Stores users (plant_stock viewers) may
+  // Draft save / submit-for-approval. Stores users with add/edit may
   // prepare and submit drafts; nothing here touches the ledger or balances.
   app.post("/api/plant-module/stock-reconciliation-drafts", async (req, res) => {
     try {
       const u = req.authUser;
       if (!u) return res.status(401).json({ error: "not_authenticated" });
-      const m = req.authPermissions;
-      const canDraft = u.isAdmin || u.isOwner
-        || !!m?.stock_reconciliation?.view || !!m?.plant_stock?.view;
+      const canDraft = requestFeatureAllowed(req, "issues_stock", "add") ||
+        requestFeatureAllowed(req, "issues_stock", "edit") ||
+        requestFeatureAllowed(req, "issues_stock", "verify") ||
+        (!req.authFeatureAccess?.rolesConfigured &&
+          (!!u.isAdmin || !!u.isOwner || !!req.authPermissions?.stock_reconciliation?.view ||
+            !!req.authPermissions?.plant_stock?.view));
       if (!canDraft) return res.status(403).json({ error: "forbidden", section: "stock_reconciliation", action: "view" });
       const { id, countDate, status, notes, rows } = req.body ?? {};
       if (!countDate || !Array.isArray(rows) || rows.length === 0) {
@@ -7179,7 +7040,9 @@ export async function registerRoutes(
         id: id ? Number(id) : undefined,
         countDate: String(countDate),
         preparedBy: currentUserName(req) || "unknown",
-        isApprover: u.isAdmin || u.isOwner || !!m?.stock_reconciliation?.create,
+        isApprover: requestFeatureAllowed(req, "issues_stock", "verify") ||
+          (!req.authFeatureAccess?.rolesConfigured &&
+            (!!u.isAdmin || !!u.isOwner || !!req.authPermissions?.stock_reconciliation?.create)),
         status,
         notes: notes ? String(notes) : undefined,
         rows,
@@ -7195,7 +7058,7 @@ export async function registerRoutes(
   // Reject/return a draft — approver action (same gate as posting).
   app.post("/api/plant-module/stock-reconciliation-drafts/:id/reject", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "stock_reconciliation")) return;
+      if (!assertFeatureAction(req, res, "issues_stock", "verify")) return;
       const session = await storage.rejectStockReconciliationDraft(
         Number(req.params.id), currentUserName(req) || "admin",
         req.body?.note ? String(req.body.note) : undefined,
@@ -7208,18 +7071,16 @@ export async function registerRoutes(
     }
   });
 
-  // Reconciliation report — sessions with items. Viewable by admins/owners,
-  // stock_reconciliation viewers, OR plant_stock viewers — intentionally
-  // matches the page's route gate (stock_reconciliation OR plant_stock) so
-  // stores users can open the page and prepare a draft; POSTING still
-  // requires stock_reconciliation create (or admin/owner).
+  // Reconciliation report — sessions with items. Viewing and posting are
+  // separately permissioned by the issues_stock feature.
   app.get("/api/plant-module/stock-reconciliations", async (req, res) => {
     try {
       const u = req.authUser;
       if (!u) return res.status(401).json({ error: "not_authenticated" });
-      const m = req.authPermissions;
-      const canView = u.isAdmin || u.isOwner
-        || !!m?.stock_reconciliation?.view || !!m?.plant_stock?.view;
+      const canView = requestFeatureAllowed(req, "issues_stock", "view") ||
+        (!req.authFeatureAccess?.rolesConfigured &&
+          (!!u.isAdmin || !!u.isOwner || !!req.authPermissions?.stock_reconciliation?.view ||
+            !!req.authPermissions?.plant_stock?.view));
       if (!canView) return res.status(403).json({ error: "forbidden", section: "stock_reconciliation", action: "view" });
       res.json(await storage.getStockReconciliations());
     } catch (err) {
@@ -7397,7 +7258,7 @@ export async function registerRoutes(
   // Admin: list shift-log workers tagged UNKNOWN CONTRACTOR / OTHER for review.
   app.post("/api/plant-module/shift-log-manpower/review-list", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "labour_attendance", "verify")) return;
       const { dateFrom, dateTo, plantName } = req.body || {};
       const plantTrim = String(plantName || "").trim();
       const rows = await storage.listShiftLogManpowerNeedingReview({
@@ -7417,7 +7278,7 @@ export async function registerRoutes(
   // `fromNames` (array) and `toName` are provided.
   app.post("/api/plant-module/shift-log-manpower/bulk-relabel", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "labour_attendance", "edit")) return;
       const { name, fromNames, toName, contractorName, category, gender } = req.body || {};
       const actor = currentUserName(req);
       const fromList: string[] = Array.isArray(fromNames) && fromNames.length > 0
@@ -7462,7 +7323,7 @@ export async function registerRoutes(
   // info needed to render an Undo button.
   app.post("/api/plant-module/shift-log-manpower/recent-merges", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "labour_attendance", "view")) return;
       const [batches, dupActivity, aliasActivity] = await Promise.all([
         storage.getRecentShiftLogManpowerRelabelBatches(30),
         storage.getRecentShiftLogManpowerDupActivity(30),
@@ -7478,7 +7339,7 @@ export async function registerRoutes(
   // Admin: undo a previous merge/relabel batch by restoring the per-row snapshot.
   app.post("/api/plant-module/shift-log-manpower/undo-merge", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "labour_attendance", "edit")) return;
       const { batchId } = req.body || {};
       const actor = currentUserName(req);
       const id = Number(batchId);
@@ -7505,7 +7366,7 @@ export async function registerRoutes(
   // any future "MD ..." vs "MOHAMMED ..." pair is suggested automatically).
   app.post("/api/plant-module/shift-log-manpower/learned-aliases", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "labour_attendance", "view")) return;
       const aliases = await storage.getShiftLogManpowerLearnedAliases();
       res.json(aliases);
     } catch (err) {
@@ -7519,7 +7380,7 @@ export async function registerRoutes(
   // screen can render a Manage panel and apply both kinds to its suggester.
   app.post("/api/plant-module/shift-log-manpower/custom-aliases", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "labour_attendance", "view")) return;
       const aliases = await storage.listShiftLogManpowerCustomAliases();
       res.json(aliases);
     } catch (err) {
@@ -7537,7 +7398,7 @@ export async function registerRoutes(
   //                               undoing the merges that taught it)
   app.post("/api/plant-module/shift-log-manpower/add-custom-alias", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "labour_attendance", "edit")) return;
       const { tokenA, tokenB, kind } = req.body || {};
       const actor = currentUserName(req);
       const k =
@@ -7583,7 +7444,7 @@ export async function registerRoutes(
   // Admin: delete a custom alias / unsuppress a previously-suppressed pair.
   app.post("/api/plant-module/shift-log-manpower/delete-custom-alias", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "labour_attendance", "edit")) return;
       const { id } = req.body || {};
       const actor = currentUserName(req);
       const numId = Number(id);
@@ -7630,7 +7491,7 @@ export async function registerRoutes(
   // written per successfully-reverted entry.
   app.post("/api/plant-module/shift-log-manpower/bulk-revert-alias-activity", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "labour_attendance", "edit")) return;
       const { activities } = req.body || {};
       const actor = currentUserName(req);
       if (!Array.isArray(activities) || activities.length === 0) {
@@ -7677,7 +7538,7 @@ export async function registerRoutes(
   // across sessions and devices.
   app.post("/api/plant-module/shift-log-manpower/dismissed-pairs", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "labour_attendance", "view")) return;
       const { plantName } = req.body || {};
       const plant = String(plantName || "").trim();
       if (!plant) return res.status(400).json({ message: "plantName is required" });
@@ -7694,7 +7555,7 @@ export async function registerRoutes(
   // unordered; existing entries are preserved (ON CONFLICT DO NOTHING).
   app.post("/api/plant-module/shift-log-manpower/dismiss-pairs", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "labour_attendance", "edit")) return;
       const { pairs, plantName } = req.body || {};
       const actor = currentUserName(req);
       const plant = String(plantName || "").trim();
@@ -7742,7 +7603,7 @@ export async function registerRoutes(
   // Admin: undo a previous dismissal so the pair can suggest itself again.
   app.post("/api/plant-module/shift-log-manpower/restore-dismissed-pair", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "labour_attendance", "edit")) return;
       const { id } = req.body || {};
       const actor = currentUserName(req);
       const pairId = Number(id);
@@ -7781,7 +7642,7 @@ export async function registerRoutes(
   // line summarising the operator, plant scope and number of pairs restored.
   app.post("/api/plant-module/shift-log-manpower/bulk-restore-dismissed-pairs", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "labour_attendance", "edit")) return;
       const { ids, olderThanDays, plantName } = req.body || {};
       const actor = currentUserName(req);
       const plant = String(plantName || "").trim();
@@ -7976,7 +7837,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/bitumen-dip-readings/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "hmp_rmc", "cancel")) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteBitumenDipReading(id);
       if (!deleted) return res.status(404).json({ message: "Reading not found" });
@@ -8076,12 +7937,9 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/ldo-orphaned-rows", async (req, res) => {
     try {
-      const accessV2 = await accessRulesV2Enabled();
-      if (accessV2) {
-        if (!requestAccessRuleAllowed(req, "ldo_orphan_cleanup", true)) {
-          return res.status(403).json({ error: "admin_required" });
-        }
-      } else if (!assertAdmin(req, res)) return;
+      if (!requestAccessRuleAllowed(req, "ldo_orphan_cleanup")) {
+        return res.status(403).json({ error: "owner_required" });
+      }
       const dateFrom = req.query.dateFrom as string | undefined;
       const dateTo = req.query.dateTo as string | undefined;
       const plant = req.query.plant as string | undefined;
@@ -8409,7 +8267,7 @@ export async function registerRoutes(
 
   app.put("/api/plant-module/plant-settings/:plantName", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "hmp_rmc", "edit")) return;
       const plantName = decodeURIComponent(req.params.plantName).trim();
       if (!plantName) return res.status(400).json({ message: "plantName is required" });
       const parsed = insertPlantSettingsSchema.parse({
@@ -8432,7 +8290,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/plant-settings/:plantName", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "hmp_rmc", "cancel")) return;
       const plantName = decodeURIComponent(req.params.plantName).trim();
       if (!plantName) return res.status(400).json({ message: "plantName is required" });
       await storage.deletePlantSettings(plantName);
@@ -8444,7 +8302,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/plant-settings/:plantName/rename", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "hmp_rmc", "edit")) return;
       const oldName = decodeURIComponent(req.params.plantName).trim();
       const newName = (req.body?.newName ?? "").trim();
       if (!oldName) return res.status(400).json({ message: "plantName is required" });
@@ -8459,11 +8317,15 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/plant-module/shift-logs/plants", async (_req, res) => {
+  app.get("/api/plant-module/shift-logs/plants", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
       const all = await storage.getPlantShiftLogs({});
-      const plants = Array.from(new Set(all.map(l => l.plantName || "Main Plant")));
-      if (!plants.length) plants.push("Main Plant");
+      const permitted = await permittedReportPlants(req);
+      const plants = permitted === null
+        ? Array.from(new Set(all.map(l => l.plantName || "Main Plant")))
+        : Array.from(permitted);
+      if (!plants.length && permitted === null) plants.push("Main Plant");
       res.json(plants);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -8472,11 +8334,13 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/shift-logs", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
       const logs = await storage.getPlantShiftLogs({
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
       });
-      res.json(logs);
+      const permitted = await permittedReportPlants(req);
+      res.json(permitted === null ? logs : logs.filter(l => permitted.has(l.plantName || "Main Plant")));
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to fetch shift logs" });
     }
@@ -8484,7 +8348,9 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/shift-logs/by-date/:date", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
       const plantName = (req.query.plant as string) || "Main Plant";
+      if (!await assertReportPlant(req, res, plantName)) return;
       const log = await storage.getPlantShiftLogByDate(req.params.date, undefined, plantName);
       if (!log) return res.status(404).json({ message: "No shift log for that date" });
       res.json(log);
@@ -8495,8 +8361,10 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/shift-logs/:id", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
       const log = await storage.getPlantShiftLog(parseInt(req.params.id));
       if (!log) return res.status(404).json({ message: "Shift log not found" });
+      if (!await assertReportPlant(req, res, log.plantName || "Main Plant")) return;
       res.json(log);
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to fetch shift log" });
@@ -8507,6 +8375,8 @@ export async function registerRoutes(
     try {
       const { upsertPlantShiftLogSchema } = await import("@shared/schema");
       const parsed = upsertPlantShiftLogSchema.parse(req.body);
+      const plantForScope = parsed.plantName || "Main Plant";
+      if (!await assertReportPlant(req, res, plantForScope)) return;
       // Permission gate: derive create-vs-edit from actual persistence state,
       // NOT from the presence of `id` in the request body. `upsertPlantShiftLog`
       // matches existing rows by (date, plantName) and ignores `id` for matching,
@@ -8525,19 +8395,36 @@ export async function registerRoutes(
         if (!assertCreate(req, res, "plant_shift_logs")) return;
       }
       // Shift logs are inherently multi-edit records (opening readings at shift
-      // start, closing readings at shift end). The isFinalized /
-      // FINALIZED_LOCKED gate inside upsertPlantShiftLog (with authorizedRole
-      // bypass) is the correct re-edit guard for shift logs.
+      // start, closing readings at shift end). Finalized edits require a
+      // one-time edit grant or the separate Owner-managed record-unlock grant.
       const editedBy = parsed.editedBy || currentUserName(req) || "operator";
-      const authorizedRole: "admin" | "manager" | null = "manager";
+      const u = req.authUser;
+      const canBypassFinalizedLock = !!(
+        u?.isOwner ||
+        (u?.isAdmin && !req.authFeatureAccess?.rolesConfigured) ||
+        u?.canUnlockRecords
+      );
+      const authorizedRole: "admin" | "manager" | null = canBypassFinalizedLock ? "admin" : null;
       try {
         const saved = await storage.upsertPlantShiftLog(parsed, editedBy, authorizedRole);
+        if (existingRow?.isFinalized === 1 && canBypassFinalizedLock && u) {
+          await storage.logAudit({
+            module: "plant_shift_log",
+            transactionId: existingId!,
+            action: "edit",
+            userId: u.id,
+            userName: u.fullName,
+            userRole: u.isOwner ? "owner" : u.isAdmin ? "admin" : "manager",
+            oldValues: { isFinalized: true },
+            newValues: { isFinalized: true },
+            reason: "Finalized shift log edited with record-unlock authority",
+          });
+        }
         sendPushToSection("plant_shift_logs", "Plant Shift Log Saved", `${saved.date} – ${saved.shiftCode}`, `/plant/shift-log/${saved.date}`).catch(() => {});
         res.status(201).json(saved);
       } catch (e: any) {
         if (e?.code === "FINALIZED_LOCKED") {
-          const u = req.authUser;
-          if (u && !u.isAdmin && !u.isOwner && existingId) {
+          if (u && !canBypassFinalizedLock && existingId) {
             const perm = await storage.checkActiveEditPermission(u.id, "plant_shift_log", existingId);
             if (perm) {
               const saved2 = await storage.upsertPlantShiftLog(parsed, editedBy, "admin");
@@ -8557,9 +8444,12 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/shift-logs/:id/finalize", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "plant_shift_logs")) return;
+      if (!assertFeatureAction(req, res, "hmp_rmc", "verify")) return;
       const finalizedBy: string = (req.body?.finalizedBy as string) || "operator";
       const id = parseInt(req.params.id);
+      const existing = await storage.getPlantShiftLog(id);
+      if (!existing) return res.status(404).json({ message: "Shift log not found" });
+      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
       const updated = await storage.finalizePlantShiftLog(id, finalizedBy);
       if (!updated) return res.status(404).json({ message: "Shift log not found" });
       res.json(updated);
@@ -8570,8 +8460,11 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/shift-logs/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "hmp_rmc", "cancel")) return;
       const id = parseInt(req.params.id);
+      const existing = await storage.getPlantShiftLog(id);
+      if (!existing) return res.status(404).json({ message: "Shift log not found" });
+      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
       const ok = await storage.deletePlantShiftLog(id);
       if (!ok) return res.status(404).json({ message: "Shift log not found" });
       res.json({ success: true });
@@ -8587,6 +8480,9 @@ export async function registerRoutes(
       if (!assertEdit(req, res, "plant_shift_logs")) return;
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid shift log ID" });
+      const existing = await storage.getPlantShiftLog(id);
+      if (!existing) return res.status(404).json({ message: "Shift log not found" });
+      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
       const bodySchema = z.object({ dryerFedFrom: z.enum(["TANK_1", "TANK_2"]) });
       const parsed = bodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -8606,7 +8502,9 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/daily-reports/:date", async (req, res) => {
     try {
+      if (!assertView(req, res, "plant_daily_reports")) return;
       const plantName = (req.query.plant as string) || "Main Plant";
+      if (!await assertReportPlant(req, res, plantName)) return;
       const summary = await storage.getDailyPlantSummary(req.params.date, plantName);
       res.json(summary);
     } catch (err: any) {
@@ -9109,6 +9007,7 @@ export async function registerRoutes(
   // Index of historical Daily Plant Reports — every (date, plant) that has any source data.
   app.get("/api/plant-module/daily-reports-index", async (req, res) => {
     try {
+      if (!assertView(req, res, "plant_daily_reports")) return;
       const from = (req.query.from as string) || undefined;
       const to = (req.query.to as string) || undefined;
       const plant = (req.query.plant as string) || undefined;
@@ -9120,8 +9019,12 @@ export async function registerRoutes(
       };
       const parties = splitMulti(req.query.party).map((s) => Number(s)).filter((n) => Number.isFinite(n));
       const mixTypes = splitMulti(req.query.mixType);
+      const permitted = await permittedReportPlants(req);
+      if (plant && permitted !== null && !permitted.has(plant)) {
+        return res.status(403).json({ message: "Access denied for this plant's site" });
+      }
       const rows = await storage.getDailyPlantReportIndex({ from, to, plant, parties, mixTypes });
-      res.json(rows);
+      res.json(rows.filter(row => permitted === null || permitted.has(row.plantName)));
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to load daily reports index" });
     }
@@ -9467,6 +9370,7 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/heating-sessions", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
       // Task #254 — when `servedByProductionDate=YYYY-MM-DD` is supplied we
       // return all heating sessions attributed to that production day (i.e.
       // every session run since the prior production day, overnight pre-heat
@@ -9474,18 +9378,22 @@ export async function registerRoutes(
       // card uses this so its L/MT matches the Daily Plant Report. Other
       // callers (Heating Sessions list, Trends) keep using strict-by-date.
       const servedByProd = req.query.servedByProductionDate as string | undefined;
+      const requestedPlant = (req.query.plant as string | undefined) || undefined;
+      if (requestedPlant && !await assertReportPlant(req, res, requestedPlant)) return;
       if (servedByProd) {
-        const plantName = (req.query.plant as string | undefined) || "Main Plant";
+        const plantName = requestedPlant || "Main Plant";
         const rows = await storage.getHeatingSessionsForProductionDay(plantName, servedByProd);
-        return res.json(rows);
+        const permitted = await permittedReportPlants(req);
+        return res.json(permitted === null ? rows : rows.filter(row => permitted.has(row.plantName || plantName)));
       }
       const rows = await storage.getBitumenHeatingSessions({
         date: req.query.date as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
-        plantName: (req.query.plant as string | undefined) || undefined,
+        plantName: requestedPlant,
       });
-      res.json(rows);
+      const permitted = await permittedReportPlants(req);
+      res.json(permitted === null ? rows : rows.filter(row => permitted.has(row.plantName || "Main Plant")));
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to fetch heating sessions" });
     }
@@ -9499,14 +9407,17 @@ export async function registerRoutes(
   // parse "reconciliation" as an :id.
   app.get("/api/plant-module/heating-sessions/reconciliation", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
       const dateFrom = req.query.dateFrom as string | undefined;
       const dateTo = req.query.dateTo as string | undefined;
       if (!dateFrom || !dateTo) {
         return res.status(400).json({ message: "dateFrom and dateTo are required" });
       }
       const plantName = (req.query.plant as string | undefined) || undefined;
+      if (plantName && !await assertReportPlant(req, res, plantName)) return;
       const rows = await storage.getBoilerMeterReconciliation({ dateFrom, dateTo, plantName });
-      res.json(rows);
+      const permitted = await permittedReportPlants(req);
+      res.json(permitted === null ? rows : rows.filter(row => permitted.has(row.plantName || "Main Plant")));
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to fetch reconciliation" });
     }
@@ -9517,14 +9428,17 @@ export async function registerRoutes(
   // Express does not try to parse "dryer-source-mismatches" as an id.
   app.get("/api/plant-module/heating-sessions/dryer-source-mismatches", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
       const dateFrom = req.query.dateFrom as string | undefined;
       const dateTo = req.query.dateTo as string | undefined;
       if (!dateFrom || !dateTo) {
         return res.status(400).json({ message: "dateFrom and dateTo are required" });
       }
       const plantName = (req.query.plant as string | undefined) || undefined;
+      if (plantName && !await assertReportPlant(req, res, plantName)) return;
       const rows = await storage.getDryerSourceMismatches({ dateFrom, dateTo, plantName });
-      res.json(rows);
+      const permitted = await permittedReportPlants(req);
+      res.json(permitted === null ? rows : rows.filter(row => permitted.has(row.plantName || "Main Plant")));
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to fetch dryer source mismatches" });
     }
@@ -9544,6 +9458,11 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
       }
       const { sessionIds, targetValue } = parsed.data;
+      for (const sessionId of sessionIds) {
+        const session = await storage.getBitumenHeatingSession(sessionId);
+        if (!session) return res.status(404).json({ message: `Heating session ${sessionId} not found` });
+        if (!await assertReportPlant(req, res, session.plantName || "Main Plant")) return;
+      }
       const updatedCount = await storage.alignDryerSourceForSessions(sessionIds, targetValue);
       res.json({ updatedCount });
     } catch (err: any) {
@@ -9563,6 +9482,9 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
       }
+      const existing = await storage.getBitumenHeatingSession(id);
+      if (!existing) return res.status(404).json({ message: "Heating session not found" });
+      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
       const updatedCount = await storage.alignDryerSourceForSessions([id], parsed.data.dryerFedFrom);
       if (updatedCount === 0) return res.status(404).json({ message: "Heating session not found" });
       res.json({ success: true });
@@ -9573,8 +9495,10 @@ export async function registerRoutes(
 
   app.get("/api/plant-module/heating-sessions/:id", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
       const row = await storage.getBitumenHeatingSession(parseInt(req.params.id));
       if (!row) return res.status(404).json({ message: "Heating session not found" });
+      if (!await assertReportPlant(req, res, row.plantName || "Main Plant")) return;
       res.json(row);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -9589,6 +9513,7 @@ export async function registerRoutes(
       if (parsed.id != null) {
         return res.status(400).json({ code: "ID_NOT_ALLOWED_ON_POST", message: "POST creates new sessions; use PUT /:id to update" });
       }
+      if (!await assertReportPlant(req, res, parsed.plantName || "Main Plant")) return;
       const editedBy = parsed.editedBy || "operator";
       // Operator-driven save flow — no PIN gating; finalized rows can be re-edited freely.
       const authorizedRole: "admin" | "manager" | null = "manager";
@@ -9616,18 +9541,40 @@ export async function registerRoutes(
       const { upsertBitumenHeatingSessionSchema } = await import("@shared/schema");
       const parsed = upsertBitumenHeatingSessionSchema.parse(req.body);
       const editedBy = parsed.editedBy || currentUserName(req) || "operator";
-      const authorizedRole: "admin" | "manager" | null = "manager";
+      const existingSession = await storage.getBitumenHeatingSession(id);
+      if (!existingSession) return res.status(404).json({ message: "Heating session not found" });
+      if (!await assertReportPlant(req, res, existingSession.plantName || "Main Plant")) return;
+      if (!await assertReportPlant(req, res, parsed.plantName || existingSession.plantName || "Main Plant")) return;
+      const u = req.authUser;
+      const canBypassFinalizedLock = !!(
+        u?.isOwner ||
+        (u?.isAdmin && !req.authFeatureAccess?.rolesConfigured) ||
+        u?.canUnlockRecords
+      );
+      const authorizedRole: "admin" | "manager" | null = canBypassFinalizedLock ? "admin" : null;
       try {
         const saved = await storage.upsertBitumenHeatingSession(
           { ...parsed, id },
           editedBy,
           authorizedRole,
         );
+        if (existingSession?.isFinalized === 1 && canBypassFinalizedLock && u) {
+          await storage.logAudit({
+            module: "heating_session",
+            transactionId: id,
+            action: "edit",
+            userId: u.id,
+            userName: u.fullName,
+            userRole: u.isOwner ? "owner" : u.isAdmin ? "admin" : "manager",
+            oldValues: { isFinalized: true },
+            newValues: { isFinalized: true },
+            reason: "Finalized heating session edited with record-unlock authority",
+          });
+        }
         res.json(saved);
       } catch (e: any) {
         if (e?.code === "FINALIZED_LOCKED") {
-          const u = req.authUser;
-          if (u && !u.isAdmin && !u.isOwner) {
+          if (u && !canBypassFinalizedLock) {
             const perm = await storage.checkActiveEditPermission(u.id, "heating_session", id);
             if (perm) {
               const saved2 = await storage.upsertBitumenHeatingSession({ ...parsed, id }, editedBy, "admin");
@@ -9656,11 +9603,46 @@ export async function registerRoutes(
       if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid session id" });
       const existing = await storage.getBitumenHeatingSession(id);
       if (!existing) return res.status(404).json({ message: "Heating session not found" });
+      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
       const editedBy = currentUserName(req) || "operator";
       const { upsertBitumenHeatingSessionSchema } = await import("@shared/schema");
       const parsed = upsertBitumenHeatingSessionSchema.parse({ ...existing, id });
-      const authorizedRole: "admin" | "manager" | null = "manager";
-      await storage.upsertBitumenHeatingSession(parsed, editedBy, authorizedRole);
+      const u = req.authUser;
+      const canBypassFinalizedLock = !!(
+        u?.isOwner ||
+        (u?.isAdmin && !req.authFeatureAccess?.rolesConfigured) ||
+        u?.canUnlockRecords
+      );
+      const authorizedRole: "admin" | "manager" | null = canBypassFinalizedLock ? "admin" : null;
+      try {
+        await storage.upsertBitumenHeatingSession(parsed, editedBy, authorizedRole);
+      } catch (error: any) {
+        if (error?.code !== "FINALIZED_LOCKED") throw error;
+        if (u && !canBypassFinalizedLock) {
+          const permission = await storage.checkActiveEditPermission(u.id, "heating_session", id);
+          if (permission) {
+            await storage.upsertBitumenHeatingSession(parsed, editedBy, "admin");
+            await storage.consumeEditPermission(permission.id);
+          } else {
+            return res.status(403).json({ code: "FINALIZED_LOCKED", message: error.message });
+          }
+        } else {
+          return res.status(403).json({ code: "FINALIZED_LOCKED", message: error.message });
+        }
+      }
+      if (existing.isFinalized === 1 && canBypassFinalizedLock && u) {
+        await storage.logAudit({
+          module: "heating_session",
+          transactionId: id,
+          action: "edit",
+          userId: u.id,
+          userName: u.fullName,
+          userRole: u.isOwner ? "owner" : u.isAdmin ? "admin" : "manager",
+          oldValues: { isFinalized: true },
+          newValues: { isFinalized: true },
+          reason: "Finalized heating session updated with record-unlock authority",
+        });
+      }
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to resync flow entry" });
@@ -9669,9 +9651,13 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/heating-sessions/:id/finalize", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "plant_heating")) return;
+      if (!assertFeatureAction(req, res, "hmp_rmc", "verify")) return;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getBitumenHeatingSession(id);
+      if (!existing) return res.status(404).json({ message: "Heating session not found" });
+      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
       const finalizedBy: string = (req.body?.finalizedBy as string) || "operator";
-      const updated = await storage.finalizeBitumenHeatingSession(parseInt(req.params.id), finalizedBy);
+      const updated = await storage.finalizeBitumenHeatingSession(id, finalizedBy);
       if (!updated) return res.status(404).json({ message: "Heating session not found" });
       res.json(updated);
     } catch (err: any) {
@@ -9681,8 +9667,12 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/heating-sessions/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
-      const ok = await storage.deleteBitumenHeatingSession(parseInt(req.params.id));
+      if (!assertFeatureAction(req, res, "hmp_rmc", "cancel")) return;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getBitumenHeatingSession(id);
+      if (!existing) return res.status(404).json({ message: "Heating session not found" });
+      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
+      const ok = await storage.deleteBitumenHeatingSession(id);
       if (!ok) return res.status(404).json({ message: "Heating session not found" });
       res.json({ success: true });
     } catch (err: any) {
@@ -9842,16 +9832,15 @@ export async function registerRoutes(
   // PURCHASE INDENTS
   // ============================================
 
-  function assertPiRaiserRead(req: Express.Request, res: Response): boolean {
+  function assertPiRaiserRead(req: any, res: any): boolean {
     if (!req.authUser) {
       res.status(401).json({ error: "not_authenticated" });
       return false;
     }
-    const m = req.authPermissions;
-    if (req.authUser.isAdmin || req.authUser.isOwner ||
-        m?.purchase_indents_view?.view ||
-        m?.site_procurement?.view || m?.site_procurement?.create || m?.site_procurement?.edit ||
-        m?.purchase_indents_raise?.view || m?.purchase_indents_raise?.create || m?.purchase_indents_raise?.edit) return true;
+    if ((["view", "add", "edit"] as FeatureAction[]).some(action =>
+      requestFeatureAllowed(req, "purchase_indent", action) ||
+      requestFeatureAllowed(req, "purchase_orders", action),
+    )) return true;
     res.status(403).json({ error: "forbidden", action: "view" });
     return false;
   }
@@ -10128,7 +10117,10 @@ export async function registerRoutes(
         if (!indent) return [];
         const name = sites.find(s => s.id === indent.siteId)?.name ?? indent.raisedFrom;
         if (permitted !== null && (!name || !siteMatchesPermitted(name, permitted))) return [];
-        if (!req.authUser?.isAdmin && (order.raisedByUserId === req.authUser?.id || indent.authorUserId === req.authUser?.id)) return [];
+        const mayBypassSelfApproval = req.authUser?.isOwner ||
+          (req.authUser?.isAdmin && !req.authFeatureAccess?.rolesConfigured);
+        if (!mayBypassSelfApproval &&
+            (order.raisedByUserId === req.authUser?.id || indent.authorUserId === req.authUser?.id)) return [];
         return [{ id: order.id, itemId: order.purchaseIndentItemId, indentId: indent.id, indentNo: indent.indentNo, description: order.description }];
       }));
     } catch (err) { poError(err, res); }
@@ -10267,7 +10259,10 @@ export async function registerRoutes(
       if (decision.action === "reject" && !decision.reason) return res.status(400).json({ message: "Rejection reason is required" });
       const [current] = await activePo(scoped.item.id);
       if (!current || current.status !== "submitted") return res.status(409).json({ message: "Only a submitted PO can be reviewed" });
-      if (!req.authUser?.isAdmin && (current.raisedByUserId === req.authUser?.id || scoped.indent.authorUserId === req.authUser?.id))
+      const mayBypassSelfApproval = req.authUser?.isOwner ||
+        (req.authUser?.isAdmin && !req.authFeatureAccess?.rolesConfigured);
+      if (!mayBypassSelfApproval &&
+          (current.raisedByUserId === req.authUser?.id || scoped.indent.authorUserId === req.authUser?.id))
         return res.status(403).json({ message: "You cannot approve a record you raised." });
       const now = new Date();
       const next = decision.action === "approve"
@@ -10329,7 +10324,9 @@ export async function registerRoutes(
       // Self-approval prevention: the approver must differ from the raiser.
       const existingIndent = await storage.getPurchaseIndent(id);
       if (!existingIndent) return res.status(404).json({ message: "Purchase indent not found" });
-      if (!req.authUser?.isAdmin && existingIndent.authorUserId && existingIndent.authorUserId === req.authUser?.id) {
+      const mayBypassSelfApproval = req.authUser?.isOwner ||
+        (req.authUser?.isAdmin && !req.authFeatureAccess?.rolesConfigured);
+      if (!mayBypassSelfApproval && existingIndent.authorUserId && existingIndent.authorUserId === req.authUser?.id) {
         return res.status(403).json({ message: "You cannot approve a record you raised." });
       }
 
@@ -10496,10 +10493,9 @@ export async function registerRoutes(
       {
         const user = req.authUser!;
         const m = req.authPermissions;
-        const ok = user.isAdmin
-          || (m?.["plant_stock"]?.create)
-          || (m?.["site_procurement"]?.create)
-          || (m?.["purchase_indents_raise"]?.create);
+        const ok = requestFeatureAllowed(req, "issues_stock", "add") ||
+          requestFeatureAllowed(req, "purchase_indent", "add") ||
+          requestFeatureAllowed(req, "plant_receipts", "edit");
         if (!ok) return res.status(403).json({ error: "forbidden", message: "Requires plant_stock:create, site_procurement:create, or purchase_indents_raise:create" });
       }
       const itemId = Number(req.params.itemId);
@@ -10520,7 +10516,7 @@ export async function registerRoutes(
   // Returns live stock balances joined with material names for the stores verification form.
   app.get("/api/irn/stock-lookup", async (req, res) => {
     try {
-      if (!assertAuthed(req, res)) return;
+      if (!assertFeatureAction(req, res, "irn", "verify")) return;
       const rows = await db
         .select({
           materialId: stockBalances.materialId,
@@ -10545,7 +10541,7 @@ export async function registerRoutes(
   // Returns IRN items queued for procurement (approved IRNs with items needing a PI).
   app.get("/api/irn/procurement-queue", async (req, res) => {
     try {
-      if (!assertAuthed(req, res)) return;
+      if (!assertFeatureAction(req, res, "irn", "view")) return;
       const rows = await db
         .select({
           itemId: internalRequisitionItems.id,
@@ -10598,7 +10594,7 @@ export async function registerRoutes(
   // Creates a PI from all queued/partially-issued items on an approved IRN.
   app.post("/api/irn/:id/raise-pi", async (req, res) => {
     try {
-      if (!assertCreateEither(req, res, "site_procurement", "purchase_indents_raise")) return;
+      if (!assertFeatureAction(req, res, "purchase_indent", "add")) return;
       const irnId = Number(req.params.id);
       if (isNaN(irnId)) return res.status(400).json({ message: "Invalid IRN id" });
 
@@ -10656,7 +10652,7 @@ export async function registerRoutes(
 
   app.get("/api/irn", async (req, res) => {
     try {
-      if (!assertAuthed(req, res)) return;
+      if (!assertFeatureAction(req, res, "irn", "view")) return;
       const { status, dateFrom, dateTo } = req.query as Record<string, string | undefined>;
       const irns = await storage.getInternalRequisitions({ status, dateFrom, dateTo });
       res.json(irns);
@@ -10668,7 +10664,7 @@ export async function registerRoutes(
 
   app.get("/api/irn/:id", async (req, res) => {
     try {
-      if (!assertAuthed(req, res)) return;
+      if (!assertFeatureAction(req, res, "irn", "view")) return;
       const id = Number(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const irn = await storage.getInternalRequisition(id);
@@ -10682,7 +10678,7 @@ export async function registerRoutes(
 
   app.post("/api/irn", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "irn_raise")) return;
+      if (!assertFeatureAction(req, res, "irn", "add")) return;
       const parsed = createIrnRequestSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Validation error" });
       const irn = await storage.createInternalRequisition(parsed.data);
@@ -10696,7 +10692,7 @@ export async function registerRoutes(
 
   app.patch("/api/irn/:id/stores-verify", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "stores_inventory")) return;
+      if (!assertFeatureAction(req, res, "irn", "verify")) return;
       const id = Number(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const parsed = storesVerifyIrnSchema.safeParse({ ...req.body, verifiedBy: currentUserName(req) });
@@ -10735,7 +10731,7 @@ export async function registerRoutes(
 
   app.patch("/api/irn/:id/approve", async (req, res) => {
     try {
-      if (!assertApprove(req, res, "irn_approve")) return;
+      if (!assertFeatureAction(req, res, "irn", "approve")) return;
       const id = Number(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const existing = await storage.getInternalRequisition(id);
@@ -10743,9 +10739,9 @@ export async function registerRoutes(
       if (existing.status !== "stores_verified") {
         return res.status(400).json({ message: "IRN must be stores-verified before approval" });
       }
-      // self-approval prevention (admins are exempt)
+      // Self-approval prevention; only the Owner is exempt.
       const currentUserId = req.authUser?.id ?? null;
-      if (!req.authUser?.isAdmin && currentUserId && existing.raisedByUserId && currentUserId === existing.raisedByUserId) {
+      if (!req.authUser?.isOwner && currentUserId && existing.raisedByUserId && currentUserId === existing.raisedByUserId) {
         return res.status(403).json({ message: "You cannot approve your own requisition" });
       }
       const parsed = approveIrnSchema.safeParse({ ...req.body, actionBy: currentUserName(req) });
@@ -10766,13 +10762,7 @@ export async function registerRoutes(
 
   app.patch("/api/irn/:id/close", async (req, res) => {
     try {
-      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
-      const m = req.authPermissions;
-      const canApprove = req.authUser.isAdmin || !!(m?.["irn_approve"]?.approve);
-      const canStores = req.authUser.isAdmin || !!(m?.["stores_inventory"]?.create);
-      if (!canApprove && !canStores) {
-        return res.status(403).json({ error: "forbidden", message: "You do not have permission to close IRNs" });
-      }
+      if (!assertFeatureAction(req, res, "irn", "cancel")) return;
       const id = Number(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const existing = await storage.getInternalRequisition(id);
@@ -10796,12 +10786,7 @@ export async function registerRoutes(
 
   app.patch("/api/irn/:id/reopen", async (req, res) => {
     try {
-      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
-      const m = req.authPermissions;
-      const canReopen = req.authUser.isAdmin || !!(m?.["irn_approve"]?.approve);
-      if (!canReopen) {
-        return res.status(403).json({ error: "forbidden", message: "You do not have permission to reopen IRNs" });
-      }
+      if (!assertFeatureAction(req, res, "irn", "cancel")) return;
       const id = Number(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const existing = await storage.getInternalRequisition(id);
@@ -10820,7 +10805,7 @@ export async function registerRoutes(
 
   app.get("/api/irn/:id/audit-logs", async (req, res) => {
     try {
-      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      if (!assertAdmin(req, res)) return;
       const id = Number(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const logs = await storage.getIrnAuditLogs(id);
@@ -10833,7 +10818,7 @@ export async function registerRoutes(
 
   app.delete("/api/irn/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "irn", "cancel")) return;
       const id = Number(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const ok = await storage.deleteInternalRequisition(id);
@@ -10847,12 +10832,12 @@ export async function registerRoutes(
 
   app.patch("/api/irn/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "irn", "edit")) return;
       const id = Number(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const existing = await storage.getInternalRequisition(id);
       if (!existing) return res.status(404).json({ message: "IRN not found" });
-      if (existing.status !== "pending_stores" && !req.authUser?.isAdmin) {
+      if (existing.status !== "pending_stores" && !requestFeatureAllowed(req, "irn", "approve")) {
         return res.status(400).json({ message: "IRN can only be edited while pending stores verification" });
       }
       const parsed = createIrnRequestSchema.safeParse(req.body);
@@ -10868,7 +10853,7 @@ export async function registerRoutes(
 
   app.post("/api/irn/:id/record-issue", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "stores_inventory")) return;
+      if (!assertFeatureAction(req, res, "issues_stock", "add")) return;
       const id = Number(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const parsed = recordIrnIssueSchema.safeParse(req.body);
@@ -10895,6 +10880,7 @@ export async function registerRoutes(
 
   app.get("/api/irn/:id/issue-vouchers", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "irn", "view")) return;
       const id = Number(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const vouchers = await storage.getIrnIssueVouchers(id);
@@ -10907,7 +10893,7 @@ export async function registerRoutes(
 
   app.get("/api/irn/:id/issue-voucher", async (req, res) => {
     try {
-      if (!assertReportExport(req, res, "irn_view", "irn_raise")) return;
+      if (!assertFeatureAction(req, res, "irn", "export")) return;
       const id = Number(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const irn = await storage.getInternalRequisition(id);
@@ -11358,7 +11344,7 @@ export async function registerRoutes(
 
   app.delete("/api/purchase-indents/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "purchase_indent", "cancel")) return;
       const id = Number(req.params.id);
       const deleted = await storage.deletePurchaseIndent(id);
       if (!deleted) return res.status(404).json({ message: "Purchase indent not found" });
@@ -11630,7 +11616,9 @@ export async function registerRoutes(
         // unless they are an admin (and even then it should be logged via frontend override)
         const receipts = await storage.getPendingPlantReceipts({ status: "pending" });
         const target = receipts.find(r => r.id === id);
-        if (target && target.createdByUserId === confirmedByUserId && !req.authUser?.isAdmin) {
+        const mayBypassSelfApproval = req.authUser?.isOwner ||
+          (req.authUser?.isAdmin && !req.authFeatureAccess?.rolesConfigured);
+        if (target && target.createdByUserId === confirmedByUserId && !mayBypassSelfApproval) {
           return res.status(409).json({ error: "Separation of Duties: you cannot confirm a receipt you submitted yourself. Ask another plant staff member to confirm." });
         }
         const result = await storage.confirmPendingPlantReceipt(id, confirmedByUserId, confirmedBy);
@@ -11806,10 +11794,8 @@ export async function registerRoutes(
   app.patch("/api/diesel-requirements/equipment/:id/consumption-norm", async (req, res) => {
     try {
       if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
-      const allowed = req.authUser.isAdmin || req.authUser.isOwner ||
-        ["site_diesel", "diesel_req_raise"].some(section =>
-          req.authPermissions?.[section as "site_diesel" | "diesel_req_raise"]?.create ||
-          req.authPermissions?.[section as "site_diesel" | "diesel_req_raise"]?.edit);
+      const allowed = requestFeatureAllowed(req, "diesel_issue", "add") ||
+        requestFeatureAllowed(req, "diesel_issue", "edit");
       if (!allowed) return res.status(403).json({ error: "forbidden", action: "create_or_edit" });
       const id = Number(req.params.id);
       if (!Number.isSafeInteger(id) || id <= 0 ||
@@ -11821,8 +11807,9 @@ export async function registerRoutes(
       }
       const master = (await storage.getEquipmentMaster(true)).find(e => e.id === id);
       if (!master) return res.status(404).json({ message: "Equipment not found" });
-      if (!req.authUser.isAdmin && !req.authUser.isOwner) {
-        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+      if (!req.authUser.isOwner &&
+          !(req.authUser.isAdmin && !req.authFeatureAccess?.rolesConfigured)) {
+        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id, !!req.authFeatureAccess?.rolesConfigured);
         if (permittedIds !== null) {
           // A shared/unassigned equipment has no site to authorize against.
           // Restricted users (including those with zero permitted sites) must fail closed.
@@ -11881,7 +11868,9 @@ export async function registerRoutes(
       if (!assertApprove(req, res, "diesel_req_approve")) return;
       // Self-approval prevention.
       const existingDr = await storage.getDieselRequirement(id);
-      if (!req.authUser?.isAdmin && existingDr && existingDr.authorUserId && existingDr.authorUserId === req.authUser?.id) {
+      const mayBypassSelfApproval = req.authUser?.isOwner ||
+        (req.authUser?.isAdmin && !req.authFeatureAccess?.rolesConfigured);
+      if (!mayBypassSelfApproval && existingDr && existingDr.authorUserId && existingDr.authorUserId === req.authUser?.id) {
         return res.status(403).json({ message: "You cannot approve a record you raised." });
       }
       const approvedBy = currentUserName(req);
@@ -12058,12 +12047,7 @@ export async function registerRoutes(
       const existing = await storage.getDieselRequirement(id);
       if (!existing) return res.status(404).json({ message: "Diesel requirement not found" });
 
-      // Permission check: non-pending records require admin.
-      if (existing.status !== "pending") {
-        if (!assertAdmin(req, res)) return;
-      } else {
-        if (!assertEditEither(req, res, "site_diesel", "diesel_req_raise")) return;
-      }
+      if (!assertFeatureAction(req, res, "diesel_issue", "edit")) return;
 
       const validatedData = createDieselRequirementRequestSchema.parse(data);
       const requirement = await storage.updateDieselRequirement(id, validatedData);
@@ -12080,7 +12064,7 @@ export async function registerRoutes(
 
   app.delete("/api/diesel-requirements/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "diesel_issue", "cancel")) return;
       const id = Number(req.params.id);
       const deleted = await storage.deleteDieselRequirement(id);
       if (!deleted) return res.status(404).json({ message: "Diesel requirement not found" });
@@ -12339,7 +12323,7 @@ export async function registerRoutes(
       res.json({
         ...state.report,
         canConfirmMappings: !!req.authUser?.isOwner,
-        canExportXml: !!(req.authUser?.isAdmin || req.authUser?.isOwner),
+        canExportXml: requestFeatureAllowed(req, "vendor_bills", "export"),
       });
     } catch (error) {
       console.error("Tally Export Readiness failed:", error);
@@ -12411,7 +12395,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/vendor-bills/tally-export-preview", async (req, res) => {
-    if (!assertAdmin(req, res)) return;
+    if (!assertFeatureAction(req, res, "vendor_bills", "export")) return;
     res.setHeader("Cache-Control", "private, no-store");
     try {
       const { billIds } = tallyBillIdsSchema.parse(req.body);
@@ -12430,7 +12414,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/vendor-bills/tally-export", async (req, res) => {
-    if (!assertAdmin(req, res)) return;
+    if (!assertFeatureAction(req, res, "vendor_bills", "export")) return;
     res.setHeader("Cache-Control", "private, no-store");
     const exportBodySchema = tallyBillIdsSchema.extend({
       confirmedNotAlreadyInTallyBillIds: z.array(z.number().int().positive()).min(1).max(100)
@@ -12557,7 +12541,8 @@ export async function registerRoutes(
       // below remains unchanged for the existing GST/TDS workbook action.
       if (requestedFormat === "json" ||
           (requestedFormat === "xlsx" && req.query.report !== "financial-summary")) {
-        if (!req.authUser?.isAdmin && !req.authUser?.isOwner) {
+        if (!requestFeatureAllowed(req, "vendor_bills", "export") &&
+            !requestFeatureAllowed(req, "payables", "export")) {
           return res.status(403).json({ error: "forbidden", role: "administrator_or_owner" });
         }
         const selectedSite = await resolveVendorBillSite(req, res, req.query.siteId);
@@ -12941,7 +12926,7 @@ export async function registerRoutes(
 
   app.delete("/api/vendor-aliases/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "masters", "cancel")) return;
       const id = Number(req.params.id);
       const deleted = await storage.deleteVendorAlias(id);
       if (!deleted) {
@@ -13005,19 +12990,12 @@ export async function registerRoutes(
     try {
       if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
       if (req.query.export === "1") {
-        if (!assertReportExport(req, res, "vendor_bills", "vendor_bills_view")) return;
-      } else if (!req.authUser.isAdmin && !req.authUser.isOwner
-        && !req.authPermissions?.vendor_bills?.view_reports
-        && !req.authPermissions?.vendor_bills_view?.view_reports) {
-        return res.status(403).json({ error: "forbidden", action: "view_reports" });
-      }
-      const accessV2 = await accessRulesV2Enabled();
-      if (accessV2) {
-        if (!canViewVendorFinancials(req.authUser, req.authPermissions)) {
-          return res.status(403).json({ error: "forbidden", section: "vendor_financials", action: "view" });
+        if (!requestAccessRuleAllowed(req, "payables_preview") ||
+          !requestFeatureAllowed(req, "payables", "export")) {
+          return res.status(403).json({ error: "forbidden", feature: "payables", action: "export" });
         }
-      } else if (req.authUser?.isFieldEngineer) {
-        return res.status(403).json({ error: "forbidden", message: "Payables preview is not available to field engineers." });
+      } else if (!requestAccessRuleAllowed(req, "payables_preview")) {
+        return res.status(403).json({ error: "forbidden", feature: "payables", action: "view" });
       }
       const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
         const parsed = new Date(`${value}T00:00:00Z`);
@@ -13140,13 +13118,11 @@ export async function registerRoutes(
         res.status(401).json({ error: "not_authenticated" });
         return;
       }
-      const canRead = req.authUser.isAdmin
-        || req.authUser.isOwner
-        || !!req.authPermissions?.vendor_bills?.view
+      const canRead = requestFeatureAllowed(req, "vendor_bills", "view")
+        || requestFeatureAllowed(req, "payables", "view")
         // Diesel payment editors need the shared account selector even when
         // their role is intentionally limited to editing diesel payments.
-        || !!req.authPermissions?.site_diesel?.edit
-        || !!req.authPermissions?.diesel_req_raise?.edit;
+        || requestFeatureAllowed(req, "diesel_issue", "edit");
       if (!canRead) {
         res.status(403).json({ error: "forbidden", sections: ["vendor_bills", "site_diesel"], action: "view" });
         return;
@@ -13721,14 +13697,18 @@ export async function registerRoutes(
         if (!assertApprove(req, res, "vendor_bills_approve")) return;
         // Self-approval prevention for vendor bills.
         before = await storage.getVendorBill(id);
-        if (!req.authUser?.isAdmin && before && before.authorUserId && before.authorUserId === req.authUser?.id) {
+        const mayBypassSelfApproval = req.authUser?.isOwner ||
+          (req.authUser?.isAdmin && !req.authFeatureAccess?.rolesConfigured);
+        if (!mayBypassSelfApproval && before && before.authorUserId && before.authorUserId === req.authUser?.id) {
           return res.status(403).json({ message: "You cannot approve a bill you created." });
         }
       } else if (status === "verified") {
         if (!assertApprove(req, res, "vendor_bills_verify")) return;
         // Self-approval prevention for verification too.
         before = await storage.getVendorBill(id);
-        if (!req.authUser?.isAdmin && before && before.authorUserId && before.authorUserId === req.authUser?.id) {
+        const mayBypassSelfApproval = req.authUser?.isOwner ||
+          (req.authUser?.isAdmin && !req.authFeatureAccess?.rolesConfigured);
+        if (!mayBypassSelfApproval && before && before.authorUserId && before.authorUserId === req.authUser?.id) {
           return res.status(403).json({ message: "You cannot verify a bill you created." });
         }
       } else if (status === "paid") {
@@ -14389,7 +14369,7 @@ export async function registerRoutes(
 
   app.delete("/api/vendor-rate-cards/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "rate_cards", "cancel")) return;
       const id = Number(req.params.id);
       const deleted = await storage.deleteVendorRateCard(id);
       if (!deleted) return res.status(404).json({ message: "Rate card not found" });
@@ -14752,8 +14732,9 @@ export async function registerRoutes(
   });
 
   // Concrete Estimates CRUD
-  app.get("/api/concrete-estimates", async (_req, res) => {
+  app.get("/api/concrete-estimates", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "estimating", "view")) return;
       const estimates = await storage.getConcreteEstimates();
       res.json(estimates);
     } catch (err) {
@@ -14764,6 +14745,7 @@ export async function registerRoutes(
 
   app.get("/api/concrete-estimates/:id", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "estimating", "view")) return;
       const id = parseInt(req.params.id);
       const estimate = await storage.getConcreteEstimate(id);
       if (!estimate) return res.status(404).json({ message: "Estimate not found" });
@@ -14776,7 +14758,7 @@ export async function registerRoutes(
 
   app.post("/api/concrete-estimates", async (req, res) => {
     try {
-      if (!assertCreateEither(req, res, "concrete_estimates_manage", "admin_settings")) return;
+      if (!assertFeatureAction(req, res, "estimating", "add")) return;
       const { name, contractor, structureType, grade, state, totalCum, totalAmt } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
       const createdBy = req.authUser?.id ?? null;
@@ -14790,15 +14772,10 @@ export async function registerRoutes(
 
   app.patch("/api/concrete-estimates/:id", async (req, res) => {
     try {
-      if (!assertEditEither(req, res, "concrete_estimates_manage", "admin_settings")) return;
+      if (!assertFeatureAction(req, res, "estimating", "edit")) return;
       const id = parseInt(req.params.id);
       const existing = await storage.getConcreteEstimate(id);
       if (!existing) return res.status(404).json({ message: "Estimate not found" });
-      const isAdmin = req.authUser?.isAdmin ?? false;
-      const isOwner = existing.createdBy !== null && existing.createdBy === req.authUser?.id;
-      if (!isAdmin && !isOwner) {
-        return res.status(403).json({ message: "You can only edit your own estimates" });
-      }
       const { name, contractor, structureType, grade, state, totalCum, totalAmt } = req.body;
       const estimate = await storage.updateConcreteEstimate(id, { ...(name ? { name } : {}), contractor: contractor || null, structureType: structureType || null, grade: grade || null, ...(state ? { state } : {}), totalCum: totalCum || null, totalAmt: totalAmt || null });
       if (!estimate) return res.status(404).json({ message: "Estimate not found" });
@@ -14811,7 +14788,7 @@ export async function registerRoutes(
 
   app.delete("/api/concrete-estimates/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "estimating", "cancel")) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteConcreteEstimate(id);
       if (!deleted) return res.status(404).json({ message: "Estimate not found" });
@@ -14826,8 +14803,9 @@ export async function registerRoutes(
   // CONCRETE ESTIMATES V2 (Location-Centric)
   // ============================================
 
-  app.get("/api/concrete/v2/estimates", async (_req, res) => {
+  app.get("/api/concrete/v2/estimates", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "estimating", "view")) return;
       const estimates = await storage.getConcreteEstimatesV2();
       res.json(estimates);
     } catch (err) {
@@ -14838,6 +14816,7 @@ export async function registerRoutes(
 
   app.get("/api/concrete/v2/estimates/:id", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "estimating", "view")) return;
       const id = parseInt(req.params.id);
       const estimate = await storage.getConcreteEstimateV2(id);
       if (!estimate) return res.status(404).json({ message: "Estimate not found" });
@@ -14850,7 +14829,7 @@ export async function registerRoutes(
 
   app.post("/api/concrete/v2/estimates", async (req, res) => {
     try {
-      if (!assertCreateEither(req, res, "concrete_estimates_manage", "admin_settings")) return;
+      if (!assertFeatureAction(req, res, "estimating", "add")) return;
       const { name, contractor, structureType, state, totalLengthM, totalRmAmt } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
       const createdBy = req.authUser?.id ?? null;
@@ -14864,15 +14843,10 @@ export async function registerRoutes(
 
   app.patch("/api/concrete/v2/estimates/:id", async (req, res) => {
     try {
-      if (!assertEditEither(req, res, "concrete_estimates_manage", "admin_settings")) return;
+      if (!assertFeatureAction(req, res, "estimating", "edit")) return;
       const id = parseInt(req.params.id);
       const existing = await storage.getConcreteEstimateV2(id);
       if (!existing) return res.status(404).json({ message: "Estimate not found" });
-      const isAdmin = req.authUser?.isAdmin ?? false;
-      const isOwner = existing.createdBy !== null && existing.createdBy === req.authUser?.id;
-      if (!isAdmin && !isOwner) {
-        return res.status(403).json({ message: "You can only edit your own estimates" });
-      }
       const { name, contractor, structureType, state, totalLengthM, totalRmAmt } = req.body;
       const estimate = await storage.updateConcreteEstimateV2(id, { ...(name ? { name } : {}), contractor: contractor || null, structureType: structureType || null, ...(state ? { state } : {}), totalLengthM: totalLengthM || null, totalRmAmt: totalRmAmt || null });
       if (!estimate) return res.status(404).json({ message: "Estimate not found" });
@@ -14885,7 +14859,7 @@ export async function registerRoutes(
 
   app.delete("/api/concrete/v2/estimates/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "estimating", "cancel")) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteConcreteEstimateV2(id);
       if (!deleted) return res.status(404).json({ message: "Estimate not found" });
@@ -14963,9 +14937,7 @@ export async function registerRoutes(
   app.get("/api/stores/grns/pending-receipt-count", async (req, res) => {
     try {
       if (!assertView(req, res, "stores_inventory")) return;
-      const permittedIds = req.authUser && !req.authUser.isAdmin
-        ? await storage.getUserPermittedSiteIds(req.authUser.id)
-        : null;
+      const permittedIds = await getRequestPermittedSiteIds(req);
       const grns = await storage.getStoreGrns({
         piSourced: true,
         status: "draft",
@@ -14983,9 +14955,7 @@ export async function registerRoutes(
   app.get("/api/stores/grns", async (req, res) => {
     try {
       if (!assertView(req, res, "stores_inventory")) return;
-      const permittedIds = req.authUser && !req.authUser.isAdmin
-        ? await storage.getUserPermittedSiteIds(req.authUser.id)
-        : null;
+      const permittedIds = await getRequestPermittedSiteIds(req);
       const grns = await storage.getStoreGrns({
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
@@ -15016,9 +14986,7 @@ export async function registerRoutes(
         .split(",")
         .map(s => parseInt(s.trim(), 10))
         .filter(n => !isNaN(n) && n > 0);
-      const permittedSiteIds = req.authUser && !req.authUser.isAdmin
-        ? await storage.getUserPermittedSiteIds(req.authUser.id)
-        : undefined;
+      const permittedSiteIds = await getRequestPermittedSiteIds(req);
       const suppliers = await storage.getGrnSuppliersByItems(itemIds, permittedSiteIds ?? undefined);
       res.json(suppliers);
     } catch (err) {
@@ -15043,9 +15011,7 @@ export async function registerRoutes(
     try {
       if (!assertView(req, res, "stores_inventory")) return;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
-      const permittedIds = req.authUser && !req.authUser.isAdmin
-        ? await storage.getUserPermittedSiteIds(req.authUser.id)
-        : null;
+      const permittedIds = await getRequestPermittedSiteIds(req);
       const suppliers = await storage.getRecentGrnSuppliers(limit, permittedIds ?? undefined);
       res.json(suppliers);
     } catch (err) {
@@ -15059,9 +15025,7 @@ export async function registerRoutes(
       if (!assertView(req, res, "stores_inventory")) return;
       const rawHours = parseInt(req.query.thresholdHours as string, 10);
       const thresholdHours = Number.isFinite(rawHours) && rawHours > 0 && rawHours <= 8760 ? rawHours : 48;
-      const permittedIds = req.authUser && !req.authUser.isAdmin
-        ? await storage.getUserPermittedSiteIds(req.authUser.id)
-        : null;
+      const permittedIds = await getRequestPermittedSiteIds(req);
       const grns = await storage.getStaleGrns(thresholdHours, permittedIds ?? undefined);
       res.json(grns);
     } catch (err) {
@@ -15076,8 +15040,8 @@ export async function registerRoutes(
       const grn = await storage.getStoreGrn(parseInt(req.params.id));
       if (!grn) return res.status(404).json({ error: "Not found" });
       // Permission System v2: check site access for detail
-      if (req.authUser && !req.authUser.isAdmin && grn.siteId) {
-        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+      if (grn.siteId) {
+        const permittedIds = await getRequestPermittedSiteIds(req);
         if (permittedIds !== null && !permittedIds.includes(grn.siteId)) {
           return res.status(403).json({ error: "Access denied for this site" });
         }
@@ -15160,7 +15124,9 @@ export async function registerRoutes(
         if (status === "finalized" && (existing as any).createdByUserId && req.authUser) {
           const isSelf = req.authUser.id === (existing as any).createdByUserId;
           if (isSelf) {
-            if (!req.authUser.isAdmin) {
+            const mayBypassSelfApproval = req.authUser.isOwner ||
+              (req.authUser.isAdmin && !req.authFeatureAccess?.rolesConfigured);
+            if (!mayBypassSelfApproval) {
               return res.status(409).json({
                 error: "Separation of duties: the purchaser who raised this GRN cannot finalize it. Ask a Stores/Admin user to finalize.",
                 code: "SELF_FINALIZE_BLOCKED",
@@ -15240,7 +15206,7 @@ export async function registerRoutes(
 
   app.post("/api/stores/grns/:id/cancel", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "grn", "cancel")) return;
       const id = parseInt(req.params.id);
       const reason = (req.body?.cancellationReason || req.body?.reason || "");
       if (!reason || typeof reason !== "string" || !reason.trim()) {
@@ -15281,9 +15247,7 @@ export async function registerRoutes(
   app.get("/api/stores/issues", async (req, res) => {
     try {
       if (!assertView(req, res, "stores_inventory")) return;
-      const permittedIds = req.authUser && !req.authUser.isAdmin
-        ? await storage.getUserPermittedSiteIds(req.authUser.id)
-        : null;
+      const permittedIds = await getRequestPermittedSiteIds(req);
       const issues = await storage.getStoreIssues({
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
@@ -15307,8 +15271,8 @@ export async function registerRoutes(
       const issue = await storage.getStoreIssue(parseInt(req.params.id));
       if (!issue) return res.status(404).json({ error: "Not found" });
       // Permission System v2: check site access for detail
-      if (req.authUser && !req.authUser.isAdmin && issue.siteId) {
-        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+      if (issue.siteId) {
+        const permittedIds = await getRequestPermittedSiteIds(req);
         if (permittedIds !== null && !permittedIds.includes(issue.siteId)) {
           return res.status(403).json({ error: "Access denied for this site" });
         }
@@ -15365,7 +15329,7 @@ export async function registerRoutes(
 
   app.post("/api/stores/issues/:id/cancel", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "issues_stock", "cancel")) return;
       const id = parseInt(req.params.id);
       const reason = (req.body?.cancellationReason || req.body?.reason || "");
       if (!reason || typeof reason !== "string" || !reason.trim()) {
@@ -15456,8 +15420,9 @@ export async function registerRoutes(
       const indentId = Number(req.query.indentId);
       if (!indentId || isNaN(indentId)) return res.status(400).json({ error: "indentId is required" });
       // Site-scope authorization: ensure this user can see this indent's site
-      if (req.authUser && !req.authUser.isAdmin) {
-        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+      if (req.authUser && !req.authUser.isOwner &&
+          !(req.authUser.isAdmin && !req.authFeatureAccess?.rolesConfigured)) {
+        const permittedIds = await getRequestPermittedSiteIds(req);
         if (permittedIds !== null) {
           const indent = await storage.getPurchaseIndent(indentId);
           if (!indent) return res.status(404).json({ error: "Indent not found" });
@@ -15684,7 +15649,7 @@ export async function registerRoutes(
 
   app.delete("/api/maintenance/logs/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "maintenance", "cancel")) return;
       const id = Number(req.params.id);
       const before = await storage.getMaintenanceLog(id);
       if (before && !(await assertMaintenanceSourceAccess(req, res, before))) return;
@@ -15896,7 +15861,9 @@ export async function registerRoutes(
       const summary = await storage.getEquipmentHealthSummary(await visibleMaintenanceLogIds(req));
       // Dedicated maintenance readers do not receive the unrelated fleet
       // catalogue represented by zero-event equipment-master rows.
-      const hasEquipmentView = req.authUser?.isAdmin || req.authUser?.isOwner || req.authPermissions?.plant_equipment?.view;
+      const hasEquipmentView =
+        requestFeatureAllowed(req, "equipment_usage", "view") ||
+        requestFeatureAllowed(req, "maintenance", "view");
       res.json(hasEquipmentView ? summary : summary.filter(row => row.totalMaintenanceEvents > 0));
     } catch (err) {
       console.error("GET /api/maintenance/health-summary:", err);
@@ -15972,7 +15939,7 @@ export async function registerRoutes(
 
   app.delete("/api/rmc/mix-designs/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "hmp_rmc", "cancel")) return;
       const ok = await storage.deleteRmcMixDesign(Number(req.params.id));
       if (!ok) return res.status(404).json({ message: "Mix design not found" });
       res.json({ success: true });
@@ -16120,7 +16087,7 @@ export async function registerRoutes(
 
   app.delete("/api/rmc/batch-records/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "hmp_rmc", "cancel")) return;
       const ok = await storage.deleteRmcBatchRecord(Number(req.params.id));
       if (!ok) return res.status(404).json({ message: "Batch record not found" });
       res.json({ success: true });
@@ -16215,7 +16182,7 @@ export async function registerRoutes(
           "Cube Test Failed ⚠️",
           `${ageLabel}cube test${sampleLabel} recorded as FAIL — check /plant/rmc/cube-tests`,
           "/plant/rmc/cube-tests",
-          "managers"
+          "feature:hmp_rmc:view"
         ).catch((err) => console.error("[Push] Cube test fail alert error:", err));
       }
     } catch (err: any) {
@@ -16239,7 +16206,7 @@ export async function registerRoutes(
 
   app.delete("/api/rmc/cube-tests/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "hmp_rmc", "cancel")) return;
       const ok = await storage.deleteRmcCubeTest(Number(req.params.id));
       if (!ok) return res.status(404).json({ message: "Cube test not found" });
       res.json({ success: true });
@@ -16288,7 +16255,7 @@ export async function registerRoutes(
 
   app.delete("/api/rmc/raw-materials/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "plant_receipts", "cancel")) return;
       const ok = await storage.deleteRmcRawMaterialReceipt(Number(req.params.id));
       if (!ok) return res.status(404).json({ message: "Receipt not found" });
       res.json({ success: true });
@@ -16820,7 +16787,7 @@ export async function registerRoutes(
 
   app.delete("/api/boq/projects/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "boq_programme", "cancel")) return;
       await storage.deleteBoqProject(parseInt(req.params.id));
       res.json({ ok: true });
     } catch (err) {
@@ -16965,11 +16932,7 @@ export async function registerRoutes(
   // dedicated project_scope section; mutations require project_scope edit;
   // confirming (approving) scope requires project_scope approve.
   const canViewScope = (req: any): boolean => {
-    const u = req.authUser;
-    if (!u) return false;
-    if (u.isAdmin || u.isOwner) return true;
-    const m = req.authPermissions;
-    return !!(m && [m.project_scope, m.qto_boq, m.work_programme, m.work_programme_review, m.planning_masters].some(p => p?.view));
+    return requestFeatureAllowed(req, "boq_programme", "view");
   };
 
   app.get("/api/boq/projects/:id/scope-segments", async (req, res) => {
@@ -16990,7 +16953,7 @@ export async function registerRoutes(
   // and its revision/supersede workflow.
   app.get("/api/boq/projects/:id/scope-segments/:segId/initial-correction-eligibility", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "boq_programme", "edit")) return;
       const projectId = Number(req.params.id);
       const segId = Number(req.params.segId);
       if (!Number.isInteger(projectId) || !Number.isInteger(segId) || projectId <= 0 || segId <= 0) {
@@ -17110,7 +17073,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/scope-segments/:segId/correct-initial", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "boq_programme", "edit")) return;
       const segId = Number(req.params.segId);
       if (!Number.isInteger(segId) || segId <= 0) return res.status(400).json({ error: "invalid_scope_segment_id" });
       const correctionReason = typeof req.body?.correctionReason === "string"
@@ -18459,19 +18422,8 @@ export async function registerRoutes(
       res.status(401).json({ message: "Authentication required" });
       return false;
     }
-    const accessV2 = await accessRulesV2Enabled();
-    if (accessV2) {
-      if (!requestAccessRuleAllowed(req, "execution_arrangement_outcome", true)) {
-        res.status(403).json({ message: "work_programme edit permission is required to record an outcome." });
-        return false;
-      }
-      return true;
-    }
-    const role = String(user.role ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
-    const permitted = !!user.isAdmin || !!user.isOwner ||
-      ["manager", "pm", "project_manager"].includes(role);
-    if (!permitted) {
-      res.status(403).json({ message: "Manager, PM, Admin or Owner authority is required to set arrangement status." });
+    if (!requestAccessRuleAllowed(req, "execution_arrangement_outcome")) {
+      res.status(403).json({ message: "work_programme edit permission is required to record an outcome." });
       return false;
     }
     return true;
@@ -20076,17 +20028,12 @@ export async function registerRoutes(
         (log.directBoqItemId == null || !itemIdSet.has(Number(log.directBoqItemId))),
       ).length;
 
-      const isAdminOrOwner = !!(req.authUser?.isAdmin || req.authUser?.isOwner);
-      const hasSiteMaterialsAccess = isAdminOrOwner || !!(
-        req.authPermissions?.site_materials?.view ||
-        req.authPermissions?.site_materials?.create ||
-        req.authPermissions?.site_materials?.edit
-      );
-      const hasPlantProductionAccess = isAdminOrOwner || !!(
-        req.authPermissions?.plant_production?.view ||
-        req.authPermissions?.plant_production?.create ||
-        req.authPermissions?.plant_production?.edit
-      );
+      const hasSiteMaterialsAccess = [
+        "view", "add", "edit",
+      ].some(action => requestFeatureAllowed(req, "site_materials", action as FeatureAction));
+      const hasPlantProductionAccess = [
+        "view", "add", "edit",
+      ].some(action => requestFeatureAllowed(req, "hmp_rmc", action as FeatureAction));
 
       let dispatchGap: any = {
         count: null,
@@ -21075,13 +21022,8 @@ export async function registerRoutes(
 
   async function assertCutFillProjectAccess(req: any, res: any, projectId: number, write = false): Promise<boolean> {
     if (!assertAuthed(req, res)) return false;
-    const accessV2 = await accessRulesV2Enabled();
-    if (accessV2) {
-      if (!requestAccessRuleAllowed(req, "cutfill_reconciliation_api", true)) {
-        res.status(403).json({ error: "forbidden", section: "work_programme_review", action: "edit" });
-        return false;
-      }
-    } else if (!(write ? assertEdit(req, res, "work_programme_review") : assertView(req, res, "work_programme_review"))) {
+    if (!requestAccessRuleAllowed(req, "cutfill_reconciliation_api")) {
+      res.status(403).json({ error: "forbidden", section: "work_programme_review", action: "edit" });
       return false;
     }
     const [project] = await db.select({ id: boqProjectsTable.id, siteId: boqProjectsTable.siteId })
@@ -21093,9 +21035,6 @@ export async function registerRoutes(
       if (!site || !siteMatchesPermitted((site as any).name, permitted)) {
         res.status(403).json({ message: "Access denied for this site" }); return false;
       }
-    }
-    if (!accessV2 && write && !req.authUser?.isAdmin && !["manager", "pm", "project_manager"].includes(String(req.authUser?.role ?? "").toLowerCase())) {
-      res.status(403).json({ message: "Only a Project Manager or Admin can change cut/fill reconciliation settings." }); return false;
     }
     return true;
   }
@@ -24902,7 +24841,7 @@ export async function registerRoutes(
 
   app.delete("/api/planning/equipment-types/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "boq_programme", "cancel")) return;
       const ok = await storage.deletePlanningEquipmentType(parseInt(req.params.id));
       if (!ok) return res.status(404).json({ error: "Not found" });
       res.json({ success: true });
@@ -24946,7 +24885,7 @@ export async function registerRoutes(
 
   app.delete("/api/planning/labour-types/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "boq_programme", "cancel")) return;
       const ok = await storage.deletePlanningLabourType(parseInt(req.params.id));
       if (!ok) return res.status(404).json({ error: "Not found" });
       res.json({ success: true });
@@ -24958,7 +24897,7 @@ export async function registerRoutes(
   // --- Seed MoRTH defaults ---
   app.post("/api/planning/seed-morth", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "boq_programme", "edit")) return;
       const result = await storage.seedPlanningMorthDefaults();
       res.json(result);
     } catch (err) {
@@ -25312,7 +25251,7 @@ export async function registerRoutes(
 
   app.post("/api/snl/seed", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "boq_programme", "edit")) return;
       const result = await storage.seedSnlMorthSdb();
       res.json({ success: true, source: result.source.code, items: result.items });
     } catch (err) {
@@ -25326,7 +25265,7 @@ export async function registerRoutes(
 
   app.post("/api/snl/import", upload.single("file"), async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "boq_programme", "edit")) return;
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
       // Auto-detect MoRTH official chapter-per-sheet format
@@ -25807,6 +25746,7 @@ async function ensureBoqItemNameColumn() {
 export function registerSiteRequirementRoutes(app: Express) {
   app.post("/api/site-requirements", requireAuth, async (req: any, res) => {
     try {
+      if (!assertFeatureAction(req, res, "site_requirements", "add")) return;
       const body = req.body;
       if (!body.date) return res.status(400).json({ error: "date is required" });
       const row = await storage.createSiteRequirement({
@@ -25831,7 +25771,8 @@ export function registerSiteRequirementRoutes(app: Express) {
   app.get("/api/site-requirements", requireAuth, async (req: any, res) => {
     const t0 = Date.now();
     try {
-      const canReview = req.authUser.isAdmin || req.authUser.isOwner || req.authPermissions?.site_dprs?.approve;
+      if (!assertFeatureAction(req, res, "site_requirements", "view")) return;
+      const canReview = requestFeatureAllowed(req, "site_requirements", "verify");
       const filters: any = {};
       if (req.query.dateFrom) filters.dateFrom = req.query.dateFrom as string;
       if (req.query.dateTo)   filters.dateTo   = req.query.dateTo as string;
@@ -25855,9 +25796,10 @@ export function registerSiteRequirementRoutes(app: Express) {
 
   app.get("/api/site-requirements/:id", requireAuth, async (req: any, res) => {
     try {
+      if (!assertFeatureAction(req, res, "site_requirements", "view")) return;
       const row = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!row) return res.status(404).json({ error: "Not found" });
-      const canReview = req.authUser.isAdmin || req.authUser.isOwner || req.authPermissions?.site_dprs?.approve;
+      const canReview = requestFeatureAllowed(req, "site_requirements", "verify");
       const isCreator = row.submittedBy === req.authUser.id;
       if (!canReview && !isCreator) {
         return res.status(403).json({ error: "Access denied" });
@@ -25873,24 +25815,15 @@ export function registerSiteRequirementRoutes(app: Express) {
       const { status, pmRemarks } = req.body;
       if (!status) return res.status(400).json({ error: "status is required" });
       if (isRequirementDecision(status)) {
-        if (!assertApprove(req, res, "site_dprs")) return;
+        if (!requestAccessRuleAllowed(req, "site_req_outcome")) {
+          return res.status(403).json({ error: "forbidden", section: "site_requirements", action: "approve" });
+        }
         const existing = await storage.getSiteRequirement(parseInt(req.params.id));
         if (!existing) return res.status(404).json({ error: "Not found" });
         const blocked = requirementApprovalBlock(req.authUser, existing.submittedBy);
         if (blocked) return res.status(403).json({ error: blocked });
-      } else {
-        const accessV2 = await accessRulesV2Enabled();
-        if (accessV2) {
-          if (!requestAccessRuleAllowed(req, "site_req_status_api", true)) {
-            return res.status(403).json({ error: "forbidden", section: "site_dprs", action: "edit" });
-          }
-        } else {
-          // Preserve the legacy role gate while the single switch is off.
-          const role = req.session?.role ?? "engineer";
-          if (role !== "admin" && role !== "manager") {
-            return res.status(403).json({ error: "Only managers or admins can update status" });
-          }
-        }
+      } else if (!requestAccessRuleAllowed(req, "site_req_status_api")) {
+        return res.status(403).json({ error: "forbidden", section: "site_requirements", action: "edit" });
       }
       const row = await storage.updateSiteRequirementStatus(parseInt(req.params.id), {
         status,
@@ -25906,16 +25839,8 @@ export function registerSiteRequirementRoutes(app: Express) {
   // PATCH /api/site-requirements/:id/allocation — PM/manager sets per-section allocation status
   app.patch("/api/site-requirements/:id/allocation", requireAuth, async (req: any, res) => {
     try {
-      const accessV2 = await accessRulesV2Enabled();
-      if (accessV2) {
-        if (!requestAccessRuleAllowed(req, "site_req_allocation_api", true)) {
-          return res.status(403).json({ error: "forbidden", section: "site_dprs", action: "edit" });
-        }
-      } else {
-        const role = req.session?.role ?? "engineer";
-        if (role !== "admin" && role !== "manager") {
-          return res.status(403).json({ error: "Only managers or admins can update allocation" });
-        }
+      if (!requestAccessRuleAllowed(req, "site_req_allocation_api")) {
+        return res.status(403).json({ error: "forbidden", section: "site_requirements", action: "edit" });
       }
       // 06J: whitelist section-level fields only — this endpoint must never
       // write outcome/carry-forward/item-array keys (forgery + wipe protection).
@@ -25935,22 +25860,10 @@ export function registerSiteRequirementRoutes(app: Express) {
   // PATCH /api/site-requirements/:id/item-status — PM/Store/Equipment updates per-item allocation status
   app.patch("/api/site-requirements/:id/item-status", requireAuth, async (req: any, res) => {
     try {
-      const u = req.authUser;
-      const perms = req.authPermissions ?? {};
-      const isManagerOrAdmin = !!(u?.isAdmin || u?.isOwner || req.session?.role === "manager");
-      const accessV2 = await accessRulesV2Enabled();
-      const canStores = accessV2
-        ? requestAccessRuleAllowed(req, "site_req_material_api", true)
-        : isManagerOrAdmin || !!(perms["stores_inventory"]?.create);
-      const canEquipment = accessV2
-        ? requestAccessRuleAllowed(req, "site_req_equipment_api", true)
-        : isManagerOrAdmin || !!(perms["plant_equipment"]?.create);
-      const canLabour = accessV2
-        ? requestAccessRuleAllowed(req, "site_req_labour_api", true)
-        : isManagerOrAdmin || !!(perms["labour_management"]?.create);
-      const canImmediate = accessV2
-        ? requestAccessRuleAllowed(req, "site_req_immediate_api", true)
-        : isManagerOrAdmin || canStores || canEquipment;
+      const canStores = requestAccessRuleAllowed(req, "site_req_material_api");
+      const canEquipment = requestAccessRuleAllowed(req, "site_req_equipment_api");
+      const canLabour = requestAccessRuleAllowed(req, "site_req_labour_api");
+      const canImmediate = requestAccessRuleAllowed(req, "site_req_immediate_api");
 
       const { category, itemIndex, lineKey, status, expectedBy, remarks,
         fulfilmentType, arrangementId, agencyNameSnapshot, exceptionReason } = req.body;
@@ -26092,16 +26005,8 @@ export function registerSiteRequirementRoutes(app: Express) {
   // (submitted DPR billable progress) for the plan's BOQ item. PM/Admin only.
   app.get("/api/site-requirements/:id/execution-summary", requireAuth, async (req: any, res) => {
     try {
-      const accessV2 = await accessRulesV2Enabled();
-      if (accessV2) {
-        if (!requestAccessRuleAllowed(req, "site_req_execution_summary", true)) {
-          return res.status(403).json({ error: "forbidden", section: "site_dprs", action: "view_reports" });
-        }
-      } else {
-        const role = req.session?.role ?? "engineer";
-        if (role !== "admin" && role !== "manager") {
-          return res.status(403).json({ error: "Only managers or admins can review outcomes" });
-        }
+      if (!requestAccessRuleAllowed(req, "site_req_execution_summary")) {
+        return res.status(403).json({ error: "forbidden", section: "site_requirements", action: "view" });
       }
       const plan = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!plan) return res.status(404).json({ error: "Not found" });
@@ -26143,16 +26048,8 @@ export function registerSiteRequirementRoutes(app: Express) {
   // JSONB-only persistence; never creates a DPR; never mutates arrangements.
   app.post("/api/site-requirements/:id/outcome", requireAuth, async (req: any, res) => {
     try {
-      const accessV2 = await accessRulesV2Enabled();
-      if (accessV2) {
-        if (!requestAccessRuleAllowed(req, "site_req_outcome", true)) {
-          return res.status(403).json({ error: "forbidden", section: "site_dprs", action: "approve" });
-        }
-      } else {
-        const role = req.session?.role ?? "engineer";
-        if (role !== "admin" && role !== "manager") {
-          return res.status(403).json({ error: "Only managers or admins can record work outcomes" });
-        }
+      if (!requestAccessRuleAllowed(req, "site_req_outcome")) {
+        return res.status(403).json({ error: "forbidden", section: "site_requirements", action: "approve" });
       }
       const plan = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!plan) return res.status(404).json({ error: "Not found" });
@@ -26217,15 +26114,16 @@ export function registerSiteRequirementRoutes(app: Express) {
       anyItemActed(alloc.labourItems) || anyItemActed(alloc.immediateItems);
   }
 
-  // PUT /api/site-requirements/:id — direct content update (owner if not acted upon, or PM/admin)
+  // PUT /api/site-requirements/:id — submitter may edit untouched content; feature Edit grants broader edits.
   app.put("/api/site-requirements/:id", requireAuth, async (req: any, res) => {
     try {
+      if (!assertFeatureAction(req, res, "site_requirements", "edit")) return;
       const id = parseInt(req.params.id);
-      const isManagerOrAdmin = req.authUser.isAdmin || req.authUser.isOwner;
+      const canManageRequirement = requestFeatureAllowed(req, "site_requirements", "verify");
       const row = await storage.getSiteRequirement(id);
       if (!row) return res.status(404).json({ error: "Not found" });
 
-      if (!isManagerOrAdmin) {
+      if (!canManageRequirement) {
         if (row.submittedBy !== req.authUser.id) {
           return res.status(403).json({ error: "Access denied" });
         }
@@ -26272,10 +26170,10 @@ export function registerSiteRequirementRoutes(app: Express) {
     }
   });
 
-  // PATCH /api/site-requirements/:id/revision-approve — PM/admin approves revision
+  // PATCH /api/site-requirements/:id/revision-approve — Approve capability required
   app.patch("/api/site-requirements/:id/revision-approve", requireAuth, async (req: any, res) => {
     try {
-      if (!assertApprove(req, res, "site_dprs")) return;
+      if (!assertFeatureAction(req, res, "site_requirements", "approve")) return;
       const id = parseInt(req.params.id);
       const row = await storage.getSiteRequirement(id);
       if (!row) return res.status(404).json({ error: "Not found" });
@@ -26295,10 +26193,10 @@ export function registerSiteRequirementRoutes(app: Express) {
     }
   });
 
-  // PATCH /api/site-requirements/:id/revision-reject — PM/admin rejects revision
+  // PATCH /api/site-requirements/:id/revision-reject — Approve capability required
   app.patch("/api/site-requirements/:id/revision-reject", requireAuth, async (req: any, res) => {
     try {
-      if (!assertApprove(req, res, "site_dprs")) return;
+      if (!assertFeatureAction(req, res, "site_requirements", "approve")) return;
       const id = parseInt(req.params.id);
       const row = await storage.getSiteRequirement(id);
       if (!row) return res.status(404).json({ error: "Not found" });

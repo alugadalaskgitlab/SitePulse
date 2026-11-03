@@ -39,7 +39,7 @@
 - [Shoulder Sequencing](shoulder-sequencing.md) — shoulders staged by real layer (dbm 7.5/bc 8.5 fractional stages); regex order traps; python heredoc \b mangling; 030A test is date-flaky.
 - [Physical Stock Reconciliation](stock-reconciliation-1385.md) — server recomputes with configured-factor-only conversion; clientRequestId idempotency; sorted FOR UPDATE locks; stock_balances lacks unique (material,party).
 - [Project Scope 032](project-scope-032.md) — shared/projectScope.ts is the only scope brain; scope inactive until a confirmed working_reach; planning ignores dates (conservative), DPRs use DPR date; `a ?? b || c` breaks esbuild.
-- [Site-Access Security](site-access-security.md) — zero site rows = deny-all; all-sites is an explicit grant; guided user creation + escalation guards; guided-DPR preference is per-user.
+- [Site-Access Security](site-access-security.md) — zero rows deny; Owner unrestricted; role setup preserves legacy Admin scope as an explicit all-sites grant.
 - [BOQ Item Display Naming](boq-item-display-naming.md) — user-facing labels use only the BOQ’s saved display name, item name, then description; SNL never renames BOQ rows.
 - [BOQ Import Continuations](boq-import-continuations.md) — blank-code Excel rows continue the current item; late UOM/quantity must remain on that same logical BOQ item.
 - [Arrangement Auto-Allocation](arrangement-auto-allocation.md) — allocation writes must lock arrangement→bars (id order) or capacity double-books; auto rows reconcile on scope revisions, manual rows never touched.

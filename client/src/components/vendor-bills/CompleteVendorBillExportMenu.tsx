@@ -36,17 +36,13 @@ export async function downloadCompleteVendorBillExport(format: CompleteVendorBil
 export default function CompleteVendorBillExportMenu({
   canViewFinancials,
   canExport,
-  isAdmin,
-  isOwner,
   onExport,
 }: {
   canViewFinancials: boolean;
   canExport: boolean;
-  isAdmin: boolean;
-  isOwner: boolean;
   onExport: (format: CompleteVendorBillExportFormat) => void;
 }) {
-  if (!canViewFinancials || !canExport || (!isAdmin && !isOwner)) return null;
+  if (!canViewFinancials || !canExport) return null;
 
   return (
     <DropdownMenu>

@@ -33,11 +33,11 @@ const LDO_TANK_LABELS: Record<string, string> = {
 
 export default function PlantMaterialIssues() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, featureCan } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_stock", "create");
   const canEdit = sectionCan("plant_stock", "edit");
-  const canDelete = isAdmin;
+  const canDelete = featureCan("issues_stock", "cancel");
   const canExport = sectionCan("plant_materials", "export");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });

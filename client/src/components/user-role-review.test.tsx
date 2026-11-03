@@ -25,6 +25,7 @@ let designation: string | null;
 let client: QueryClient;
 let creationResult: { id: number; setupOk: boolean; setupComplete: boolean; setupError?: string };
 let createBodies: Record<string, unknown>[];
+let featureAccessWrites: Record<string, unknown>[];
 let retries: number;
 let permissionReads: number;
 let permissionClose: Mock<() => void>;
@@ -34,6 +35,7 @@ beforeEach(() => {
   permissionBodies = [];
   designation = null;
   createBodies = [];
+  featureAccessWrites = [];
   retries = 0;
   permissionReads = 0;
   permissionClose = vi.fn();
@@ -59,6 +61,21 @@ beforeEach(() => {
       }
       permissionReads++;
       return new Response(JSON.stringify({ matrix: stored, isAdmin: false, businessRole: designation }));
+    }
+    if (url.endsWith("/api/auth/users/41/feature-access") && init?.method === "PUT") {
+      const body = JSON.parse(String(init.body));
+      featureAccessWrites.push(body);
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    if (url.endsWith("/api/auth/users/41/feature-access")) {
+      return new Response(JSON.stringify({
+        roleIds: [1],
+        personalChanges: { site_requirements: { view: false } },
+        roles: [{ id: 1, name: "Site Engineer", scopeDefault: "own", ticks: {} }],
+        rolesConfigured: true,
+        licensedModules: [],
+        canUnlockRecords: false,
+      }));
     }
     if (url.endsWith("/api/sites")) return new Response(JSON.stringify([{ id: 7, name: "Eastern Link Road", isActive: 1 }]));
     if (url.endsWith("/api/auth/users/41/site-access")) return new Response(JSON.stringify({ siteIds: [7], allSites: false, setupComplete: true }));
@@ -364,12 +381,13 @@ describe("USER-ROLE-02 durable designation and reviewed saves", () => {
     expect(stored.site_hub.view).toBe(true);
   }, 15000);
 
-  it("Edit User separates stored designation from flags and guards profile edits before opening review", () => {
+  it("Edit person uses feature roles, hides legacy designation and guards before opening feature permissions", async () => {
     const change = vi.fn();
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     mount(<EditUserDialog userId={41} users={[{ ...users[0], businessRole: "operations_director", isAdmin: true }]} onClose={vi.fn()} onPermissions={change} />);
-    expect(screen.getByTestId("edit-business-role").textContent).toContain("Operations Director");
-    expect(screen.getByText(/Administrator: enabled · Owner: off/)).toBeTruthy();
+    expect(screen.queryByTestId("edit-business-role")).toBeNull();
+    expect(screen.queryByText(/Administrator: enabled/)).toBeNull();
+    expect(await screen.findByText("Site Engineer")).toBeTruthy();
     fireEvent.change(screen.getByTestId("input-edit-fullname"), { target: { value: "Changed profile" } });
     fireEvent.click(screen.getByTestId("button-edit-role"));
     expect(change).not.toHaveBeenCalled();
@@ -378,6 +396,21 @@ describe("USER-ROLE-02 durable designation and reviewed saves", () => {
     expect(change).toHaveBeenCalledOnce();
     confirm.mockRestore();
   });
+
+  it("Edit person saves role assignment while preserving personal overrides", async () => {
+    const onClose = vi.fn();
+    mount(<EditUserDialog userId={41} users={users} onClose={onClose} />);
+    const siteEngineer = await screen.findByTestId("checkbox-edit-role-1") as HTMLInputElement;
+    expect(siteEngineer.checked).toBe(true);
+    fireEvent.click(siteEngineer);
+    fireEvent.click(screen.getByTestId("button-edit-save"));
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(featureAccessWrites).toHaveLength(1);
+    expect(featureAccessWrites[0]).toEqual({
+      roleIds: [],
+      personalChanges: { site_requirements: { view: false } },
+    });
+  }, 15000);
 });
 
 describe("USER-ROLE-01 guided setup", () => {

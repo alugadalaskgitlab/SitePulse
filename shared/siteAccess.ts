@@ -7,7 +7,7 @@
  * Company-wide access is always an explicit recorded grant.
  *
  * Return contract (unchanged shape so every downstream consumer keeps working):
- *   null  → unrestricted (admin/owner, or an explicit all-sites grant)
+ *   null  → unrestricted (legacy admin before role setup, owner, or explicit all-sites grant)
  *   []    → NO site access (deny-all; downstream already treats [] as deny)
  *   [ids] → exactly these sites
  */
@@ -25,11 +25,13 @@ export interface SiteAccessUserLike {
 export function resolvePermittedSiteIds(
   user: SiteAccessUserLike | null | undefined,
   accessRowSiteIds: number[],
+  rolesConfigured = false,
 ): number[] | null {
   // Unknown user — deny everything rather than defaulting open.
   if (!user) return [];
-  // Admin/Owner retain the existing authorised company-wide behaviour.
-  if (user.isAdmin || user.isOwner) return null;
+  // Owner is always unrestricted. Admin keeps legacy company-wide access only
+  // until the Owner configures feature roles; after that, site scope is explicit.
+  if (user.isOwner || (user.isAdmin && !rolesConfigured)) return null;
   // Setup-incomplete users are denied ALL site-scoped data, even if some
   // access rows were saved before the setup failed part-way.
   if (user.setupComplete === false) return [];

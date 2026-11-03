@@ -914,7 +914,7 @@ function HealthSummaryTab({ summary }: { summary: HealthSummary[] }) {
 }
 
 export default function PlantMaintenance() {
-  const { sectionVisible, sectionCan, isAdmin } = useAuth();
+  const { sectionVisible, sectionCan, featureCan } = useAuth();
   const { getBackLink } = useOrigin();
   const backLink = getBackLink("/plant/dashboard");
 
@@ -1063,7 +1063,7 @@ export default function PlantMaintenance() {
                     key={log.id}
                     log={log}
                     canEdit={sectionCan("plant_equipment", "edit")}
-                    canDelete={isAdmin}
+                    canDelete={featureCan("maintenance", "cancel")}
                     storeItems={storeItems}
                     stockMap={stockMap}
                     onRefresh={refetch}

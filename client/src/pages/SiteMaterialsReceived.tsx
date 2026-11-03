@@ -57,8 +57,9 @@ export default function SiteMaterialsReceived() {
   const search = useSearch();
   const sp = new URLSearchParams(search);
   const returnTo = sp.get("returnTo") || "/site/hub";
-  const { isAdmin, isOwner } = useAuth();
-  const isOwnerOrAdmin = isAdmin || isOwner;
+  const { featureCan } = useAuth();
+  const canEditSiteMaterials = featureCan("site_materials", "edit");
+  const canCancelSiteMaterial = featureCan("site_materials", "cancel");
 
   const mgmtReportSite = sp.get("from") === "management-report" ? (sp.get("site") || null) : null;
 
@@ -343,7 +344,7 @@ export default function SiteMaterialsReceived() {
                             >
                               <Eye className="w-3 h-3 text-muted-foreground" />
                             </Button>
-                            {trip.source === "trip" && (isOwnerOrAdmin) && (
+                            {trip.source === "trip" && canCancelSiteMaterial && (
                               <Button
                                 variant="ghost" size="icon" className="h-6 w-6"
                                 onClick={() => deleteMutation.mutate(trip.id)}
@@ -464,7 +465,7 @@ export default function SiteMaterialsReceived() {
               {selectedTrip.source === "trip" && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-2">Photos</p>
-                  {(isOwnerOrAdmin || editUnlocked) && (
+                  {(canEditSiteMaterials || editUnlocked) && (
                     <AttachmentUploader
                       moduleType="site_material_trip"
                       linkedRecordId={selectedTrip.id}
@@ -475,7 +476,7 @@ export default function SiteMaterialsReceived() {
                   <AttachmentGallery
                     moduleType="site_material_trip"
                     linkedRecordId={selectedTrip.id}
-                    allowDelete={isOwnerOrAdmin}
+                    allowDelete={canEditSiteMaterials}
                     emptyText="No photos attached to this entry."
                     className="grid grid-cols-3 gap-2"
                   />
@@ -483,7 +484,7 @@ export default function SiteMaterialsReceived() {
               )}
 
               {/* Delete (admin/owner only) */}
-              {selectedTrip.source === "trip" && isOwnerOrAdmin && (
+              {selectedTrip.source === "trip" && canCancelSiteMaterial && (
                 <div className="pt-2 border-t">
                   <Button
                     variant="outline"

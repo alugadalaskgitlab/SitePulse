@@ -41,7 +41,11 @@ vi.mock("@tanstack/react-query", () => ({
 }));
 vi.mock("@/hooks/use-dpr-equipment-performance", () => ({ useDprEquipmentPerformance: () => ({ data: undefined, isLoading: false, isFetching: false }) }));
 vi.mock("@/hooks/use-dpr-boq-items", () => ({ useDprBoqItems: () => ({ items: state.boqItems }) }));
-vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ sectionCan: () => state.canEdit, user: { id: 1 } }) }));
+vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
+  sectionCan: () => state.canEdit,
+  featureCan: (_feature: string, action: string) => action === "view" || state.canEdit,
+  user: { id: 1 },
+}) }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: state.toast }) }));
 vi.mock("@/components/EditPermissionButton", () => ({ EditPermissionButton: ({ onEditGranted }: any) => <button onClick={onEditGranted}>Edit</button> }));
 vi.mock("@/components/CancelDialog", () => ({ default: () => null }));

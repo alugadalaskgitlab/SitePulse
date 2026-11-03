@@ -417,7 +417,7 @@ export default function SiteEdit() {
   const [, params] = useRoute("/site/edit/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { sectionCan, user: authUser } = useAuth();
+  const { featureCan, user: authUser } = useAuth();
   const id = parseInt(params?.id || "0");
   const backToReport = withReturnTo(`/site/report/${id}`, DPR_REGISTER_PATH);
   const DRAFT_KEY = `dpr_draft_${id}`;
@@ -444,14 +444,13 @@ export default function SiteEdit() {
   });
   // If the user navigated directly (bookmark/share/refresh), sessionStorage may be empty.
   // Fall back to the live permission check so authorised users are never locked out.
-  const canEditLive = sectionCan("site_dprs", "edit");
-  // Admin editability is an authenticated-user fact, not a sessionStorage
-  // role or a client supplied route mode.  Keep this separate from the
-  // permission token because non-admin edit grants retain their normal locks.
-  const isAdmin = authUser?.isAdmin === true;
-  const effectivePin = pin || (canEditLive ? (authUser?.isAdmin ? "admin" : "manager") : "");
+  const canEditLive = featureCan("dpr", "edit");
+  const canOverrideGeometry = featureCan("dpr", "verify");
+  // Owner-only overrides remain separate from a normal DPR Edit grant.
+  const ownerOverride = authUser?.isOwner === true;
+  const effectivePin = pin || (canEditLive ? (ownerOverride ? "admin" : "manager") : "");
   const effectiveRole: "manager" | "admin" | "engineer" =
-    isAdmin ? "admin" : isCompleteMode ? "engineer" : "manager";
+    ownerOverride ? "admin" : isCompleteMode ? "engineer" : "manager";
 
   // editGranted: gates the edit form for submitted DPRs.
   // True if: came through EditPermissionButton flow (token already in sessionStorage),
@@ -462,7 +461,7 @@ export default function SiteEdit() {
   const [editGranted, setEditGranted] = useState(() => {
     if (isCompleteMode) return true;
     if (typeof sessionStorage !== "undefined" && sessionStorage.getItem(`edit_pin_${id}`)) return true;
-    if (authUser?.isAdmin) return true;
+    if (ownerOverride) return true;
     if (canEditLive) return true;
     return false;
   });
@@ -488,8 +487,8 @@ export default function SiteEdit() {
   useEffect(() => {
     if (editGranted || !dpr) return;
     const isDraft = (dpr as any).dprStatus === "draft";
-    if (isDraft || authUser?.isAdmin || canEditLive) setEditGranted(true);
-  }, [dpr, editGranted, authUser?.isAdmin, canEditLive]);
+    if (isDraft || ownerOverride || canEditLive) setEditGranted(true);
+  }, [dpr, editGranted, ownerOverride, canEditLive]);
 
   // Auto-issue sessionStorage token when derived from live permission — but only
   // once edit has been granted (prevents bypassing the EditPermissionButton flow).
@@ -1223,11 +1222,11 @@ export default function SiteEdit() {
     },
   });
 
-  // Ordinary editors use the physical chainage span. Admin corrections may
+  // Ordinary editors use the physical chainage span. DPR verifiers may
   // retain an explicit physical length override; invalid/incomplete
   // chainage still deliberately produces no derived length.
   const getEffectiveLength = (entry: ProgressEntry): number | null =>
-    isAdmin && entry.length != null
+    canOverrideGeometry && entry.length != null
       ? entry.length
       : calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
 
@@ -1249,7 +1248,7 @@ export default function SiteEdit() {
       : null;
 
   const progressUom = (entry: ProgressEntry): string =>
-    isAdmin && entry.uom?.trim()
+    canOverrideGeometry && entry.uom?.trim()
       ? entry.uom
       : entryBoqItem(entry)
       ? resolveBoqUomProfile(entryBoqItem(entry)).uom
@@ -1260,7 +1259,7 @@ export default function SiteEdit() {
     const boqItem = entryBoqItem(entry);
     const geo = calculateDprQuantity(length, entry.width, entry.thickness, boqItem);
     if (geo != null) {
-      if (!isAdmin) {
+      if (!canOverrideGeometry) {
         entry.uom = boqItem
           ? resolveBoqUomProfile(boqItem).uom
           : (deriveDprUom(length, entry.width, entry.thickness) ?? entry.uom);
@@ -1277,7 +1276,7 @@ export default function SiteEdit() {
     const boqItem = entryBoqItem(entry);
     const geo = calculateDprQuantity(length, entry.width, entry.thickness, boqItem);
     if (geo != null) {
-      if (!isAdmin) {
+      if (!canOverrideGeometry) {
         entry.uom = boqItem
           ? resolveBoqUomProfile(boqItem).uom
           : (deriveDprUom(length, entry.width, entry.thickness) ?? entry.uom);
@@ -1441,7 +1440,7 @@ export default function SiteEdit() {
           isIncidental: false, incidentalDescription: null,
         });
       }
-      const effectiveLength = isAdmin
+      const effectiveLength = canOverrideGeometry
         ? getEffectiveLength(p)
         : calculateLengthFromChainage(p.chainageFrom, p.chainageTo);
       const effectiveQuantity = p.quantity ?? calculateQuantity(p);
@@ -1846,7 +1845,7 @@ export default function SiteEdit() {
               recordType="dpr"
               recordId={id}
               onEditGranted={() => {
-                const r = authUser?.isAdmin ? "admin" : "manager";
+                const r = authUser?.isOwner ? "admin" : "manager";
                 sessionStorage.setItem(`edit_pin_${id}`, r);
                 setEditGranted(true);
               }}
@@ -1873,7 +1872,7 @@ export default function SiteEdit() {
           <p className="mt-1">The correction request is pending, not saved. The recorded report remains unchanged. Your entered edits are retained below; another Administrator must review the consequences.</p>
         </aside>}
         <DprCorrectionHistory requests={corrections.history.data ?? []} loading={corrections.history.isLoading}
-          error={corrections.history.error?.message} isAdmin={isAdmin} userId={authUser?.id} busy={corrections.decide.isPending}
+          error={corrections.history.error?.message} isAdmin={ownerOverride} userId={authUser?.id} busy={corrections.decide.isPending}
           onRetry={() => void corrections.history.refetch()}
           onDecide={async (requestId, approve, reason) => {
             await corrections.decide.mutateAsync({ requestId, approve, reason, confirmImpact: true });
@@ -2576,17 +2575,17 @@ export default function SiteEdit() {
                   <div>
                     <Label className="text-sm">Length (m)</Label>
                     <Input
-                      type={isAdmin ? "number" : "text"}
+                      type={canOverrideGeometry ? "number" : "text"}
                       step="0.01"
-                      readOnly={!isAdmin}
-                      tabIndex={isAdmin ? undefined : -1}
-                      className={isAdmin ? undefined : "bg-muted/50"}
-                      value={isAdmin
+                      readOnly={!canOverrideGeometry}
+                      tabIndex={canOverrideGeometry ? undefined : -1}
+                      className={canOverrideGeometry ? undefined : "bg-muted/50"}
+                      value={canOverrideGeometry
                         ? (entry.length ?? calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo)?.toFixed(2) ?? "")
                         : (calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo)?.toFixed(2) ?? "")}
                       placeholder="—"
                       onChange={(e) => {
-                        if (!isAdmin) return;
+                        if (!canOverrideGeometry) return;
                         const updated = [...progress];
                         updated[idx].length = e.target.value === "" ? null : parseFloat(e.target.value);
                         applyCalc(updated[idx]);
@@ -2594,7 +2593,7 @@ export default function SiteEdit() {
                       }}
                       data-testid={`input-length-${idx}`}
                     />
-                    {isAdmin && (
+                    {canOverrideGeometry && (
                       <Input
                         className="mt-1 h-8 text-xs"
                         value={entry.lengthOverrideReason}
@@ -2603,7 +2602,7 @@ export default function SiteEdit() {
                           updated[idx].lengthOverrideReason = e.target.value;
                           setProgress(updated);
                         }}
-                        placeholder="Admin correction reason (optional)"
+                        placeholder="Verifier correction reason (optional)"
                         data-testid={`input-length-override-reason-${idx}`}
                       />
                     )}
@@ -2766,7 +2765,7 @@ export default function SiteEdit() {
                     </Label>
                     <Select
                       value={progressUom(entry)}
-                      disabled={!isAdmin && (!!entryBoqItem(entry) || !!deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness))}
+                      disabled={!canOverrideGeometry && (!!entryBoqItem(entry) || !!deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness))}
                       onValueChange={(val) => {
                         const updated = [...progress];
                         updated[idx].uom = val;
@@ -2781,7 +2780,7 @@ export default function SiteEdit() {
                         {UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                    {isAdmin && (
+                    {canOverrideGeometry && (
                       <Input
                         className="mt-1 h-8 text-xs"
                         value={entry.uomOverrideReason}
@@ -2790,7 +2789,7 @@ export default function SiteEdit() {
                           updated[idx].uomOverrideReason = e.target.value;
                           setProgress(updated);
                         }}
-                        placeholder="Admin UOM conversion reason (optional)"
+                        placeholder="Verifier UOM conversion reason (optional)"
                         data-testid={`input-uom-override-reason-${idx}`}
                       />
                     )}
@@ -2826,7 +2825,7 @@ export default function SiteEdit() {
                           entry,
                         )}
                         executedUom={resolveBoqDisplayUnit(siteBoqItems.find((it) => it.id === entry.boqItemId))}
-                        readOnly={!isAdmin} persistedArrangementId={entry.earthworkArrangementId}
+                        readOnly={!ownerOverride} persistedArrangementId={entry.earthworkArrangementId}
                         onArrangementResolved={(id) => setProgress((prev) => prev.map((p, i) => (i === idx ? { ...p, earthworkArrangementId: id } : p)))}
                         activityMaterialHint={entry.activity || null} testIdPrefix={`detailed-receipt-${idx}`} />
                     ) : null}
@@ -3027,7 +3026,7 @@ export default function SiteEdit() {
                   value={entry.equipmentId ? String(entry.equipmentId) : ""}
                    // Ordinary editors cannot replace a linked plant row, but
                    // an authenticated admin may correct every equipment fact.
-                   disabled={entry.plantUsageId != null && !isAdmin}
+                   disabled={entry.plantUsageId != null && !ownerOverride}
                   onValueChange={(val) => {
                     const updated = [...equipment];
                     const selectedEquip = activeEquipment.find(e => e.id === Number(val));
@@ -3174,7 +3173,7 @@ export default function SiteEdit() {
                   <Label className="text-sm">Diesel Source</Label>
                   <Select
                     value={entry.dieselSource ?? ""}
-                     disabled={entry.plantUsageId != null && !isAdmin}
+                     disabled={entry.plantUsageId != null && !ownerOverride}
                     onValueChange={(value) => {
                       const updated = [...equipment];
                       updated[idx] = transitionDieselSource(updated[idx], value);
@@ -3383,7 +3382,7 @@ export default function SiteEdit() {
                   }] : [])}
                     enableTankContinuity={!isSubmittedCorrection && entry.dieselSource === "plant_stock"}
                    historicalCorrection={isSubmittedCorrection}
-                   allowLinkedSourceEdit={isAdmin}
+                   allowLinkedSourceEdit={canOverrideGeometry}
                    onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, ...patch } as EquipmentEntry : row))}
                   onWorkAssignmentChange={(activitySegments, source) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx ? {
                     ...row,

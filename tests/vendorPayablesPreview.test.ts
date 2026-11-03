@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { can as canFeature, canAccessRule, type FeatureAccessState } from "../shared/featureAccess";
 import fs from "node:fs";
 import ts from "typescript";
 import express from "express";
@@ -18,7 +19,8 @@ const equipment = { id: 7, name: "Excavator KA05", hireBillingBasis: "monthly", 
   hireStartDate: "2026-06-01", hireEndDate: null, hireMonthlyDivisorType: "30",
   hireDieselResponsibility: "vendor", hireBreakdownDeductionEnabled: true, meterType: "hour_meter" };
 let records: any[], activities: any[], bills: any[], statements: any[], cards: any[];
-let matches: any[], permitted: number[], permissions: any, fieldEngineer: boolean, v2Enabled: boolean;
+let matches: any[], permitted: number[], permissions: any, fieldEngineer: boolean;
+let featureAccess: FeatureAccessState | null;
 const write = vi.fn(() => { throw new Error("Business write attempted"); });
 const reader = {
   getVendorBillAutoItems: vi.fn(async () => records), getVendorBillHireActivities: vi.fn(async () => activities),
@@ -44,7 +46,7 @@ beforeEach(() => {
     { source: "maintenance", equipmentId: 7, sourceId: 73, businessDate: "2026-06-07", eventType: "breakdown", downtimeHours: 4, description: "Hydraulic hose", equipment },
   ];
   bills = []; statements = []; cards = []; matches = [];
-  permitted = [1]; permissions = {}; fieldEngineer = false; v2Enabled = false;
+  permitted = [1]; permissions = {}; fieldEngineer = false; featureAccess = null;
 });
 describe("VB-EXPORT-01 Part B canonical read-only service", () => {
   it("uses exactly the hire engine and financial sequence once across split sites", async () => {
@@ -214,59 +216,72 @@ function productionNode(sourceText: string, predicate: (node: ts.Node) => boolea
   return result.getText(ast);
 }
 const fn = (name: string) => productionNode(source, n => ts.isFunctionDeclaration(n) && n.name?.text === name);
-const guard = productionNode(fs.readFileSync("server/auth-routes.ts", "utf8"), n => ts.isFunctionDeclaration(n) && n.name?.text === "assertReportExport").replace(/^export /, "");
 const route = productionNode(source, n => ts.isCallExpression(n) && n.expression.getText().startsWith("app.get") && n.arguments[0]?.getText() === '"/api/vendor-bills/payables-preview"');
 const app = express();
-app.use((req: any, _res, next) => { req.authUser = { id: 5, isFieldEngineer: fieldEngineer }; req.authPermissions = permissions; next(); });
+app.use((req: any, _res, next) => {
+  req.authUser = { id: 5, isFieldEngineer: fieldEngineer };
+  req.authPermissions = permissions;
+  req.authFeatureAccess = featureAccess ?? { rolesConfigured: false, legacyPermissions: permissions };
+  next();
+});
 const dependencies = {
   app, storage: reader, z, buildVendorPayablesPreview, vendorBillItemMatchesSite,
-  siteMatchesPermitted, financialSites, canViewVendorFinancials,
-  accessRulesV2Enabled: async () => v2Enabled,
+  siteMatchesPermitted, financialSites,
+  requestAccessRuleAllowed: (req: any, id: any) => canAccessRule(id, req.authUser, {
+    ...(req.authFeatureAccess ?? { rolesConfigured: false }), legacyPermissions: req.authPermissions,
+  }),
+  requestFeatureAllowed: (req: any, feature: any, action: any) => canFeature(req.authUser, feature, action, {
+    ...(req.authFeatureAccess ?? { rolesConfigured: false }), legacyPermissions: req.authPermissions,
+  }),
 };
-const compiled = ts.transpile(`${guard}\n${["getPermittedSiteNames", "assertTripSiteAccess", "resolveVendorBillSite"].map(fn).join("\n")}\n${route}`, { target: ts.ScriptTarget.ES2022 });
+const compiled = ts.transpile(`${["getPermittedSiteNames", "assertTripSiteAccess", "resolveVendorBillSite"].map(fn).join("\n")}\n${route}`, { target: ts.ScriptTarget.ES2022 });
 new Function(...Object.keys(dependencies), compiled)(...Object.values(dependencies));
 describe("VB-EXPORT-01 Part B actual endpoint permission and site gates", () => {
-  it("keeps Reports independent from Export during download revalidation", async () => {
-    permissions = { vendor_bills_view: { view_reports: true, export: false } };
+  const grantPayables = (exportAllowed = false) => {
+    featureAccess = {
+      rolesConfigured: true,
+      userRoles: [1],
+      roleTicks: { 1: { reports: { view: true }, payables: { view: true, export: exportAllowed } } },
+      legacyPermissions: {} as any,
+    };
+  };
+  it("requires Reports View and Payables View; Export remains a separate tick", async () => {
+    grantPayables(false);
+    expect((await request(app).get("/api/vendor-bills/payables-preview").query(input)).status).toBe(200);
     expect((await request(app).get("/api/vendor-bills/payables-preview").query({ ...input, export: "1" })).status).toBe(403);
     expect(reader.getVendorBillAutoItems).not.toHaveBeenCalled();
   });
-  it("permits explicit Export without using the Reports grant", async () => {
-    permissions = { vendor_bills_view: { view_reports: false, export: true } };
+  it("permits export only when the Payables Export tick is granted", async () => {
+    grantPayables(true);
     expect((await request(app).get("/api/vendor-bills/payables-preview").query({ ...input, export: "1" })).status).toBe(200);
   });
-  it("returns 403 without view_reports before source reads", async () => {
-    permissions = { vendor_bills: { view: true, export: true } };
+  it("returns 403 without Reports View or Payables View before source reads", async () => {
+    featureAccess = {
+      rolesConfigured: true, userRoles: [1],
+      roleTicks: { 1: { reports: { view: true } } },
+      legacyPermissions: {} as any,
+    };
     const res = await request(app).get("/api/vendor-bills/payables-preview").query(input);
     expect(res.status).toBe(403); expect(reader.getVendorBillAutoItems).not.toHaveBeenCalled();
   });
-  it("returns 403 for a field engineer even with report permission", async () => {
-    permissions = { vendor_bills_view: { view_reports: true } }; fieldEngineer = true;
-    expect((await request(app).get("/api/vendor-bills/payables-preview").query(input)).status).toBe(403);
-    expect(reader.getVendorBillAutoItems).not.toHaveBeenCalled();
-  });
-  it("uses the permission matrix instead of the field-user flag when access_rules_v2 is ON", async () => {
-    v2Enabled = true; fieldEngineer = true;
-    permissions = {
-      vendor_bills_view: { view_reports: true },
-      vendor_financials: { view: true },
-    };
+  it("does not use the legacy field-user flag to block an assigned feature", async () => {
+    grantPayables(false); fieldEngineer = true;
     const response = await request(app).get("/api/vendor-bills/payables-preview").query(input);
     expect(response.status, JSON.stringify(response.body)).toBe(200);
   });
   it("rejects an explicit other-site request before pulling candidates", async () => {
-    permissions = { vendor_bills: { view_reports: true } };
+    grantPayables(false);
     expect((await request(app).get("/api/vendor-bills/payables-preview").query({ ...input, siteId: 2 })).status).toBe(403);
     expect(reader.getVendorBillAutoItems).not.toHaveBeenCalled();
   });
   it("returns only authorized data; cache is no-store and no mutations run", async () => {
-    permissions = { vendor_bills_view: { view_reports: true } };
+    grantPayables(false);
     const res = await request(app).get("/api/vendor-bills/payables-preview").query(input);
     expect(res.status).toBe(200); expect(res.headers["cache-control"]).toBe("no-store");
     expect(JSON.stringify(res.body)).not.toContain("SITE B"); expect(write).not.toHaveBeenCalled();
   });
   it.each([{ periodFrom: "2026-02-30" }, { periodTo: "2025-01-01" }, { gstRates: '{"material":-1}' }, { gstRates: "broken" }])("rejects invalid dates/rates before data reads: %j", async override => {
-    permissions = { vendor_bills: { view_reports: true } };
+    grantPayables(false);
     expect((await request(app).get("/api/vendor-bills/payables-preview").query({ ...input, ...override })).status).toBe(400);
     expect(reader.getVendorBillAutoItems).not.toHaveBeenCalled();
   });

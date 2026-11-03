@@ -6,7 +6,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import VendorMaster from "@/pages/VendorMaster";
 
 const holder = vi.hoisted(() => ({ admin: true, request: vi.fn() }));
-vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ isAdmin: holder.admin, isOwner: false }) }));
+vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
+  isAdmin: holder.admin, isOwner: false, featureCan: () => holder.admin,
+}) }));
 vi.mock("@/lib/queryClient", () => ({ apiRequest: holder.request }));
 
 const vendors = [

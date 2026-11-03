@@ -5,7 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RequirementCard } from "@/pages/SiteRequirementsList";
 
 let actor: any;
-vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ user: actor }) }));
+vi.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({ user: actor, featureCan: () => true }),
+}));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 afterEach(cleanup);
 function open(actorInput: any, creator: number | null, revision = "original", authority = true) {

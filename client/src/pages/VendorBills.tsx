@@ -633,9 +633,10 @@ export default function VendorBills() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
-  const { sectionCan, sectionVisible, isAdmin, user, accessRulesV2 } = useAuth();
-  const canReadAuditHistory = isAdmin || !!user?.isOwner;
-  const canViewFinancials = sectionCan("vendor_financials", "view");
+  const { featureCan, user } = useAuth();
+  const canReadAuditHistory = user?.isOwner === true;
+  const canViewFinancials = featureCan("payables", "view");
+  const canExportFinancials = featureCan("payables", "export");
   useEffect(() => {
     if (!canViewFinancials) queryClient.removeQueries({ predicate: query =>
       (query.queryKey[0] === "/api/vendor-bills" && query.queryKey[1] === "financial-review") });
@@ -653,16 +654,13 @@ export default function VendorBills() {
     retry: false,
   });
   const { companyName, logoFile } = useFeatureFlags();
-  const canCreate = sectionCan("vendor_bills", "create") || sectionCan("vendor_bills_raise", "create");
-  const canEdit = sectionCan("vendor_bills", "edit") || sectionCan("vendor_bills_verify", "edit") || sectionCan("vendor_bills_approve", "edit");
-  const canViewBills = sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view");
-  const canDelete = !!user?.isOwner;
+  const canCreate = featureCan("vendor_bills", "add");
+  const canEdit = featureCan("vendor_bills", "edit");
+  const canViewBills = featureCan("vendor_bills", "view");
+  const canDelete = featureCan("vendor_bills", "cancel");
   const canVoid = !!user?.isOwner;
-  // 06M-A: payment details use the SAME capability the server enforces for
-  // the payment-details PATCH and for marking a bill paid (approve on
-  // vendor_bills_approve) — never show an edit control a 403 would reject.
-  const canMarkPaid = isAdmin || sectionCan("vendor_bills_approve", "approve");
-  const canExport = sectionCan("vendor_bills", "export") || sectionCan("vendor_bills_view", "export");
+  const canMarkPaid = featureCan("vendor_bills", "final");
+  const canExport = featureCan("vendor_bills", "export");
 
   const [view, setView] = useState<ViewMode>("list");
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);
@@ -741,7 +739,7 @@ export default function VendorBills() {
   const [periodTo, setPeriodTo] = useState("");
   const [notes, setNotes] = useState("");
   const defaultManualItem: LineItem = { date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null, suppliedTo: null, transporter: null, initialBlank: true };
-  const [lineItems, setLineItems] = useState<LineItem[]>(isAdmin ? [defaultManualItem] : []);
+  const [lineItems, setLineItems] = useState<LineItem[]>(canCreate ? [defaultManualItem] : []);
   const [adjustmentLabel, setAdjustmentLabel] = useState("");
   const [adjustmentAmount, setAdjustmentAmount] = useState<number>(0);
   const [additionalAdjustments, setAdditionalAdjustments] = useState<AdditionalAdjustment[]>([]);
@@ -1318,7 +1316,7 @@ export default function VendorBills() {
     setPeriodFrom("");
     setPeriodTo("");
     setNotes("");
-    setLineItems(isAdmin ? [defaultManualItem] : []);
+    setLineItems(canCreate ? [defaultManualItem] : []);
     setHireGroups([]);
     monthlyHireSeedRef.current = "";
     setMonthlyHireSeedKey("");
@@ -3030,9 +3028,7 @@ export default function VendorBills() {
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base">BILL DETAILS</CardTitle>
             <Badge variant="secondary" className="uppercase" data-testid="badge-status-draft">DRAFT</Badge>
-            <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
-              isAdmin={isAdmin} isOwner={user?.isOwner} accessRulesV2={accessRulesV2}
-              position="header" getSnapshot={getCurrentFormSnapshot} />
+            <WholeBillExportButtons canExport={canExport} position="header" getSnapshot={getCurrentFormSnapshot} />
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -4139,7 +4135,7 @@ export default function VendorBills() {
         {!isHistoricalHireEdit && <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <div className="flex gap-2 flex-wrap">
-                <Button variant="outline" size="sm" disabled={!isAdmin && !sectionVisible("rate_cards") && !sectionVisible("vendor_masters_manage") && !sectionVisible("admin_settings")} onClick={() => {
+                <Button variant="outline" size="sm" disabled={!featureCan("rate_cards", "view")} onClick={() => {
                   draftScrollRef.current = window.scrollY;
                   setShowDraftRateCards(true);
                   window.scrollTo(0, 0);
@@ -4151,7 +4147,7 @@ export default function VendorBills() {
                   <span className="font-bold mr-1">₹</span> SET RATES
                 </Button>
               )}
-              {isAdmin && (
+              {(canCreate || canEdit) && (
                 <Button variant="outline" size="sm" onClick={addLineItem} data-testid="button-add-item">
                   <Plus className="w-4 h-4 mr-1" /> ADD ITEM
                 </Button>
@@ -4831,9 +4827,7 @@ export default function VendorBills() {
               />
             </div>
             <div className="flex justify-end gap-2 flex-wrap">
-              <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
-                isAdmin={isAdmin} isOwner={user?.isOwner} accessRulesV2={accessRulesV2}
-                position="footer" getSnapshot={getCurrentFormSnapshot} />
+              <WholeBillExportButtons canExport={canExport} position="footer" getSnapshot={getCurrentFormSnapshot} />
               <Button variant="outline" onClick={() => { resetForm(); setView("list"); }} data-testid="button-cancel">
                 CANCEL
               </Button>
@@ -4863,9 +4857,7 @@ export default function VendorBills() {
               />
             </div>
             <div className="flex justify-end gap-2 flex-wrap">
-              <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
-                isAdmin={isAdmin} isOwner={user?.isOwner} accessRulesV2={accessRulesV2}
-                position="footer" getSnapshot={getCurrentFormSnapshot} />
+              <WholeBillExportButtons canExport={canExport} position="footer" getSnapshot={getCurrentFormSnapshot} />
               <Button variant="outline" onClick={() => { resetForm(); setView("list"); }} data-testid="button-cancel">
                 CANCEL
               </Button>
@@ -5051,16 +5043,13 @@ export default function VendorBills() {
     const currentStatusIdx = STATUS_ORDER.indexOf(bill.status as any);
     const nextStatus = currentStatusIdx < STATUS_ORDER.length - 1 ? STATUS_ORDER[currentStatusIdx + 1] : null;
     const canEditBill = !bill.isCancelled &&
-      (isAdmin || !!user?.isOwner ||
-        (bill.status === "draft" &&
-          (sectionCan("vendor_bills", "edit") || sectionCan("vendor_bills_raise", "edit")))) &&
+      (user?.isOwner ||
+        (bill.status === "draft" && canEdit)) &&
       (!bill.hireStatements?.length ||
         (bill.status === "draft" && bill.hireStatements.every(s => s.status === "draft")));
     const canChangeBillDate = !bill.isCancelled && (
-      isAdmin || !!user?.isOwner ||
-      (bill.status === "draft" && (
-        sectionCan("vendor_bills", "edit") || sectionCan("vendor_bills_raise", "edit")
-      ))
+      user?.isOwner ||
+      (bill.status === "draft" && canEdit)
     );
     const auditEntries = billAuditHistory.data || [];
     const createdAudit = auditEntries.find(entry => entry.action === "create");
@@ -5308,7 +5297,7 @@ export default function VendorBills() {
                 key={bill.id}
                 bill={bill}
                 canEditPayment={canMarkPaid && !bill.isCancelled && ["approved", "paid"].includes(bill.status)}
-                canRecordMissingPaidAmount={(isAdmin || !!user?.isOwner) && !bill.isCancelled}
+                canRecordMissingPaidAmount={!!user?.isOwner && !bill.isCancelled}
               />
             )}
             <VendorBillOwnerCorrections bill={bill} isOwner={!!user?.isOwner} />
@@ -5814,9 +5803,7 @@ export default function VendorBills() {
         )}
 
         <div className="flex justify-end gap-2 flex-wrap">
-          <WholeBillExportButtons canExport={canExport} isFieldEngineer={user?.isFieldEngineer}
-            isAdmin={isAdmin} isOwner={user?.isOwner} accessRulesV2={accessRulesV2}
-            position="footer" getSnapshot={getCurrentDetailSnapshot} />
+          <WholeBillExportButtons canExport={canExport} position="footer" getSnapshot={getCurrentDetailSnapshot} />
         </div>
 
         {showDeleteConfirm && (
@@ -5891,7 +5878,7 @@ export default function VendorBills() {
           <Link href="/finance/vendor-bills/tally-readiness">
             <Button variant="outline" data-testid="button-tally-readiness">TALLY READINESS</Button>
           </Link>
-          {(isAdmin || !!user?.isOwner) && (
+          {user?.isOwner && (
             <Link href="/finance/vendor-bills/attention">
               <Button variant="outline" data-testid="button-vendor-bill-attention">
                 <Info className="w-4 h-4 mr-1" /> ATTENTION
@@ -5924,15 +5911,13 @@ export default function VendorBills() {
           <Button size="sm" variant={billScope === "unpaid" ? "default" : "outline"} aria-pressed={billScope === "unpaid"} onClick={() => setBillScope("unpaid")}>Unpaid</Button>
           <Button size="sm" variant={billScope === "all" ? "default" : "outline"} aria-pressed={billScope === "all"} onClick={() => setBillScope("all")}>All Bills</Button>
         </div>
-        {canViewFinancials && canExport && <Button variant="outline" size="sm" onClick={() => handleGstRegisterExport("xlsx")}
+        {canViewFinancials && canExportFinancials && <Button variant="outline" size="sm" onClick={() => handleGstRegisterExport("xlsx")}
           disabled={!filteredBills.length || !financialReview.isSuccess || financialReview.isFetching} data-testid="button-export-financial-summary">
           <Download className="w-3 h-3 mr-1" />Export Financial Summary
         </Button>}
         <CompleteVendorBillExportMenu
           canViewFinancials={canViewFinancials}
           canExport={canExport}
-          isAdmin={isAdmin}
-          isOwner={!!user?.isOwner}
           onExport={handleCompleteVendorBillExport}
         />
         {billsHiddenByUnpaid > 0 && <p role="status" className="text-xs text-muted-foreground">

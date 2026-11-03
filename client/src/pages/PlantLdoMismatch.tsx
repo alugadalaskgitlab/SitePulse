@@ -32,7 +32,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { useAccessRule } from "@/lib/accessRules";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
@@ -778,7 +777,7 @@ export default function PlantLdoMismatch() {
   const { appendPlantContext, getPlantBackLink } = useOrigin();
   const { user } = useAuth();
   const { companyName: reportCompanyName, logoFile: reportLogoFile } = useFeatureFlags();
-  const isAdmin = useAccessRule("ldo_orphan_cleanup");
+  const isAdmin = user?.isOwner === true;
   const { toast } = useToast();
   const [, params] = useRoute("/plant/ldo-mismatch/:date");
   const routeDate = params?.date || "";

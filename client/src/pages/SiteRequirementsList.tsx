@@ -291,7 +291,7 @@ export function RequirementCard({
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, featureCan } = useAuth();
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["/api/site-requirements"] });
 
@@ -310,7 +310,7 @@ export function RequirementCard({
   const isOwner = req.submittedBy === (user as any)?.id;
   // isOwner above is the legacy local name for record creator, NOT account Owner.
   const approvalBlock = user ? requirementApprovalBlock(user, req.submittedBy) : "Sign in to review.";
-  const canCorrect = canReview || !!(user?.isAdmin || user?.isOwner);
+  const canCorrect = canReview || featureCan("site_requirements", "edit");
   const acted = isActedUpon(req);
   const revStatus = req.revisionStatus ?? "original";
 

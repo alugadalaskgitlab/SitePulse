@@ -47,7 +47,7 @@ const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 
 export default function SiteMaterialTrips() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin, isOwner, user } = useAuth();
+  const { sectionCan, featureCan, user } = useAuth();
   const canEdit = sectionCan("site_materials", "edit");
   const { companyName, companyInfo, logoFile } = useFeatureFlags();
   const searchString = useSearch();
@@ -1233,7 +1233,7 @@ export default function SiteMaterialTrips() {
                             >
                               <Ban className="w-4 h-4 text-amber-600" />
                             </Button>}
-                            {(isAdmin || isOwner) && <Button 
+                            {featureCan("site_materials", "cancel") && <Button
                               variant="ghost" 
                               size="icon"
                               onClick={() => deleteMutation.mutate(trip.id)}

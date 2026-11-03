@@ -36,7 +36,7 @@ function defaultForm() {
 
 export default function RmcMixDesigns() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, featureCan } = useAuth();
   const canCreate = sectionCan("plant_production", "create");
   const canEdit = sectionCan("plant_production", "edit");
 
@@ -238,7 +238,7 @@ export default function RmcMixDesigns() {
                         <Pencil className="w-3 h-3 mr-1" /> Edit
                       </Button>
                     )}
-                    {isAdmin && (
+                    {featureCan("hmp_rmc", "cancel") && (
                       <Button
                         variant="outline" size="sm"
                         className="text-destructive hover:bg-destructive/10"

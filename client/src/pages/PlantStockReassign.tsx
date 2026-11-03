@@ -44,7 +44,8 @@ function getErrorMessage(err: unknown): string {
 export default function PlantStockReassign() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
-  const { isAdmin } = useAuth();
+  const { user } = useAuth();
+  const isOwner = user?.isOwner === true;
   const backLink = getPlantBackLink({ defaultTab: "stock" });
 
   const [materialId, setMaterialId] = useState<string>("");
@@ -59,8 +60,8 @@ export default function PlantStockReassign() {
   const [executing, setExecuting] = useState(false);
   const [actor, setActor] = useState<string>("");
 
-  const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"], enabled: isAdmin });
-  const { data: materials } = useQuery<Material[]>({ queryKey: ["/api/plant-module/materials"], enabled: isAdmin });
+  const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"], enabled: isOwner });
+  const { data: materials } = useQuery<Material[]>({ queryKey: ["/api/plant-module/materials"], enabled: isOwner });
 
   const fromPartyName = useMemo(
     () => parties?.find(p => String(p.id) === fromPartyId)?.name || "",
@@ -87,7 +88,7 @@ export default function PlantStockReassign() {
     );
   }, [preview]);
 
-  const canSearch = isAdmin && !!materialId && !!fromPartyId;
+  const canSearch = isOwner && !!materialId && !!fromPartyId;
   const canExecute = canSearch && !!toPartyId && fromPartyId !== toPartyId && (preview?.length ?? 0) > 0 && actor.trim().length >= 2;
 
   const buildBody = () => ({
@@ -140,7 +141,7 @@ export default function PlantStockReassign() {
     }
   };
 
-  if (!isAdmin) {
+  if (!isOwner) {
     return (
       <div className="p-8 max-w-md mx-auto text-center space-y-4">
         <ShieldAlert className="w-10 h-10 mx-auto text-amber-600" />

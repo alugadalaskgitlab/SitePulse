@@ -1,50 +1,46 @@
 import { describe, expect, it } from "vitest";
-import { execFileSync, spawnSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import map from "../shared/permission-actions.generated.json";
-import { ACTIONS, SECTION_KEYS, ROLE_TEMPLATES, applyRoleTemplate, PERMISSION_GROUPS } from "../shared/permissions";
+import {
+  DEFAULT_ROLE_TICKS,
+  FEATURE_ACTIONS,
+  FEATURE_GROUPS,
+  FEATURES,
+  ROLE_NAMES,
+} from "../shared/featureAccess";
 
-describe("generated permission editor contract", () => {
-  it("matches a fresh source audit and detects deliberately corrupted output", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "permission-map-"));
-    try {
-      execFileSync("node_modules/.bin/tsx", ["scripts/permission-audit.ts", "--check-map", "--no-db"], { timeout: 60000 });
-      const target = path.join(dir, "map.json");
-      fs.writeFileSync(target, JSON.stringify({ ...map, dashboard: { actions: [] } }));
-      const broken = spawnSync("node_modules/.bin/tsx", ["scripts/permission-audit.ts", "--check-map", "--no-db"], {
-        env: { ...process.env, PERMISSION_MAP_PATH: target }, timeout: 60000, encoding: "utf8",
-      });
-      expect(broken.status).toBe(1);
-      expect(broken.stderr).toContain("Permission map drift");
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
-  }, 120000);
+describe("feature permission catalog", () => {
+  it("defines the 24 features, 17 roles, and action columns from ACCESS-02", () => {
+    expect(FEATURES).toHaveLength(24);
+    expect(ROLE_NAMES).toHaveLength(17);
+    expect(FEATURE_ACTIONS).toEqual([
+      "view", "add", "edit", "cancel", "verify", "technical_verify",
+      "accounts_verify", "approve", "final", "export",
+    ]);
+    expect(FEATURE_GROUPS.map(group => group.label)).toEqual([
+      "Site work", "Stores", "Plant", "Equipment", "Procurement & billing",
+      "Planning & client billing", "Office",
+    ]);
+  });
 
-  it("retains all current sections including the independent financial grant and all eight actions", () => {
-    expect(SECTION_KEYS).toHaveLength(93);
-    expect(SECTION_KEYS).toContain("vendor_financials");
-    expect(ACTIONS).toHaveLength(8);
-    expect(Object.keys(map).sort()).toEqual([...SECTION_KEYS].sort());
-    for (const section of SECTION_KEYS) {
-      const entry = map[section];
-      for (const action of entry.actions)
-        expect((entry.tooltips as Record<string, string>)[action]?.length).toBeGreaterThan(15);
+  it("keeps Estimating owner-only by default and RA bills visible but inactive", () => {
+    expect(Object.keys(DEFAULT_ROLE_TICKS).every(role =>
+      !Object.keys(DEFAULT_ROLE_TICKS[role as keyof typeof DEFAULT_ROLE_TICKS])
+        .some(key => key.startsWith("estimating.")),
+    )).toBe(true);
+    expect(FEATURES.find(feature => feature.id === "ra_bills")?.inactive).toBe(true);
+  });
+
+  it("never grants Export by default", () => {
+    for (const role of ROLE_NAMES) {
+      expect(
+        Object.keys(DEFAULT_ROLE_TICKS[role]).some(key => key.endsWith(".export")),
+        role,
+      ).toBe(false);
     }
   });
-  it("renders labour allocation in exactly one group", () => {
-    expect(PERMISSION_GROUPS.flatMap(g => g.sections).filter(s => s === "labour_management")).toHaveLength(1);
-  });
-  it("lets all new template creators edit their records", () => {
-    for (const template of ROLE_TEMPLATES)
-      for (const row of Object.values(applyRoleTemplate(template.id)))
-        if (row.create) expect(row.edit).toBe(true);
-  });
-  it("uses View alone for entry and preserves administrator/owner bypass", () => {
-    const source = fs.readFileSync("client/src/lib/auth-context.tsx", "utf8");
-    const body = source.slice(source.indexOf("const sectionVisible"), source.indexOf("const canApprove"));
-    expect(body).toContain("u.isAdmin || u.isOwner");
-    expect(body).toContain("!!row.view");
-    for (const action of ACTIONS.filter(a => a !== "view")) expect(body).not.toContain(`row.${action}`);
+
+  it("keeps the split vendor-bill verification actions", () => {
+    expect(FEATURES.find(feature => feature.id === "vendor_bills")?.actions).toContain("technical_verify");
+    expect(FEATURES.find(feature => feature.id === "vendor_bills")?.actions).toContain("accounts_verify");
+    expect(FEATURES.find(feature => feature.id === "vendor_bills")?.actions).not.toContain("verify");
   });
 });

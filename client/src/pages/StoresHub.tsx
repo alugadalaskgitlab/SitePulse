@@ -27,7 +27,7 @@ function KpiCard({ label, value, sub, warn }: {
 }
 
 export default function StoresHub() {
-  const { sectionVisible, isAdmin } = useAuth();
+  const { sectionVisible, user } = useAuth();
   const [, navigate] = useLocation();
   const [confirmTool, setConfirmTool] = useState<null | "reassign" | "rebuild">(null);
   const canStores = sectionVisible("stores_inventory");
@@ -306,7 +306,7 @@ export default function StoresHub() {
         </div>
 
         {/* Advanced / Troubleshooting — admin only */}
-        {isAdmin && (
+        {user?.isOwner && (
           <div>
             <div className="flex items-center gap-2 mb-4">
               <AlertTriangle className="w-4 h-4 text-amber-500" />

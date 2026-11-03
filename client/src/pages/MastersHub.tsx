@@ -9,14 +9,14 @@ import { useAuth } from "@/lib/auth-context";
 const HUB = "/admin/hub";
 
 export default function MastersHub() {
-  const { isAdmin, sectionVisible } = useAuth();
+  const { user, sectionVisible } = useAuth();
 
   const { data: unassigned } = useQuery<{
     dieselRequirements: unknown[];
     purchaseIndents: unknown[];
   }>({
     queryKey: ["/api/admin/site-backfill/unassigned"],
-    enabled: isAdmin,
+    enabled: user?.isOwner === true,
   });
 
   const dieselCount = unassigned?.dieselRequirements?.length ?? 0;

@@ -2,8 +2,9 @@ import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import ts from "typescript";
 import { requirementApprovalBlock, isRequirementDecision } from "../shared/siteRequirementApproval";
-import { emptyMatrix, ACTION_LABELS } from "../shared/permissions";
-import map from "../shared/permission-actions.generated.json";
+import { can, canAccessRule } from "../shared/featureAccess";
+import { emptyMatrix } from "../shared/permissions";
+import { FEATURES } from "../shared/featureAccess";
 
 function extract(file: string, name: string) {
   const ast = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
@@ -13,8 +14,23 @@ function extract(file: string, name: string) {
   }).outputText;
 }
 const compiled = extract("server/routes.ts", "registerSiteRequirementRoutes");
-const approval = extract("server/auth-routes.ts", "assertApprove");
 function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve = true, creator: number | null = 7) {
+  const featureState = {
+    rolesConfigured: true,
+    userRoles: [1],
+    roleTicks: {
+      1: {
+        site_requirements: {
+          view: true,
+          add: true,
+          edit: false,
+          verify: false,
+          approve,
+        },
+      },
+    },
+    legacyPermissions: emptyMatrix(),
+  };
   const row = { id: 11, submittedBy: creator, status: "submitted", revisionStatus: "revision_requested", materials: [], equipment: [], labour: [] };
   const storage = {
     getSiteRequirement: vi.fn(async () => row),
@@ -34,22 +50,32 @@ function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve
     "requireAuth",
     "requirementApprovalBlock",
     "isRequirementDecision",
-    "accessRulesV2Enabled",
     "requestAccessRuleAllowed",
-    `${approval}\n${compiled}\nreturn registerSiteRequirementRoutes;`,
+    "requestFeatureAllowed",
+    "assertFeatureAction",
+    `${compiled}\nreturn registerSiteRequirementRoutes;`,
   )(
     storage,
     () => {},
     requirementApprovalBlock,
     isRequirementDecision,
-    async () => false,
-    () => false,
+    (req: any, id: any) => canAccessRule(id, req.authUser, req.authFeatureAccess),
+    (req: any, feature: any, action: any) => can(req.authUser, feature, action, req.authFeatureAccess),
+    (req: any, res: any, feature: any, action: any) => {
+      if (can(req.authUser, feature, action, req.authFeatureAccess)) return true;
+      res.status(403).json({ error: "forbidden", feature, action });
+      return false;
+    },
   );
   register(app);
-  const matrix = emptyMatrix(); matrix.site_dprs.approve = approve;
   async function call(method: string, path: string, body: any = {}) {
     const res = { code: 200, body: null as any, status(c: number) { this.code = c; return this; }, json(b: any) { this.body = b; return this; } };
-    await handlers.get(`${method} ${path}`)!({ authUser: actor, authPermissions: matrix, params: { id: "11" }, query: {}, body }, res);
+    await handlers.get(`${method} ${path}`)!({
+      authUser: actor,
+       authPermissions: emptyMatrix(),
+       authFeatureAccess: featureState,
+      params: { id: "11" }, query: {}, body,
+    }, res);
     return res;
   }
   return { call, storage, row };
@@ -112,11 +138,8 @@ describe("PERM-REQ-01 backend production handlers", () => {
     expect(requirementApprovalBlock({ id: 7, isOwner: "true" as any }, 7)).toContain("cannot approve");
     expect(requirementApprovalBlock({ id: 7 }, null)).toContain("unknown");
   });
-  it("keeps notification keys and restricted labour actions with clarified labels", () => {
-    expect(ACTION_LABELS.notify).toBe("Receive Notifications");
-    expect(map.labour_management.actions).toEqual(["view", "create"]);
-    expect(map.labour_management.tooltips.create).toContain("Update Labour Allocation Status");
-    expect(map.admin_notifications_manage.tooltips.create).toContain("administrative notification records");
-    expect(map.site_dprs.actions).toContain("approve");
+  it("keeps Site Requirements review, edit, and approval as distinct actions", () => {
+    expect(FEATURES.find(feature => feature.id === "site_requirements")?.actions).toContain("approve");
+    expect(FEATURES.find(feature => feature.id === "site_requirements")?.actions).toContain("edit");
   });
 });

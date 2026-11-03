@@ -37,8 +37,8 @@ function getErrorMessage(err: unknown): string {
 export default function PlantStockTransfer() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
-  const { isAdmin, sectionCan } = useAuth();
-  const canTransfer = isAdmin || sectionCan("plant_stock", "create");
+  const { featureCan } = useAuth();
+  const canTransfer = featureCan("issues_stock", "add");
   const backLink = getPlantBackLink({ defaultTab: "stock" });
 
   const today = format(new Date(), "yyyy-MM-dd");

@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
-import { useAccessRule } from "@/lib/accessRules";
 import FieldHome from "@/pages/FieldHome";
 import { getWorkspaceMode, setWorkspaceMode, type WorkspaceMode } from "@/lib/workspaceMode";
 import { format, parseISO, subDays } from "date-fns";
@@ -65,8 +64,8 @@ function HomeDashboard({
   isFieldEngineer: boolean;
   onSwitchToFieldView: () => void;
 }) {
-  const { user, sectionVisible, isAdmin, accessRulesV2 } = useAuth();
-  const canSeeDispatchTile = useAccessRule("home_dispatch_tile");
+  const { user, sectionVisible, featureCan } = useAuth();
+  const canSeeDispatchTile = featureCan("hmp_rmc", "view");
   // Keep the dashboard's resume path identical to Field Home: structures use
   // the detailed editor, while road drafts honour the user's DPR entry mode.
   const continueDraftHref = (d: any): string =>
@@ -128,7 +127,7 @@ function HomeDashboard({
     queryFn: () =>
       fetch(`/api/plant-module/dispatches?dateFrom=${todayStr}&dateTo=${todayStr}`)
         .then((r) => r.json()),
-    enabled: !accessRulesV2 || canSeeDispatchTile,
+    enabled: canSeeDispatchTile,
   });
 
   const { data: unassigned } = useQuery<{
@@ -136,7 +135,7 @@ function HomeDashboard({
     purchaseIndents: unknown[];
   }>({
     queryKey: ["/api/admin/site-backfill/unassigned"],
-    enabled: isAdmin,
+    enabled: user?.isOwner === true,
   });
 
   const canSeeIrn = sectionVisible("irn_view") || sectionVisible("irn_raise");
@@ -472,7 +471,7 @@ function HomeDashboard({
                 </div>
 
                 {/* Tier 3: Site Backfill (admin only) */}
-                {isAdmin && totalUnassigned > 0 && (
+                {user?.isOwner && totalUnassigned > 0 && (
                   <div className="px-4 py-3.5 flex items-start gap-3" data-testid="pending-tier-backfill">
                     <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <MapPin className="w-3.5 h-3.5 text-rose-600" />

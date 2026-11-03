@@ -49,18 +49,16 @@ function classifyReadingSource(r: { sourceShiftLogId?: number | null; sourceHeat
 
 export default function PlantBitumenStock() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin: isAdminUser } = useAuth();
+  const { sectionCan, featureCan, user } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
-  const canCreate = sectionCan("plant_stock", "create");
-  const canEdit = sectionCan("plant_stock", "edit");
-  const canDelete = isAdminUser;
-  const canExport = sectionCan("plant_bitumen", "export");
+  const canCreate = featureCan("plant_receipts", "add");
+  const canEdit = featureCan("plant_receipts", "edit");
+  const canDelete = featureCan("hmp_rmc", "cancel");
+  const canExport = featureCan("plant_receipts", "export");
   const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const searchString = useSearch();
   const sp = new URLSearchParams(searchString || window.location.search);
-  const urlRole = sp.get("role");
-  const pageRole: "manager" | "admin" | null = (urlRole === "manager" || urlRole === "admin") ? urlRole : isAdminUser ? "admin" : "manager";
-  const isAdmin = pageRole === "admin";
+  const pageRole: "manager" | "admin" | null = user?.isOwner ? "admin" : "manager";
   const urlPlant = sp.get("plant") || "Main Plant";
   const backLink = getPlantBackLink({ defaultTab: "stock", role: pageRole });
   const [, setLocation] = useLocation();
@@ -928,7 +926,7 @@ export default function PlantBitumenStock() {
       </div>
 
       {/* ── Physical Stock Correction Card ── */}
-      {isAdmin && bitumenMaterialId && (
+      {user?.isOwner && bitumenMaterialId && (
         <Card className="border-blue-200 dark:border-blue-800">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1488,7 +1486,7 @@ export default function PlantBitumenStock() {
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle className="text-sm font-medium">All Dip Readings</CardTitle>
-            {isAdmin && canExport && <div className="flex gap-2 flex-wrap">
+            {canExport && <div className="flex gap-2 flex-wrap">
               <Button variant="outline" size="sm" onClick={exportExcel} data-testid="button-export-excel">
                 <Download className="w-4 h-4 mr-1" /> Excel
               </Button>
@@ -1581,7 +1579,7 @@ export default function PlantBitumenStock() {
                               <th className="text-left p-2">Type</th>
                               <th className="text-left p-2">Source</th>
                               <th className="text-left p-2">Notes</th>
-                              {isAdmin && <th className="text-center p-2">Actions</th>}
+                                {canDelete && <th className="text-center p-2">Actions</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -1627,7 +1625,7 @@ export default function PlantBitumenStock() {
                         </Badge>
                       </td>
                       <td className="p-2 text-muted-foreground text-sm">{r.notes || "-"}</td>
-                      {isAdmin && <td className="p-2 text-center">
+                              {canDelete && <td className="p-2 text-center">
                         {deleteConfirmId === r.id ? (
                           <div className="flex gap-1 justify-center">
                             <Button size="sm" variant="destructive" onClick={() => handleDelete(r.id)} data-testid={`button-confirm-delete-${r.id}`}>

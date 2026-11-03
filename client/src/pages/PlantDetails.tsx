@@ -16,10 +16,10 @@ export default function PlantDetails() {
   const [, params] = useRoute("/plant/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, user } = useAuth();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const canEdit = sectionCan("plant_daily_reports", "edit");
-  const canDelete = isAdmin;
+  const canDelete = user?.isOwner === true;
   const { appendOrigin, getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
 

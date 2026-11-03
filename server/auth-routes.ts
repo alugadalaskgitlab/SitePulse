@@ -28,6 +28,12 @@ import {
   userDevices,
   userSessions,
   users,
+  roles,
+  userRoles,
+  userTickChanges,
+  roleTicks,
+  userPermissions,
+  userSiteAccess,
   type User,
   type UserDevice,
 } from "@shared/schema";
@@ -71,6 +77,20 @@ import {
   requireAuth,
   requireAdmin,
 } from "./auth";
+import { canLegacySection } from "@shared/featureAccess";
+import {
+  computePersonalChangesForLegacy,
+  getRoleSetupPreview,
+  getRolesWithTicks,
+  loadFeatureAccessState,
+  markRolesConfigured,
+  removeRole,
+  renameRole,
+  saveRoleFeatureTicks,
+  saveUserFeatureAccess,
+  seedDefaultRoles,
+} from "./featureAccess";
+import { FEATURES, FEATURE_ACTIONS, ROLE_NAMES, can as canFeature, type EntryScope, type FeatureAction, type FeatureId, type FeatureTicks, type PersonalTickChanges } from "@shared/featureAccess";
 import { eq, and, isNull, desc } from "drizzle-orm";
 
 // Task #280 — identifier accepts either an email address or a phone number.
@@ -115,6 +135,7 @@ const createUserSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
   fullName: z.string().min(1),
   isAdmin: z.boolean().optional(),
+  isOwner: z.boolean().optional(),
   isFieldEngineer: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
   sessionPolicy: z.enum(["strict", "sticky"]).optional(),
@@ -123,6 +144,9 @@ const createUserSchema = z.object({
   roleTemplate: z.string().optional(),
   permissions: permissionMatrixSchema.optional(),
   siteAccess: siteAccessChoiceSchema.optional(),
+  roleIds: z.array(z.number().int().positive()).optional(),
+  reportsToUserId: z.number().int().positive().nullable().optional(),
+  entryScope: z.enum(["own", "team", "all"]).optional(),
 }).superRefine((d, ctx) => {
   const hasEmail = !!d.email && d.email.trim().length > 0;
   const hasPhone = !!d.phone && d.phone.trim().length > 0;
@@ -137,11 +161,14 @@ const patchUserSchema = z.object({
   phone: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
   isAdmin: z.boolean().optional(),
+  isOwner: z.boolean().optional(),
   isFieldEngineer: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
   sessionPolicy: z.enum(["strict", "sticky"]).optional(),
   canManagePermissions: z.boolean().optional(),
   permissionManagerScope: z.enum(["full", "partial"]).optional(),
+  reportsToUserId: z.number().int().positive().nullable().optional(),
+  entryScope: z.enum(["own", "team", "all"]).optional(),
 });
 
 const passwordResetSchema = z.object({
@@ -251,6 +278,7 @@ export function registerAuthRoutes(app: Express) {
         status: "ok",
         user: toSafeUser(user),
         permissions: matrix,
+        featureAccess: await loadFeatureAccessState(user.id, matrix),
         device: { id: device.id, label: device.deviceLabel, status: device.status },
       });
     } catch (err) {
@@ -282,6 +310,7 @@ export function registerAuthRoutes(app: Express) {
       res.json({
         user: toSafeUser(sess.user),
         permissions: matrix,
+        featureAccess: await loadFeatureAccessState(sess.user.id, matrix),
       });
     } catch (err) {
       console.error("[/api/auth/session]", err);
@@ -397,6 +426,7 @@ export function registerAuthRoutes(app: Express) {
         status: "ok",
         user: toSafeUser(u),
         permissions: matrix,
+        featureAccess: await loadFeatureAccessState(u.id, matrix),
         device: { id: device.id, label: device.deviceLabel, status: device.status },
       });
     } catch (err) {
@@ -409,31 +439,306 @@ export function registerAuthRoutes(app: Express) {
   // Authenticated endpoints (admin-only user/device management).
   // -----------------------------------------------------------------
 
-  // Matrix-based gates. The "user_management" / "device_approval" sections
-  // are first-class entries in the permission matrix. A user with isAdmin=true
-  // automatically has every section ticked, so admins always pass; non-admins
-  // only get in if the matrix grants the action explicitly. This is the
-  // "no roles, pure per-user matrix" requirement from Task #229.
+  // User management is gated by the same feature/action resolver as ordinary
+  // pages and APIs. Admin account status is not a post-setup permission grant.
   const requireUserMgmt = (action: "view" | "create" | "edit") =>
     (req: Request, res: Response, next: NextFunction) => {
       if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
-      if (req.authUser.isAdmin) return next();
-      // Full permission managers get the same access as admins for user mgmt.
-      if (req.authUser.canManagePermissions && req.authUser.permissionManagerScope === "full") return next();
-      // Partial permission managers can view and edit (but not create users).
-      if (req.authUser.canManagePermissions && (action === "view" || action === "edit")) return next();
       const m = req.authPermissions;
-      if (m && m["user_management"] && m["user_management"][action]) return next();
+      if (m && canLegacySection(
+        req.authUser, m, "user_management", action,
+        req.authFeatureAccess ?? { rolesConfigured: false, legacyPermissions: m },
+        req.path,
+      )) return next();
       return res.status(403).json({ error: "forbidden", section: "user_management", action });
     };
   const requireDeviceMgmt = (action: "view" | "edit") =>
     (req: Request, res: Response, next: NextFunction) => {
       if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
-      if (req.authUser.isAdmin) return next();
-      const m = req.authPermissions;
-      if (m && m["device_approval"] && m["device_approval"][action]) return next();
-      return res.status(403).json({ error: "forbidden", section: "device_approval", action });
+      if (req.authUser.isOwner) return next();
+      return res.status(403).json({ error: "owner_required", section: "device_approval", action });
     };
+
+  const featureTicksSchema = z.record(z.record(z.boolean()));
+  const roleScopeSchema = z.enum(["own", "team", "all"]);
+  const validateTicks = (raw: Record<string, Record<string, boolean>>): FeatureTicks => {
+    const output: FeatureTicks = {};
+    for (const [feature, actions] of Object.entries(raw)) {
+      const definition = FEATURES.find(item => item.id === feature);
+      if (!definition) throw new Error(`Unknown feature: ${feature}`);
+      for (const [action, granted] of Object.entries(actions)) {
+        if (!(FEATURE_ACTIONS as readonly string[]).includes(action)) throw new Error(`Unknown action: ${action}`);
+        output[feature as FeatureId] ??= {};
+        output[feature as FeatureId]![action as FeatureAction] = granted;
+      }
+    }
+    return output;
+  };
+
+  app.get("/api/access-control/roles", requireAuth, requireUserMgmt("view"), async (_req, res) => {
+    try {
+      res.json({ roles: await getRolesWithTicks() });
+    } catch (err) {
+      console.error("[GET /api/access-control/roles]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // Seed is an explicit Owner action. Production never seeds these rows during startup.
+  app.post("/api/access-control/roles/seed", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      await seedDefaultRoles();
+      res.json({ ok: true, roles: await getRolesWithTicks() });
+    } catch (err) {
+      console.error("[POST /api/access-control/roles/seed]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  app.post("/api/access-control/roles", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const input = z.object({ name: z.string().trim().min(1).max(80), scopeDefault: roleScopeSchema }).parse(req.body);
+      const [created] = await db.insert(roles).values(input).returning();
+      res.status(201).json(created);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
+      console.error("[POST /api/access-control/roles]", err);
+      res.status(409).json({ error: "role_name_must_be_unique" });
+    }
+  });
+
+  app.patch("/api/access-control/roles/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const input = z.object({
+        name: z.string().trim().min(1).max(80),
+        scopeDefault: roleScopeSchema,
+        ticks: featureTicksSchema,
+      }).parse(req.body);
+      const cleanTicks = validateTicks(input.ticks);
+      const [updated] = await db.update(roles).set({
+        name: input.name,
+        scopeDefault: input.scopeDefault,
+      }).where(eq(roles.id, id)).returning();
+      if (!updated) return res.status(404).json({ error: "not_found" });
+      await saveRoleFeatureTicks(id, cleanTicks);
+      res.json({ ok: true, role: { ...updated, ticks: cleanTicks } });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
+      console.error("[PATCH /api/access-control/roles/:id]", err);
+      res.status(409).json({ error: "role_name_must_be_unique" });
+    }
+  });
+
+  app.delete("/api/access-control/roles/:id", requireAuth, requireAdmin, async (req, res) => {
+    const status = await removeRole(Number(req.params.id));
+    if (status === "missing") return res.status(404).json({ error: "not_found" });
+    if (status === "in_use") return res.status(409).json({ error: "role_has_holders" });
+    res.json({ ok: true });
+  });
+
+  app.get("/api/access-control/setup-preview", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      res.json(await getRoleSetupPreview());
+    } catch (err) {
+      console.error("[GET /api/access-control/setup-preview]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  app.post("/api/access-control/setup", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const input = z.object({
+        users: z.array(z.object({
+          userId: z.number().int().positive(),
+          roleIds: z.array(z.number().int().positive()),
+          isOwner: z.boolean(),
+          canUnlockRecords: z.boolean().optional(),
+          adminChoiceConfirmed: z.boolean().optional(),
+        })),
+      }).strict().parse(req.body);
+      if (await (await import("./featureAccess")).rolesHaveBeenConfigured()) {
+        return res.status(409).json({ error: "roles_already_setup" });
+      }
+      const activeUsers = await db.select().from(users).where(eq(users.isActive, true));
+      const byId = new Map(activeUsers.map(user => [user.id, user]));
+      const submittedIds = new Set(input.users.map(user => user.userId));
+      if (submittedIds.size !== input.users.length || activeUsers.some(user => !submittedIds.has(user.id))) {
+        return res.status(400).json({ error: "all_active_users_required" });
+      }
+      const ownersAfter = input.users.filter(user => user.isOwner).length;
+      if (ownersAfter < 1) return res.status(400).json({ error: "at_least_one_owner_required" });
+      if (input.users.some(user => user.userId === req.authUser!.id && !user.isOwner)) {
+        return res.status(400).json({ error: "owners_cannot_restrict_themselves" });
+      }
+      const availableRoles = await getRolesWithTicks();
+      const roleById = new Map(availableRoles.map(role => [role.id, role]));
+      const planned: Array<{
+        selection: (typeof input.users)[number];
+        current: (typeof activeUsers)[number];
+        selectedRoles: NonNullable<ReturnType<typeof roleById.get>>[];
+        changes: PersonalTickChanges;
+      }> = [];
+      for (const selection of input.users) {
+        const current = byId.get(selection.userId)!;
+        const selectedRoles = selection.roleIds.map(id => roleById.get(id));
+        if (selectedRoles.some(role => !role)) return res.status(400).json({ error: "unknown_role" });
+        if (current.isAdmin && !selection.isOwner && (!selection.adminChoiceConfirmed || selectedRoles.length === 0)) {
+          return res.status(400).json({ error: "admin_must_become_owner_or_have_role", userId: current.id });
+        }
+        const legacy = await loadUserPermissionsMatrix(current.id);
+        const validSelectedRoles = selectedRoles as NonNullable<ReturnType<typeof roleById.get>>[];
+        const changes = computePersonalChangesForLegacy(legacy, validSelectedRoles.map(role => role.ticks));
+        planned.push({ selection, current, selectedRoles: validSelectedRoles, changes });
+      }
+      for (const { selection, current, selectedRoles, changes } of planned) {
+        await saveUserFeatureAccess(current.id, selection.roleIds, changes);
+        const firstRole = selectedRoles[0];
+        await db.update(users).set({
+          isOwner: selection.isOwner,
+          entryScope: current.entryScope ?? firstRole?.scopeDefault ?? "all",
+          ...(current.isAdmin && !selection.isOwner ? { allSitesAccess: true } : {}),
+          canUnlockRecords: selection.canUnlockRecords ?? current.canUnlockRecords,
+        }).where(eq(users.id, current.id));
+        if (current.isOwner !== selection.isOwner) {
+          await storage.logAudit({
+            module: "user_access",
+            transactionId: current.id,
+            action: "edit",
+            userId: req.authUser!.id,
+            userName: req.authUser!.fullName,
+            userRole: "owner",
+            oldValues: { isOwner: current.isOwner },
+            newValues: { isOwner: selection.isOwner },
+            reason: "Feature access role setup",
+          });
+        }
+        const canUnlockRecords = selection.canUnlockRecords ?? current.canUnlockRecords;
+        if (current.canUnlockRecords !== canUnlockRecords) {
+          await storage.logAudit({
+            module: "user_access",
+            transactionId: current.id,
+            action: "edit",
+            userId: req.authUser!.id,
+            userName: req.authUser!.fullName,
+            userRole: "owner",
+            oldValues: { canUnlockRecords: current.canUnlockRecords },
+            newValues: { canUnlockRecords },
+            reason: "Owner changed record-unlock permission during role setup",
+          });
+        }
+      }
+      await markRolesConfigured();
+      res.json({ ok: true, rolesConfigured: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
+      console.error("[POST /api/access-control/setup]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  app.get("/api/auth/users/:id/feature-access", requireAuth, requireUserMgmt("view"), async (req, res) => {
+    const id = Number(req.params.id);
+    const target = await getUserById(id);
+    if (!target) return res.status(404).json({ error: "not_found" });
+    if (!req.authUser!.isOwner && (req.authUser!.id === id || target.isOwner)) {
+      return res.status(403).json({ error: "cannot_edit_self_or_owner" });
+    }
+    const [access, availableRoles, legacy] = await Promise.all([
+      (async () => {
+        const state = await import("./featureAccess");
+        return state.getUserFeatureAccess(id);
+      })(),
+      getRolesWithTicks(),
+      loadUserPermissionsMatrix(id),
+    ]);
+    const accessState = await (await import("./featureAccess")).loadFeatureAccessState(id, legacy);
+    res.json({
+      ...access,
+      roles: availableRoles,
+      legacyMatrix: legacy,
+      licensedModules: accessState.licensedModules,
+      canUnlockRecords: target.canUnlockRecords,
+      rolesConfigured: await (await import("./featureAccess")).rolesHaveBeenConfigured(),
+    });
+  });
+
+  app.put("/api/auth/users/:id/feature-access", requireAuth, requireUserMgmt("edit"), async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const target = await getUserById(id);
+      const actor = req.authUser!;
+      if (!target) return res.status(404).json({ error: "not_found" });
+      if (!actor.isOwner && (actor.id === id || target.isOwner)) {
+        return res.status(403).json({ error: "cannot_edit_self_or_owner" });
+      }
+      if (!await (await import("./featureAccess")).rolesHaveBeenConfigured()) {
+        return res.status(409).json({ error: "roles_not_configured" });
+      }
+      const input = z.object({
+        roleIds: z.array(z.number().int().positive()),
+        personalChanges: featureTicksSchema,
+      }).strict().parse(req.body);
+      const changes = validateTicks(input.personalChanges);
+      const availableRoles = await getRolesWithTicks();
+      const roleById = new Map(availableRoles.map(role => [role.id, role]));
+      const selectedRoles = input.roleIds.map(roleId => roleById.get(roleId));
+      if (selectedRoles.some(role => !role)) return res.status(400).json({ error: "unknown_role" });
+      if (!actor.isOwner) {
+        const actorState = req.authFeatureAccess ?? { rolesConfigured: true };
+        for (const role of selectedRoles) {
+          for (const feature of FEATURES) {
+            for (const action of feature.actions) {
+              if (role!.ticks[feature.id]?.[action] && !canFeature(actor, feature.id, action, actorState)) {
+                return res.status(403).json({ error: "cannot_grant_unheld_permission", feature: feature.id, action });
+              }
+            }
+          }
+        }
+        for (const feature of FEATURES) {
+          for (const action of feature.actions) {
+            if (changes[feature.id]?.[action] === true && !canFeature(actor, feature.id, action, actorState)) {
+              return res.status(403).json({ error: "cannot_grant_unheld_permission", feature: feature.id, action });
+            }
+          }
+        }
+      }
+      await saveUserFeatureAccess(id, input.roleIds, changes);
+      res.json({ ok: true, roleIds: input.roleIds, personalChanges: changes });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
+      console.error("[PUT /api/auth/users/:id/feature-access]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  app.patch("/api/auth/users/:id/record-unlock", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const input = z.object({ canUnlockRecords: z.boolean() }).strict().parse(req.body);
+      const target = await getUserById(id);
+      if (!target) return res.status(404).json({ error: "not_found" });
+      if (target.canUnlockRecords !== input.canUnlockRecords) {
+        await db.update(users).set({ canUnlockRecords: input.canUnlockRecords }).where(eq(users.id, id));
+        await storage.logAudit({
+          module: "user_access",
+          transactionId: id,
+          action: "edit",
+          userId: req.authUser!.id,
+          userName: req.authUser!.fullName,
+          userRole: "owner",
+          oldValues: { canUnlockRecords: target.canUnlockRecords },
+          newValues: { canUnlockRecords: input.canUnlockRecords },
+          reason: "Owner changed record-unlock permission",
+        });
+      }
+      res.json({ ok: true, canUnlockRecords: input.canUnlockRecords });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
+      console.error("[PATCH /api/auth/users/:id/record-unlock]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
 
   app.get("/api/auth/users", requireAuth, requireUserMgmt("view"), async (_req, res) => {
     const list = await listAllUsers();
@@ -458,7 +763,8 @@ export function registerAuthRoutes(app: Express) {
   // permission managers — a manager can never grant more than they hold.
   const coerceAndCapMatrix = (req: Request, parsed: Record<string, any>): PermissionMatrix => {
     const actor = req.authUser!;
-    const actorMatrix = !actor.isAdmin && actor.canManagePermissions && actor.permissionManagerScope === "partial"
+    const actorMatrix = !(actor.isAdmin && !req.authFeatureAccess?.rolesConfigured) &&
+      actor.canManagePermissions && actor.permissionManagerScope === "partial"
       ? req.authPermissions
       : null;
     const matrix: PermissionMatrix = emptyMatrix();
@@ -483,8 +789,11 @@ export function registerAuthRoutes(app: Express) {
   // Returns an error string, or null when the assignment is allowed.
   const checkSiteScopeAllowed = async (req: Request, choice: { mode: string; siteIds?: number[] }): Promise<string | null> => {
     const actor = req.authUser!;
-    if (actor.isAdmin || actor.isOwner) return null;
-    const actorSites = await storage.getUserPermittedSiteIds(actor.id);
+    if (actor.isOwner || (actor.isAdmin && !req.authFeatureAccess?.rolesConfigured)) return null;
+    const actorSites = await storage.getUserPermittedSiteIds(
+      actor.id,
+      !!req.authFeatureAccess?.rolesConfigured,
+    );
     if (actorSites === null) return null; // actor has authorised all-sites scope
     if (choice.mode === "all") return "cannot_grant_all_sites_beyond_own_scope";
     if (choice.mode === "selected") {
@@ -503,30 +812,36 @@ export function registerAuthRoutes(app: Express) {
   const applyGuidedSetup = async (
     req: Request,
     userId: number,
-    isAdminUser: boolean,
+    isPrivilegedUser: boolean,
+    rolesConfigured: boolean,
     opts: { roleTemplate?: string; permissions?: Record<string, any>; siteAccess?: { mode: "all" | "selected" | "none"; siteIds?: number[] } },
   ) => {
     const steps: Record<string, "ok" | "failed" | "skipped"> = { permissions: "skipped", siteAccess: "skipped", completion: "skipped" };
     let failedError: string | null = null;
 
-    // Step: permissions (template, adjusted matrix, or defaults)
-    try {
-      if (isAdminUser) {
-        await setUserPermissions(userId, fullMatrix(), "administrator");
-      } else if (opts.permissions) {
-        const role = opts.roleTemplate === undefined ? undefined : businessRoleSchema.parse(opts.roleTemplate);
-        await setUserPermissions(userId, coerceAndCapMatrix(req, opts.permissions), role);
-      } else if (opts.roleTemplate && opts.roleTemplate !== "custom") {
-        if (!ROLE_TEMPLATES.some((t) => t.id === opts.roleTemplate)) throw new Error("unknown_role_template");
-        // Partial managers cannot apply templates broader than their own scope.
-        await setUserPermissions(userId, coerceAndCapMatrix(req, applyRoleTemplate(opts.roleTemplate)), opts.roleTemplate);
-      } else {
-        await setUserPermissions(userId, emptyMatrix(), opts.roleTemplate === "custom" ? "custom" : undefined);
+    // Feature roles replace the legacy matrix. Preserve it unchanged once roles
+    // are configured; only the Owner-selected feature roles are authoritative.
+    if (rolesConfigured) {
+      steps.permissions = "skipped";
+    } else {
+      try {
+        if (isPrivilegedUser) {
+          await setUserPermissions(userId, fullMatrix(), "administrator");
+        } else if (opts.permissions) {
+          const role = opts.roleTemplate === undefined ? undefined : businessRoleSchema.parse(opts.roleTemplate);
+          await setUserPermissions(userId, coerceAndCapMatrix(req, opts.permissions), role);
+        } else if (opts.roleTemplate && opts.roleTemplate !== "custom") {
+          if (!ROLE_TEMPLATES.some((t) => t.id === opts.roleTemplate)) throw new Error("unknown_role_template");
+          // Partial managers cannot apply templates broader than their own scope.
+          await setUserPermissions(userId, coerceAndCapMatrix(req, applyRoleTemplate(opts.roleTemplate)), opts.roleTemplate);
+        } else {
+          await setUserPermissions(userId, emptyMatrix(), opts.roleTemplate === "custom" ? "custom" : undefined);
+        }
+        steps.permissions = "ok";
+      } catch (e: any) {
+        steps.permissions = "failed";
+        failedError = failedError ?? (e?.message === "unknown_role_template" ? "unknown_role_template" : "permissions_failed");
       }
-      steps.permissions = "ok";
-    } catch (e: any) {
-      steps.permissions = "failed";
-      failedError = failedError ?? (e?.message === "unknown_role_template" ? "unknown_role_template" : "permissions_failed");
     }
 
     // Step: site access — an EXPLICIT choice is always recorded.
@@ -551,10 +866,11 @@ export function registerAuthRoutes(app: Express) {
       failedError = failedError ?? (e?.message || "site_access_failed");
     }
 
-    // Step: completion state. Admins are complete by definition; a "none"
+    // Step: completion state. Privileged users are complete by definition; a "none"
     // choice deliberately leaves the account Setup incomplete.
     const mode = opts.siteAccess?.mode ?? "none";
-    const complete = isAdminUser || (steps.permissions === "ok" && steps.siteAccess === "ok" && mode !== "none");
+    const permissionsReady = rolesConfigured || steps.permissions === "ok";
+    const complete = isPrivilegedUser || (permissionsReady && steps.siteAccess === "ok" && mode !== "none");
     try {
       await storage.setUserSetupComplete(userId, complete);
       steps.completion = "ok";
@@ -568,8 +884,37 @@ export function registerAuthRoutes(app: Express) {
   app.post("/api/auth/users", requireAuth, requireUserMgmt("create"), async (req, res) => {
     try {
       const input = createUserSchema.parse(req.body);
-      // Only admins may create admin accounts.
-      if (input.isAdmin && !req.authUser!.isAdmin) {
+      const rolesConfigured = await (await import("./featureAccess")).rolesHaveBeenConfigured();
+      if (input.isOwner && !req.authUser!.isOwner) {
+        return res.status(403).json({ error: "owner_required" });
+      }
+      if (rolesConfigured && !input.isOwner && !input.roleIds?.length) {
+        return res.status(400).json({ error: "role_required" });
+      }
+      if (input.reportsToUserId != null && !await getUserById(input.reportsToUserId)) {
+        return res.status(400).json({ error: "reports_to_user_not_found" });
+      }
+      let selectedRoles: Awaited<ReturnType<typeof getRolesWithTicks>> = [];
+      if (rolesConfigured && input.roleIds?.length) {
+        const availableRoles = await getRolesWithTicks();
+        selectedRoles = availableRoles.filter(role => input.roleIds!.includes(role.id));
+        if (selectedRoles.length !== input.roleIds.length) return res.status(400).json({ error: "unknown_role" });
+        if (!req.authUser!.isOwner) {
+          const actorState = req.authFeatureAccess ?? { rolesConfigured: true };
+          for (const role of selectedRoles) {
+            for (const feature of FEATURES) {
+              for (const action of feature.actions) {
+                if (role.ticks[feature.id]?.[action] && !canFeature(req.authUser!, feature.id, action, actorState)) {
+                  return res.status(403).json({ error: "cannot_grant_unheld_permission", feature: feature.id, action });
+                }
+              }
+            }
+          }
+        }
+      }
+      // The legacy Admin flag does not grant authority to create another
+      // privileged account; only an Owner may assign it.
+      if (input.isAdmin && !req.authUser!.isOwner) {
         return res.status(403).json({ error: "cannot_create_admin_users" });
       }
       // Check uniqueness for email and phone separately BEFORE creating —
@@ -582,7 +927,7 @@ export function registerAuthRoutes(app: Express) {
         const existingPhone = await getUserByPhone(input.phone);
         if (existingPhone) return res.status(409).json({ error: "phone_exists", existingUserId: existingPhone.id, existingSetupComplete: (existingPhone as any).setupComplete !== false });
       }
-      const { roleTemplate, permissions, siteAccess, ...profile } = input;
+      const { roleTemplate, permissions, siteAccess, roleIds, ...profile } = input;
       const u = await createUserRow({
         ...profile,
         email: input.email || null,
@@ -590,9 +935,31 @@ export function registerAuthRoutes(app: Express) {
       });
       // New non-admin accounts start Setup-incomplete (no site access) until
       // the guided setup below succeeds — never silently unrestricted.
-      if (!u.isAdmin) await storage.setUserSetupComplete(u.id, false);
+      if (!(u.isOwner || (u.isAdmin && !rolesConfigured))) {
+        await storage.setUserSetupComplete(u.id, false);
+      }
 
-      const setup = await applyGuidedSetup(req, u.id, !!u.isAdmin, { roleTemplate, permissions, siteAccess });
+      if (rolesConfigured && roleIds?.length) {
+        await saveUserFeatureAccess(u.id, roleIds, {});
+      }
+      const setup = await applyGuidedSetup(req, u.id, !!u.isOwner || (!!u.isAdmin && !rolesConfigured), rolesConfigured, {
+        roleTemplate,
+        permissions: rolesConfigured ? emptyMatrix() : permissions,
+        siteAccess,
+      });
+      if (input.isOwner) {
+        await storage.logAudit({
+          module: "user_access",
+          transactionId: u.id,
+          action: "create",
+          userId: req.authUser!.id,
+          userName: req.authUser!.fullName,
+          userRole: req.authUser!.isOwner ? "owner" : "user",
+          oldValues: { isOwner: false },
+          newValues: { isOwner: true },
+          reason: "Owner account created from the person form",
+        });
+      }
       const anyFailed = Object.values(setup.steps).includes("failed");
       res.status(201).json({
         ...toSafeUser((await getUserById(u.id))!),
@@ -615,8 +982,10 @@ export function registerAuthRoutes(app: Express) {
       const id = Number(req.params.id);
       const u = await getUserById(id);
       if (!u) return res.status(404).json({ error: "not_found" });
-      // Non-admin actors can never re-run setup on admin/owner accounts.
-      if (!req.authUser!.isAdmin && (u.isAdmin || u.isOwner)) {
+      const rolesConfigured = await (await import("./featureAccess")).rolesHaveBeenConfigured();
+      // Owner accounts are immutable here. The Admin flag is privileged only
+      // before feature roles are configured.
+      if (!req.authUser!.isOwner && (u.isOwner || (!rolesConfigured && u.isAdmin))) {
         return res.status(403).json({ error: "cannot_edit_admin_users" });
       }
       const body = z.object({
@@ -624,7 +993,7 @@ export function registerAuthRoutes(app: Express) {
         permissions: permissionMatrixSchema.optional(),
         siteAccess: siteAccessChoiceSchema.optional(),
       }).parse(req.body);
-      const setup = await applyGuidedSetup(req, id, !!u.isAdmin, body);
+      const setup = await applyGuidedSetup(req, id, !!u.isOwner || (!!u.isAdmin && !rolesConfigured), rolesConfigured, body);
       const anyFailed = Object.values(setup.steps).includes("failed");
       res.json({ ok: !anyFailed, setupComplete: setup.setupComplete, setupSteps: setup.steps, setupError: setup.error });
     } catch (err) {
@@ -647,12 +1016,29 @@ export function registerAuthRoutes(app: Express) {
       // non-admin actors — including permission managers — can never modify
       // admin/owner accounts, nor grant/change privileged flags.
       const actor = req.authUser!;
-      if (!actor.isAdmin) {
-        if (current.isAdmin || current.isOwner) {
+      const rolesConfigured = await (await import("./featureAccess")).rolesHaveBeenConfigured();
+      if (!actor.isOwner) {
+        if (current.isOwner || (!rolesConfigured && current.isAdmin)) {
           return res.status(403).json({ error: "cannot_edit_admin_users" });
         }
-        if (input.isAdmin !== undefined || input.canManagePermissions !== undefined || input.permissionManagerScope !== undefined) {
+        if (
+          input.isAdmin !== undefined || input.isOwner !== undefined ||
+          input.canManagePermissions !== undefined || input.permissionManagerScope !== undefined
+        ) {
           return res.status(403).json({ error: "cannot_change_privileged_flags" });
+        }
+      }
+      if (input.reportsToUserId === id) {
+        return res.status(400).json({ error: "cannot_report_to_self" });
+      }
+      if (input.reportsToUserId != null && !await getUserById(input.reportsToUserId)) {
+        return res.status(400).json({ error: "reports_to_user_not_found" });
+      }
+      if (input.isOwner === false && current.isOwner) {
+        const activeOwners = await db.select({ id: users.id }).from(users)
+          .where(and(eq(users.isOwner, true), eq(users.isActive, true)));
+        if (activeOwners.length <= 1) {
+          return res.status(409).json({ error: "cannot_demote_last_owner" });
         }
       }
 
@@ -690,6 +1076,19 @@ export function registerAuthRoutes(app: Express) {
       }
       const updated = await updateUserProfile(id, input);
       if (!updated) return res.status(404).json({ error: "not_found" });
+      if (input.isOwner !== undefined && input.isOwner !== current.isOwner) {
+        await storage.logAudit({
+          module: "user_access",
+          transactionId: id,
+          action: "edit",
+          userId: actor.id,
+          userName: actor.fullName,
+          userRole: actor.isOwner ? "owner" : "user",
+          oldValues: { isOwner: current.isOwner },
+          newValues: { isOwner: input.isOwner },
+          reason: "Owner status changed from the person editor",
+        });
+      }
 
       // Subscriptions are intentionally kept in the DB when notifications are
       // toggled off. getActivePushSubscriptions() already filters by
@@ -731,6 +1130,9 @@ export function registerAuthRoutes(app: Express) {
 
   app.put("/api/auth/users/:id/permissions", requireAuth, requireUserMgmt("edit"), async (req, res) => {
     try {
+      if (await (await import("./featureAccess")).rolesHaveBeenConfigured()) {
+        return res.status(409).json({ error: "roles_configured_use_feature_access" });
+      }
       const id = Number(req.params.id);
       const u = await getUserById(id);
       if (!u) return res.status(404).json({ error: "not_found" });
@@ -784,7 +1186,7 @@ export function registerAuthRoutes(app: Express) {
       const siteIds = rows.map((r) => r.siteId);
       // allSites is now the EXPLICIT recorded grant (or admin/owner), never
       // inferred from zero rows.
-      const allSites = !!(u as any).allSitesAccess || !!u.isAdmin || !!(u as any).isOwner;
+      const allSites = !!(u as any).allSitesAccess || !!(u.isAdmin && !req.authFeatureAccess?.rolesConfigured) || !!(u as any).isOwner;
       res.json({ siteIds, allSites, setupComplete: (u as any).setupComplete !== false });
     } catch (err) {
       console.error("[GET /api/auth/users/:id/site-access]", err);
@@ -798,7 +1200,8 @@ export function registerAuthRoutes(app: Express) {
       const u = await getUserById(id);
       if (!u) return res.status(404).json({ error: "not_found" });
       // Non-admin actors can never alter admin/owner site scope.
-      if (!req.authUser!.isAdmin && (u.isAdmin || u.isOwner)) {
+      if (!req.authUser!.isOwner &&
+          (u.isOwner || (!req.authFeatureAccess?.rolesConfigured && u.isAdmin))) {
         return res.status(403).json({ error: "cannot_edit_admin_users" });
       }
       const parsed = z.object({
@@ -832,12 +1235,12 @@ export function registerAuthRoutes(app: Express) {
   // rows and no explicit all-sites grant — accounts that previously relied on
   // the unsafe "zero rows = all sites" fallback. Admin resolves each via the
   // existing site-access editor / all-sites grant / deactivate.
-  app.get("/api/auth/users/site-access-audit", requireAuth, requireUserMgmt("view"), async (_req, res) => {
+  app.get("/api/auth/users/site-access-audit", requireAuth, requireUserMgmt("view"), async (req, res) => {
     try {
       const all = await db.select().from(users);
       const results = [] as any[];
       for (const u of all) {
-        if (u.isAdmin || u.isOwner) continue;
+        if (u.isOwner || (u.isAdmin && !req.authFeatureAccess?.rolesConfigured)) continue;
         if ((u as any).allSitesAccess) continue;
         const rows = await storage.getUserSiteAccess(u.id);
         if (rows.length > 0) continue;
@@ -861,6 +1264,9 @@ export function registerAuthRoutes(app: Express) {
 
   app.post("/api/auth/users/:id/copy-permissions", requireAuth, requireUserMgmt("edit"), async (req, res) => {
     try {
+      if (await (await import("./featureAccess")).rolesHaveBeenConfigured()) {
+        return res.status(409).json({ error: "roles_configured_use_feature_access" });
+      }
       const id = Number(req.params.id);
       const fromUserId = Number(req.body?.fromUserId);
       if (!fromUserId || Number.isNaN(fromUserId)) return res.status(400).json({ error: "invalid_request" });
@@ -946,24 +1352,27 @@ export function assertAdmin(req: Request, res: Response): boolean {
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (!req.authUser.isAdmin && !req.authUser.isOwner) {
-    res.status(403).json({ error: "admin_required" });
+  if (!req.authUser.isOwner) {
+    res.status(403).json({ error: "owner_required" });
     return false;
   }
   return true;
 }
 
-// Company Owner / Primary Admin: always has full control across every
-// module and is never locked out by permission toggles (see spec: Owner
-// section). Checked alongside isAdmin in every assert* helper below.
+function hasSectionAccess(req: Request, sections: SectionKey[], action: string): boolean {
+  const user = req.authUser;
+  const matrix = req.authPermissions;
+  if (!user || !matrix) return false;
+  const state = req.authFeatureAccess ?? { rolesConfigured: false, legacyPermissions: matrix };
+  return sections.some(section => canLegacySection(user, matrix, section, action, state, req.path));
+}
+
 export function assertEdit(req: Request, res: Response, section: SectionKey): boolean {
   if (!req.authUser) {
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
-  const m = req.authPermissions;
-  if (!m || !m[section] || !m[section].edit) {
+  if (!hasSectionAccess(req, [section], "edit")) {
     res.status(403).json({ error: "forbidden", section, action: "edit" });
     return false;
   }
@@ -975,9 +1384,7 @@ export function assertEditEither(req: Request, res: Response, ...sections: Secti
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
-  const m = req.authPermissions;
-  if (!m || !sections.some(section => m[section]?.edit)) {
+  if (!hasSectionAccess(req, sections, "edit")) {
     res.status(403).json({ error: "forbidden", sections, action: "edit" });
     return false;
   }
@@ -989,9 +1396,7 @@ export function assertCreate(req: Request, res: Response, section: SectionKey): 
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
-  const m = req.authPermissions;
-  if (!m || !m[section] || !m[section].create) {
+  if (!hasSectionAccess(req, [section], "create")) {
     res.status(403).json({ error: "forbidden", section, action: "create" });
     return false;
   }
@@ -1003,9 +1408,7 @@ export function assertCreateOrEdit(req: Request, res: Response, section: Section
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
-  const permission = req.authPermissions?.[section];
-  if (!permission?.create && !permission?.edit) {
+  if (!hasSectionAccess(req, [section], "create") && !hasSectionAccess(req, [section], "edit")) {
     res.status(403).json({ error: "forbidden", section, action: "create_or_edit" });
     return false;
   }
@@ -1017,9 +1420,7 @@ export function assertCreateEither(req: Request, res: Response, ...sections: Sec
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
-  const m = req.authPermissions;
-  if (!m || !sections.some(section => m[section]?.create)) {
+  if (!hasSectionAccess(req, sections, "create")) {
     res.status(403).json({ error: "forbidden", sections, action: "create" });
     return false;
   }
@@ -1031,9 +1432,7 @@ export function assertView(req: Request, res: Response, section: SectionKey): bo
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
-  const m = req.authPermissions;
-  if (!m || !m[section] || !m[section].view) {
+  if (!hasSectionAccess(req, [section], "view")) {
     res.status(403).json({ error: "forbidden", section, action: "view" });
     return false;
   }
@@ -1045,8 +1444,7 @@ export function assertReportExport(req: Request, res: Response, ...sections: Sec
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
-  if (!sections.some(section => req.authPermissions?.[section]?.export)) {
+  if (!hasSectionAccess(req, sections, "export")) {
     res.status(403).json({ error: "forbidden", sections, action: "export" });
     return false;
   }
@@ -1058,9 +1456,7 @@ export function assertViewEither(req: Request, res: Response, ...sections: Secti
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
-  const m = req.authPermissions;
-  if (!m || !sections.some(section => m[section]?.view)) {
+  if (!hasSectionAccess(req, sections, "view")) {
     res.status(403).json({ error: "forbidden", sections, action: "view" });
     return false;
   }
@@ -1072,9 +1468,7 @@ export function assertApprove(req: Request, res: Response, section: SectionKey):
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
-  const m = req.authPermissions;
-  if (!m || !m[section] || !m[section].approve) {
+  if (!hasSectionAccess(req, [section], "approve")) {
     res.status(403).json({ error: "forbidden", section, action: "approve" });
     return false;
   }
@@ -1091,8 +1485,7 @@ export function assertDeleteEither(req: Request, res: Response, ...sections: Sec
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
-  if (!sections.some(section => req.authPermissions?.[section]?.delete)) {
+  if (!hasSectionAccess(req, sections, "delete")) {
     res.status(403).json({ error: "forbidden", sections, action: "delete" });
     return false;
   }

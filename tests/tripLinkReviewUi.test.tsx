@@ -12,7 +12,12 @@ import type { SiteMaterialTrip } from "@shared/schema";
 
 const holder = vi.hoisted(() => ({ canEdit: false, isAdmin: false, qc: null as any, request: vi.fn() }));
 vi.mock("@/lib/auth-context", () => ({
-  useAuth: () => ({ sectionCan: () => holder.canEdit, isAdmin: holder.isAdmin, isOwner: false }),
+  useAuth: () => ({
+    sectionCan: () => holder.canEdit,
+    featureCan: (_feature: string, action: string) => action === "view" || holder.canEdit,
+    isAdmin: holder.isAdmin,
+    isOwner: false,
+  }),
 }));
 vi.mock("@/lib/queryClient", () => ({
   apiRequest: holder.request, get queryClient() { return holder.qc; },

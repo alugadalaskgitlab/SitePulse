@@ -1,16 +1,7 @@
-import { evaluateAccessRule, type AccessRuleId } from "@shared/accessRulesV2";
 import { useAuth } from "@/lib/auth-context";
+import { canAccessRule, type AccessRuleId } from "@shared/featureAccess";
 
 export function useAccessRule(id: AccessRuleId): boolean {
-  const { user, permissions, accessRulesV2 } = useAuth();
-  return evaluateAccessRule(
-    id,
-    accessRulesV2,
-    user ? {
-      ...user,
-      authenticated: true,
-      legacyRole: (user as any).role ?? null,
-    } : null,
-    permissions,
-  );
+  const { user, permissions, featureAccess } = useAuth();
+  return canAccessRule(id, user, { ...featureAccess, legacyPermissions: permissions });
 }

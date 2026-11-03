@@ -571,8 +571,8 @@ function ScenarioComparison({
 import { ReportExportGate } from "@/components/ReportExportGate";
 
 export default function MixImpact() {
-  const { sectionCan, isAdmin, isLoading: authLoading } = useAuth();
-  const hasMainAppAccess = isAdmin || sectionCan("mix_calculator", "create") || sectionCan("mix_calculator", "edit");
+  const { featureCan, isLoading: authLoading } = useAuth();
+  const hasMainAppAccess = featureCan("estimating", "view");
   const canEdit = readEstimatorRole() === "admin" || hasMainAppAccess;
 
   useEffect(() => {

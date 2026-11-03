@@ -67,7 +67,8 @@ function StatusBadge({ status }: { status: string }) {
 export default function PendingPlantReceipts() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const { user, isAdmin } = useAuth();
+  const { user, featureCan } = useAuth();
+  const canVerify = featureCan("plant_receipts", "verify");
   const [statusFilter, setStatusFilter] = useState<"pending" | "confirmed" | "rejected">("pending");
   const [locationFilter, setLocationFilter] = useState<string>("all");
   const [confirmId, setConfirmId] = useState<number | null>(null);
@@ -122,7 +123,7 @@ export default function PendingPlantReceipts() {
   const rejectingReceipt = receipts.find(r => r.id === rejectId);
 
   const isSodBlocked = (receipt: PendingPlantReceipt) =>
-    !isAdmin && receipt.createdByUserId === user?.id;
+    !user?.isOwner && receipt.createdByUserId === user?.id;
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
@@ -283,7 +284,7 @@ export default function PendingPlantReceipts() {
                       <Button
                         size="sm"
                         className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                        disabled={blocked || confirmMutation.isPending}
+                        disabled={!canVerify || blocked || confirmMutation.isPending}
                         onClick={() => setConfirmId(receipt.id)}
                         data-testid={`button-confirm-ppr-${receipt.id}`}
                       >
@@ -294,7 +295,7 @@ export default function PendingPlantReceipts() {
                         size="sm"
                         variant="outline"
                         className="border-red-300 text-red-600 hover:bg-red-50"
-                        disabled={rejectMutation.isPending}
+                        disabled={!canVerify || rejectMutation.isPending}
                         onClick={() => { setRejectId(receipt.id); setRejectionReason(""); }}
                         data-testid={`button-reject-ppr-${receipt.id}`}
                       >
@@ -333,7 +334,7 @@ export default function PendingPlantReceipts() {
             <Button variant="outline" onClick={() => setConfirmId(null)} data-testid="button-confirm-cancel">Cancel</Button>
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              disabled={confirmMutation.isPending}
+              disabled={!canVerify || confirmMutation.isPending}
               onClick={() => confirmId !== null && confirmMutation.mutate(confirmId)}
               data-testid="button-confirm-proceed"
             >
@@ -375,7 +376,7 @@ export default function PendingPlantReceipts() {
             <Button variant="outline" onClick={() => { setRejectId(null); setRejectionReason(""); }} data-testid="button-reject-cancel">Cancel</Button>
             <Button
               variant="destructive"
-              disabled={!rejectionReason.trim() || rejectMutation.isPending}
+              disabled={!canVerify || !rejectionReason.trim() || rejectMutation.isPending}
               onClick={() => rejectId !== null && rejectMutation.mutate({ id: rejectId, reason: rejectionReason.trim() })}
               data-testid="button-reject-proceed"
             >

@@ -10,6 +10,7 @@ vi.mock("@/lib/auth-context", () => ({
     isAdmin: true,
     isOwner: false,
     sectionCan: () => true,
+    featureCan: () => true,
     sectionVisible: () => true,
   }),
 }));

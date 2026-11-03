@@ -90,7 +90,7 @@ interface Props { isNew?: boolean; detailId?: number }
 
 export default function StoresGrn({ isNew, detailId }: Props) {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, featureCan } = useAuth();
   const canSeeStaleGrnAlert = useAccessRule("stale_grn_alert");
   const canEditGrnAcceptance = useAccessRule("grn_acceptance_edit");
   const { uploadFile } = useUpload();
@@ -1237,7 +1237,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 <div className="flex items-center gap-2">
                   {selectedGrn.status === "draft" && !finalisingDraft && (
                     <>
-                      {selectedGrn.sourcePiIndentId && selectedGrn.createdByUserId && user && selectedGrn.createdByUserId === user.id && !isAdmin && (
+                      {selectedGrn.sourcePiIndentId && selectedGrn.createdByUserId && user && selectedGrn.createdByUserId === user.id && !user.isOwner && (
                         <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800 text-sm text-amber-700 dark:text-amber-300 w-full" data-testid="banner-sod-warning">
                           <AlertTriangle className="w-4 h-4 shrink-0" />
                           <span className="text-xs"><strong>Separation of duties:</strong> You raised the purchase indent for this GRN. A different Stores person should finalise it. Ask your Admin to override if needed.</span>
@@ -1256,7 +1256,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                         size="sm"
                         className="gap-1 text-sm bg-green-600 hover:bg-green-700 text-white"
                         data-testid="button-finalise-grn"
-                        disabled={!!(selectedGrn.sourcePiIndentId && selectedGrn.createdByUserId && user && selectedGrn.createdByUserId === user.id && !isAdmin)}
+                        disabled={!!(selectedGrn.sourcePiIndentId && selectedGrn.createdByUserId && user && selectedGrn.createdByUserId === user.id && !user.isOwner)}
                         onClick={() => {
                           setDraftFinaliseIndentRef(selectedGrn.indentRef || "");
                           setDraftFinaliseOverride(false);
@@ -1284,7 +1284,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       <Pencil className="w-3 h-3" /> Edit Acceptance
                     </Button>
                   )}
-                  {isAdmin && !selectedGrn.isCancelled && (
+                  {featureCan("grn", "cancel") && !selectedGrn.isCancelled && (
                     <Button variant="ghost" size="sm" className="text-destructive gap-1"
                       onClick={() => setCancelDialogId(selectedGrn.id)}
                       data-testid="button-cancel-detail-grn">
@@ -2110,7 +2110,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDetail(grn)} data-testid={`button-view-grn-${grn.id}`}>
                             <Eye className="w-4 h-4" />
                           </Button>
-                          {isAdmin && !grn.isCancelled && (
+                          {featureCan("grn", "cancel") && !grn.isCancelled && (
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setCancelDialogId(grn.id); setCancelReason(""); }} data-testid={`button-cancel-grn-${grn.id}`}>
                               <Ban className="w-3.5 h-3.5 text-amber-600" />
                             </Button>

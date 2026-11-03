@@ -1,4 +1,23 @@
-import type { PermissionMatrix, SectionKey } from "./permissions";
+import {
+  emptyMatrix,
+  fullMatrix,
+  SECTION_KEYS,
+  type PermissionMatrix,
+  type SectionKey,
+} from "./permissions";
+
+export type AccessRuleId =
+  | "dashboard_nav" | "hmp_nav" | "rmc_nav" | "masters_nav" | "settings_nav"
+  | "reports_hub_content" | "plant_admin_guide" | "plant_dispatch_summary"
+  | "plant_project_report" | "stale_grn_alert" | "grn_acceptance_edit"
+  | "home_dispatch_tile" | "payables_preview" | "whole_bill_export"
+  | "site_req_review_ui" | "site_req_status_api" | "site_req_allocation_api"
+  | "site_req_material_button" | "site_req_equipment_button" | "site_req_labour_button"
+  | "site_req_immediate_button" | "site_req_material_api" | "site_req_equipment_api"
+  | "site_req_labour_api" | "site_req_immediate_api" | "site_req_execution_summary"
+  | "site_req_outcome" | "execution_arrangement_outcome"
+  | "cutfill_reconciliation_ui" | "cutfill_reconciliation_api"
+  | "ldo_orphan_cleanup" | "stale_grn_push_audience";
 
 export const FEATURE_GROUPS = [
   { id: "site_work", label: "Site work" },
@@ -37,6 +56,8 @@ export type FeatureDefinition = {
   inactive?: boolean;
 };
 
+const viewAddEdit = ["view", "add", "edit"] as const;
+
 export const FEATURES: readonly FeatureDefinition[] = [
   { id: "dpr", label: "DPR", group: "site_work", actions: ["view", "add", "edit", "cancel", "verify", "approve", "export"] },
   { id: "labour_attendance", label: "Labour & attendance", group: "site_work", actions: ["view", "add", "edit", "cancel", "verify", "export"] },
@@ -48,7 +69,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
   { id: "plant_receipts", label: "Plant material receipts", group: "plant", actions: ["view", "add", "edit", "cancel", "verify", "export"], license: "hmp" },
   { id: "hmp_rmc", label: "HMP/RMC production & dispatch", group: "plant", actions: ["view", "add", "edit", "cancel", "verify", "export"], license: "hmp" },
   { id: "equipment_usage", label: "Equipment usage", group: "equipment", actions: ["view", "add", "edit", "cancel", "verify", "export"] },
-  { id: "maintenance", label: "Maintenance & breakdowns", group: "equipment", actions: ["view", "add", "edit", "cancel", "approve"], license: "hmp" },
+  { id: "maintenance", label: "Maintenance & breakdowns", group: "equipment", actions: ["view", "add", "edit", "cancel", "approve"] },
   { id: "irn", label: "IRN", group: "procurement", actions: ["view", "add", "edit", "cancel", "verify", "approve"] },
   { id: "purchase_indent", label: "PI", group: "procurement", actions: ["view", "add", "edit", "cancel", "verify", "approve", "export"] },
   { id: "purchase_orders", label: "Purchases / POs", group: "procurement", actions: ["view", "add", "edit", "cancel", "verify", "approve", "export"] },
@@ -216,7 +237,7 @@ export type LegacyActor = {
   isActive?: boolean;
   isFieldEngineer?: boolean;
   canManagePermissions?: boolean;
-  permissionManagerScope?: "full" | "partial" | null;
+  permissionManagerScope?: string | null;
   canUnlockRecords?: boolean;
 };
 
@@ -235,6 +256,12 @@ export function legacyFeatureTick(
   action: FeatureAction,
 ): boolean {
   if (!matrix) return false;
+  // Legacy stock-reconciliation posting was guarded by its `create` tick.
+  // Preserve that exact behavior for installations that have not configured
+  // feature roles yet; the configured role path uses the separate `verify` tick.
+  if (feature === "issues_stock" && action === "verify" && matrix.stock_reconciliation?.create) {
+    return true;
+  }
   const keys = LEGACY_FEATURE_KEYS[feature];
   return keys.some(section => {
     const row = matrix[section];
@@ -385,10 +412,11 @@ export const FEATURE_ROUTE_ALIASES: Readonly<Partial<Record<SectionKey, readonly
 
 export function featureForPath(path: string): FeatureId[] {
   const p = path.toLowerCase();
+  if (/\/(reports|api\/reports)(\/|$)/.test(p)) return ["reports"];
   if (/\/api\/auth\/users|\/api\/access-control/.test(p)) return ["users_permissions"];
   if (/\/api\/(site-requirements|material-requirements|earthwork-arrangements)/.test(p)) return ["site_requirements"];
   if (/\/api\/(site-material-trips|site-materials|material-logs)/.test(p)) return ["site_materials"];
-  if (/\/api\/(labour|labor|attendance|plant-module\/manpower)/.test(p)) return ["labour_attendance"];
+  if (/\/api\/(labour|labor|attendance|plant-module\/(manpower|shift-log-manpower))/.test(p)) return ["labour_attendance"];
   if (/\/api\/stores\/grns|\/api\/grns/.test(p)) return ["grn"];
   if (/\/api\/stores\/(issues|returns|stock)|\/api\/stock-reconciliation/.test(p)) return ["issues_stock"];
   if (/\/api\/(diesel-requirements|site-diesel|diesel-issues)/.test(p)) return ["diesel_issue"];
@@ -410,7 +438,42 @@ export function featureForPath(path: string): FeatureId[] {
   if (/\/api\/(mix-estimates|price-scenarios|concrete-estimates|estimator)/.test(p)) return ["estimating"];
   if (/\/api\/(admin\/settings|admin\/devices|admin\/data-sync|admin\/edit-requests|admin\/notifications|admin\/ledger|admin\/ldo)/.test(p)) return [];
   if (/\/api\/dprs/.test(p)) return ["dpr"];
+  if (/\/(site\/)?(requirements|site-requirements)(\/|$)/.test(p)) return ["site_requirements"];
+  if (/\/(site\/)?(materials|site-materials|material-trips)(\/|$)/.test(p)) return ["site_materials"];
+  if (/\/(site\/)?(labour|labor|attendance)(\/|$)/.test(p)) return ["labour_attendance"];
+  if (/\/(stores\/)?(grn|grns)(\/|$)/.test(p)) return ["grn"];
+  if (/\/(stores\/)?(issues|stock-ledger|stock-reconciliation)(\/|$)/.test(p)) return ["issues_stock"];
+  if (/\/(diesel|diesel-requirements)(\/|$)/.test(p)) return ["diesel_issue"];
+  if (/\/(plant\/)?(dispatches|production|shift-logs|hmp|rmc)(\/|$)/.test(p)) return ["hmp_rmc"];
+  if (/\/plant\/material-receipts(\/|$)/.test(p)) return ["plant_receipts"];
+  if (/\/plant\/equipment-usage(\/|$)/.test(p)) return ["equipment_usage"];
+  if (/\/plant\/shift-log(\/|$)/.test(p)) return ["hmp_rmc"];
+  if (/\/(equipment|fleet)(\/|$)/.test(p)) return p.includes("maintenance") ? ["maintenance"] : ["equipment_usage"];
+  if (/\/(maintenance|breakdowns)(\/|$)/.test(p)) return ["maintenance"];
+  if (/\/irn(\/|$)/.test(p)) return ["irn"];
+  if (/\/(purchase-indents|purchase-indent)(\/|$)/.test(p)) return ["purchase_indent"];
+  if (/\/(purchase-orders|purchase-orders)(\/|$)/.test(p)) return ["purchase_orders"];
+  if (/\/(vendor-bills|hire-bills)(\/|$)/.test(p)) return p.includes("payable") ? ["payables"] : ["vendor_bills"];
+  if (/\/(rate-cards|vendor-rates)(\/|$)/.test(p)) return ["rate_cards"];
+  if (/\/(boq|work-programme|work-program|norms)(\/|$)/.test(p)) return ["boq_programme"];
+  if (/\/(progress|actual-progress)(\/|$)/.test(p)) return ["progress_actual"];
+  if (/\/(masters|parties|materials-master|equipment-master|personnel)(\/|$)/.test(p)) return ["masters"];
+  if (/\/(estimator|mix-calculator|concrete-calculator|mix-estimates)(\/|$)/.test(p)) return ["estimating"];
+  if (/\/(site|dprs|daily-report)(\/|$)/.test(p)) return ["dpr"];
   return [];
+}
+
+function reportSourceForPath(path: string): FeatureId | null {
+  const p = path.toLowerCase();
+  if (/vendor|payable|gst|financial/.test(p)) return "payables";
+  if (/equipment|fleet|hire/.test(p)) return "equipment_usage";
+  if (/plant|hmp|rmc|dispatch/.test(p)) return "hmp_rmc";
+  if (/grn|stock|issue|stores/.test(p)) return "issues_stock";
+  if (/labour|labor|attendance/.test(p)) return "labour_attendance";
+  if (/progress|programme|boq/.test(p)) return "progress_actual";
+  if (/site|dpr|daily/.test(p)) return "dpr";
+  if (/purchase|procurement|irn/.test(p)) return "purchase_indent";
+  return null;
 }
 
 export function featureActionsFromLegacy(action: string, path?: string): FeatureAction[] {
@@ -436,10 +499,25 @@ export function canLegacySection(
   state: FeatureAccessState,
   path?: string,
 ): boolean {
-  const candidates = (path ? featureForPath(path) : []).length
-    ? featureForPath(path)
-    : (FEATURE_ROUTE_ALIASES[section] ?? []);
+  const pathFeatures = path ? featureForPath(path) : [];
+  const sectionFeatures = FEATURE_ROUTE_ALIASES[section] ?? [];
+  const relevantPathFeatures = pathFeatures.filter(feature => sectionFeatures.includes(feature));
+  const candidates = relevantPathFeatures.length ? relevantPathFeatures : sectionFeatures;
   const requestedActions = featureActionsFromLegacy(action, path);
+  const reportArea = !!path && /\/(reports|api\/reports)(\/|$)/i.test(path);
+  if (reportArea) {
+    if (!can(user, "reports", action === "export" ? "export" : "view", { ...state, legacyPermissions: matrix ?? state.legacyPermissions })) return false;
+    const source = reportSourceForPath(path);
+    if (source) return can(user, source, "view", { ...state, legacyPermissions: matrix ?? state.legacyPermissions });
+    const reportSources: FeatureId[] = [
+      "dpr", "labour_attendance", "site_materials", "grn", "issues_stock", "diesel_issue",
+      "plant_receipts", "hmp_rmc", "equipment_usage", "maintenance", "purchase_indent",
+      "purchase_orders", "vendor_bills", "payables", "boq_programme", "progress_actual",
+    ];
+    return reportSources.some(sourceFeature => can(user, sourceFeature, "view", {
+      ...state, legacyPermissions: matrix ?? state.legacyPermissions,
+    }));
+  }
   if (candidates.length) {
     return candidates.some(feature =>
       requestedActions.some(featureAction =>
@@ -456,4 +534,85 @@ export function canLegacySection(
     return !!(legacy as Record<string, boolean>)[legacyAction];
   }
   return false;
+}
+
+export function projectFeaturePermissions(
+  user: LegacyActor | null | undefined,
+  legacyMatrix: PermissionMatrix,
+  state: FeatureAccessState,
+  path?: string,
+): PermissionMatrix {
+  if (!state.rolesConfigured) {
+    return user?.isAdmin || user?.isOwner ? fullMatrix() : legacyMatrix;
+  }
+  if (user?.isOwner) return fullMatrix();
+  const projected = emptyMatrix();
+  const pathFeatures = path ? featureForPath(path) : [];
+  for (const section of SECTION_KEYS) {
+    const aliases = FEATURE_ROUTE_ALIASES[section] ?? [];
+    const matched = pathFeatures.filter(feature => aliases.includes(feature));
+    const features = matched.length ? matched : aliases;
+    for (const feature of features) {
+      const allowed = (action: FeatureAction) => can(user, feature, action, state);
+      const row = projected[section];
+      row.view ||= allowed("view");
+      row.create ||= allowed("add");
+      row.edit ||= allowed("edit");
+      row.delete ||= allowed("cancel");
+      row.export ||= allowed("export");
+      row.approve ||= allowed("approve") || allowed("verify") ||
+        allowed("technical_verify") || allowed("accounts_verify") || allowed("final");
+      if (feature === "reports") row.view_reports ||= allowed("view");
+    }
+  }
+  return projected;
+}
+
+const ACCESS_RULE_REQUIREMENTS: Partial<Record<AccessRuleId, readonly [FeatureId, FeatureAction][]>> = {
+  dashboard_nav: [["dpr", "view"]],
+  hmp_nav: [["hmp_rmc", "view"]],
+  rmc_nav: [["hmp_rmc", "view"]],
+  masters_nav: [["masters", "view"]],
+  plant_dispatch_summary: [["hmp_rmc", "view"]],
+  plant_project_report: [["reports", "view"], ["hmp_rmc", "view"]],
+  stale_grn_alert: [["grn", "view"]],
+  stale_grn_push_audience: [["grn", "view"]],
+  grn_acceptance_edit: [["grn", "edit"]],
+  home_dispatch_tile: [["hmp_rmc", "view"]],
+  whole_bill_export: [["vendor_bills", "export"]],
+  site_req_review_ui: [["site_requirements", "verify"]],
+  site_req_status_api: [["site_requirements", "edit"]],
+  site_req_allocation_api: [["site_requirements", "edit"]],
+  site_req_material_button: [["site_requirements", "edit"]],
+  site_req_equipment_button: [["site_requirements", "edit"]],
+  site_req_labour_button: [["site_requirements", "edit"]],
+  site_req_immediate_button: [["site_requirements", "edit"]],
+  site_req_material_api: [["site_requirements", "edit"]],
+  site_req_equipment_api: [["site_requirements", "edit"]],
+  site_req_labour_api: [["site_requirements", "edit"]],
+  site_req_immediate_api: [["site_requirements", "edit"]],
+  site_req_execution_summary: [["site_requirements", "view"]],
+  site_req_outcome: [["site_requirements", "approve"]],
+  execution_arrangement_outcome: [["boq_programme", "edit"]],
+  cutfill_reconciliation_ui: [["boq_programme", "edit"]],
+  cutfill_reconciliation_api: [["boq_programme", "edit"]],
+};
+
+export function canAccessRule(
+  id: AccessRuleId,
+  user: LegacyActor | null | undefined,
+  state: FeatureAccessState,
+): boolean {
+  if (!user || user.isActive === false) return false;
+  if (id === "settings_nav" || id === "plant_admin_guide" || id === "ldo_orphan_cleanup") {
+    return !!user.isOwner;
+  }
+  if (id === "reports_hub_content") {
+    return canLegacySection(user, state.legacyPermissions ?? emptyMatrix(), "reports_hub", "view", state, "/reports/hub");
+  }
+  if (id === "payables_preview") {
+    return can(user, "reports", "view", state) && can(user, "payables", "view", state);
+  }
+  const requirements = ACCESS_RULE_REQUIREMENTS[id];
+  return !!requirements?.length && requirements.every(([feature, action]) => can(user, feature, action, state));
 }

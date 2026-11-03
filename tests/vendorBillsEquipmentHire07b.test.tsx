@@ -9,7 +9,7 @@ const authTestState = vi.hoisted(() => ({ isOwner: false, isAdmin: true }));
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
   isAdmin: authTestState.isAdmin, isOwner: authTestState.isOwner,
   user: { id: 9, isAdmin: authTestState.isAdmin, isOwner: authTestState.isOwner },
-  sectionCan: () => true, sectionVisible: () => true,
+  sectionCan: () => true, featureCan: () => true, sectionVisible: () => true,
 }) }));
 vi.mock("@/lib/featureFlags", () => ({ useFeatureFlags: () => ({ companyName: "Demo", logoFile: null }) }));
 vi.mock("@/hooks/use-origin", () => ({ useOrigin: () => ({ getPlantBackLink: () => "/plant" }) }));

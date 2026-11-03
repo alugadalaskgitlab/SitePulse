@@ -9,13 +9,11 @@ import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/lib/auth-context";
 
 const LDO_FALLBACK = "PLANT OPERATOR";
 
 export default function AdminSettings() {
   const { toast } = useToast();
-  const { isAdmin, isOwner } = useAuth();
   // Page-level access is enforced by <RequireAuth section="admin_settings"> in
   // App.tsx. Reaching this component implies the user can view the section.
   const authenticated = true;
@@ -272,14 +270,10 @@ export default function AdminSettings() {
         </div>
       </div>
 
-      <Link href="/admin/permission-migration-audit">
-        <Button variant="outline" data-testid="button-permission-migration-audit">Access preservation audit</Button>
+      <Link href="/admin/settings/roles">
+        <Button variant="outline" data-testid="button-access-roles">Access roles</Button>
       </Link>
-      {(isAdmin || isOwner) && (
-        <Link href="/admin/settings/access-changes-preview">
-          <Button variant="outline" data-testid="button-access-changes-preview">Access changes preview</Button>
-        </Link>
-      )}
+
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">

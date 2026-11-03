@@ -39,9 +39,12 @@ type ManpowerRow = {
 type IdleRow = { startTime: string; endTime?: string | null; reason: string; remarks?: string | null };
 
 import { ReportExportGate } from "@/components/ReportExportGate";
+import { useAuth } from "@/lib/auth-context";
 
 export default function PlantShiftLog() {
   const { toast } = useToast();
+  const { featureCan } = useAuth();
+  const canVerify = featureCan("hmp_rmc", "verify");
   const { isFromPortal, appendPlantContext, getPlantBackLink } = useOrigin();
   const [, params] = useRoute("/plant/shift-log/:date");
   const [currentLocation] = useLocation();
@@ -686,15 +689,19 @@ export default function PlantShiftLog() {
       // Clear the draft now that data is safely on the server.
       clearDraft();
       setSavedId(data.id);
-      setIsFinalized(1);
       // Task #434 — surface any LDO dip vs meter divergence warnings
       setPostSaveWarnings(Array.isArray(data.divergenceWarnings) ? data.divergenceWarnings : []);
-      toast({ title: "Shift log saved" });
-      // Auto-finalize so the operator doesn't need a second click — server no
-      // longer requires a PIN. Then return to the list view.
-      try {
-        await apiRequest("POST", `/api/plant-module/shift-logs/${data.id}/finalize`, { finalizedBy: "operator" });
-      } catch { /* save already succeeded */ }
+      let finalized = Number(data.isFinalized) === 1;
+      if (!finalized && canVerify) {
+        try {
+          await apiRequest("POST", `/api/plant-module/shift-logs/${data.id}/finalize`, { finalizedBy: "operator" });
+          finalized = true;
+        } catch { /* the saved log remains pending verification */ }
+      }
+      setIsFinalized(finalized ? 1 : 0);
+      toast({
+        title: finalized ? "Shift log saved" : "Shift log saved — pending verification",
+      });
       goBackToList();
       // Cross-check: warn if any heating session for the same date+plant has a
       // different dryerFedFrom (non-blocking — stock routing is unchanged).

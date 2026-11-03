@@ -36,8 +36,8 @@ interface ScenarioEntry {
 import { ReportExportGate } from "@/components/ReportExportGate";
 
 export default function ScenarioComparison() {
-  const { sectionCan, isAdmin, isLoading: authLoading } = useAuth();
-  const hasMainAppAccess = isAdmin || sectionCan("mix_calculator", "create") || sectionCan("mix_calculator", "edit");
+  const { featureCan, isLoading: authLoading } = useAuth();
+  const hasMainAppAccess = featureCan("estimating", "view");
 
   useEffect(() => {
     // Wait for auth to finish loading before deciding to redirect

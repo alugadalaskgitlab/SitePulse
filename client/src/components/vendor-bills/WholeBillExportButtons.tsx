@@ -1,16 +1,11 @@
 import { useState } from "react";
 import { Download, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { evaluateAccessRule } from "@shared/accessRulesV2";
 import { captureWholeBillSnapshot, type WholeBillSnapshot } from "./wholeBillSnapshot";
 import { saveWholeBillFile, type WholeBillExportFormat } from "./wholeBillExport";
 
 export type WholeBillExportButtonsProps = {
   canExport: boolean;
-  isFieldEngineer?: boolean;
-  isAdmin?: boolean;
-  isOwner?: boolean;
-  accessRulesV2: boolean;
   position: "header" | "footer";
   /** Called only on click. Supply the current form/view values, never a query. */
   getSnapshot: () => WholeBillSnapshot;
@@ -18,17 +13,13 @@ export type WholeBillExportButtonsProps = {
 
 /** Existing SitePulse outline controls, no new visual system or status gating. */
 export default function WholeBillExportButtons({
-  canExport, isFieldEngineer = false, isAdmin = false, isOwner = false,
-  accessRulesV2, position, getSnapshot,
+  canExport, position, getSnapshot,
 }: WholeBillExportButtonsProps) {
   const [pending, setPending] = useState<WholeBillExportFormat | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
   const [lastFormat, setLastFormat] = useState<WholeBillExportFormat>("xlsx");
-  const canShowExport = evaluateAccessRule("whole_bill_export", accessRulesV2, {
-    authenticated: true, isFieldEngineer, isAdmin, isOwner,
-  }, { vendor_bills: { export: canExport } });
-  if (!canShowExport) return null;
+  if (!canExport) return null;
   const run = async (kind: WholeBillExportFormat) => {
     if (pending) return;
     setError(null);

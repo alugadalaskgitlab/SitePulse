@@ -80,8 +80,9 @@ function Editor({ initial, onSave, onCancel, busy }: {
 }
 
 export default function VendorMaster() {
-  const { isAdmin: admin, isOwner, user } = useAuth();
-  const isAdmin = admin || isOwner;
+  const { featureCan, user } = useAuth();
+  const canAddVendor = featureCan("masters", "add");
+  const canEditMasters = featureCan("masters", "edit");
   const qc = useQueryClient();
   const [tab, setTab] = useState<"master" | "review">("master");
   const [reviewStatus, setReviewStatus] = useState<"pending" | "confirmed">("pending");
@@ -97,7 +98,7 @@ export default function VendorMaster() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const vendors = useQuery<Vendor[]>({ queryKey: ["/api/vendor-master"] });
-  const review = useQuery<Proposal[]>({ queryKey: [`/api/vendor-master/review?status=${reviewStatus}`], enabled: tab === "review" && isAdmin });
+  const review = useQuery<Proposal[]>({ queryKey: [`/api/vendor-master/review?status=${reviewStatus}`], enabled: tab === "review" && canEditMasters });
   const financialReview = useQuery<FinancialBill[]>({
     queryKey: ["/api/vendor-bills", "vendor-link-financial-review", user?.id],
     queryFn: async () => {
@@ -105,7 +106,7 @@ export default function VendorMaster() {
       if (!response.ok) throw new Error("Financial information is not available.");
       return response.json();
     },
-    enabled: tab === "review" && isAdmin && reviewStatus === "pending" && (review.data || []).some(p => p.role === "bills"),
+    enabled: tab === "review" && canEditMasters && reviewStatus === "pending" && (review.data || []).some(p => p.role === "bills"),
     retry: false, staleTime: 0, gcTime: 0,
   });
   const activity = useQuery<Activity>({ queryKey: [`/api/vendor-master/${detailId}/activity`], enabled: !!detailId });
@@ -210,7 +211,7 @@ export default function VendorMaster() {
     <div className="flex gap-2 border-b">{(["master", "review"] as const).map(t => <button key={t} onClick={() => { setTab(t); setMessage(""); }} className={`px-4 py-2 ${tab === t ? "border-b-2 border-blue-700 font-semibold" : ""}`}>{t === "master" ? "Vendors" : "Link Vendors"}</button>)}</div>
      {message && <p role="alert" className="rounded border bg-amber-50 p-3 text-sm whitespace-pre-line">{message}</p>}
     {tab === "master" ? <>
-      {isAdmin && <button className="bg-blue-700 text-white rounded-md px-4 py-2" onClick={() => setEditing({})}>Create vendor</button>}
+      {canAddVendor && <button className="bg-blue-700 text-white rounded-md px-4 py-2" onClick={() => setEditing({})}>Create vendor</button>}
       {editing && <Editor key={editing.id || "new"} initial={editing} busy={busy} onCancel={() => setEditing(null)} onSave={form => run(async () => {
         await apiRequest(editing.id ? "PATCH" : "POST", editing.id ? `/api/vendor-master/${editing.id}` : "/api/vendor-master", form);
         setEditing(null);
@@ -235,7 +236,7 @@ export default function VendorMaster() {
         : <div className="grid md:grid-cols-2 gap-3">{filteredMasterVendors.map(v => <div key={v.id} className="rounded-lg border bg-white p-4">
         <div className="flex justify-between gap-2"><button className="font-semibold text-blue-700 text-left" onClick={() => setDetailId(v.id)}>{v.name}</button><span className="text-xs">{v.isActive ? "Active" : "Inactive"}</span></div>
         <p className="text-sm text-slate-600">{[v.businessName, v.gstNumber && `GST ${v.gstNumber}`, v.contactPhone].filter(Boolean).join(" · ")}</p>
-        {isAdmin && <button className="text-sm underline mt-2" onClick={() => { setEditing(v); setDetailId(v.id); }}>Edit</button>}
+        {canEditMasters && <button className="text-sm underline mt-2" onClick={() => { setEditing(v); setDetailId(v.id); }}>Edit</button>}
       </div>)}</div>}
       {detailId && <section className="rounded-xl border bg-white p-5 space-y-3">
         <div className="flex justify-between"><h2 className="text-lg font-semibold">{activity.data?.vendor.name || "Vendor activity"}</h2><button className="underline text-sm" onClick={() => setDetailId(null)}>Close</button></div>
@@ -247,7 +248,7 @@ export default function VendorMaster() {
           {activity.data.sites.map(s => <div key={s.site} className="rounded-md border p-3 text-sm"><strong>{s.site}</strong><p>Equipment hire {s.equipment} · Material supply {s.material} · Transport {s.transport} · Labour {s.labour}</p></div>)}
         </>}
       </section>}
-    </> : isAdmin ? <>
+    </> : canEditMasters ? <>
       <h2 className="text-lg font-semibold">Review vendor identities</h2>
       <p className="text-sm text-slate-600">Review equipment owners, trip roles, unlinked bills, rate cards and bulk purchase indents. Several vehicles can share one vendor. Suggestions are not confirmations; verify each identity. Existing bill-specific references remain unchanged.</p>
       <div className="flex flex-wrap gap-2" aria-label="Link status">
@@ -304,7 +305,7 @@ export default function VendorMaster() {
              {blockedPlaceholder && <p className="text-sm font-medium text-red-700">Not eligible: HLC/self/own placeholder names cannot be added to the Vendor Master.</p>}
             {p.conflict && <p className="text-sm text-amber-700">{p.conflict}</p>}
             {p.confirmedBy && <p className="text-xs text-slate-600">Confirmed by {p.confirmedBy}{p.confirmedAt ? ` · ${new Date(p.confirmedAt).toLocaleString()}` : ""} · {p.confirmationReason}</p>}</div>
-          {reviewStatus === "pending" && isAdmin && <>
+          {reviewStatus === "pending" && canEditMasters && <>
           <select aria-label={`Master match for ${p.name} ${p.role}`} className="border rounded px-2 py-2" value={target} onChange={e => setChosen({ ...chosen, [key]: e.target.value })}>
             <option value="">Select master vendor</option>{available.filter(v => v.isActive).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>

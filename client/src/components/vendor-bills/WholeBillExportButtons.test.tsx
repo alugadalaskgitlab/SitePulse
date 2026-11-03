@@ -8,8 +8,8 @@ import type { WholeBillSnapshot } from "./wholeBillSnapshot";
 
 vi.mock("./wholeBillExport", () => ({ saveWholeBillFile: vi.fn() }));
 const save = vi.mocked(saveWholeBillFile);
-const TestExportButtons = (props: Omit<WholeBillExportButtonsProps, "accessRulesV2">) =>
-  <WholeBillExportButtons {...props} accessRulesV2={false} />;
+const TestExportButtons = (props: WholeBillExportButtonsProps) =>
+  <WholeBillExportButtons {...props} />;
 const snapshot = (): WholeBillSnapshot => ({
   companyName: "HLC", vendorName: "NARASIMHULU", billNo: "VB-128", billDate: "2026-10-04",
   periodFrom: "2026-08-01", periodTo: "2026-10-04", site: "Kondapur", billType: "material",
@@ -25,13 +25,18 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("whole-bill export controls wiring", () => {
-  it.each([
-    [false, false], [true, true], [false, true],
-  ])("renders no controls in DOM for permission=%s / field engineer=%s", (canExport, isFieldEngineer) => {
+  it("renders no controls when Export is not granted", () => {
     const getSnapshot = vi.fn(snapshot);
-    const { container } = render(<TestExportButtons canExport={canExport}
-      isFieldEngineer={isFieldEngineer} position="header" getSnapshot={getSnapshot} />);
+    const { container } = render(<TestExportButtons canExport={false}
+      position="header" getSnapshot={getSnapshot} />);
     expect(container.innerHTML).toBe("");
+    expect(getSnapshot).not.toHaveBeenCalled();
+  });
+  it("shows controls when Export is granted", () => {
+    const getSnapshot = vi.fn(snapshot);
+    const { container } = render(<TestExportButtons canExport
+      position="header" getSnapshot={getSnapshot} />);
+    expect(container.querySelectorAll("button").length).toBeGreaterThan(0);
     expect(getSnapshot).not.toHaveBeenCalled();
   });
   it.each(["draft", "verified", "approved", "paid"])("exports status %s without a status disable", async status => {

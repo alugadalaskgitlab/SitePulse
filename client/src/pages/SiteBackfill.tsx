@@ -58,7 +58,8 @@ function statusBadge(status: string) {
 }
 
 export default function SiteBackfill() {
-  const { isAdmin } = useAuth();
+  const { user } = useAuth();
+  const isOwner = user?.isOwner === true;
   const { toast } = useToast();
 
   const [tab, setTab] = useState<"diesel" | "indents">("diesel");
@@ -69,7 +70,7 @@ export default function SiteBackfill() {
 
   const { data, isLoading, isError } = useQuery<UnassignedData>({
     queryKey: ["/api/admin/site-backfill/unassigned"],
-    enabled: isAdmin,
+    enabled: isOwner,
   });
 
   const assignMutation = useMutation<{ updated: number }, Error, { table: string; ids: number[]; siteId: number }>({
@@ -158,7 +159,7 @@ export default function SiteBackfill() {
   const dieselRows = data?.dieselRequirements ?? [];
   const indentRows = data?.purchaseIndents ?? [];
 
-  if (!isAdmin) {
+  if (!isOwner) {
     return (
       <div className="space-y-4 max-w-2xl mx-auto py-12">
         <Link href="/admin/hub">

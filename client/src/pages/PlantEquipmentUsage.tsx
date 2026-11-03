@@ -56,12 +56,12 @@ function parseServerMessage(err: unknown): string | null {
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
   const { uploadFile } = useUpload();
-  const { sectionCan, isAdmin, user } = useAuth();
+  const { sectionCan, featureCan, user } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_equipment", "create");
   const canCreateEquipmentMaster = sectionCan("master_equipment", "create");
   const canEdit = sectionCan("plant_equipment", "edit");
-  const canDelete = isAdmin;
+  const canDelete = featureCan("equipment_usage", "cancel");
   const canExport = sectionCan("plant_equipment", "export");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });

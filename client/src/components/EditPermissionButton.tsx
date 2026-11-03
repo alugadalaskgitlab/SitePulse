@@ -40,15 +40,13 @@ export function EditPermissionButton({
   size = "sm",
   deferConsumeUntilSave = false,
 }: EditPermissionButtonProps) {
-  const { isAdmin, isOwner, sectionCan } = useAuth();
+  const { isOwner, sectionCan } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [previewMode, setPreviewMode] = useState(false);
-  const isAdminOrOwner = isAdmin || isOwner;
-  // Permission Panel: users granted "edit" on the section governing this
-  // record type edit directly — same as admins — instead of requesting.
+  // Users with the feature's Edit tick edit directly; Owners can edit all.
   const mappedSection = EDIT_RECORD_TYPE_SECTION[recordType];
-  const canEditDirect = isAdminOrOwner || (!!mappedSection && sectionCan(mappedSection, "edit"));
+  const canEditDirect = isOwner || (!!mappedSection && sectionCan(mappedSection, "edit"));
 
   const {
     currentStatus,
@@ -60,7 +58,7 @@ export function EditPermissionButton({
     consumePermission,
   } = useEditPermission(recordType, recordId);
 
-  // Direct editors (admin/owner or Permission Panel edit right) not previewing:
+  // Direct editors (Owner or feature Edit tick) not previewing:
   // render a plain Edit button, plus a "Preview as requester" toggle so they
   // can see what request-flow users experience without leaving their session.
   if (canEditDirect && !previewMode) {

@@ -20,7 +20,6 @@ import * as XLSX from "xlsx";
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION, NO_CREATE_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import { useAccessRule } from "@/lib/accessRules";
 import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock, Personnel, LdoFlowReading, PlantSettings, PlantSettingsWithSite, Site } from "@shared/schema";
 import { Switch } from "@/components/ui/switch";
 import type { PlantTankConfig, SingleTankConfig, TankSlot } from "@shared/tank-calibration";
@@ -51,13 +50,13 @@ export default function Plant() {
   })();
 
   const [plantView, setPlantView] = useState<"home" | "hmp" | "fleet" | "reports">(initialView);
-  const { isAdmin } = useAuth();
-  const canShowAdminGuide = useAccessRule("plant_admin_guide");
+  const { isOwner, featureCan } = useAuth();
+  const canShowAdminGuide = featureCan("hmp_rmc", "edit");
   const { rmcEnabled } = useFeatureFlags();
 
   const { data: allPlantSettings } = useQuery<PlantSettingsWithSite[]>({
     queryKey: ['/api/plant-module/plant-settings'],
-    enabled: isAdmin,
+    enabled: featureCan("hmp_rmc", "view"),
   });
   const primaryPlantName = allPlantSettings?.[0]?.plantName;
   const currentPlantType = (
@@ -94,9 +93,9 @@ export default function Plant() {
             <p className="text-muted-foreground mt-1">{VIEW_SUBTITLES[plantView]}</p>
           </div>
         </div>
-        {(isAdmin || canShowAdminGuide) && plantView === "home" && (
+        {canShowAdminGuide && plantView === "home" && (
           <div className="flex gap-2">
-            {isAdmin && (
+            {isOwner && (
               <a
                 href={primaryPlantName
                   ? `/api/admin/operator-manual.pdf?plant=${encodeURIComponent(primaryPlantName)}`
@@ -396,7 +395,7 @@ function HMPOpsView({ plantType = "hma", plantName }: { plantType?: string; plan
 
 function EquipmentFleetView({ plantName }: { plantName?: string }) {
   const { appendPlantContext } = useOrigin();
-  const { sectionVisible, isAdmin } = useAuth();
+  const { sectionVisible } = useAuth();
   const opLink = (path: string) => appendPlantContext(path, { defaultTab: "operations" });
 
   const { data: openCountData } = useQuery<{ count: number }>({
@@ -800,8 +799,8 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
 }
 
 function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: string; rmcEnabled?: boolean }) {
-  const { sectionVisible } = useAuth();
-  const canSeeDispatchSummary = useAccessRule("plant_dispatch_summary");
+  const { sectionVisible, featureCan } = useAuth();
+  const canSeeDispatchSummary = featureCan("hmp_rmc", "view");
   const isRmc = rmcEnabled;
   const todayStr = new Date().toISOString().slice(0, 10);
   const appendRoleAndTab = (path: string) => {
@@ -902,7 +901,7 @@ function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: str
 function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: string; rmcEnabled?: boolean }) {
   const isRmc = rmcEnabled;
   const { appendOrigin } = useOrigin();
-  const { sectionVisible, isAdmin } = useAuth();
+  const { sectionVisible, featureCan, isOwner } = useAuth();
   const { toast } = useToast();
 
   const [dieselCorrPhysicalL, setDieselCorrPhysicalL] = useState("");
@@ -1121,7 +1120,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
       </div>
 
       {/* ── Diesel Physical Stock Correction Card (admin only) ── */}
-      {isAdmin && dieselMaterialId && (
+      {isOwner && dieselMaterialId && (
         <Card className="border-blue-200 dark:border-blue-800">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1291,7 +1290,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
       </div>
       </>)}
 
-      {isAdmin && (
+      {isOwner && (
         <>
           <div className="mt-2">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Admin Tools</h3>
@@ -2135,10 +2134,10 @@ export function PlantTypeConfigSection() {
 }
 
 function MastersTab() {
-  const { sectionVisible, isAdmin } = useAuth();
+  const { featureCan, sectionVisible } = useAuth();
   return (
     <div className="space-y-6">
-      {isAdmin && <div id="plant-config"><PlantTypeConfigSection /></div>}
+      {featureCan("hmp_rmc", "edit") && <div id="plant-config"><PlantTypeConfigSection /></div>}
       {sectionVisible("master_parties") && <div id="party-master"><PartyMaster /></div>}
       {(sectionVisible("master_parties") || sectionVisible("sites_plants_manage") || sectionVisible("admin_settings")) && <div id="site-master"><SitesMasterSection /></div>}
       {sectionVisible("master_materials") && <div id="material-master"><MaterialMaster /></div>}
@@ -2151,10 +2150,10 @@ function MastersTab() {
 
 export function SitesMasterSection() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, featureCan } = useAuth();
   const canEdit = sectionCan("master_parties", "edit") || sectionCan("sites_plants_manage", "edit") || sectionCan("admin_settings", "edit");
   const canCreate = sectionCan("master_parties", "create") || sectionCan("sites_plants_manage", "create") || sectionCan("admin_settings", "create");
-  const canDelete = isAdmin;
+  const canDelete = featureCan("masters", "cancel");
 
   const [newSiteName, setNewSiteName] = useState("");
   const [newSitePartyId, setNewSitePartyId] = useState<string>("all");
@@ -2463,10 +2462,10 @@ export function SitesMasterSection() {
 
 export function PartyMaster() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, featureCan } = useAuth();
   const canEdit = sectionCan("master_parties", "edit");
   const canCreate = sectionCan("master_parties", "create");
-  const canDelete = isAdmin;
+  const canDelete = featureCan("masters", "cancel");
   const canExport = sectionCan("master_parties", "export");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingParty, setEditingParty] = useState<Party | null>(null);
@@ -2660,10 +2659,10 @@ export function PartyMaster() {
 
 export function MaterialMaster() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, featureCan } = useAuth();
   const canEdit = sectionCan("master_materials", "edit");
   const canCreate = sectionCan("master_materials", "create");
-  const canDelete = isAdmin;
+  const canDelete = featureCan("masters", "cancel");
   const canExport = sectionCan("master_materials", "export");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<PlantMaterial | null>(null);
@@ -3389,10 +3388,10 @@ type MixTemplateComponent = {
 
 export function MixTemplateMaster() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, featureCan, isOwner } = useAuth();
   const canEdit = sectionCan("master_materials", "edit");
   const canCreate = sectionCan("master_materials", "create");
-  const canDelete = isAdmin;
+  const canDelete = featureCan("masters", "cancel");
   const canExport = sectionCan("master_materials", "export");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<MixTemplate | null>(null);
@@ -3498,7 +3497,7 @@ export function MixTemplateMaster() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-template-components"] });
       setDialogOpen(false);
       resetForm();
-      if (isAdmin && variables._proportionsChanged) setPostSaveAlertTemplate({ id: savedId, name: savedName });
+      if (canEdit && variables._proportionsChanged) setPostSaveAlertTemplate({ id: savedId, name: savedName });
       toast({ title: "Mix template updated successfully" });
     },
     onError: (error: any) => {
@@ -3927,7 +3926,7 @@ export function MixTemplateMaster() {
       </Dialog>
 
       <CardContent>
-        {postSaveAlertTemplate && isAdmin && (
+        {postSaveAlertTemplate && canEdit && (
           <div className="mb-4 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 flex items-start gap-3">
             <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -4020,7 +4019,7 @@ export function MixTemplateMaster() {
                     </div>
                     {canEdit && (
                       <div className="flex gap-1 items-center">
-                        {isAdmin && (
+                        {isOwner && (
                           <Link href={`/plant/ledger-rebuild?template=${template.id}`}>
                             <Button
                               variant="ghost"
@@ -4190,9 +4189,9 @@ function PendingIdentificationRow({
 }
 
 export function EquipmentIdentificationSection() {
-  const { isAdmin, isOwner } = useAuth();
+  const { featureCan } = useAuth();
   const { toast } = useToast();
-  const canReview = isAdmin || isOwner;
+  const canReview = featureCan("equipment_usage", "verify");
   const [addRow, setAddRow] = useState<IdentificationRow | null>(null);
   const [partialLink, setPartialLink] = useState<{ row: IdentificationRow; equipment: EquipmentMasterType } | null>(null);
   const { data } = useQuery<EquipmentPerformanceReport>({
@@ -4299,10 +4298,10 @@ export function EquipmentIdentificationSection() {
 
 export function EquipmentMasterSection() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, featureCan } = useAuth();
   const canEdit = sectionCan("master_equipment", "edit");
   const canCreate = sectionCan("master_equipment", "create");
-  const canDelete = isAdmin;
+  const canDelete = featureCan("masters", "cancel");
   const canExport = sectionCan("master_equipment", "export");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<EquipmentMasterType | null>(null);
@@ -4849,7 +4848,7 @@ export function EquipmentMasterSection() {
 
 export function PersonnelMasterSection() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, featureCan } = useAuth();
   const canEdit = sectionCan("master_personnel", "edit");
   const canCreate = sectionCan("master_personnel", "create");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -5037,7 +5036,7 @@ export function PersonnelMasterSection() {
                       </Button>
                     </>
                   )}
-                  {isAdmin && (
+                  {featureCan("masters", "cancel") && (
                     <Button
                       size="icon"
                       variant="ghost"

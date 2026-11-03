@@ -564,7 +564,11 @@ export default function PlantShiftLogManpowerReview() {
   // "operations" tab), so back navigation lands on /plant/dashboard?tab=operations.
   // getPlantBackLink also forwards `role` from the current URL when present.
   const backLink = getPlantBackLink({ defaultTab: "operations" });
-  const { isAdmin } = useAuth();
+  const { featureCan } = useAuth();
+  const canView = featureCan("labour_attendance", "view");
+  const canVerify = featureCan("labour_attendance", "verify");
+  const canEdit = featureCan("labour_attendance", "edit");
+  const canAccessPage = canView || canVerify || canEdit;
 
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
@@ -612,12 +616,12 @@ export default function PlantShiftLogManpowerReview() {
 
   const { data: vendorNames } = useQuery<string[]>({
     queryKey: ["/api/vendor-bills/vendor-names"],
-    enabled: isAdmin,
+    enabled: canAccessPage,
   });
 
   const { data: plantNames } = useQuery<string[]>({
     queryKey: ["/api/plant-module/shift-logs/plants"],
-    enabled: isAdmin,
+    enabled: canAccessPage,
   });
 
   type RecentMerge = {
@@ -673,7 +677,7 @@ export default function PlantShiftLogManpowerReview() {
   const [aliasFilterDateTo, setAliasFilterDateTo] = useState("");
 
   const fetchRecentMerges = async () => {
-    if (!isAdmin) return;
+    if (!canView) return;
     setLoadingRecent(true);
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/recent-merges", {
@@ -727,7 +731,7 @@ export default function PlantShiftLogManpowerReview() {
   }, [recentMerges, recentDupActivity, recentAliasActivity]);
 
   const fetchLearnedAliases = async () => {
-    if (!isAdmin) return;
+    if (!canView) return;
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/learned-aliases", {
         method: "POST",
@@ -744,7 +748,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const fetchCustomAliases = async () => {
-    if (!isAdmin) return;
+    if (!canView) return;
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/custom-aliases", {
         method: "POST",
@@ -761,7 +765,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const submitNewAlias = async () => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -800,7 +804,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const deleteCustomAlias = async (id: number) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -835,7 +839,7 @@ export default function PlantShiftLogManpowerReview() {
   // Each successful revert itself appends a new audit row so the feed
   // continues to be a complete history of every state change.
   const revertAliasActivity = async (a: AliasActivity) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -927,7 +931,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const bulkRevertAliasActivity = async () => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -993,7 +997,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const bulkRevertFromFeed = async () => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -1059,7 +1063,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const suppressLearnedFullPair = async (a: string, b: string) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -1093,7 +1097,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const suppressLearnedTokenPair = async (a: string, b: string) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -1125,7 +1129,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const fetchDismissedPairs = async () => {
-    if (!isAdmin) return;
+    if (!canView) return;
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/dismissed-pairs", {
         method: "POST",
@@ -1142,27 +1146,27 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   useEffect(() => {
-    if (isAdmin) {
+    if (canView) {
       fetchRecentMerges();
       fetchLearnedAliases();
       fetchCustomAliases();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin]);
+  }, [canView]);
 
   // Refetch dismissed pairs whenever the plant scope changes (or on unlock).
   // Also wipe any in-flight bulk-restore selection so a stale checkbox state
   // from the previous plant can't leak into the new scope.
   useEffect(() => {
-    if (isAdmin) {
+    if (canView) {
       fetchDismissedPairs();
     }
     setSelectedDismissedIds({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, dismissalsScopeKey]);
+  }, [canView, dismissalsScopeKey]);
 
   const undoMerge = async (m: RecentMerge) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -1202,7 +1206,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const fetchRows = async () => {
-    if (!isAdmin) return;
+    if (!canVerify) return;
     setLoading(true);
     try {
       const res = await fetch("/api/plant-module/shift-log-manpower/review-list", {
@@ -1246,7 +1250,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const submitOne = async (row: ReviewRow) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     const e = edits[row.name];
     if (!e?.contractor || !e?.category || !e?.gender) {
       toast({ title: "Fill contractor, category and gender", variant: "destructive" });
@@ -1288,7 +1292,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const submitMerge = async () => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     const fromNames = Object.keys(selected).filter(n => selected[n]);
     if (fromNames.length < 2) {
       toast({ title: "Pick at least two name groups to merge", variant: "destructive" });
@@ -1393,7 +1397,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const dismissCluster = async (c: Cluster) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -1446,7 +1450,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const bulkRestoreDismissed = async (opts: { ids?: number[]; olderThanDays?: number; description: string }) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -1493,7 +1497,7 @@ export default function PlantShiftLogManpowerReview() {
   };
 
   const restoreDismissedPair = async (p: DismissedPair) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (!actor || actor.trim().length < 2) {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
@@ -1659,7 +1663,7 @@ export default function PlantShiftLogManpowerReview() {
     return { workers: rows.length, items: rows.reduce((a, r) => a + r.count, 0) };
   }, [rows]);
 
-  if (!isAdmin) {
+  if (!canAccessPage) {
     return (
       <div className="max-w-2xl mx-auto p-8 text-center space-y-3">
         <ShieldAlert className="w-10 h-10 mx-auto text-muted-foreground" />

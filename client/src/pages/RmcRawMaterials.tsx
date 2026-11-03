@@ -48,7 +48,7 @@ const ALL_PLANTS = "__ALL__";
 
 export default function RmcRawMaterials() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, featureCan } = useAuth();
   const canCreate = sectionCan("plant_materials", "create");
   const canEdit = sectionCan("plant_materials", "edit");
 
@@ -240,7 +240,7 @@ export default function RmcRawMaterials() {
                           <Pencil className="w-4 h-4" />
                         </Button>
                       )}
-                      {isAdmin && (
+                      {featureCan("hmp_rmc", "cancel") && (
                         <Button
                           variant="outline" size="sm"
                           className="text-destructive hover:bg-destructive/10"

@@ -59,9 +59,13 @@ const fmt = (n: unknown) => formatQty(n, 3);
 
 export default function PlantStockReconciliation() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { featureCan } = useAuth();
   const queryClient = useQueryClient();
-  const canPost = isAdmin || sectionCan("stock_reconciliation", "create");
+  const canPost = featureCan("issues_stock", "verify");
+  const canSaveDraft =
+    featureCan("issues_stock", "add") ||
+    featureCan("issues_stock", "edit") ||
+    canPost;
 
   const today = new Date().toISOString().slice(0, 10);
   const [countDate, setCountDate] = useState(today);
@@ -409,22 +413,26 @@ export default function PlantStockReconciliation() {
 
           <div className="sticky bottom-2 flex flex-wrap justify-end gap-2 items-center">
             {draftId && <Badge variant="outline" data-testid="badge-working-draft">Working on saved draft #{draftId}</Badge>}
-            <Button variant="outline" onClick={() => saveDraftMutation.mutate("draft")}
-              disabled={saveDraftMutation.isPending || computedRows.length === 0} data-testid="button-save-draft">
-              {saveDraftMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-              Save draft
-            </Button>
-            <Button variant="secondary" onClick={() => saveDraftMutation.mutate("submitted")}
-              disabled={saveDraftMutation.isPending || computedRows.length === 0} data-testid="button-submit-approval">
-              Submit for approval
-            </Button>
+            {canSaveDraft && (
+              <>
+                <Button variant="outline" onClick={() => saveDraftMutation.mutate("draft")}
+                  disabled={saveDraftMutation.isPending || computedRows.length === 0} data-testid="button-save-draft">
+                  {saveDraftMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                  Save draft
+                </Button>
+                <Button variant="secondary" onClick={() => saveDraftMutation.mutate("submitted")}
+                  disabled={saveDraftMutation.isPending || computedRows.length === 0} data-testid="button-submit-approval">
+                  Submit for approval
+                </Button>
+              </>
+            )}
             <Button size="lg" onClick={openPreview} disabled={!canPost || readyRows.length === 0} data-testid="button-preview">
               Preview & Post ({readyRows.length})
             </Button>
           </div>
-          {!canPost && (
+          {!canPost && canSaveDraft && (
             <p className="text-sm text-amber-600 text-right">
-              You can prepare and submit this reconciliation as a draft; posting needs an Owner/Admin or a user with Stock Reconciliation permission.
+              You can prepare and submit this reconciliation as a draft; posting requires Issues &amp; stock verification permission.
             </p>
           )}
         </TabsContent>

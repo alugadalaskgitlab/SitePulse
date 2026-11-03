@@ -54,6 +54,7 @@ vi.mock("@/hooks/use-toast", () => ({
 vi.mock("@/lib/auth-context", () => ({
   useAuth: () => ({
     sectionCan: () => true,
+    featureCan: () => true,
     isAdmin: true,
     user: { id: 7, fullName: "Test User" },
   }),

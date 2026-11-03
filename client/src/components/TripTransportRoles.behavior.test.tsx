@@ -21,7 +21,12 @@ vi.mock("wouter", () => ({
   Link: ({ children }: any) => <span>{children}</span>,
 }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: harness.toast }) }));
-vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ sectionCan: () => harness.canEdit, isAdmin: false, isOwner: false }) }));
+vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
+  sectionCan: () => harness.canEdit,
+  featureCan: (_feature: string, action: string) => action === "view" || harness.canEdit,
+  isAdmin: false,
+  isOwner: false,
+}) }));
 vi.mock("@/lib/featureFlags", () => ({ useFeatureFlags: () => ({ companyName: "HLC", logoFile: "logo.png" }) }));
 vi.mock("@/hooks/use-upload", () => ({ useUpload: () => ({ uploadFile: vi.fn() }) }));
 vi.mock("@/components/AttachmentGallery", () => ({ AttachmentGallery: () => null }));

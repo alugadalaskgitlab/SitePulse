@@ -33,8 +33,8 @@ export default function DeviceApproval() {
 
   // Matrix-based gates (admin gets every permission implicitly).
   const devMgmt = permissions["device_approval"];
-  const canView = !!user?.isAdmin || !!devMgmt?.view;
-  const canEdit = !!user?.isAdmin || !!devMgmt?.edit;
+  const canView = !!user?.isOwner || !!devMgmt?.view;
+  const canEdit = !!user?.isOwner || !!devMgmt?.edit;
 
   const devicesQ = useQuery<DeviceRow[]>({
     queryKey: ["/api/auth/devices", tab],

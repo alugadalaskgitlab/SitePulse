@@ -10,6 +10,7 @@ import RequireAuth from "@/components/RequireAuth";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { AppErrorBoundary, AppUpdateNotice } from "@/components/AppRecovery";
 import type { SectionKey } from "@shared/permissions";
+import type { FeatureAction, FeatureId } from "@shared/featureAccess";
 import { HubShell } from "@/components/HubShell";
 
 // ── Core pages (kept eager: always needed on first render) ───────────────────
@@ -128,7 +129,7 @@ const EquipmentHireBilling = lazy(() => import("@/pages/EquipmentHireBilling"));
 
 // Admin pages
 const AdminSettings    = lazy(() => import("@/pages/AdminSettings"));
-const AccessChangesPreview = lazy(() => import("@/pages/AccessChangesPreview"));
+const AccessRoles      = lazy(() => import("@/pages/AccessRoles"));
 const AdminReports     = lazy(() => import("@/pages/AdminReports"));
 const ManagementReport = lazy(() => import("@/pages/ManagementReport"));
 const DataSync         = lazy(() => import("@/pages/DataSync"));
@@ -173,7 +174,6 @@ function PageLoader() {
   );
 }
 
-const PermissionMigrationAudit = lazy(() => import("@/pages/PermissionMigrationAudit"));
 
 // ── Feature flag ─────────────────────────────────────────────────────────────
 const WP_ENABLED = import.meta.env.VITE_ENABLE_WORK_PROGRAM === "true";
@@ -192,8 +192,8 @@ function gated(Component: ComponentType<any>, section?: SectionKey) {
 
 function gatedEither(Component: ComponentType<any>, ...sections: SectionKey[]) {
   return function GatedEitherRoute(params: any): ReactNode {
-    const { sectionVisible, isAdmin } = useAuth();
-    const canAccess = isAdmin || sections.some((s) => sectionVisible(s));
+    const { sectionVisible } = useAuth();
+    const canAccess = sections.some((s) => sectionVisible(s));
     if (!canAccess) {
       return (
         <div className="mx-auto max-w-md text-center py-20 space-y-3">
@@ -210,6 +210,59 @@ function gatedEither(Component: ComponentType<any>, ...sections: SectionKey[]) {
         <Component {...params} />
       </RequireAuth>
     );
+  };
+}
+
+function featureGated(Component: ComponentType<any>, feature: FeatureId, action: FeatureAction = "view") {
+  function FeatureContent(params: any): ReactNode {
+    const { featureCan } = useAuth();
+    if (!featureCan(feature, action)) {
+      return (
+        <div className="mx-auto max-w-md text-center py-20 space-y-3">
+          <h2 className="text-xl font-semibold">No access</h2>
+          <p className="text-sm text-muted-foreground">You don't have the required feature permission.</p>
+        </div>
+      );
+    }
+    return <Component {...params} />;
+  }
+  return function GatedFeatureRoute(params: any): ReactNode {
+    return <RequireAuth><FeatureContent {...params} /></RequireAuth>;
+  };
+}
+
+function reportGated(Component: ComponentType<any>, ...sourceFeatures: FeatureId[]) {
+  function ReportContent(params: any): ReactNode {
+    const { featureCan } = useAuth();
+    const canView = featureCan("reports", "view") &&
+      sourceFeatures.every(feature => featureCan(feature, "view"));
+    if (!canView) {
+      return (
+        <div className="mx-auto max-w-md text-center py-20 space-y-3">
+          <h2 className="text-xl font-semibold">No access</h2>
+          <p className="text-sm text-muted-foreground">Reports and source-feature View access are required.</p>
+        </div>
+      );
+    }
+    return <Component {...params} />;
+  }
+  return function GatedReportRoute(params: any): ReactNode {
+    return <RequireAuth><ReportContent {...params} /></RequireAuth>;
+  };
+}
+
+function ownerGated(Component: ComponentType<any>) {
+  return function OwnerGatedRoute(params: any): ReactNode {
+    const { isOwner, isLoading } = useAuth();
+    if (isLoading) return null;
+    if (!isOwner) {
+      return (
+        <div className="mx-auto max-w-md py-20 text-center">
+          <h2 className="text-xl font-semibold">Owner access required</h2>
+        </div>
+      );
+    }
+    return <RequireAuth><Component {...params} /></RequireAuth>;
   };
 }
 
@@ -313,43 +366,43 @@ function AuthedShell() {
           <Route path="/site/material-trips" component={gated(SiteMaterialTrips, "site_materials")} />
           <Route path="/site/materials-received" component={gated(SiteMaterialsReceived, "site_materials")} />
           <Route path="/site/material-stock" component={gated(SiteMaterialStock, "site_materials")} />
-          <Route path="/site/purchases" component={gatedEither(SitePurchasesReport, "report_site_purchases", "site_procurement")} />
-          <Route path="/site/requirements/new" component={gated(SiteRequirementNew, "site_dprs")} />
-          <Route path="/site/requirements" component={gatedEither(SiteRequirementsList, "site_dprs", "stores_inventory", "plant_equipment", "labour_management")} />
+          <Route path="/site/purchases" component={reportGated(SitePurchasesReport, "purchase_orders")} />
+          <Route path="/site/requirements/new" component={featureGated(SiteRequirementNew, "site_requirements", "add")} />
+          <Route path="/site/requirements" component={featureGated(SiteRequirementsList, "site_requirements")} />
           <Route path="/my-plans" component={gated(MyPlans, "site_dprs")} />
 
           {/* Plant pages */}
           <Route path="/plant" component={gated(PlantHome, "hmp_hub")} />
           <Route path="/plant/dashboard" component={gated(Plant, "hmp_hub")} />
-          <Route path="/plant/new" component={gatedEither(PlantNew, "site_management", "sites_plants_manage", "admin_settings")} />
-          <Route path="/plant/material-receipts" component={gated(PlantMaterialReceipts, "plant_materials")} />
-          <Route path="/plant/material-issues" component={gated(PlantMaterialIssues, "plant_materials")} />
-          <Route path="/plant/material-returns" component={gated(PlantMaterialReturns, "plant_materials")} />
-          <Route path="/plant/dispatches" component={gated(PlantDispatches, "plant_production")} />
-          <Route path="/plant/equipment-usage" component={gated(PlantEquipmentUsage, "plant_equipment")} />
-          <Route path="/plant/generator-logs" component={gatedEither(PlantGeneratorLogs, "plant_generator_logs", "plant_equipment")} />
-          <Route path="/plant/maintenance" component={gatedEither(PlantMaintenance, "plant_maintenance", "plant_equipment")} />
-          {rmcEnabled && <Route path="/plant/rmc" component={gatedEither(RmcHub, "rmc_operations", "rmc_batch_records", "plant_production")} />}
-          {rmcEnabled && <Route path="/plant/rmc/mix-designs" component={gatedEither(RmcMixDesigns, "rmc_mix_designs", "rmc_operations", "plant_production")} />}
-          {rmcEnabled && <Route path="/plant/rmc/batch-records" component={gatedEither(RmcBatchRecords, "rmc_batch_records", "rmc_operations", "plant_production")} />}
-          {rmcEnabled && <Route path="/plant/rmc/raw-materials" component={gatedEither(RmcRawMaterials, "rmc_raw_materials", "rmc_operations", "plant_materials")} />}
-          {rmcEnabled && <Route path="/plant/rmc/cube-tests" component={gatedEither(RmcCubeTests, "rmc_cube_tests", "rmc_operations", "plant_production")} />}
-          {rmcEnabled && <Route path="/plant/rmc/daily-report" component={gatedEither(RmcDailyReport, "rmc_daily_report", "plant_daily_reports")} />}
-          {rmcEnabled && <Route path="/plant/rmc/delivery-challans" component={gatedEither(RmcDeliveryChallans, "rmc_delivery_challans", "rmc_operations", "plant_production")} />}
-          <Route path="/plant/stock" component={gatedEither(PlantStock, "plant_stock", "plant_materials")} />
-          <Route path="/plant/stock-reconciliation" component={gatedEither(PlantStockReconciliation, "stock_reconciliation", "plant_stock")} />
-          <Route path="/plant/variance-report" component={gated(PlantVarianceReport, "plant_variance")} />
-          <Route path="/plant/audit-report" component={gated(PlantAuditReport, "plant_audit")} />
-          <Route path="/plant/diesel-procurement" component={gated(PlantDieselProcurementReport, "plant_diesel_proc")} />
-          <Route path="/plant/bitumen-stock" component={gated(PlantBitumenStock, "plant_bitumen")} />
-          <Route path="/plant/ldo-flow-meter" component={gated(PlantLdoFlowMeter, "plant_ldo")} />
-          <Route path="/plant/ldo-backfill" component={gatedEither(PlantLdoBackfill, "admin_ldo_tools", "admin_settings")} />
-          <Route path="/plant/ldo-dip-backfill" component={gatedEither(PlantLdoDipBackfill, "admin_ldo_tools", "admin_settings")} />
-          <Route path="/plant/stock-reassign" component={gatedEither(PlantStockReassign, "admin_ledger_tools", "plant_stock")} />
-          <Route path="/plant/stock-transfer" component={gatedEither(PlantStockTransfer, "admin_ledger_tools", "plant_stock")} />
-          <Route path="/stores/pending-plant-receipts" component={gated(PendingPlantReceipts, "plant_materials")} />
-          <Route path="/plant/ledger-rebuild" component={gatedEither(PlantLedgerRebuild, "admin_ledger_tools", "plant_stock")} />
-          <Route path="/plant/shift-log-manpower-review" component={gatedEither(PlantShiftLogManpowerReview, "plant_manpower_review", "plant_shift_logs")} />
+          <Route path="/plant/new" component={featureGated(PlantNew, "masters", "add")} />
+          <Route path="/plant/material-receipts" component={featureGated(PlantMaterialReceipts, "plant_receipts")} />
+          <Route path="/plant/material-issues" component={featureGated(PlantMaterialIssues, "issues_stock")} />
+          <Route path="/plant/material-returns" component={featureGated(PlantMaterialReturns, "issues_stock")} />
+          <Route path="/plant/dispatches" component={featureGated(PlantDispatches, "hmp_rmc")} />
+          <Route path="/plant/equipment-usage" component={featureGated(PlantEquipmentUsage, "equipment_usage")} />
+          <Route path="/plant/generator-logs" component={featureGated(PlantGeneratorLogs, "maintenance")} />
+          <Route path="/plant/maintenance" component={featureGated(PlantMaintenance, "maintenance")} />
+          {rmcEnabled && <Route path="/plant/rmc" component={featureGated(RmcHub, "hmp_rmc")} />}
+          {rmcEnabled && <Route path="/plant/rmc/mix-designs" component={featureGated(RmcMixDesigns, "hmp_rmc")} />}
+          {rmcEnabled && <Route path="/plant/rmc/batch-records" component={featureGated(RmcBatchRecords, "hmp_rmc")} />}
+          {rmcEnabled && <Route path="/plant/rmc/raw-materials" component={featureGated(RmcRawMaterials, "hmp_rmc")} />}
+          {rmcEnabled && <Route path="/plant/rmc/cube-tests" component={featureGated(RmcCubeTests, "hmp_rmc")} />}
+          {rmcEnabled && <Route path="/plant/rmc/daily-report" component={featureGated(RmcDailyReport, "hmp_rmc")} />}
+          {rmcEnabled && <Route path="/plant/rmc/delivery-challans" component={featureGated(RmcDeliveryChallans, "hmp_rmc")} />}
+          <Route path="/plant/stock" component={featureGated(PlantStock, "issues_stock")} />
+          <Route path="/plant/stock-reconciliation" component={featureGated(PlantStockReconciliation, "issues_stock", "view")} />
+          <Route path="/plant/variance-report" component={reportGated(PlantVarianceReport, "hmp_rmc")} />
+          <Route path="/plant/audit-report" component={reportGated(PlantAuditReport, "hmp_rmc", "plant_receipts")} />
+          <Route path="/plant/diesel-procurement" component={reportGated(PlantDieselProcurementReport, "diesel_issue", "plant_receipts")} />
+          <Route path="/plant/bitumen-stock" component={featureGated(PlantBitumenStock, "plant_receipts")} />
+          <Route path="/plant/ldo-flow-meter" component={featureGated(PlantLdoFlowMeter, "plant_receipts")} />
+          <Route path="/plant/ldo-backfill" component={ownerGated(PlantLdoBackfill)} />
+          <Route path="/plant/ldo-dip-backfill" component={ownerGated(PlantLdoDipBackfill)} />
+          <Route path="/plant/stock-reassign" component={ownerGated(PlantStockReassign)} />
+          <Route path="/plant/stock-transfer" component={featureGated(PlantStockTransfer, "issues_stock", "add")} />
+          <Route path="/stores/pending-plant-receipts" component={featureGated(PendingPlantReceipts, "plant_receipts")} />
+          <Route path="/plant/ledger-rebuild" component={ownerGated(PlantLedgerRebuild)} />
+          <Route path="/plant/shift-log-manpower-review" component={featureGated(PlantShiftLogManpowerReview, "labour_attendance", "verify")} />
           <Route path="/plant/shift-log" component={gated(PlantShiftLog, "plant_shift_logs")} />
           <Route path="/plant/shift-log/:date" component={gated(PlantShiftLog, "plant_shift_logs")} />
           <Route path="/plant/daily-reports" component={gated(PlantDailyReports, "plant_daily_reports")} />
@@ -357,73 +410,72 @@ function AuthedShell() {
           <Route path="/plant/daily-report/:date" component={gated(PlantDailyReport, "plant_daily_reports")} />
           <Route path="/plant/heating-sessions" component={gated(PlantHeatingSessions, "plant_heating")} />
           <Route path="/plant/heating-sessions/:date" component={gated(PlantHeatingSessions, "plant_heating")} />
-          <Route path="/plant/heating-trends" component={gatedEither(PlantHeatingTrends, "plant_heating_trends", "plant_heating")} />
-          <Route path="/plant/dispatch-summary" component={gatedEither(PlantProjectReport, "plant_daily_reports", "plant_production")} />
+          <Route path="/plant/heating-trends" component={reportGated(PlantHeatingTrends, "hmp_rmc")} />
+          <Route path="/plant/dispatch-summary" component={reportGated(PlantProjectReport, "hmp_rmc")} />
           <Route path="/plant/heating-mismatch/:date" component={gated(PlantHeatingMismatch, "plant_heating")} />
-          <Route path="/plant/ldo-mismatch/:date" component={gated(PlantLdoMismatch, "plant_heating")} />
-          <Route path="/plant/ldo-reconciliation" component={gatedEither(PlantLdoReconciliation, "plant_ldo_reconciliation", "plant_stock")} />
+          <Route path="/plant/ldo-mismatch/:date" component={reportGated(PlantLdoMismatch, "plant_receipts")} />
+          <Route path="/plant/ldo-reconciliation" component={ownerGated(PlantLdoReconciliation)} />
 
           {/* Finance / procurement pages */}
-          <Route path="/plant/purchase-indents" component={gatedEither(PurchaseIndents, "purchase_indents_view", "site_procurement", "purchase_indents_raise")} />
-          <Route path="/plant/diesel-requirements" component={gatedEither(DieselRequirements, "diesel_req_view", "site_diesel", "diesel_req_raise")} />
-          <Route path="/plant/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
-          <Route path="/finance/vendor-bills/attention" component={VendorBillsAttention} />
-          <Route path="/finance/vendor-bills/tally-readiness" component={gatedEither(VendorTallyReadiness, "vendor_bills_view", "vendor_bills")} />
-          <Route path="/finance/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
-          <Route path="/plant/rate-cards" component={gatedEither(RateCards, "rate_cards", "vendor_masters_manage", "admin_settings")} />
-          <Route path="/equipment/hire-billing" component={gated(EquipmentHireBilling, "plant_equipment")} />
-          <Route path="/plant/data-sync" component={gatedEither(DataSync, "data_sync", "admin_settings")} />
-          <Route path="/plant/:id" component={gatedEither(PlantDetails, "site_management", "sites_plants_manage", "admin_settings")} />
+          <Route path="/plant/purchase-indents" component={featureGated(PurchaseIndents, "purchase_indent")} />
+          <Route path="/plant/diesel-requirements" component={featureGated(DieselRequirements, "diesel_issue")} />
+          <Route path="/plant/vendor-bills" component={featureGated(VendorBills, "vendor_bills")} />
+          <Route path="/finance/vendor-bills/attention" component={ownerGated(VendorBillsAttention)} />
+          <Route path="/finance/vendor-bills/tally-readiness" component={featureGated(VendorTallyReadiness, "vendor_bills")} />
+          <Route path="/finance/vendor-bills" component={featureGated(VendorBills, "vendor_bills")} />
+          <Route path="/plant/rate-cards" component={featureGated(RateCards, "rate_cards")} />
+          <Route path="/equipment/hire-billing" component={featureGated(EquipmentHireBilling, "equipment_usage")} />
+          <Route path="/plant/data-sync" component={ownerGated(DataSync)} />
+          <Route path="/plant/:id" component={featureGated(PlantDetails, "masters")} />
 
           {/* IRN pages */}
-          <Route path="/irn" component={gatedEither(IrnListPage, "irn_view", "irn_raise", "irn_approve")} />
-          <Route path="/irn/new" component={gated(IrnRaisePage, "irn_raise")} />
-          <Route path="/irn/:id" component={gatedEither(IrnDetailPage, "irn_view", "irn_raise", "irn_approve")} />
+          <Route path="/irn" component={featureGated(IrnListPage, "irn")} />
+          <Route path="/irn/new" component={featureGated(IrnRaisePage, "irn", "add")} />
+          <Route path="/irn/:id" component={featureGated(IrnDetailPage, "irn")} />
 
           {/* BOQ / Work Programme pages */}
-          {WP_ENABLED && <Route path="/work-program" component={gatedEither(BoqProjects, "qto_boq", "work_programme", "work_programme_review", "planning_masters")} />}
-          {WP_ENABLED && <Route path="/work-program/planning-masters" component={gated(PlanningMasters, "planning_masters")} />}
-          {WP_ENABLED && <Route path="/work-program/:id" component={gated(BoqProjectDetail, "qto_boq")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/settings" component={gated(BoqProgramSettings, "work_programme")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/programme" component={gated(WorkProgramme, "work_programme")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/demand" component={gated(WorkDemand, "work_programme_review")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/earthwork" component={gated(EarthworkControl, "work_programme_review")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/execution-arrangements" component={gated(ExecutionArrangements, "work_programme")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/scope" component={gatedEither(ScopeSetup, "project_scope", "qto_boq", "work_programme", "work_programme_review", "planning_masters")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/geometry" component={gated(RoadGeometry, "planning_masters")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/resource-review" component={gated(ResourceReview, "work_programme_review")} />}
-          {WP_ENABLED && <Route path="/work-program/:id/item-review" component={gated(BoqItemReview, "work_programme_review")} />}
-          {WP_ENABLED && <Route path="/norms" component={gated(NormsLibrary, "norms_library")} />}
+          {WP_ENABLED && <Route path="/work-program" component={featureGated(BoqProjects, "boq_programme")} />}
+          {WP_ENABLED && <Route path="/work-program/planning-masters" component={featureGated(PlanningMasters, "boq_programme", "edit")} />}
+          {WP_ENABLED && <Route path="/work-program/:id" component={featureGated(BoqProjectDetail, "boq_programme")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/settings" component={featureGated(BoqProgramSettings, "boq_programme", "edit")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/programme" component={featureGated(WorkProgramme, "boq_programme")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/demand" component={featureGated(WorkDemand, "boq_programme")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/earthwork" component={featureGated(EarthworkControl, "boq_programme")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/execution-arrangements" component={featureGated(ExecutionArrangements, "boq_programme")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/scope" component={featureGated(ScopeSetup, "boq_programme")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/geometry" component={featureGated(RoadGeometry, "boq_programme")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/resource-review" component={featureGated(ResourceReview, "boq_programme")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/item-review" component={featureGated(BoqItemReview, "boq_programme")} />}
+          {WP_ENABLED && <Route path="/norms" component={featureGated(NormsLibrary, "boq_programme")} />}
 
           {/* Stores pages */}
           <Route path="/stores" component={gated(StoresHome, "stores_inventory")} />
           <Route path="/stores/items" component={gated(StoresItems, "stores_inventory")} />
-          <Route path="/stores/grns" component={gated(StoresGrn, "stores_inventory")} />
-          <Route path="/stores/grns/new" component={gated(() => <StoresGrn isNew />, "stores_inventory")} />
-          <Route path="/stores/grns/:id" component={gated((p: any) => <StoresGrn detailId={parseInt(p.id)} />, "stores_inventory")} />
-          <Route path="/stores/issues" component={gated(StoresIssue, "stores_inventory")} />
-          <Route path="/stores/issues/new" component={gated(() => <StoresIssue isNew />, "stores_inventory")} />
-          <Route path="/stores/issues/:id" component={gated((p: any) => <StoresIssue detailId={parseInt(p.id)} />, "stores_inventory")} />
-          <Route path="/stores/ledger/:itemId" component={gated(StoresLedger, "stores_inventory")} />
-           <Route path="/stores/diesel-register" component={gatedEither(StoresDieselRegister, "diesel_req_view", "site_diesel", "stores_inventory")} />
+          <Route path="/stores/grns" component={featureGated(StoresGrn, "grn")} />
+          <Route path="/stores/grns/new" component={featureGated(() => <StoresGrn isNew />, "grn", "add")} />
+          <Route path="/stores/grns/:id" component={featureGated((p: any) => <StoresGrn detailId={parseInt(p.id)} />, "grn")} />
+          <Route path="/stores/issues" component={featureGated(StoresIssue, "issues_stock")} />
+          <Route path="/stores/issues/new" component={featureGated(() => <StoresIssue isNew />, "issues_stock", "add")} />
+          <Route path="/stores/issues/:id" component={featureGated((p: any) => <StoresIssue detailId={parseInt(p.id)} />, "issues_stock")} />
+          <Route path="/stores/ledger/:itemId" component={featureGated(StoresLedger, "issues_stock")} />
+          <Route path="/stores/diesel-register" component={featureGated(StoresDieselRegister, "diesel_issue")} />
 
           {/* Admin pages */}
-          <Route path="/admin/site-backfill" component={gatedEither(SiteBackfill, "site_management", "admin_settings")} />
-          <Route path="/admin/settings" component={gated(AdminSettings, "admin_settings")} />
-          <Route path="/admin/settings/access-changes-preview" component={gated(AccessChangesPreview, "admin_settings")} />
-          <Route path="/admin/permission-migration-audit" component={gated(PermissionMigrationAudit, "admin_settings")} />
-          <Route path="/admin/users" component={gatedEither(UserManagement, "user_management", "permission_manager")} />
-          <Route path="/admin/devices" component={gated(DeviceApproval, "device_approval")} />
-          <Route path="/admin/reports" component={gatedEither(AdminReports, "report_management", "reports")} />
-          <Route path="/admin/management-report" component={gatedEither(ManagementReport, "report_management", "reports", "admin_settings")} />
-          <Route path="/admin/concrete-estimates" component={gatedEither(ConcreteEstimates, "concrete_calculator", "concrete_estimates_manage", "reports", "admin_settings")} />
+          <Route path="/admin/site-backfill" component={ownerGated(SiteBackfill)} />
+          <Route path="/admin/settings/roles" component={ownerGated(AccessRoles)} />
+          <Route path="/admin/settings" component={ownerGated(AdminSettings)} />
+          <Route path="/admin/users" component={featureGated(UserManagement, "users_permissions")} />
+          <Route path="/admin/devices" component={ownerGated(DeviceApproval)} />
+          <Route path="/admin/reports" component={ownerGated(AdminReports)} />
+          <Route path="/admin/management-report" component={reportGated(ManagementReport, "dpr", "boq_programme", "vendor_bills")} />
+          <Route path="/admin/concrete-estimates" component={featureGated(ConcreteEstimates, "estimating")} />
 
           {/* Masters */}
-          <Route path="/masters/vendors" component={gated(VendorMaster, "master_parties")} />
-          <Route path="/masters/section/:section" component={gatedEither(PlantMasters, "master_parties", "master_materials", "master_equipment", "master_personnel", "sites_plants_manage", "admin_settings")} />
+          <Route path="/masters/vendors" component={featureGated(VendorMaster, "masters")} />
+          <Route path="/masters/section/:section" component={featureGated(PlantMasters, "masters")} />
 
           {/* Edit requests — /edit-requests is the admin review queue; /mine is open to any authenticated user */}
-          <Route path="/edit-requests" component={gated(EditRequestsPage, "edit_requests_review")} />
+          <Route path="/edit-requests" component={ownerGated(EditRequestsPage)} />
           <Route path="/edit-requests/mine" component={EditRequestsPage} />
           <Route path="/notifications/preferences" component={NotificationPreferences} />
           <Route path="/account" component={Account} />

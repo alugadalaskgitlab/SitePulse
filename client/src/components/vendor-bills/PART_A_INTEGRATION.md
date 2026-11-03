@@ -68,9 +68,8 @@ installed integration, not as outstanding page-wiring work.
 ## Ready components / pure exports
 
 - `WholeBillExportButtons`: existing outline button style; uses the shared
-  `whole_bill_export` access rule. With `access_rules_v2` OFF it preserves the
-  legacy export-permission and field-user behavior; with it ON, matrix export
-  permission controls visibility. No status gating. Supply `getSnapshot` from
+  `whole_bill_export` feature rule. Export visibility follows the assigned
+  Vendor Bills export action after role setup. No status gating. Supply `getSnapshot` from
   the current render. It clones only on click, calls the save picker during
   user activation, and never saves/refetches/mutates bill state.
 - `wholeBillSnapshot`: typed, detached export model. All money is passed in.
@@ -91,9 +90,8 @@ installed integration, not as outstanding page-wiring work.
 ## Page insertion points
 
 Import `WholeBillExportButtons`, snapshot types, projection helper and calendar
-registry hook. Pass `canExport`, the field-user/Admin/Owner flags, and the
-`accessRulesV2` value from `useAuth`; the button applies the shared
-`whole_bill_export` rule itself.
+registry hook. Pass `canExport`, the feature-based Vendor Bills Export decision,
+plus the position and current snapshot callback.
 
 Add header controls inside BILL DETAILS CardHeader beside `badge-status-draft`
 (around 2503), not merely in the title row.
@@ -108,10 +106,6 @@ Example control (not status-conditioned):
 ```tsx
 <WholeBillExportButtons
   canExport={canExport}
-  isFieldEngineer={user?.isFieldEngineer}
-  isAdmin={isAdmin}
-  isOwner={user?.isOwner}
-  accessRulesV2={accessRulesV2}
   position="header"
   getSnapshot={getCurrentFormSnapshot}
 />

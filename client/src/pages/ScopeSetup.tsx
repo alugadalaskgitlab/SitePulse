@@ -7,6 +7,7 @@
 import { useMemo, useState } from "react";
 import { DeleteGate } from "@/components/DeleteGate";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth-context";
 import { useParams, Link } from "wouter";
 import {
   ChevronRight, MapPin, Plus, Trash2, CheckCircle2, AlertTriangle,
@@ -66,8 +67,8 @@ export default function ScopeSetup() {
   const { data: recon } = useQuery<any>({ queryKey: recKey });
   const { data: categories = [] } = useQuery<any[]>({ queryKey: [`/api/boq/projects/${projectId}/categories`] });
   const { data: items = [] } = useQuery<any[]>({ queryKey: [`/api/boq/projects/${projectId}/items`] });
-  const { data: authMe } = useQuery<{ user?: { isAdmin?: boolean; isOwner?: boolean } } | null>({ queryKey: ["/api/auth/me"] });
-  const canCorrectInitialScope = !!authMe?.user && (authMe.user.isAdmin === true || authMe.user.isOwner === true);
+  const { featureCan } = useAuth();
+  const canCorrectInitialScope = featureCan("boq_programme", "edit");
 
   // ── corridor card state ────────────────────────────────────────────────────
   const [corridorEdit, setCorridorEdit] = useState(false);

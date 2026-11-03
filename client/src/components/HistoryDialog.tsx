@@ -72,8 +72,8 @@ function displayBillDate(value: unknown): string {
 }
 
 export default function HistoryDialog({ open, onOpenChange, module, transactionId, recordLabel }: HistoryDialogProps) {
-  const { isAdmin, isOwner } = useAuth();
-  const canViewHistory = isAdmin || isOwner;
+  const { user } = useAuth();
+  const canViewHistory = user?.isOwner === true;
   const query = useQuery<AuditLog[]>({
     queryKey: ["/api/audit-logs", { module, transactionId }],
     queryFn: async () => {

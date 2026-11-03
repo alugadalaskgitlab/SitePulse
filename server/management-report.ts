@@ -23,12 +23,18 @@ import {
   dieselRequirements,
 } from "@shared/schema";
 import { storage } from "./storage";
-import { assertView } from "./auth-routes";
 import { requireAuth } from "./auth";
+import { can as canFeature, type FeatureId } from "@shared/featureAccess";
+
+const MANAGEMENT_REPORT_SOURCE_FEATURES: FeatureId[] = [
+  "dpr", "labour_attendance", "site_materials", "grn", "issues_stock",
+  "diesel_issue", "hmp_rmc", "purchase_indent", "vendor_bills",
+];
 
 /**
- * Permission check: grants access when the user has view permission on
- * the `reports` section OR the `admin_settings` section (or is admin).
+ * Permission check: legacy access is preserved until feature roles are
+ * configured. Afterwards, the combined report requires Reports View and
+ * View on every source feature it aggregates.
  * Returns true and does NOT send a response when access is granted.
  * Returns false and sends a 401/403 response when access is denied.
  */
@@ -37,9 +43,17 @@ function assertViewReportOrAdmin(req: Request, res: Response): boolean {
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin) return true;
   const m = req.authPermissions;
-  if (m?.["report_management"]?.view || m?.["reports"]?.view || m?.["admin_settings"]?.view) return true;
+  const state = req.authFeatureAccess ?? { rolesConfigured: false, legacyPermissions: m };
+  if (!state.rolesConfigured) {
+    if (req.authUser.isOwner || req.authUser.isAdmin ||
+        m?.["report_management"]?.view || m?.["reports"]?.view || m?.["admin_settings"]?.view) return true;
+  } else if (
+    canFeature(req.authUser, "reports", "view", state) &&
+    MANAGEMENT_REPORT_SOURCE_FEATURES.every(feature => canFeature(req.authUser, feature, "view", state))
+  ) {
+    return true;
+  }
   res.status(403).json({ error: "forbidden" });
   return false;
 }
@@ -54,8 +68,9 @@ function parseSiteIds(raw: unknown): number[] | null {
 
 async function getEffectiveSiteIds(req: any, selectedIds: number[] | null): Promise<number[] | null> {
   const permittedIds =
-    req.authUser && !req.authUser.isAdmin
-      ? await storage.getUserPermittedSiteIds(req.authUser.id)
+    req.authUser && !req.authUser.isOwner &&
+      !(req.authUser.isAdmin && !req.authFeatureAccess?.rolesConfigured)
+      ? await storage.getUserPermittedSiteIds(req.authUser.id, !!req.authFeatureAccess?.rolesConfigured)
       : null;
   if (selectedIds !== null && permittedIds !== null) {
     return selectedIds.filter((id) => permittedIds.includes(id));
@@ -103,12 +118,7 @@ export function registerManagementReportRoutes(app: Express) {
       if (!req.authUser) {
         return res.status(401).json({ error: "not_authenticated" });
       }
-      const { isAdmin } = req.authUser;
-      const perms = req.authPermissions;
-      const canView = isAdmin || req.authUser.isOwner || perms?.["report_management"]?.view || perms?.["reports"]?.view || perms?.["admin_settings"]?.view;
-      if (!canView) {
-        return res.status(403).json({ error: "forbidden" });
-      }
+      if (!assertViewReportOrAdmin(req, res)) return;
 
       const allSites = await db.select({
         id: sitesTable.id, name: sitesTable.name, isActive: sitesTable.isActive,
@@ -117,8 +127,13 @@ export function registerManagementReportRoutes(app: Express) {
       // Non-admin users: return only their permitted sites.
       // getUserPermittedSiteIds() returns null when the user has no site restrictions
       // (all sites visible) — must guard against calling .includes() on null.
-      if (!isAdmin) {
-        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+      const unrestricted = req.authUser.isOwner ||
+        (req.authUser.isAdmin && !req.authFeatureAccess?.rolesConfigured);
+      if (!unrestricted) {
+        const permittedIds = await storage.getUserPermittedSiteIds(
+          req.authUser.id,
+          !!req.authFeatureAccess?.rolesConfigured,
+        );
         if (permittedIds === null) {
           // Unrestricted non-admin (e.g., manager with reports permission but no per-site lock)
           return res.json(allSites);

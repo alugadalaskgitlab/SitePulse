@@ -24,6 +24,7 @@ import type { BitumenHeatingSession, GeneratorLog } from "@shared/schema";
 import DryerSourceFixDialog from "@/components/DryerSourceFixDialog";
 import type { DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
 import { getLdoVolumeAtDepth, getLdoDeadStockVolume } from "@shared/ldo-dip-chart";
+import { useAuth } from "@/lib/auth-context";
 
 type DgMode = "none" | "inline" | "link";
 
@@ -89,6 +90,8 @@ function durationHrs(start: string, end: string): number | null {
 
 export default function PlantHeatingSessions() {
   const { toast } = useToast();
+  const { featureCan } = useAuth();
+  const canVerify = featureCan("hmp_rmc", "verify");
   const { appendPlantContext, getPlantBackLink } = useOrigin();
   const [, params] = useRoute("/plant/heating-sessions/:date");
   const [currentLocation, setLocation] = useLocation();
@@ -619,24 +622,30 @@ export default function PlantHeatingSessions() {
         throw new Error(msg);
       }
       const saved: BitumenHeatingSession = await res.json();
-      // Auto-finalize so the operator doesn't need a second click.
-      if (!saved.isFinalized) {
+      // Auto-finalize only when this user has the separate verify permission.
+      let finalized = Number(saved.isFinalized) === 1;
+      if (!finalized && canVerify) {
         try {
           await apiRequest("POST", `/api/plant-module/heating-sessions/${saved.id}/finalize`, { finalizedBy: "operator" });
+          finalized = true;
         } catch {
-          // Don't block the close — save already succeeded.
+          // Don't block the close — the saved session remains pending verification.
         }
       }
-      return saved;
+      return { ...saved, isFinalized: finalized ? 1 : 0 };
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
       clearHeatingDraft();
       setDraftRestored(false);
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/generator-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/daily-reports"] });
-      toast({ title: "Heating session saved" });
+      toast({
+        title: Number(saved.isFinalized) === 1
+          ? "Heating session saved"
+          : "Heating session saved — pending verification",
+      });
       setDialogOpen(false);
       // If opened from a shift log, return there so the user lands back on
       // their in-progress log rather than staying on the sessions list.

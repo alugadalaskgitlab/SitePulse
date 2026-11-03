@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import { storage } from "./storage";
+import { can, canLegacySection, type FeatureId } from "@shared/featureAccess";
 
 let pushInitialized = false;
 
@@ -125,19 +126,36 @@ export async function sendPushToUser(userId: number, title: string, body: string
   }
 }
 
-// Targeted push. The `audience` filter relies on the server-assigned
-// `role` column on push_subscriptions (derived from the authenticated
-// session at subscribe time, not client input), so it cannot be spoofed.
-//   audience='all'      -> every active subscription
-//   audience='managers' -> only subscriptions with role='manager' or 'admin'
-// If audience='managers' but no manager/admin device has subscribed, the
-// alert is dropped (and logged) rather than silently broadcast — the
-// admin-inbox notification remains the persistent record.
+type PushAudience = "all" | "owners" | `feature:${FeatureId}:view`;
+
+async function filterSubscriptionsByAccess(
+  subscriptions: Awaited<ReturnType<typeof storage.getActivePushSubscriptions>>,
+  canAccess: (user: any, matrix: any, state: any) => boolean,
+) {
+  const [{ getUserById, loadUserPermissionsMatrix }, { loadFeatureAccessState }] = await Promise.all([
+    import("./auth"),
+    import("./featureAccess"),
+  ]);
+  const userIds = Array.from(new Set(subscriptions
+    .map(subscription => subscription.userId)
+    .filter((id): id is number => id != null)));
+  const allowedUserIds = new Set<number>();
+  await Promise.all(userIds.map(async userId => {
+    const user = await getUserById(userId);
+    if (!user) return;
+    const matrix = await loadUserPermissionsMatrix(userId);
+    const state = await loadFeatureAccessState(userId, matrix);
+    if (canAccess(user, matrix, state)) allowedUserIds.add(userId);
+  }));
+  return subscriptions.filter(subscription =>
+    subscription.userId != null && allowedUserIds.has(subscription.userId));
+}
+
 export async function sendPushToAudience(
   title: string,
   body: string,
   url?: string,
-  audience: "all" | "managers" | "permission:stores_inventory:notify" = "all",
+  audience: PushAudience = "all",
   options: { pruneExpiredSubscriptions?: boolean } = {},
 ) {
   if (!pushInitialized) return;
@@ -148,17 +166,29 @@ export async function sendPushToAudience(
     let subscriptions = await storage.getActivePushSubscriptions();
     if (subscriptions.length === 0) return;
 
-    if (audience === "managers") {
-      subscriptions = subscriptions.filter((s) => s.role === "manager" || s.role === "admin");
+    if (audience === "owners") {
+      const { getUserById } = await import("./auth");
+      const userIds = Array.from(new Set(subscriptions
+        .map(subscription => subscription.userId)
+        .filter((id): id is number => id != null)));
+      const owners = new Set<number>();
+      await Promise.all(userIds.map(async userId => {
+        if ((await getUserById(userId))?.isOwner) owners.add(userId);
+      }));
+      subscriptions = subscriptions.filter(subscription =>
+        subscription.userId != null && owners.has(subscription.userId));
       if (subscriptions.length === 0) {
-        console.log(`[Push] No manager/admin devices subscribed — dropping push for "${title}". Inbox notification still recorded.`);
+        console.log(`[Push] No Owner devices subscribed — dropping push for "${title}".`);
         return;
       }
-    } else if (audience === "permission:stores_inventory:notify") {
-      const allowedUserIds = new Set(await storage.getUsersWithNotifyAccess("stores_inventory"));
-      subscriptions = subscriptions.filter((s) => s.userId != null && allowedUserIds.has(s.userId));
+    } else if (audience !== "all") {
+      const feature = audience.slice("feature:".length, -":view".length) as FeatureId;
+      subscriptions = await filterSubscriptionsByAccess(
+        subscriptions,
+        (user, _matrix, state) => can(user, feature, "view", state),
+      );
       if (subscriptions.length === 0) {
-        console.log(`[Push] No stores-notify devices subscribed — dropping push for "${title}".`);
+        console.log(`[Push] No ${feature}-view devices subscribed — dropping push for "${title}".`);
         return;
       }
     }
@@ -200,10 +230,8 @@ export async function sendPushToAudience(
   }
 }
 
-// Section-targeted push. Only delivers to users who have `notify=true`
-// for the given sectionKey in their permission matrix AND have
-// notificationsEnabled=true on their user account.
-// If no users have opted in for the section, the push is dropped silently.
+// Section-targeted push is limited to users who can view the corresponding
+// feature and have an active, notification-enabled subscription.
 export async function sendPushToSection(
   sectionKey: string,
   title: string,
@@ -213,14 +241,17 @@ export async function sendPushToSection(
   if (!pushInitialized) return;
 
   try {
-    const notifyUserIds = await storage.getUsersToNotify(sectionKey);
-    if (notifyUserIds.length === 0) return;
-    const notifySet = new Set(notifyUserIds);
-
-    // getActivePushSubscriptions already filters by notificationsEnabled.
     const allActive = await storage.getActivePushSubscriptions();
-    const subscriptions = allActive.filter(
-      (s) => s.userId != null && notifySet.has(s.userId as number),
+    const subscriptions = await filterSubscriptionsByAccess(
+      allActive,
+      (user, matrix, state) => canLegacySection(
+        user,
+        matrix,
+        sectionKey as Parameters<typeof canLegacySection>[2],
+        "view",
+        state,
+        url,
+      ),
     );
     if (subscriptions.length === 0) return;
 

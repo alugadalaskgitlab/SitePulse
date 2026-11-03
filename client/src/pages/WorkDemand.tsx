@@ -1777,12 +1777,12 @@ function SuggestionBadge({
 }) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const { permissions, isAdmin } = useAuth();
+  const { featureCan } = useAuth();
   const suggestion = row.suggestion;
 
   // Permission flags — server enforces authoritatively; UI is a convenience
-  const canApprovePi = isAdmin || (permissions as any)?.purchase_indents_approve?.approve === true;
-  const canApproveIrn = isAdmin || (permissions as any)?.irn_approve?.approve === true;
+  const canApprovePi = featureCan("purchase_indent", "approve");
+  const canApproveIrn = featureCan("irn", "approve");
 
   // ── Resolve mapping dialog ──────────────────────────────────────────────────
   const [showResolveMap, setShowResolveMap] = useState(false);

@@ -77,7 +77,7 @@ type SectionKey = keyof typeof SECTIONS;
 
 export default function PlantMasters() {
   const params = useParams<{ section: string }>();
-  const { sectionVisible, isAdmin } = useAuth();
+  const { sectionVisible, featureCan } = useAuth();
   const section = params.section as SectionKey;
   const config = SECTIONS[section];
 
@@ -89,7 +89,7 @@ export default function PlantMasters() {
     );
   }
 
-  if (config.adminOnly && !isAdmin) {
+  if (config.adminOnly && !featureCan("masters", "edit")) {
     return (
       <div className="mx-auto max-w-md text-center py-20 space-y-3">
         <h2 className="text-xl font-semibold">Admin only</h2>
@@ -100,7 +100,7 @@ export default function PlantMasters() {
     );
   }
 
-  if (!isAdmin && !sectionVisible(config.permission) && !(section === "sites" && (sectionVisible("sites_plants_manage") || sectionVisible("admin_settings")))) {
+  if (!sectionVisible(config.permission)) {
     return (
       <div className="mx-auto max-w-md text-center py-20 space-y-3">
         <h2 className="text-xl font-semibold">No access</h2>

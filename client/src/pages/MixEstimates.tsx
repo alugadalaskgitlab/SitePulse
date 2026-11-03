@@ -36,7 +36,7 @@ interface Props {
 
 export default function MixEstimates({ embedded = false }: Props) {
   const { toast } = useToast();
-  const { sectionCan, isAdmin, isLoading: authLoading } = useAuth();
+  const { featureCan, isLoading: authLoading } = useAuth();
   const [collapsedContractors, setCollapsedContractors] = useState<Record<string, boolean>>({});
   const [editingContractor, setEditingContractor] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -46,7 +46,7 @@ export default function MixEstimates({ embedded = false }: Props) {
 
   const role = readEstimatorRole();
   // Main-app users with mix_calculator create permission (or admins) can also edit
-  const hasMainAppAccess = isAdmin || sectionCan("mix_calculator", "create");
+  const hasMainAppAccess = featureCan("estimating", "view");
   const canEdit = role === "admin" || hasMainAppAccess;
 
   const isStandalonePWA = useMemo(() => {

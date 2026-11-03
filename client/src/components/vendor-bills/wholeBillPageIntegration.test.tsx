@@ -11,8 +11,9 @@ import { EQUIPMENT_LOG_COLUMNS } from "./equipmentLogEvidence";
 const state = vi.hoisted(() => ({ permission: true, engineer: false, admin: true, save: vi.fn() }));
 vi.mock("./wholeBillExport", () => ({ saveWholeBillFile: state.save }));
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
-  isAdmin: state.admin, accessRulesV2: false, user: { isFieldEngineer: state.engineer },
+  isAdmin: state.admin, user: { isFieldEngineer: state.engineer },
   sectionCan: (_section: string, permission: string) => permission === "export" ? state.permission : true,
+  featureCan: (_feature: string, action: string) => action === "export" ? state.permission : true,
   sectionVisible: () => true,
 }) }));
 vi.mock("@/lib/featureFlags", () => ({ useFeatureFlags: () => ({ companyName: "HLC", logoFile: null }) }));
