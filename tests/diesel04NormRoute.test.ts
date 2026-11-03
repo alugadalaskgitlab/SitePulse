@@ -65,29 +65,27 @@ describe("DIESEL-04 narrow norm write", () => {
     fx.user = null;
     expect((await request(app).patch(url).send({ consumptionNorm: 3 })).status).toBe(401);
     fx.user = { id: 51, isAdmin: false, isOwner: false };
-    for (const permissions of [{ site_diesel: { view: true } }, { master_equipment: { edit: true } }]) {
+    for (const permissions of [
+      { site_diesel: { view: true } },
+      { site_diesel: { edit: true } },
+      { diesel_req_raise: { create: true } },
+      { master_equipment: { edit: true } },
+    ]) {
       fx.permissions = permissions;
       expect((await request(app).patch(url).send({ consumptionNorm: 3 })).status).toBe(403);
     }
     expect(storage.updateEquipment).not.toHaveBeenCalled();
   });
-  it("allows diesel create or edit grants; only updates the norm; re-fetches the master", async () => {
-    for (const permissions of [
-      { site_diesel: { create: true } },
-      { diesel_req_raise: { create: true } },
-      { site_diesel: { edit: true } },
-      { diesel_req_raise: { edit: true } },
-    ]) {
-      fx.permissions = permissions;
-      const response = await request(app).patch(url).send({ consumptionNorm: 3.25 });
-      expect(response.status, JSON.stringify(response.body)).toBe(200);
-      expect(response.body).toEqual({ id: 17, consumptionNorm: 3.25 });
-      expect(storage.updateEquipment).toHaveBeenLastCalledWith(17, { consumptionNorm: 3.25 });
-      expect((await storage.getEquipmentMaster())[0].consumptionNorm).toBe(3.25);
-    }
+  it("allows Diesel requirement edit grants; only updates the norm; re-fetches the master", async () => {
+    fx.permissions = { diesel_req_raise: { edit: true } };
+    const response = await request(app).patch(url).send({ consumptionNorm: 3.25 });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body).toEqual({ id: 17, consumptionNorm: 3.25 });
+    expect(storage.updateEquipment).toHaveBeenLastCalledWith(17, { consumptionNorm: 3.25 });
+    expect((await storage.getEquipmentMaster())[0].consumptionNorm).toBe(3.25);
   });
   it("rejects invalid bodies and unknown equipment without altering the master", async () => {
-    fx.permissions = { diesel_req_raise: { create: true } };
+    fx.permissions = { diesel_req_raise: { edit: true } };
     for (const body of [{ consumptionNorm: 0 }, { consumptionNorm: -2 }, { consumptionNorm: "3" },
       { consumptionNorm: null }, { consumptionNorm: 3, name: "tamper" }, {}, { consumptionNorm: 1e309 }]) {
       expect((await request(app).patch(url).send(body)).status).toBe(400);
@@ -96,13 +94,13 @@ describe("DIESEL-04 narrow norm write", () => {
     expect((await request(app).patch("/api/diesel-requirements/equipment/999/consumption-norm").send({ consumptionNorm: 3 })).status).toBe(404);
   });
   it("surfaces storage failure and leaves the master unchanged", async () => {
-    fx.permissions = { site_diesel: { create: true } };
+    fx.permissions = { diesel_req_raise: { edit: true } };
     storage.updateEquipment.mockRejectedValueOnce(new Error("write failed"));
     expect((await request(app).patch(url).send({ consumptionNorm: 3 })).status).toBe(500);
     expect((await storage.getEquipmentMaster())[0].consumptionNorm).toBeNull();
   });
   it("honours restricted site scope for plant-assigned equipment", async () => {
-    fx.permissions = { site_diesel: { create: true } };
+    fx.permissions = { diesel_req_raise: { edit: true } };
     fx.plantName = "Plant A";
     fx.permitted = [82];
     expect((await request(app).patch(url).send({ consumptionNorm: 3 })).status).toBe(403);
@@ -112,7 +110,7 @@ describe("DIESEL-04 narrow norm write", () => {
     expect(storage.getPlantSettings).toHaveBeenCalledWith("Plant A");
   });
   it("denies zero permitted sites even for shared equipment and plant-assigned equipment", async () => {
-    fx.permissions = { site_diesel: { create: true } };
+    fx.permissions = { diesel_req_raise: { edit: true } };
     fx.permitted = [];
     for (const plantName of [null, "Plant A"]) {
       fx.plantName = plantName;

@@ -34,7 +34,7 @@ describe("EDIT_RECORD_TYPE_SECTION mapping", () => {
     expect(EDIT_RECORD_TYPE_SECTION.site_material_trip).toBe("site_materials");
     expect(EDIT_RECORD_TYPE_SECTION.site_purchase).toBe("report_site_purchases");
     expect(EDIT_RECORD_TYPE_SECTION.store_grn).toBe("stores_inventory");
-    expect(EDIT_RECORD_TYPE_SECTION.diesel_requirement).toBe("site_diesel");
+    expect(EDIT_RECORD_TYPE_SECTION.diesel_requirement).toBe("diesel_req_raise");
     expect(EDIT_RECORD_TYPE_SECTION.purchase_indent).toBe("site_procurement");
     expect(EDIT_RECORD_TYPE_SECTION.truck_dispatch).toBe("plant_production");
     expect(EDIT_RECORD_TYPE_SECTION.equipment_usage).toBe("plant_equipment");

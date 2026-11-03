@@ -12,6 +12,7 @@ description: Deny-by-default site access, explicit all-sites grant, guided user 
 **How to apply:**
 - Never reintroduce a null fallback for zero rows; downstream consumers already treat `[]` as deny-all and `null` as unrestricted.
 - Pass the live feature-role setup state into site-scope resolution; before setup, preserve legacy Admin access. When roles are set up, convert each non-Owner Admin's prior unrestricted scope to an explicit all-sites grant before requiring recorded scope.
+- Site Requirements allocation-only list/detail access and allocation writes must honor each user's existing permitted sites; do not change saved site assignments when granting these feature ticks.
 - New columns are ensured at startup (`storage.ensureUserAccessColumns`), so prod gets them automatically on first deploy boot.
 - Guided creation: POST /api/auth/users accepts roleTemplate/permissions/siteAccess; partial failure → account marked setup-incomplete; POST /:id/complete-setup retries the SAME user (uniqueness checks make duplicates impossible).
 - Escalation guards: non-admin actors (incl. permission managers) can never edit admin/owner users, change privileged flags (isAdmin/canManagePermissions/permissionManagerScope), create admins, or hand out site scope beyond their own (`checkSiteScopeAllowed`); partial managers' granted matrices are capped to their own (`coerceAndCapMatrix`).

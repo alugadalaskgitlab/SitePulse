@@ -13113,6 +13113,7 @@ export async function registerRoutes(
         || requestFeatureAllowed(req, "payables", "view")
         // Diesel payment editors need the shared account selector even when
         // their role is intentionally limited to editing diesel payments.
+        || requestFeatureAllowed(req, "diesel_requirement", "edit")
         || requestFeatureAllowed(req, "diesel_issue", "edit");
       if (!canRead) {
         res.status(403).json({ error: "forbidden", sections: ["vendor_bills", "site_diesel"], action: "view" });

@@ -103,7 +103,6 @@ describe("PERM-01 supporting read HTTP routes with real guards", () => {
 
   it.each([
     ["purchase_indents_raise", "site_procurement", "/api/purchase-indents", "/api/purchase-indents/1"],
-    ["diesel_req_raise", "site_diesel", "/api/diesel-requirements", "/api/diesel-requirements/1"],
   ])("%s and %s each pass read/create/edit guards, while neither and view-only cannot write", async (granular, legacy, list, detail) => {
     for (const key of [granular, legacy]) {
       fx.permissions = { [key]: { view: true, create: true, edit: true } };
@@ -122,9 +121,21 @@ describe("PERM-01 supporting read HTTP routes with real guards", () => {
     expect((await request(app).put(detail).send({})).status).toBe(403);
   });
 
+  it("uses diesel requirement permissions for writes, not the separate Diesel issue permission", async () => {
+    fx.permissions = { diesel_req_raise: { view: true, create: true, edit: true } };
+    expect((await request(app).get("/api/diesel-requirements")).status).toBe(200);
+    expect((await request(app).get("/api/diesel-requirements/1")).status).toBe(200);
+    expect((await request(app).post("/api/diesel-requirements").send({})).status).toBe(400);
+    expect((await request(app).put("/api/diesel-requirements/1").send({})).status).toBe(400);
+
+    fx.permissions = { site_diesel: { view: true, create: true, edit: true } };
+    expect((await request(app).get("/api/diesel-requirements")).status).toBe(200);
+    expect((await request(app).post("/api/diesel-requirements").send({})).status).toBe(403);
+    expect((await request(app).put("/api/diesel-requirements/1").send({})).status).toBe(403);
+  });
+
   it.each([
     ["purchase_indents_raise", "site_procurement", "/api/purchase-indents", piInput, "PurchaseIndent"],
-    ["diesel_req_raise", "site_diesel", "/api/diesel-requirements", dieselInput, "DieselRequirement"],
   ] as const)("actually creates and edits %s or %s through the registered handlers", async (granular, legacy, path, input, name) => {
     for (const key of [granular, legacy]) {
       fx.permissions = { [key]: { create: true, edit: true } };
@@ -145,6 +156,19 @@ describe("PERM-01 supporting read HTTP routes with real guards", () => {
     }
     expect(storage[`create${name}`]).toHaveBeenCalledTimes(2);
     expect(storage[`update${name}`]).toHaveBeenCalledTimes(2);
+  });
+
+  it("creates and edits Diesel requirements through the dedicated legacy grant", async () => {
+    fx.permissions = { diesel_req_raise: { create: true, edit: true } };
+    const created = await request(app).post("/api/diesel-requirements").send(dieselInput);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect(created.body).toMatchObject({ id: 3, date: dieselInput.date, items: dieselInput.items });
+    expect(storage.createDieselRequirement).toHaveBeenCalledWith(expect.objectContaining(dieselInput));
+
+    const updated = await request(app).put("/api/diesel-requirements/1").send(dieselInput);
+    expect(updated.status, JSON.stringify(updated.body)).toBe(200);
+    expect(updated.body).toMatchObject({ id: 1, date: dieselInput.date, items: dieselInput.items });
+    expect(storage.updateDieselRequirement).toHaveBeenCalledWith(1, expect.objectContaining(dieselInput));
   });
 
   it("exposes the shared company account selector to diesel editors, not to raisers without edit", async () => {

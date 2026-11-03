@@ -35,17 +35,18 @@ describe("PERM-01 client raise gates", () => {
     expect(pageGuard(purchaseIndents, "canEdit", grant("purchase_indent", "view"))).toBe(false);
   });
 
-  it("uses separate Diesel add, edit and approval actions", () => {
-    expect(pageGuard(dieselRequirements, "canCreate", grant("diesel_issue", "add"))).toBe(true);
-    expect(pageGuard(dieselRequirements, "canEdit", grant("diesel_issue", "edit"))).toBe(true);
-    expect(pageGuard(dieselRequirements, "canEditDiesel", grant("diesel_issue", "edit"))).toBe(true);
+  it("uses separate Diesel requirement add, edit and approval actions", () => {
+    expect(pageGuard(dieselRequirements, "canCreate", grant("diesel_requirement", "add"))).toBe(true);
+    expect(pageGuard(dieselRequirements, "canEdit", grant("diesel_requirement", "edit"))).toBe(true);
+    expect(pageGuard(dieselRequirements, "canEditDiesel", grant("diesel_requirement", "edit"))).toBe(true);
     expect(pageGuard(materialReceipts, "canRecordStandaloneDiesel", grant("diesel_issue", "edit"))).toBe(true);
     expect(pageGuard(materialReceipts, "canRecordStandaloneDiesel", grant("plant_receipts", "add"))).toBe(true);
-    expect(pageGuard(dieselRequirements, "canApprove", grant("diesel_issue", "approve"))).toBe(true);
-    expect(pageGuard(dieselRequirements, "canApprove", grant("diesel_issue", "add"))).toBe(false);
-    expect(pageGuard(dieselRequirements, "canEdit", grant("diesel_issue", "add"))).toBe(false);
-    expect(pageGuard(dieselRequirements, "canCreate", grant("diesel_issue", "edit"))).toBe(false);
-    expect(pageGuard(dieselRequirements, "canEdit", grant("diesel_issue", "view"))).toBe(false);
+    expect(pageGuard(dieselRequirements, "canApprove", grant("diesel_requirement", "approve"))).toBe(true);
+    expect(pageGuard(dieselRequirements, "canApprove", grant("diesel_requirement", "add"))).toBe(false);
+    expect(pageGuard(dieselRequirements, "canEdit", grant("diesel_requirement", "add"))).toBe(false);
+    expect(pageGuard(dieselRequirements, "canCreate", grant("diesel_requirement", "edit"))).toBe(false);
+    expect(pageGuard(dieselRequirements, "canEdit", grant("diesel_requirement", "view"))).toBe(false);
+    expect(pageGuard(dieselRequirements, "canCreate", grant("diesel_issue", "add"))).toBe(false);
   });
 
   it("keeps approval separate from Diesel entry", () => {
@@ -54,7 +55,7 @@ describe("PERM-01 client raise gates", () => {
 
   it("gates the pages and Stores entry with the corresponding feature", () => {
     expect(app).toMatch(/featureGated\(PurchaseIndents, "purchase_indent"\)/);
-    expect(app).toMatch(/featureGated\(DieselRequirements, "diesel_issue"\)/);
+    expect(app).toMatch(/featureGated\(DieselRequirements, "diesel_requirement"\)/);
     expect(app.match(/featureGated\(VendorBills, "vendor_bills"\)/g)).toHaveLength(2);
     expect(storesHub).toContain('featureCan("purchase_indent", "view")');
   });
