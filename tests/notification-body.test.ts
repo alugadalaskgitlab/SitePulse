@@ -109,7 +109,10 @@ vi.mock("../server/push", () => ({
 }));
 
 vi.mock("../server/auth", () => ({
-  requireAuth: vi.fn((_req: Request, _res: Response, next: NextFunction) => next()),
+  requireAuth: vi.fn((req: Request, _res: Response, next: NextFunction) => {
+    (req as any).authUser = { id: 1, isActive: true, isOwner: true };
+    next();
+  }),
   isPublicApiPath: vi.fn().mockReturnValue(false),
   isOptionalAuthPath: vi.fn().mockReturnValue(false),
   optionalAuth: vi.fn((_req: Request, _res: Response, next: NextFunction) => next()),

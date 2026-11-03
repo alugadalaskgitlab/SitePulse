@@ -51,7 +51,7 @@ describe("focused DPR restoration", () => {
     expect(guided).not.toContain("hideIdentity");
     expect(siteEntry).toMatch(/data-testid=\{`input-progress-length-\$\{idx\}`\}[\s\S]{0,500}?\/>/);
     expect(siteEntry).toMatch(/<Input[\s\S]{0,350}?readOnly[\s\S]{0,350}?data-testid=\{`input-progress-length-\$\{idx\}`\}/);
-    expect(siteEdit).toContain("readOnly={!isAdmin}");
+    expect(siteEdit).toContain("readOnly={!canOverrideGeometry}");
     expect(siteEdit).toContain("data-testid={`input-length-${idx}`}");
   });
 

@@ -403,12 +403,12 @@ interface DayDetailProps {
   plant: string;
   appendPlantContext: (path: string, opts?: { defaultTab?: string; forceTab?: string }) => string;
   ldoFlowMeterLink: string;
-  isAdmin: boolean;
+  canCleanupOrphans: boolean;
   onCleanupOrphaned: (date: string) => void;
   cleanupPending: boolean;
 }
 
-function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, isAdmin, onCleanupOrphaned, cleanupPending }: DayDetailProps) {
+function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, canCleanupOrphans, onCleanupOrphaned, cleanupPending }: DayDetailProps) {
   const { date, sessions, shiftLogs, ledgerRows, orphanedLedgerRows } = day;
 
   const heatSessionsLink = appendPlantContext(`/plant/heating-sessions/${date}`, {
@@ -449,7 +449,7 @@ function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, isAdmin, 
               </ul>
             </div>
           </div>
-          {isAdmin && (
+          {canCleanupOrphans && (
             <div className="flex justify-end">
               <Button
                 size="sm"
@@ -775,9 +775,9 @@ import { ReportExportGate } from "@/components/ReportExportGate";
 
 export default function PlantLdoMismatch() {
   const { appendPlantContext, getPlantBackLink } = useOrigin();
-  const { user } = useAuth();
   const { companyName: reportCompanyName, logoFile: reportLogoFile } = useFeatureFlags();
-  const isAdmin = user?.isOwner === true;
+  const { user } = useAuth();
+  const canCleanupOrphans = user?.isOwner === true;
   const { toast } = useToast();
   const [, params] = useRoute("/plant/ldo-mismatch/:date");
   const routeDate = params?.date || "";
@@ -1774,7 +1774,7 @@ export default function PlantLdoMismatch() {
                                 plant={plant}
                                 appendPlantContext={appendPlantContext}
                                 ldoFlowMeterLink={ldoFlowMeterLink}
-                                isAdmin={isAdmin}
+                                canCleanupOrphans={canCleanupOrphans}
                                 onCleanupOrphaned={handleCleanupOrphaned}
                                 cleanupPending={cleanupPendingDate === day.date && cleanupMutation.isPending}
                               />

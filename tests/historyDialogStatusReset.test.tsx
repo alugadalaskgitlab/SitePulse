@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 describe("vendor-bill history actions", () => {
-  it("uses one Owner/Administrator-only history button on all six pages", () => {
+  it("uses one Owner-only history button on all six pages", () => {
     authTestState.isAdmin = false;
     authTestState.isOwner = false;
     const { rerender } = render(<AuditHistoryButton data-testid="gated-history-button">History</AuditHistoryButton>);
@@ -43,7 +43,7 @@ describe("vendor-bill history actions", () => {
 
     authTestState.isAdmin = true;
     rerender(<AuditHistoryButton data-testid="gated-history-button">History</AuditHistoryButton>);
-    expect(screen.getByTestId("gated-history-button")).toBeTruthy();
+    expect(screen.queryByTestId("gated-history-button")).toBeNull();
 
     authTestState.isAdmin = false;
     authTestState.isOwner = true;
@@ -76,6 +76,7 @@ describe("vendor-bill history actions", () => {
   });
 
   it("renders the edit and the standalone status reset with old and new states", async () => {
+    authTestState.isOwner = true;
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([
       {
         id: 1, module: "vendor_bills", transactionId: 7, action: "update", userId: 9,
@@ -105,6 +106,7 @@ describe("vendor-bill history actions", () => {
   });
 
   it("shows the bill-date change in readable old-to-new order with its actor", async () => {
+    authTestState.isOwner = true;
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([{
       id: 3, module: "vendor_bills", transactionId: 7, action: "bill_date_changed", userId: 9,
       userName: "Date Editor", userRole: "admin",

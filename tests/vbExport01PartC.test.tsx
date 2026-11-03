@@ -17,7 +17,7 @@ vi.mock("wouter", () => ({
   Link: ({ children, href }: { children: ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 vi.mock("@/lib/auth-context", () => ({
-  useAuth: () => ({ sectionCan: () => false, user: { isAdmin: false } }),
+  useAuth: () => ({ sectionCan: () => false, featureCan: () => false, user: { isAdmin: false } }),
 }));
 vi.mock("@tanstack/react-query", async importOriginal => ({
   ...await importOriginal<typeof import("@tanstack/react-query")>(),

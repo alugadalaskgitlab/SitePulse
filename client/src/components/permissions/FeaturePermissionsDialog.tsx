@@ -153,7 +153,11 @@ export function FeaturePermissionsDialog({
                   <div className="space-y-2">
                     {FEATURES.filter(feature => feature.group === group.id && isFeatureLicensed(feature.id, access.licensedModules)).map(feature => (
                       <div key={feature.id} className="grid gap-2 border-b pb-2 md:grid-cols-[minmax(180px,1fr)_repeat(9,minmax(68px,auto))]">
-                        <span className="text-sm font-medium">{feature.label}{feature.inactive && <span className="ml-2 text-xs text-muted-foreground">Inactive</span>}</span>
+                                <span className="text-sm font-medium">
+                                  {feature.label}
+                                  {feature.inactive && <span className="ml-2 text-xs text-muted-foreground">Inactive</span>}
+                                  {feature.id === "estimating" && <span className="ml-2 text-xs text-muted-foreground">Owners only</span>}
+                                </span>
                         {ACTIONS.filter(action => feature.actions.includes(action)).map(action => (
                           <label key={action} data-personal-change={hasPersonalChange(feature.id, action) || undefined}
                             className={`flex items-center gap-1 text-xs ${hasPersonalChange(feature.id, action) ? "rounded bg-amber-100 px-1 text-amber-950 dark:bg-amber-950 dark:text-amber-100" : ""}`}>
@@ -161,7 +165,7 @@ export function FeaturePermissionsDialog({
                               type="checkbox"
                               aria-label={`${feature.label} ${ACTION_LABEL[action]}`}
                               data-testid={`feature-${feature.id}-${action}`}
-                              disabled={feature.inactive}
+                              disabled={feature.inactive || feature.id === "estimating"}
                               checked={effective(feature.id, action)}
                               onChange={event => setPermission(feature.id, action, event.target.checked)}
                             />

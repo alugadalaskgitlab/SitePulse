@@ -19,6 +19,15 @@ function routeGuard(method: string, path: string, action: Action, legacy: string
   return { helper: helpers[`assert${action}Either` as keyof typeof helpers], sections: [guard![1], guard![2]] };
 }
 
+function featureRouteGuard(method: string, path: string, feature: string, action: string) {
+  const start = routes.indexOf(`app.${method}("${path}",`);
+  expect(start, `${method} ${path} is registered`).toBeGreaterThanOrEqual(0);
+  const next = routes.indexOf("\n  app.", start + 1);
+  const handler = routes.slice(start, next < 0 ? undefined : next);
+  expect(handler, `${method} ${path} uses ${feature}.${action}`)
+    .toContain(`assertFeatureAction(req, res, "${feature}", "${action}")`);
+}
+
 function expectEitherPermissions(guard: ReturnType<typeof routeGuard>, action: "create" | "edit" | "view", legacy: string, granular: string) {
   for (const granted of [granular, legacy, null]) {
     const response = { status: (_status: number) => response, json: (_body: unknown) => response };
@@ -44,7 +53,6 @@ describe("PERM-01 Part A server route guards", () => {
   it.each([
     ["post", "/api/purchase-indents", "Create"],
     ["put", "/api/purchase-indents/:id", "Edit"],
-    ["post", "/api/irn/:id/raise-pi", "Create"],
     ["patch", "/api/purchase-indent-items/:id/procure", "Edit"],
   ] as const)("PI %s %s supports granular-only, legacy-only and neither", (method, path, action) => {
     expectEitherPermissions(
@@ -54,8 +62,15 @@ describe("PERM-01 Part A server route guards", () => {
   });
 
   it.each([
+    ["post", "/api/irn/:id/raise-pi", "purchase_indent", "add"],
+    ["put", "/api/diesel-requirements/:id", "diesel_issue", "edit"],
+    ["put", "/api/vendor-bills/:id", "vendor_bills", "edit"],
+  ] as const)("%s %s uses its unified feature action", (method, path, feature, action) => {
+    featureRouteGuard(method, path, feature, action);
+  });
+
+  it.each([
     ["post", "/api/diesel-requirements", "Create"],
-    ["put", "/api/diesel-requirements/:id", "Edit"],
     ["patch", "/api/diesel-requirements/:id/purchase-update", "Edit"],
     ["patch", "/api/diesel-requirements/:id/payment-status", "Edit"],
   ] as const)("diesel %s %s supports granular-only, legacy-only and neither", (method, path, action) => {
@@ -67,7 +82,6 @@ describe("PERM-01 Part A server route guards", () => {
 
   it.each([
     ["get", "/api/vendor-bills/equipment-hire-discovery", "View"],
-    ["put", "/api/vendor-bills/:id", "Edit"],
     ["post", "/api/vendor-bills/check-duplicates", "Create"],
   ] as const)("missed vendor bill %s %s supports both grants and denies neither", (method, path, action) => {
     expectEitherPermissions(
@@ -86,7 +100,6 @@ describe("PERM-01 Part A server route guards", () => {
     expect(routes).toContain('if (!assertApprove(req, res, "diesel_req_approve")) return;');
     expect(routes).toContain('if (!assertApprove(req, res, "vendor_bills_approve")) return;');
     expect(routes).toContain('if (!await assertPiDeliveryScope(req, res, indentId, [req.body])) return;');
-    expect(routes).toContain('if (existing.status !== "pending") {');
     expect(routes).toContain('if (existing.status === "verified" || existing.status === "approved" || existing.status === "paid") {');
   });
 

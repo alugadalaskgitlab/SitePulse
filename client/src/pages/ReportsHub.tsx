@@ -7,7 +7,7 @@ import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
-import { useAccessRule } from "@/lib/accessRules";
+import type { FeatureId } from "@shared/featureAccess";
 
 const HUB = "/reports/hub";
 
@@ -20,32 +20,40 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 }
 
 export default function ReportsHub() {
-  const { sectionVisible } = useAuth();
+  const { featureCan } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
 
-  const canReports    = useAccessRule("reports_hub_content");
-  const canDailyRep   = sectionVisible("plant_daily_reports");
-  const canSiteDprs   = sectionVisible("site_dprs");
-  const canHeating    = sectionVisible("plant_heating");
-  const canProd       = sectionVisible("plant_production");
-  const canDieselProc = sectionVisible("plant_diesel_proc");
-  const canShift      = sectionVisible("plant_shift_logs");
-  const canSiteMat    = sectionVisible("site_materials");
-  const canSiteProcure = sectionVisible("site_procurement") || sectionVisible("purchase_indents_view") || sectionVisible("purchase_indents_raise") || sectionVisible("purchase_indents_approve");
-  const canMaterials  = sectionVisible("plant_materials");
-  const canStock      = sectionVisible("plant_stock");
-  const canVariance   = sectionVisible("plant_variance");
-  const canAudit      = sectionVisible("plant_audit");
-  const canDieselReq  = sectionVisible("site_diesel") || sectionVisible("diesel_req_view") || sectionVisible("diesel_req_raise") || sectionVisible("diesel_req_approve");
-  const canBills      = sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view") || sectionVisible("vendor_bills_raise") || sectionVisible("vendor_bills_verify") || sectionVisible("vendor_bills_approve");
-  const canPayables   = (sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view")) && sectionVisible("vendor_financials");
-  const canEquipment  = sectionVisible("equipment_performance_report") || sectionVisible("plant_equipment");
+  const canReports    = featureCan("reports", "view");
+  const canReportSource = (feature: FeatureId) => canReports && featureCan(feature, "view");
+  const canDailyRep   = canReportSource("hmp_rmc");
+  const canSiteDprs   = canReportSource("dpr");
+  const canProgress   = canReportSource("progress_actual");
+  const canDprEquipment = canSiteDprs && canReportSource("equipment_usage");
+  const canHeating    = canReportSource("hmp_rmc");
+  const canProd       = canReportSource("hmp_rmc");
+  const canDieselProc = canReportSource("hmp_rmc");
+  const canShift      = canReportSource("hmp_rmc");
+  const canSiteMat    = canReportSource("site_materials");
+  const canSiteProcure = canReportSource("purchase_orders");
+  const canPurchaseIndent = canReportSource("purchase_indent");
+  const canMaterials  = canReportSource("plant_receipts");
+  const canStock      = canReportSource("issues_stock");
+  const canVariance   = canReportSource("issues_stock");
+  const canAudit      = canReportSource("issues_stock");
+  const canDieselReq  = canReportSource("diesel_issue");
+  const canBills      = canReportSource("vendor_bills");
+  const canPayables   = canReportSource("payables");
+  const canEquipment  = canReportSource("equipment_usage");
+  const canManagementReport = canReports && (
+    canReportSource("dpr") || canReportSource("hmp_rmc") || canReportSource("labour_attendance") ||
+    canReportSource("site_materials") || canReportSource("purchase_indent") || canReportSource("payables")
+  );
 
-  const hasSiteReports  = canSiteDprs || canSiteMat || canSiteProcure || canReports || canEquipment;
+  const hasSiteReports  = canSiteDprs || canProgress || canSiteMat || canSiteProcure || canManagementReport || canEquipment;
   const hasHmpReports   = canDailyRep || canHeating || canProd || canDieselProc || canShift;
   const hasRmcReports   = rmcEnabled && canProd;
   const hasStockReports = canMaterials || canStock || canVariance || canAudit;
-  const hasProcReports  = canSiteProcure || canDieselReq || canBills || canPayables;
+  const hasProcReports  = canSiteProcure || canPurchaseIndent || canDieselReq || canBills || canPayables;
 
   return (
     <HubShell
@@ -77,7 +85,7 @@ export default function ReportsHub() {
                 description="RA-style item-wise, chainage-wise & date-wise DPR rollup"
                 accent="blue"
                 iconBg="bg-blue-100"
-                enabled={canSiteDprs}
+                enabled={canProgress}
               />
               <HubActionTile
                 href="/reports/dpr-actual-vs-theoretical"
@@ -86,7 +94,7 @@ export default function ReportsHub() {
                 description="Compare BOQ equipment hours with linked DPR actuals and review incomplete attribution counts"
                 accent="violet"
                 iconBg="bg-violet-100"
-                enabled={canSiteDprs && (canDieselReq || sectionVisible("stores_inventory"))}
+                enabled={canDprEquipment}
               />
               <HubActionTile
                 href={`/site/materials-received?returnTo=${HUB}`}
@@ -113,7 +121,7 @@ export default function ReportsHub() {
                 description="Cross-site summary for project management & stakeholders"
                 accent="slate"
                 iconBg="bg-slate-100"
-                enabled={canReports}
+                enabled={canManagementReport}
               />
               <HubActionTile
                 href="/reports/equipment-performance"
@@ -275,7 +283,7 @@ export default function ReportsHub() {
                 description="View and approve purchase indents across all sites"
                 accent="blue"
                 iconBg="bg-blue-100"
-                enabled={canSiteProcure}
+                enabled={canPurchaseIndent}
               />
               <HubActionTile
                 href={`/plant/diesel-requirements?returnTo=${HUB}`}

@@ -165,7 +165,7 @@ describe("DPR-VIEW-01 page, mobile and print contracts", () => {
       expect(source).toContain("<DprEquipmentReadOnlyRow");
       expect(source).not.toContain("<DprEquipmentCompact");
       expect(source).toContain("resolveDprActualEfficiency");
-      expect(source).toContain('sectionCan("equipment_performance_report", "view") || sectionCan("plant_equipment", "view")');
+      expect(source).toContain('featureCan("reports", "view") && featureCan("equipment_usage", "view")');
       expect(source).toContain("useDprEquipmentPerformance(dpr, canViewPerformance, user?.id, completePerformanceContext)");
     }
     expect(detail).toContain('<TableHead className="text-right">Hours</TableHead>');

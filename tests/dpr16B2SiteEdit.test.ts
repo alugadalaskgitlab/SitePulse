@@ -72,7 +72,7 @@ describe("DPR16 B2 classic SiteEdit", () => {
     expect(compact).toContain("sectionPresentation");
     expect(compact).toContain('enableTankContinuity={!isSubmittedCorrection && entry.dieselSource === "plant_stock"}');
     expect(compact).toContain("historicalCorrection={isSubmittedCorrection}");
-    expect(compact).toContain("allowLinkedSourceEdit={isAdmin}");
+    expect(compact).toContain("allowLinkedSourceEdit={canOverrideGeometry}");
     expect(compact).toContain("stoppageSlot={stoppageSlot}");
     expect(edit).toContain("const stoppageSlot = (");
     expect(edit).toContain("value={entry.breakdowns ?? []}");

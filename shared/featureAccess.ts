@@ -6,19 +6,6 @@ import {
   type SectionKey,
 } from "./permissions";
 
-export type AccessRuleId =
-  | "dashboard_nav" | "hmp_nav" | "rmc_nav" | "masters_nav" | "settings_nav"
-  | "reports_hub_content" | "plant_admin_guide" | "plant_dispatch_summary"
-  | "plant_project_report" | "stale_grn_alert" | "grn_acceptance_edit"
-  | "home_dispatch_tile" | "payables_preview" | "whole_bill_export"
-  | "site_req_review_ui" | "site_req_status_api" | "site_req_allocation_api"
-  | "site_req_material_button" | "site_req_equipment_button" | "site_req_labour_button"
-  | "site_req_immediate_button" | "site_req_material_api" | "site_req_equipment_api"
-  | "site_req_labour_api" | "site_req_immediate_api" | "site_req_execution_summary"
-  | "site_req_outcome" | "execution_arrangement_outcome"
-  | "cutfill_reconciliation_ui" | "cutfill_reconciliation_api"
-  | "ldo_orphan_cleanup" | "stale_grn_push_audience";
-
 export const FEATURE_GROUPS = [
   { id: "site_work", label: "Site work" },
   { id: "stores", label: "Stores" },
@@ -213,7 +200,7 @@ export const LEGACY_FEATURE_KEYS: Readonly<Record<FeatureId, readonly SectionKey
   issues_stock: ["stores_inventory", "plant_stock", "stock_reconciliation"],
   diesel_issue: ["site_diesel", "diesel_req_view", "diesel_req_raise", "diesel_req_approve", "stores_inventory"],
   plant_receipts: ["plant_materials"],
-  hmp_rmc: ["plant_production", "plant_daily_reports", "rmc_operations", "rmc_batch_records", "rmc_mix_designs", "rmc_cube_tests", "rmc_raw_materials", "rmc_delivery_challans", "rmc_daily_report", "hmp_operations"],
+  hmp_rmc: ["plant_production", "plant_daily_reports", "plant_shift_logs", "rmc_operations", "rmc_batch_records", "rmc_mix_designs", "rmc_cube_tests", "rmc_raw_materials", "rmc_delivery_challans", "rmc_daily_report", "hmp_operations"],
   equipment_usage: ["plant_equipment"],
   maintenance: ["plant_maintenance", "plant_equipment"],
   irn: ["irn_view", "irn_raise", "irn_approve", "stores_inventory"],
@@ -225,7 +212,7 @@ export const LEGACY_FEATURE_KEYS: Readonly<Record<FeatureId, readonly SectionKey
   boq_programme: ["qto_boq", "work_programme", "work_programme_review", "planning_masters", "project_scope", "norms_library"],
   progress_actual: ["work_programme_review", "site_dprs"],
   ra_bills: [],
-  reports: ["reports", "report_management", "report_site_purchases", "plant_daily_reports", "plant_variance", "plant_audit", "plant_diesel_proc", "plant_stock", "plant_ldo_reconciliation", "stock_reconciliation", "equipment_performance_report", "rmc_daily_report", "plant_heating_trends", "reports_analysis"],
+  reports: ["reports", "reports_hub", "report_management", "report_site_purchases", "plant_daily_reports", "plant_variance", "plant_audit", "plant_diesel_proc", "plant_stock", "plant_ldo_reconciliation", "stock_reconciliation", "equipment_performance_report", "rmc_daily_report", "plant_heating_trends", "reports_analysis"],
   masters: ["master_parties", "master_materials", "master_equipment", "master_personnel", "site_management", "sites_plants_manage", "vendor_masters_manage"],
   users_permissions: ["user_management", "permission_manager"],
   estimating: ["estimator_portal", "mix_calculator", "concrete_calculator", "concrete_estimates_manage", "estimates_manager"],
@@ -300,7 +287,10 @@ export function can(
   action: FeatureAction,
   state: FeatureAccessState,
 ): boolean {
-  if (!user || user.isActive === false || !isFeatureLicensed(feature, state.licensedModules)) return false;
+  const definition = FEATURES.find(item => item.id === feature);
+  if (!user || user.isActive === false || !definition || definition.inactive ||
+      !isFeatureLicensed(feature, state.licensedModules)) return false;
+  if (feature === "estimating" && !user.isOwner) return false;
   if (user.isOwner) return true;
   if (user.isAdmin && !state.rolesConfigured) return true;
   if (!state.rolesConfigured) {
@@ -469,12 +459,17 @@ function reportSourceForPath(path: string): FeatureId | null {
   const p = path.toLowerCase();
   if (/vendor|payable|gst|financial/.test(p)) return "payables";
   if (/equipment|fleet|hire/.test(p)) return "equipment_usage";
-  if (/plant|hmp|rmc|dispatch/.test(p)) return "hmp_rmc";
-  if (/grn|stock|issue|stores/.test(p)) return "issues_stock";
+  if (/site.*material|material.*site/.test(p)) return "site_materials";
+  if (/ldo/.test(p)) return "plant_receipts";
+  if (/plant.*(material|receipt)|material.*plant|receipt/.test(p)) return "plant_receipts";
   if (/labour|labor|attendance/.test(p)) return "labour_attendance";
+  if (/diesel/.test(p)) return "diesel_issue";
+  if (/grn|stock|issue|stores|audit|variance/.test(p)) return "issues_stock";
+  if (/site-purchases|purchase-orders?/.test(p)) return "purchase_orders";
+  if (/purchase|procurement|irn/.test(p)) return "purchase_indent";
+  if (/plant|hmp|rmc|dispatch|shift|production|heating/.test(p)) return "hmp_rmc";
   if (/progress|programme|boq/.test(p)) return "progress_actual";
   if (/site|dpr|daily/.test(p)) return "dpr";
-  if (/purchase|procurement|irn/.test(p)) return "purchase_indent";
   return null;
 }
 
@@ -506,22 +501,37 @@ export function canLegacySection(
   const relevantPathFeatures = pathFeatures.filter(feature => sectionFeatures.includes(feature));
   const candidates = relevantPathFeatures.length ? relevantPathFeatures : sectionFeatures;
   const requestedActions = featureActionsFromLegacy(action, path);
-  const reportArea = !!path && /\/(reports|api\/reports)(\/|$)/i.test(path);
+  const reportOnlySections = new Set<SectionKey>([
+    "plant_heating_trends", "plant_daily_reports", "plant_ldo_reconciliation",
+    "plant_variance", "plant_audit", "plant_diesel_proc",
+    "equipment_performance_report", "rmc_daily_report", "report_site_purchases",
+    "reports_analysis",
+  ]);
+  const reportArea = !!path && (
+    /\/(reports|api\/reports)(\/|$)/i.test(path) || reportOnlySections.has(section)
+  );
   if (reportArea) {
-    if (!can(user, "reports", action === "export" ? "export" : "view", { ...state, legacyPermissions: matrix ?? state.legacyPermissions })) return false;
-    const source = reportSourceForPath(path);
-    if (source) return can(user, source, "view", { ...state, legacyPermissions: matrix ?? state.legacyPermissions });
+    const accessState = { ...state, legacyPermissions: matrix ?? state.legacyPermissions };
+    if (action !== "view" && action !== "export") return false;
+    if (!can(user, "reports", "view", accessState)) return false;
+    if (action === "export" && !can(user, "reports", "export", accessState)) return false;
+    const source = path ? reportSourceForPath(path) : null;
+    if (source) return can(user, source, "view", accessState);
     const reportSources: FeatureId[] = [
       "dpr", "labour_attendance", "site_materials", "grn", "issues_stock", "diesel_issue",
       "plant_receipts", "hmp_rmc", "equipment_usage", "maintenance", "purchase_indent",
       "purchase_orders", "vendor_bills", "payables", "boq_programme", "progress_actual",
     ];
-    return reportSources.some(sourceFeature => can(user, sourceFeature, "view", {
-      ...state, legacyPermissions: matrix ?? state.legacyPermissions,
-    }));
+    const aliasedSources = candidates.filter(feature => feature !== "reports");
+    const requiredSources = aliasedSources.length ? aliasedSources : reportSources;
+    return requiredSources.some(sourceFeature => can(user, sourceFeature, "view", accessState));
   }
   if (candidates.length) {
-    return candidates.some(feature =>
+    // Some operational sections historically shared a Reports key. That
+    // alias must not turn a Reports tick into access to the operational API.
+    const operationalCandidates = candidates.filter(feature => feature !== "reports");
+    const actionCandidates = operationalCandidates.length ? operationalCandidates : candidates;
+    return actionCandidates.some(feature =>
       requestedActions.some(featureAction =>
         can(user, feature, featureAction, { ...state, legacyPermissions: matrix ?? state.legacyPermissions }),
       ),
@@ -568,53 +578,4 @@ export function projectFeaturePermissions(
     }
   }
   return projected;
-}
-
-const ACCESS_RULE_REQUIREMENTS: Partial<Record<AccessRuleId, readonly [FeatureId, FeatureAction][]>> = {
-  dashboard_nav: [["dpr", "view"]],
-  hmp_nav: [["hmp_rmc", "view"]],
-  rmc_nav: [["hmp_rmc", "view"]],
-  masters_nav: [["masters", "view"]],
-  plant_dispatch_summary: [["hmp_rmc", "view"]],
-  plant_project_report: [["reports", "view"], ["hmp_rmc", "view"]],
-  stale_grn_alert: [["grn", "view"]],
-  stale_grn_push_audience: [["grn", "view"]],
-  grn_acceptance_edit: [["grn", "edit"]],
-  home_dispatch_tile: [["hmp_rmc", "view"]],
-  whole_bill_export: [["vendor_bills", "export"]],
-  site_req_review_ui: [["site_requirements", "verify"]],
-  site_req_status_api: [["site_requirements", "edit"]],
-  site_req_allocation_api: [["site_requirements", "edit"]],
-  site_req_material_button: [["site_requirements", "edit"]],
-  site_req_equipment_button: [["site_requirements", "edit"]],
-  site_req_labour_button: [["site_requirements", "edit"]],
-  site_req_immediate_button: [["site_requirements", "edit"]],
-  site_req_material_api: [["site_requirements", "edit"]],
-  site_req_equipment_api: [["site_requirements", "edit"]],
-  site_req_labour_api: [["site_requirements", "edit"]],
-  site_req_immediate_api: [["site_requirements", "edit"]],
-  site_req_execution_summary: [["site_requirements", "view"]],
-  site_req_outcome: [["site_requirements", "approve"]],
-  execution_arrangement_outcome: [["boq_programme", "edit"]],
-  cutfill_reconciliation_ui: [["boq_programme", "edit"]],
-  cutfill_reconciliation_api: [["boq_programme", "edit"]],
-};
-
-export function canAccessRule(
-  id: AccessRuleId,
-  user: LegacyActor | null | undefined,
-  state: FeatureAccessState,
-): boolean {
-  if (!user || user.isActive === false) return false;
-  if (id === "settings_nav" || id === "plant_admin_guide" || id === "ldo_orphan_cleanup") {
-    return !!user.isOwner;
-  }
-  if (id === "reports_hub_content") {
-    return canLegacySection(user, state.legacyPermissions ?? emptyMatrix(), "reports_hub", "view", state, "/reports/hub");
-  }
-  if (id === "payables_preview") {
-    return can(user, "reports", "view", state) && can(user, "payables", "view", state);
-  }
-  const requirements = ACCESS_RULE_REQUIREMENTS[id];
-  return !!requirements?.length && requirements.every(([feature, action]) => can(user, feature, action, state));
 }

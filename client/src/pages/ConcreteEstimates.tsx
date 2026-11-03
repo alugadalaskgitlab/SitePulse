@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -6,11 +6,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ChevronLeft, Trash2, Calendar, Plus, Building2, ChevronDown, ChevronUp, Copy, ExternalLink, Search, LogOut } from "lucide-react";
+import { ChevronLeft, Trash2, Calendar, Plus, Building2, ChevronDown, ChevronUp, Copy, ExternalLink, Search } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ConcreteEstimate } from "@shared/schema";
-import { readEstimatorRole, signOutEstimator } from "@/lib/estimatorAuth";
+import { useAuth } from "@/lib/auth-context";
 
 const STRUCTURE_TYPE_COLORS: Record<string, string> = {
   "Drain": "bg-blue-100 text-blue-700 border-blue-200",
@@ -34,19 +34,14 @@ function fmtDate(d: Date | string | null | undefined) {
 
 export default function ConcreteEstimates() {
   const { toast } = useToast();
+  const { featureCan } = useAuth();
   const [search, setSearch] = useState("");
   const [structureFilter, setStructureFilter] = useState<string>("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
-  const role = readEstimatorRole();
-  const canEdit = role === "admin";
-
-  useEffect(() => {
-    if (!role) {
-      window.location.href = "/estimator-login?returnTo=/admin/concrete-estimates";
-    }
-  }, [role]);
+  const canAdd = featureCan("estimating", "add");
+  const canCancel = featureCan("estimating", "cancel");
 
   const { data: estimates = [], isLoading } = useQuery<ConcreteEstimate[]>({
     queryKey: ["/api/concrete-estimates"],
@@ -156,22 +151,13 @@ export default function ConcreteEstimates() {
               <ExternalLink className="w-4 h-4 mr-1" /> Open Calculator
             </Button>
           </a>
-          {canEdit && (
+          {canAdd && (
             <a href="/concrete-calculator">
               <Button variant="default" size="sm" data-testid="btn-new-estimate">
                 <Plus className="w-4 h-4 mr-1" /> New Estimate
               </Button>
             </a>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={async () => { await signOutEstimator(); window.location.href = "/estimator-login"; }}
-            data-testid="btn-logout"
-            title="Logout"
-          >
-            <LogOut className="w-4 h-4" />
-          </Button>
         </div>
       </div>
 
@@ -327,7 +313,7 @@ export default function ConcreteEstimates() {
                                   >
                                     Open
                                   </Button>
-                                  {canEdit && (
+                                  {canAdd && (
                                     <Button
                                       variant="ghost"
                                       size="sm"
@@ -339,7 +325,7 @@ export default function ConcreteEstimates() {
                                       <Copy className="w-3.5 h-3.5" />
                                     </Button>
                                   )}
-                                  {canEdit && (
+                                  {canCancel && (
                                     <Button
                                       variant="ghost"
                                       size="sm"

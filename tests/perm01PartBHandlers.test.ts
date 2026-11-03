@@ -36,6 +36,7 @@ vi.mock("../server/storage", () => {
   methods.createNotification = vi.fn(async input => ({ id: 7, ...input }));
   methods.addVendorAlias = vi.fn(async (canonicalName, alias) => ({ id: 7, canonicalName, alias }));
   methods.upsertVendorRateCard = vi.fn(async input => ({ id: 7, ...input }));
+  methods.deleteVendorRateCard = vi.fn(async () => true);
   methods.createConcreteEstimate = vi.fn(async input => ({ id: 7, ...input }));
   methods.getConcreteEstimate = vi.fn(async () => ({ id: 7, createdBy: 51 }));
   methods.updateConcreteEstimate = vi.fn(async (id, input) => ({ id, ...input }));
@@ -71,11 +72,11 @@ const routes = [
   { method: "post", path: "/api/vendor-aliases", action: "create", key: "vendor_masters_manage", storage: "addVendorAlias", body: { canonicalName: "Synthetic supplier", alias: "Synthetic alternate" } },
   { method: "post", path: "/api/vendor-rate-cards", action: "create", key: "vendor_masters_manage", storage: "upsertVendorRateCard", body: { vendorName: "Synthetic supplier", rate: 10 } },
   { method: "post", path: "/api/vendor-rate-cards/bulk-upsert", action: "create", key: "vendor_masters_manage", storage: "upsertVendorRateCard", body: { items: [{ vendorName: "Synthetic supplier", rate: 10 }] } },
-  { method: "post", path: "/api/concrete-estimates", action: "create", key: "concrete_estimates_manage", storage: "createConcreteEstimate", body: { name: "Synthetic estimate", state: {} } },
-  { method: "patch", path: "/api/concrete-estimates/7", action: "edit", key: "concrete_estimates_manage", storage: "updateConcreteEstimate", body: { name: "Synthetic revision" } },
-  { method: "post", path: "/api/concrete/v2/estimates", action: "create", key: "concrete_estimates_manage", storage: "createConcreteEstimateV2", body: { name: "Synthetic estimate v2", state: {} } },
-  { method: "patch", path: "/api/concrete/v2/estimates/7", action: "edit", key: "concrete_estimates_manage", storage: "updateConcreteEstimateV2", body: { name: "Synthetic revision v2" } },
-  { method: "post", path: "/api/notifications", action: "create", key: "admin_notifications_manage", storage: "createNotification", body: { type: "info", title: "Synthetic notice", message: "Synthetic message" } },
+  { method: "post", path: "/api/concrete-estimates", action: "create", key: "concrete_estimates_manage", ownerOnly: true, storage: "createConcreteEstimate", body: { name: "Synthetic estimate", state: {} } },
+  { method: "patch", path: "/api/concrete-estimates/7", action: "edit", key: "concrete_estimates_manage", ownerOnly: true, storage: "updateConcreteEstimate", body: { name: "Synthetic revision" } },
+  { method: "post", path: "/api/concrete/v2/estimates", action: "create", key: "concrete_estimates_manage", ownerOnly: true, storage: "createConcreteEstimateV2", body: { name: "Synthetic estimate v2", state: {} } },
+  { method: "patch", path: "/api/concrete/v2/estimates/7", action: "edit", key: "concrete_estimates_manage", ownerOnly: true, storage: "updateConcreteEstimateV2", body: { name: "Synthetic revision v2" } },
+  { method: "post", path: "/api/notifications", action: "create", key: "admin_notifications_manage", ownerOnly: true, storage: "createNotification", body: { type: "info", title: "Synthetic notice", message: "Synthetic message" } },
 ] as const;
 
 async function call(route: typeof routes[number]) {
@@ -85,13 +86,18 @@ async function call(route: typeof routes[number]) {
 describe("PERM-01 B: actual handlers with mocked storage (no business DB writes)", () => {
   it.each(routes)("$method $path honors the precise action, legacy action, and rejects unrelated grants", async route => {
     actor.permissions = { [route.key]: { [route.action]: true } };
-    expect((await call(route)).status).toBeLessThan(300);
-    expect(storage[route.storage]).toHaveBeenCalled();
+    if ("ownerOnly" in route && route.ownerOnly) {
+      expect((await call(route)).status).toBe(403);
+      expect(storage[route.storage]).not.toHaveBeenCalled();
+    } else {
+      expect((await call(route)).status).toBeLessThan(300);
+      expect(storage[route.storage]).toHaveBeenCalled();
+    }
     vi.clearAllMocks();
 
     actor.permissions = { admin_settings: { [route.action]: true } };
-    expect((await call(route)).status).toBeLessThan(300);
-    expect(storage[route.storage]).toHaveBeenCalled();
+    expect((await call(route)).status).toBe(403);
+    expect(storage[route.storage]).not.toHaveBeenCalled();
     vi.clearAllMocks();
 
     actor.permissions = { [route.key]: { [route.action === "create" ? "edit" : "create"]: true } };
@@ -99,17 +105,30 @@ describe("PERM-01 B: actual handlers with mocked storage (no business DB writes)
     expect(storage[route.storage]).not.toHaveBeenCalled();
     actor.permissions = { sites_plants_manage: { create: true, edit: true } };
     if (route.key !== "sites_plants_manage") {
-      expect((await call(route)).status).toBe(403);
-      expect(storage[route.storage]).not.toHaveBeenCalled();
+      const response = await call(route);
+      if (route.path === "/api/vendor-aliases") {
+        expect(response.status).toBeLessThan(300);
+        expect(storage[route.storage]).toHaveBeenCalled();
+      } else {
+        expect(response.status).toBe(403);
+        expect(storage[route.storage]).not.toHaveBeenCalled();
+      }
+    }
+    if ("ownerOnly" in route && route.ownerOnly) {
+      actor.owner = true;
+      actor.permissions = {};
+      expect((await call(route)).status).toBeLessThan(300);
+      expect(storage[route.storage]).toHaveBeenCalled();
     }
   });
 
-  it("sites/plants-only grants all five site and plant actions but none of other three capabilities", async () => {
+  it("maps the legacy Masters grant without granting Rate Cards or Owner-only features", async () => {
     actor.permissions = { sites_plants_manage: { create: true, edit: true } };
     for (const route of routes) {
-      expect((await call(route)).status).toBe(route.key === "sites_plants_manage"
+      const expected = route.key === "sites_plants_manage" || route.path === "/api/vendor-aliases"
         ? route.path === "/api/sites/seed" ? 200 : route.action === "create" ? 201 : 200
-        : 403);
+        : 403;
+      expect((await call(route)).status).toBe(expected);
     }
   });
 
@@ -123,5 +142,17 @@ describe("PERM-01 B: actual handlers with mocked storage (no business DB writes)
     expect(storage.updateConcreteEstimateV2).not.toHaveBeenCalled();
     expect((await request(app).delete("/api/sites/7")).status).toBe(403);
     expect((await request(app).delete("/api/concrete-estimates/7")).status).toBe(403);
+  });
+
+  it("requires Rate Cards Cancel for DELETE even when Edit is granted", async () => {
+    actor.permissions = { vendor_masters_manage: { edit: true } };
+    let response = await request(app).delete("/api/vendor-rate-cards/7");
+    expect(response.status).toBe(403);
+    expect(storage.deleteVendorRateCard).not.toHaveBeenCalled();
+
+    actor.permissions = { vendor_masters_manage: { delete: true } };
+    response = await request(app).delete("/api/vendor-rate-cards/7");
+    expect(response.status).toBe(200);
+    expect(storage.deleteVendorRateCard).toHaveBeenCalledWith(7);
   });
 });

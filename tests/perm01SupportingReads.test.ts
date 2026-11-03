@@ -74,7 +74,7 @@ beforeEach(() => {
 
 describe("PERM-01 supporting read HTTP routes with real guards", () => {
   it.each(["purchase_indents_raise", "site_procurement", "purchase_indents_view"])("loads PI list, detail and form reads with %s alone, preserving site scope", async key => {
-    fx.permissions = { [key]: { create: key !== "purchase_indents_view", view: key === "purchase_indents_view" } };
+    fx.permissions = { [key]: { create: key !== "purchase_indents_view", view: true } };
     fx.permitted = [1];
     const list = await request(app).get("/api/purchase-indents");
     expect(list.status).toBe(200);
@@ -86,7 +86,7 @@ describe("PERM-01 supporting read HTTP routes with real guards", () => {
   });
 
   it.each(["diesel_req_raise", "site_diesel", "stores_inventory"])("loads diesel list and detail with %s alone", async key => {
-    fx.permissions = { [key]: { create: key !== "stores_inventory", view: key === "stores_inventory" } };
+    fx.permissions = { [key]: { create: key !== "stores_inventory", view: true } };
     expect((await request(app).get("/api/diesel-requirements")).status).toBe(200);
     expect((await request(app).get("/api/diesel-requirements/1")).status).toBe(200);
     expect((await request(app).get("/api/diesel-requirements/recent-items")).status).toBe(200);
@@ -106,7 +106,7 @@ describe("PERM-01 supporting read HTTP routes with real guards", () => {
     ["diesel_req_raise", "site_diesel", "/api/diesel-requirements", "/api/diesel-requirements/1"],
   ])("%s and %s each pass read/create/edit guards, while neither and view-only cannot write", async (granular, legacy, list, detail) => {
     for (const key of [granular, legacy]) {
-      fx.permissions = { [key]: { create: true, edit: true } };
+      fx.permissions = { [key]: { view: true, create: true, edit: true } };
       expect((await request(app).get(list)).status).toBe(200);
       expect((await request(app).get(detail)).status).toBe(200);
       // Empty payload is rejected by the real input schema, after authorization.

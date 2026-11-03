@@ -560,9 +560,9 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
     const guided = fs.readFileSync("client/src/pages/GuidedDpr.tsx", "utf8");
     const siteEntry = fs.readFileSync("client/src/pages/SiteEntry.tsx", "utf8");
 
-    expect(siteEdit.match(/disabled=\{entry\.plantUsageId != null && !isAdmin\}/g)).toHaveLength(2);
-    expect(siteEdit).toContain("readOnly={!isAdmin} persistedArrangementId={entry.earthworkArrangementId}");
-    expect(siteEdit).toContain("allowLinkedSourceEdit={isAdmin}");
+    expect(siteEdit.match(/disabled=\{entry\.plantUsageId != null && !ownerOverride\}/g)).toHaveLength(2);
+    expect(siteEdit).toContain("readOnly={!ownerOverride} persistedArrangementId={entry.earthworkArrangementId}");
+    expect(siteEdit).toContain("allowLinkedSourceEdit={canOverrideGeometry}");
     expect(guided).not.toContain("allowLinkedSourceEdit");
     expect(siteEntry).not.toContain("allowLinkedSourceEdit");
   });

@@ -18,7 +18,7 @@ import request from "supertest";
 // ---------------------------------------------------------------------------
 // Layer 2 mocks must be registered before the imports they intercept.
 // ---------------------------------------------------------------------------
-const fx: { role: string } = { role: "admin" };
+const fx: { role: string } = { role: "owner" };
 
 vi.mock("../server/push", () => ({
   sendPushToAll: vi.fn().mockResolvedValue(undefined),
@@ -31,7 +31,7 @@ vi.mock("../server/push", () => ({
 vi.mock("../server/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../server/auth")>();
   const inject = (req: any, _res: any, next: any) => {
-    req.authUser = { id: 9, username: "test-user", isAdmin: fx.role === "admin", isActive: true };
+    req.authUser = { id: 9, username: "test-user", isAdmin: fx.role === "admin", isOwner: fx.role === "owner", isActive: true };
     req.authPermissions = {};
     req.session = { role: fx.role, username: "test-user", userId: 9 };
     next();

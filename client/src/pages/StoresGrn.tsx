@@ -17,7 +17,6 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { parseApiError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth-context";
-import { useAccessRule } from "@/lib/accessRules";
 
 const STORE_CATEGORIES = ["Spares", "Lubricants", "Consumables", "Electricals", "Tools", "HMA", "RMC", "Office", "General", "Others"];
 const STORE_CATEGORY_CODES: Record<string, string> = {
@@ -91,8 +90,8 @@ interface Props { isNew?: boolean; detailId?: number }
 export default function StoresGrn({ isNew, detailId }: Props) {
   const { toast } = useToast();
   const { user, featureCan } = useAuth();
-  const canSeeStaleGrnAlert = useAccessRule("stale_grn_alert");
-  const canEditGrnAcceptance = useAccessRule("grn_acceptance_edit");
+  const canSeeStaleGrnAlert = featureCan("grn", "view");
+  const canEditGrnAcceptance = featureCan("grn", "edit");
   const { uploadFile } = useUpload();
   const [stagedGrnPhotos, setStagedGrnPhotos] = useState<File[]>([]);
   const grnPhotoInputRef = useRef<HTMLInputElement>(null);

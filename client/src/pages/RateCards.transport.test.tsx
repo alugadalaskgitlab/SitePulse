@@ -7,7 +7,14 @@ import RateCards from "@/pages/RateCards";
 import { MANUAL_VENDOR_RATE_CARD_NOTE } from "@shared/vendorRateCardIdentity";
 
 const toast = vi.hoisted(() => vi.fn());
+const access = vi.hoisted(() => ({ view: true, add: true, edit: true, cancel: true }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast }) }));
+vi.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({
+    user: { id: 1, isOwner: false },
+    featureCan: (feature: string, action: keyof typeof access) => feature === "rate_cards" && access[action],
+  }),
+}));
 // Native selects keep tests focused on rate-card state, not Radix pointer capture.
 vi.mock("@/components/ui/select", async () => {
   const React = await import("react");
@@ -34,6 +41,7 @@ let materialsLoadFailure: boolean;
 let materialRequests: string[];
 const base = { id: 7, vendorName: "RAVI HAULAGE", category: "transport", itemKey: "EQ_TIPPER_HRS", itemLabel: "TIPPER — HOURLY HIRE", unit: "HRS", rate: 387, notes: "Agreed flat rate", ratePerKm: null, leadDistanceKm: null, payloadMt: null };
 beforeEach(() => {
+  Object.assign(access, { view: true, add: true, edit: true, cancel: true });
   queryClient.clear();
   cards = [{ ...base }];
   discovered = [{ ...base, rateCardId: 7 }];
@@ -231,6 +239,35 @@ describe("transport-only rate setup", () => {
     })]);
     expect(writes).toEqual([{ itemKey: "EQ_WMM_TRIP", ratePerKm: 90, leadDistanceKm: 12, payloadMt: 30 }]);
     expect(screen.getByTestId("transport-rate-basis").textContent).toContain("₹90/km · 12 km one way · 30 MT → ₹2,160/trip · ₹72/MT");
+  });
+
+  it("lets Add-only users add a material transport row without Edit", async () => {
+    Object.assign(access, { view: true, add: true, edit: false, cancel: false });
+    cards = [];
+    discovered = [];
+    mount();
+
+    fireEvent.click(await screen.findByTestId("button-add-transport-row"));
+    fireEvent.change(screen.getByTestId("select-add-transport-kind"), { target: { value: "material" } });
+    fireEvent.change(await screen.findByTestId("select-add-trans-material"), { target: { value: "WMM" } });
+    expect(screen.getByRole("button", { name: "ADD" })).toBeTruthy();
+    fireEvent.click(screen.getByTestId("button-confirm-add-transport"));
+
+    const rate = await screen.findByTestId("input-manual-rate-transport-0");
+    fireEvent.change(rate, { target: { value: "123" } });
+    fireEvent.click(screen.getByTestId("button-save-all-rates"));
+    await waitFor(() => expect(bulkWrites).toHaveLength(1));
+    expect(bulkWrites[0].items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ itemKey: "EQ_WMM_TRIP", rate: 123 }),
+    ]));
+  });
+
+  it("hides Cancel controls when Edit is granted without Cancel", async () => {
+    Object.assign(access, { view: true, add: false, edit: true, cancel: false });
+    mount();
+    await screen.findByText("TIPPER — HOURLY HIRE");
+    expect(screen.queryByRole("button", { name: /Remove saved rate for/ })).toBeNull();
+    expect(screen.getByTestId("button-save-all-rates")).toBeTruthy();
   });
 
   it("uses the same loaded material list in the Material section Add Row dropdown", async () => {

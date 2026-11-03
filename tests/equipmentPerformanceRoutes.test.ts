@@ -13,6 +13,9 @@ const spies = vi.hoisted(() => ({
   permitted: vi.fn(),
   sites: vi.fn(),
   viewEither: vi.fn(),
+  reportsView: vi.fn(),
+  equipmentView: vi.fn(),
+  verify: vi.fn(),
 }));
 
 vi.mock("../server/storage", () => {
@@ -51,6 +54,15 @@ vi.mock("../server/push", () => ({
 vi.mock("../server/auth", () => ({
   requireAuth: (req: Request, _res: Response, next: NextFunction) => {
     (req as any).authUser = { id: 7, isAdmin: false, role: "engineer" };
+    (req as any).authFeatureAccess = {
+      rolesConfigured: true,
+      userRoles: [1],
+      roleTicks: { 1: {
+        reports: { view: spies.reportsView() },
+        equipment_usage: { view: spies.equipmentView(), verify: spies.verify() },
+      } },
+      legacyPermissions: {},
+    };
     next();
   },
   isPublicApiPath: () => false, isOptionalAuthPath: () => false,
@@ -92,6 +104,9 @@ beforeEach(() => {
   spies.permitted.mockResolvedValue([1]);
   spies.sites.mockResolvedValue([{ id: 1, name: "Site A" }]);
   spies.viewEither.mockReturnValue(true);
+  spies.reportsView.mockReturnValue(true);
+  spies.equipmentView.mockReturnValue(true);
+  spies.verify.mockReturnValue(true);
 });
 
 describe("EQUIP-01 routes", () => {
@@ -103,13 +118,19 @@ describe("EQUIP-01 routes", () => {
     }), { permittedSiteNames: ["Site A"] });
     expect(spies.confirm).not.toHaveBeenCalled();
     expect(spies.createUsage).not.toHaveBeenCalled();
-    expect(spies.viewEither).toHaveBeenCalledWith("equipment_performance_report", "plant_equipment");
+    expect(spies.viewEither).not.toHaveBeenCalled();
   });
 
-  it("denies the report when neither the new nor legacy view permission is granted", async () => {
-    spies.viewEither.mockReturnValue(false);
+  it("requires both Reports View and Equipment usage View", async () => {
+    spies.reportsView.mockReturnValue(false);
     const response = await request(app).get("/api/reports/equipment-performance");
     expect(response.status).toBe(403);
+    expect(spies.report).not.toHaveBeenCalled();
+
+    spies.reportsView.mockReturnValue(true);
+    spies.equipmentView.mockReturnValue(false);
+    const missingSource = await request(app).get("/api/reports/equipment-performance");
+    expect(missingSource.status).toBe(403);
     expect(spies.report).not.toHaveBeenCalled();
   });
 
@@ -164,8 +185,8 @@ describe("EQUIP-01 routes", () => {
     expect(spies.report).not.toHaveBeenCalled();
   });
 
-  it("requires an owner or administrator for historical classification", async () => {
-    spies.admin.mockReturnValue(false);
+  it("requires Equipment usage Verify for historical classification", async () => {
+    spies.verify.mockReturnValue(false);
     const response = await request(app)
       .post("/api/reports/equipment-performance/logs/91/confirm")
       .send({ equipmentId: 4 });

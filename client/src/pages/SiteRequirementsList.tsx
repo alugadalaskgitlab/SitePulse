@@ -3,7 +3,6 @@ import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, addDays } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
-import { useAccessRule } from "@/lib/accessRules";
 import { requirementApprovalBlock, isRequirementDecision } from "@shared/siteRequirementApproval";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -1327,15 +1326,15 @@ const CONTEXT_CONFIG: Record<string, { title: string; subtitle: string; backLabe
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SiteRequirementsList() {
-  const { sectionVisible, canApprove, isFieldEngineer } = useAuth();
-  const canReview = useAccessRule("site_req_review_ui");
-  const canEditRequirement = useAccessRule("site_req_status_api");
-  const canUpdateMaterials = useAccessRule("site_req_material_button");
-  const canUpdateEquipment = useAccessRule("site_req_equipment_button");
-  const canUpdateLabour = useAccessRule("site_req_labour_button");
-  const canUpdateImmediate = useAccessRule("site_req_immediate_button");
-  const canSeeExecutionSummary = useAccessRule("site_req_execution_summary");
-  const canRecordOutcome = useAccessRule("site_req_outcome");
+  const { featureCan } = useAuth();
+  const canReview = featureCan("site_requirements", "verify") || featureCan("site_requirements", "approve");
+  const canEditRequirement = featureCan("site_requirements", "edit");
+  const canUpdateMaterials = featureCan("site_requirements", "edit");
+  const canUpdateEquipment = featureCan("site_requirements", "edit");
+  const canUpdateLabour = featureCan("site_requirements", "edit");
+  const canUpdateImmediate = featureCan("site_requirements", "edit");
+  const canSeeExecutionSummary = featureCan("site_requirements", "view");
+  const canRecordOutcome = featureCan("site_requirements", "approve");
   const search = useSearch();
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1347,10 +1346,7 @@ export default function SiteRequirementsList() {
   const cfg = CONTEXT_CONFIG[context] ?? CONTEXT_CONFIG.site;
   const backHref = returnTo || cfg.defaultBack;
 
-  // For site engineers, always show "Your submitted requirements"
-  const subtitle = isFieldEngineer
-    ? "Your submitted requirements"
-    : cfg.subtitle;
+  const subtitle = cfg.subtitle;
 
   const { data: reqs = [], isLoading, dataUpdatedAt } = useQuery<any[]>({
     queryKey: ["/api/site-requirements"],
@@ -1552,7 +1548,7 @@ export default function SiteRequirementsList() {
               canEditRequirement={canEditRequirement}
               canSeeExecutionSummary={canSeeExecutionSummary}
               canRecordOutcome={canRecordOutcome}
-              canApproveRequirements={canApprove("site_dprs")}
+              canApproveRequirements={canRecordOutcome}
               canUpdateMaterials={canUpdateMaterials}
               canUpdateEquipment={canUpdateEquipment}
               canUpdateLabour={canUpdateLabour}

@@ -5,7 +5,7 @@ import request from "supertest";
 
 const fx: { admin: boolean; permissions: Record<string, any> } = {
   admin: false,
-  permissions: { equipment_hub: { view: true } },
+  permissions: { reports: { view: true }, plant_equipment: { view: true } },
 };
 
 vi.mock("../server/push", () => ({
@@ -64,19 +64,19 @@ beforeAll(async () => {
 
 beforeEach(() => {
   fx.admin = false;
-  fx.permissions = { equipment_hub: { view: true } };
+  fx.permissions = { reports: { view: true }, plant_equipment: { view: true } };
   storage.getUserPermittedSiteIds.mockResolvedValue([]);
   storage.getFleetEquipmentStatus.mockClear();
 });
 
 describe("DPR-12 equipment status report route", () => {
-  it("accepts any existing fleet visibility section", async () => {
-    for (const section of ["equipment_hub", "plant_equipment", "equipment_performance_report"]) {
-      fx.permissions = { [section]: { view: true } };
-      const response = await request(app)
-        .get("/api/reports/equipment-status?dateFrom=2026-09-01&dateTo=2026-09-03");
-      expect(response.status).toBe(200);
-    }
+  it("requires both Reports View and Equipment usage View", async () => {
+    const url = "/api/reports/equipment-status?dateFrom=2026-09-01&dateTo=2026-09-03";
+    expect((await request(app).get(url)).status).toBe(200);
+    fx.permissions = { reports: { view: true } };
+    expect((await request(app).get(url)).status).toBe(403);
+    fx.permissions = { plant_equipment: { view: true } };
+    expect((await request(app).get(url)).status).toBe(403);
   });
 
   it("rejects callers outside all three existing visibility sections", async () => {

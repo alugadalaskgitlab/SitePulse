@@ -23,9 +23,11 @@ describe("EQUIP-04 report-only permission", () => {
   it("allows the new view grant without granting equipment transaction creation or editing", () => {
     const permissions = emptyMatrix();
     permissions.equipment_performance_report.view = true;
+    permissions.plant_equipment.view = true;
     const request = {
       authUser: { id: 42, isAdmin: false, isOwner: false },
       authPermissions: permissions,
+      path: "/api/reports/equipment-performance",
     } as unknown as Request;
 
     const view = responseRecorder();
@@ -41,15 +43,21 @@ describe("EQUIP-04 report-only permission", () => {
     expect(edit.state.status).toBe(403);
   });
 
-  it("retains report access for existing plant_equipment viewers through the compatibility gate", () => {
+  it("requires Reports View alongside the source feature's View grant", () => {
     const permissions = emptyMatrix();
     permissions.plant_equipment.view = true;
     const request = {
       authUser: { id: 43, isAdmin: false, isOwner: false },
       authPermissions: permissions,
+      path: "/api/reports/equipment-performance",
     } as unknown as Request;
     const result = responseRecorder();
-    expect(assertViewEither(request, result.response, "equipment_performance_report", "plant_equipment")).toBe(true);
+    expect(assertViewEither(request, result.response, "equipment_performance_report", "plant_equipment")).toBe(false);
+    expect(result.state.status).toBe(403);
+
+    permissions.reports.view = true;
+    const allowed = responseRecorder();
+    expect(assertViewEither(request, allowed.response, "equipment_performance_report", "plant_equipment")).toBe(true);
   });
 
   it("registers the report key as view-only in normal role templates and the admin group", () => {
@@ -71,10 +79,11 @@ describe("EQUIP-04 report-only permission", () => {
     const routes = readFileSync("server/routes.ts", "utf8");
     const usagePage = readFileSync("client/src/pages/PlantEquipmentUsage.tsx", "utf8");
     const storage = readFileSync("server/storage.ts", "utf8");
-    expect(app).toContain('gatedEither(EquipmentPerformanceReport, "equipment_performance_report", "plant_equipment")');
-    expect(routes).toContain('assertViewEither(req, res, "equipment_performance_report", "plant_equipment")');
-    expect(usagePage).toContain('sectionCan("plant_equipment", "create")');
-    expect(usagePage).toContain('sectionCan("plant_equipment", "edit")');
+    expect(app).toContain('reportGated(EquipmentPerformanceReport, "equipment_usage")');
+    expect(routes).toContain('assertFeatureAction(req, res, "reports", "view")');
+    expect(routes).toContain('assertFeatureAction(req, res, "equipment_usage", "view")');
+    expect(usagePage).toContain('featureCan("equipment_usage", "add")');
+    expect(usagePage).toContain('featureCan("equipment_usage", "edit")');
     expect(storage).toContain("isNull(equipmentUsage.dprId)");
     expect(storage).toContain("unrestricted");
     expect(storage).toContain("linkedUsageIdSet.has(usage.id)");

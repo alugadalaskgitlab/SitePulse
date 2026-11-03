@@ -348,8 +348,8 @@ function AuthedShell() {
       <Suspense fallback={<PageLoader />}>
         <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
           <Switch>
-          <Route path="/reports/equipment-performance" component={gatedEither(EquipmentPerformanceReport, "equipment_performance_report", "plant_equipment")} />
-           <Route path="/equipment/status" component={gatedEither(EquipmentStatus, "equipment_hub", "plant_equipment", "equipment_performance_report")} />
+          <Route path="/reports/equipment-performance" component={reportGated(EquipmentPerformanceReport, "equipment_usage")} />
+           <Route path="/equipment/status" component={reportGated(EquipmentStatus, "equipment_usage")} />
           {/* Site pages */}
           <Route path="/site" component={gated(SiteHome, "site_hub")} />
           <Route path="/site/dashboard" component={gated(SiteDashboard, "site_dprs")} />

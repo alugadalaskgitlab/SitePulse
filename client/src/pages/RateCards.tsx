@@ -10,6 +10,7 @@ import { Link, useSearch } from "wouter";
 import { ChevronLeft, Loader2, Save, Lock, Search, Plus, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 import { isManualVendorRateCard, MANUAL_VENDOR_RATE_CARD_NOTE } from "@shared/vendorRateCardIdentity";
 import { SITE_MATERIAL_TRIP_MATERIAL_OPTIONS } from "@shared/siteMaterialTripMaterials";
 import type { VendorAlias } from "@shared/schema";
@@ -85,13 +86,18 @@ const getCategoryBadgeClass = (cat: string) => {
 
 export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendor?: string; onReturnToDraft?: () => void } = {}) {
   const { toast } = useToast();
+  const { featureCan } = useAuth();
+  const canViewRateCards = featureCan("rate_cards", "view");
+  const canAddRates = featureCan("rate_cards", "add");
+  const canEditRates = featureCan("rate_cards", "edit");
+  const canCancelRates = featureCan("rate_cards", "cancel");
   const queryClient = useQueryClient();
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
   const preselectedVendor = draftVendor ?? params.get("vendorName") ?? "";
   const _backHref = params.get("returnTo") || "/finance/hub";
 
-  // Page-level access enforced by the rate-card/vendor-master/legacy route gate.
+  // The embedded bill workflow also enforces the Rate Cards feature directly.
   const [selectedVendor, setSelectedVendor] = useState(preselectedVendor);
   const [vendorNameInput, setVendorNameInput] = useState(preselectedVendor);
   const [rates, setRates] = useState<Record<string, number | string>>({});
@@ -124,12 +130,15 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
 
   const { data: vendorNames = [] } = useQuery<string[]>({
     queryKey: ["/api/vendor-bills/vendor-names"],
+    enabled: canViewRateCards,
   });
   const { data: vendorMasters = [] } = useQuery<VendorMasterOption[]>({
     queryKey: ["/api/vendor-master"],
+    enabled: canViewRateCards,
   });
   const { data: vendorAliases = [] } = useQuery<VendorAlias[]>({
     queryKey: ["/api/vendor-aliases"],
+    enabled: canViewRateCards,
   });
   const vendorKey = (value: unknown) => String(value ?? "").trim().replace(/\s+/g, " ").toUpperCase();
   const selectedVendorKey = vendorKey(selectedVendor);
@@ -151,7 +160,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
 
   const { data: allRateCards = [], isFetched: isRateCardsFetched } = useQuery<any[]>({
     queryKey: ["/api/vendor-rate-cards", selectedVendor],
-    enabled: !!selectedVendor,
+    enabled: !!selectedVendor && canViewRateCards,
     queryFn: async () => {
       const r = await fetch(`/api/vendor-rate-cards?vendorName=${encodeURIComponent(selectedVendor)}`);
       return r.ok ? r.json() : [];
@@ -170,7 +179,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
 
   const { data: canonicalTypes = [] } = useQuery<string[]>({
     queryKey: ["/api/equipment-master/canonical-types"],
-    enabled: !!selectedVendor,
+    enabled: !!selectedVendor && canViewRateCards,
     queryFn: async () => {
       const r = await fetch("/api/equipment-master/canonical-types");
       return r.ok ? r.json() : [];
@@ -179,7 +188,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
 
   const { data: plantMaterials = [], isError: plantMaterialsError } = useQuery<any[]>({
     queryKey: ["/api/plant-module/materials"],
-    enabled: !!selectedVendor,
+    enabled: !!selectedVendor && canViewRateCards,
     queryFn: async () => {
       const response = await fetch("/api/plant-module/materials", { credentials: "include" });
       if (!response.ok) throw new Error("Couldn't load materials");
@@ -403,6 +412,20 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
         toast({ title: `${material} transport already exists`, variant: "destructive" });
         return;
       }
+      if (!canEditRates) {
+        setManualRows(prev => [...prev, {
+          id: `manual_material_transport_${Date.now()}`,
+          itemKey: key,
+          itemLabel: `${material} - TRANSPORT`,
+          category: "transport",
+          unit: "TRIP",
+          rate: "",
+          notes: MANUAL_VENDOR_RATE_CARD_NOTE,
+        }]);
+        setAddTransMaterial("");
+        setShowAddTransport(false);
+        return;
+      }
       setSetupRow({
         id: `new_material_transport_${Date.now()}`,
         itemKey: key,
@@ -474,7 +497,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       toast({ title: "Choose a Vendor Master record before saving", description: "Add an unknown spelling as an alias or create the vendor first.", variant: "destructive" });
       return;
     }
-    const discoveredToSave = savedItems.map(item => {
+    const discoveredToSave = (canEditRates ? savedItems : []).map(item => {
       const setupCard = item.category === "transport" ? findTransportCard(item) : undefined;
       const effectiveUnit = hasTransportSetup(setupCard) ? setupCard.unit : getEffectiveUnit(item);
       const effectiveKey = hasTransportSetup(setupCard) ? setupCard.itemKey : getEffectiveKey(item);
@@ -490,7 +513,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       };
     }).filter(i => i.rate > 0);
 
-    const manualToSave = manualRows.map(row => ({
+    const manualToSave = (canAddRates ? manualRows : []).map(row => ({
       vendorName: selectedVendor,
       vendorId: selectedVendorMaster.id,
       category: row.category,
@@ -602,7 +625,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
         {item.category === "transport" && hasTransportSetup(findTransportCard(item)) ? (
           <span className="text-sm font-mono px-2 py-1 bg-muted rounded" title="Derived display unit; saved identity is unchanged">TRIP</span>
         ) : <Select value={getEffectiveUnit(item)} onValueChange={(v) => handleUnitChange(item, v)}>
-          <SelectTrigger className="h-8 w-24 text-sm" data-testid={`select-unit-${idx}`}>
+          <SelectTrigger className="h-8 w-24 text-sm" data-testid={`select-unit-${idx}`} disabled={!canEditRates}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -620,16 +643,18 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
           step="0.01"
           min="0"
           value={rates[rateCardRowStateKey(item)] ?? item.rate ?? ""}
+          disabled={!canEditRates}
           onChange={e => setRates(prev => ({ ...prev, [rateCardRowStateKey(item)]: e.target.value }))}
           onWheel={e => (e.target as HTMLInputElement).blur()}
           placeholder="0.00"
           className="text-right font-mono w-full"
           data-testid={`input-rate-${idx}`}
         />}
-        {item.category === "transport" && <Button type="button" size="sm" variant="outline" className="mt-1.5 h-7 text-xs" onClick={() => setSetupRow(item)} aria-label={`Rate setup for ${item.itemLabel}`} title={!findTransportCard(item) ? "Available only for an existing saved rate-card row; setup never creates rows" : undefined} disabled={!isRateCardsFetched || bulkSaveMutation.isPending || !findTransportCard(item)}>RATE SETUP</Button>}
+        {item.category === "transport" && <Button type="button" size="sm" variant="outline" className="mt-1.5 h-7 text-xs" onClick={() => setSetupRow(item)} aria-label={`Rate setup for ${item.itemLabel}`} title={!findTransportCard(item) ? "Available only for an existing saved rate-card row; setup never creates rows" : undefined} hidden={!canEditRates} disabled={!isRateCardsFetched || bulkSaveMutation.isPending || !findTransportCard(item)}>RATE SETUP</Button>}
       </td>
       <td className="px-3 py-2 w-16">
         <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+          hidden={!canCancelRates}
           disabled={deleteSavedCardMutation.isPending}
           aria-label={`${item.rateCardId != null ? "Remove saved rate for" : "Reset unsaved rate for"} ${item.itemLabel}`}
           title="Delete saved rate card; existing bills are not affected"
@@ -660,6 +685,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
           step="0.01"
           min="0"
           value={row.rate}
+          disabled={!canAddRates}
           onChange={e => {
             const val = e.target.value;
             setManualRows(prev => prev.map(r => r.id === row.id ? { ...r, rate: val } : r));
@@ -669,7 +695,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
           className="text-right font-mono w-full"
           data-testid={`input-manual-rate-${row.category}-${idx}`}
         />}
-        {row.category === "transport" && <Button type="button" size="sm" variant="outline" className="mt-1.5 h-7 text-xs" onClick={() => setSetupRow(row)} aria-label={`Rate setup for ${row.itemLabel}`} title={!findTransportCard(row) ? "Available only for an existing saved rate-card row; setup never creates rows" : undefined} disabled={!isRateCardsFetched || bulkSaveMutation.isPending || !findTransportCard(row)}>RATE SETUP</Button>}
+        {row.category === "transport" && <Button type="button" size="sm" variant="outline" className="mt-1.5 h-7 text-xs" onClick={() => setSetupRow(row)} aria-label={`Rate setup for ${row.itemLabel}`} title={!findTransportCard(row) ? "Available only for an existing saved rate-card row; setup never creates rows" : undefined} hidden={!canEditRates} disabled={!isRateCardsFetched || bulkSaveMutation.isPending || !findTransportCard(row)}>RATE SETUP</Button>}
       </td>
       <td className="px-3 py-2 w-16 text-center">
         <Button
@@ -703,6 +729,13 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       {collapsedSections[category] ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
     </div>
   );
+
+  if (!canViewRateCards) {
+    return <div role="alert" className="mx-auto max-w-md py-20 text-center">
+      <h2 className="text-xl font-semibold">No access</h2>
+      <p className="mt-2 text-sm text-muted-foreground">Rate Cards View access is required.</p>
+    </div>;
+  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4">
@@ -835,7 +868,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                   </table>
                   <div className="px-3 py-2 border-t">
                     {!showAddEquipment ? (
-                      <Button variant="outline" size="sm" onClick={() => setShowAddEquipment(true)} data-testid="button-add-equipment-row">
+                      <Button variant="outline" size="sm" onClick={() => setShowAddEquipment(true)} data-testid="button-add-equipment-row" hidden={!canAddRates}>
                         <Plus className="w-3 h-3 mr-1" /> ADD ROW
                       </Button>
                     ) : (
@@ -866,7 +899,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                             </SelectContent>
                           </Select>
                         </div>
-                        <Button size="sm" onClick={handleAddEquipmentRow} data-testid="button-confirm-add-equipment">ADD</Button>
+                        <Button size="sm" onClick={handleAddEquipmentRow} data-testid="button-confirm-add-equipment" hidden={!canAddRates}>ADD</Button>
                         <Button variant="ghost" size="sm" onClick={() => { setShowAddEquipment(false); setAddEqType(""); setAddEqMode(""); }}>CANCEL</Button>
                       </div>
                     )}
@@ -901,7 +934,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                   </table>
                   <div className="px-3 py-2 border-t">
                     {!showAddMaterial ? (
-                      <Button variant="outline" size="sm" onClick={() => setShowAddMaterial(true)} data-testid="button-add-material-row">
+                      <Button variant="outline" size="sm" onClick={() => setShowAddMaterial(true)} data-testid="button-add-material-row" hidden={!canAddRates}>
                         <Plus className="w-3 h-3 mr-1" /> ADD ROW
                       </Button>
                     ) : (
@@ -933,7 +966,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                             </SelectContent>
                           </Select>
                         </div>
-                        <Button size="sm" onClick={handleAddMaterialRow} data-testid="button-confirm-add-material">ADD</Button>
+                        <Button size="sm" onClick={handleAddMaterialRow} data-testid="button-confirm-add-material" hidden={!canAddRates}>ADD</Button>
                         <Button variant="ghost" size="sm" onClick={() => { setShowAddMaterial(false); setAddMatName(""); setAddMatUnit("CFT"); }}>CANCEL</Button>
                       </div>
                     )}
@@ -969,7 +1002,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                   <div className="px-3 py-2 border-t">
                     <div className="text-[12px] text-muted-foreground mb-1">TRIP rates use lead distance x 2 (one-way to two-way)</div>
                     {!showAddTransport ? (
-                      <Button variant="outline" size="sm" onClick={() => setShowAddTransport(true)} data-testid="button-add-transport-row">
+                      <Button variant="outline" size="sm" onClick={() => setShowAddTransport(true)} data-testid="button-add-transport-row" hidden={!canAddRates}>
                         <Plus className="w-3 h-3 mr-1" /> ADD ROW
                       </Button>
                     ) : (
@@ -1037,8 +1070,8 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                             </div>
                           </>
                         )}
-                        <Button size="sm" onClick={handleAddTransportRow} data-testid="button-confirm-add-transport">
-                          {addTransKind === "material" ? "SET UP RATE" : "ADD"}
+                        <Button size="sm" onClick={handleAddTransportRow} data-testid="button-confirm-add-transport" hidden={!canAddRates}>
+                          {addTransKind === "material" && canEditRates ? "SET UP RATE" : "ADD"}
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => {
                           setShowAddTransport(false);
@@ -1075,7 +1108,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                   <div className="px-3 py-2 border-t">
                     <div className="text-[12px] text-muted-foreground mb-1">Rate per head per day. Add gender only if rates differ by gender; otherwise leave blank for combined rate.</div>
                     {!showAddLabour ? (
-                      <Button variant="outline" size="sm" onClick={() => setShowAddLabour(true)} data-testid="button-add-labour-row">
+                      <Button variant="outline" size="sm" onClick={() => setShowAddLabour(true)} data-testid="button-add-labour-row" hidden={!canAddRates}>
                         <Plus className="w-3 h-3 mr-1" /> ADD ROW
                       </Button>
                     ) : (
@@ -1106,7 +1139,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                             </SelectContent>
                           </Select>
                         </div>
-                        <Button size="sm" onClick={handleAddLabourRow} data-testid="button-confirm-add-labour">ADD</Button>
+                        <Button size="sm" onClick={handleAddLabourRow} data-testid="button-confirm-add-labour" hidden={!canAddRates}>ADD</Button>
                         <Button variant="ghost" size="sm" onClick={() => { setShowAddLabour(false); setAddLabCategory(""); setAddLabGender(""); }}>CANCEL</Button>
                       </div>
                     )}
@@ -1120,6 +1153,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
             <Button
               size="lg"
               onClick={handleSaveAll}
+              hidden={!canAddRates && !canEditRates}
               disabled={bulkSaveMutation.isPending || deleteSavedCardMutation.isPending}
               data-testid="button-save-all-rates"
             >

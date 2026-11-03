@@ -210,7 +210,7 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     expect(screen.getByTestId("button-bill-history")).toBeTruthy();
   });
 
-  it("shows ordinary bill editors Edit only on drafts and keeps audit content out of their view", async () => {
+  it("uses the Edit feature tick for bill changes while keeping audit content out of non-owner views", async () => {
     authTestState.isAdmin = false;
     authTestState.isOwner = false;
     const draftMaterial = {
@@ -241,7 +241,7 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-82"));
     expect(await screen.findByTestId("badge-bill-status")).toBeTruthy();
-    expect(screen.queryByTestId("button-edit-bill")).toBeNull();
+    expect(screen.getByTestId("button-edit-bill")).toBeTruthy();
     expect(screen.queryByTestId("button-bill-history")).toBeNull();
     expect(screen.queryByTestId("vendor-bill-audit-summary")).toBeNull();
     const statusSteps = screen.getByTestId("status-steps").textContent || "";

@@ -446,6 +446,7 @@ export default function SiteEdit() {
   // Fall back to the live permission check so authorised users are never locked out.
   const canEditLive = featureCan("dpr", "edit");
   const canOverrideGeometry = featureCan("dpr", "verify");
+  const canApproveDprCorrections = featureCan("dpr", "approve");
   // Owner-only overrides remain separate from a normal DPR Edit grant.
   const ownerOverride = authUser?.isOwner === true;
   const effectivePin = pin || (canEditLive ? (ownerOverride ? "admin" : "manager") : "");
@@ -1868,11 +1869,11 @@ export default function SiteEdit() {
           error={correctionError} onClose={() => setCorrectionOpen(false)} onRetry={() => void reviewCorrection()}
           onSubmit={reason => void submitCorrection(reason)} />
         {awaitingCorrectionApproval && <aside role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" data-testid="correction-awaiting-approval">
-          <h2 className="font-semibold">DPR #{id} · Awaiting Administrator approval</h2>
-          <p className="mt-1">The correction request is pending, not saved. The recorded report remains unchanged. Your entered edits are retained below; another Administrator must review the consequences.</p>
+          <h2 className="font-semibold">DPR #{id} · Awaiting approval</h2>
+          <p className="mt-1">The correction request is pending, not saved. The recorded report remains unchanged. Your entered edits are retained below; another authorized reviewer must review the consequences.</p>
         </aside>}
         <DprCorrectionHistory requests={corrections.history.data ?? []} loading={corrections.history.isLoading}
-          error={corrections.history.error?.message} isAdmin={ownerOverride} userId={authUser?.id} busy={corrections.decide.isPending}
+          error={corrections.history.error?.message} canApprove={canApproveDprCorrections} userId={authUser?.id} busy={corrections.decide.isPending}
           onRetry={() => void corrections.history.refetch()}
           onDecide={async (requestId, approve, reason) => {
             await corrections.decide.mutateAsync({ requestId, approve, reason, confirmImpact: true });

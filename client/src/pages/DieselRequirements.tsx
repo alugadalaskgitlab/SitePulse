@@ -393,8 +393,8 @@ function DieselPurchaseSummary({ requirement }: { requirement: DieselRequirement
   const paidAt = (requirement as any).paidAt as string | null;
   const paymentRecordedBy = (requirement as any).paymentRecordedBy as string | null;
   const [showMarkPaid, setShowMarkPaid] = useState(false);
-  const { sectionCan } = useAuth();
-  const canEditDiesel = sectionCan("site_diesel", "edit") || sectionCan("diesel_req_raise", "edit");
+  const { featureCan } = useAuth();
+  const canEditDiesel = featureCan("diesel_issue", "edit");
 
   return (
     <Card data-testid="card-purchase-summary">

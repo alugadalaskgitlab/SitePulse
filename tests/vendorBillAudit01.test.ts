@@ -332,7 +332,7 @@ describe("AUDIT-01 vendor-bill history", () => {
     });
   });
 
-  it("refuses voided bills, malformed dates, and non-admin date changes to approved bills", async () => {
+  it("refuses voided bills, malformed dates, and preserves the approved-bill date lock", async () => {
     storage.getVendorBill.mockResolvedValue(makeBill({ isCancelled: true }));
     const voidResponse = await request(app).patch("/api/vendor-bills/7/bill-date").send({ billDate: "2026-10-02" });
     expect(voidResponse.status).toBe(409);
@@ -350,8 +350,8 @@ describe("AUDIT-01 vendor-bill history", () => {
     storage.getSites.mockResolvedValue([{ id: 1, name: "Site A" }]);
     storage.getUserPermittedSiteIds.mockResolvedValue([1]);
     const forbidden = await request(app).patch("/api/vendor-bills/7/bill-date").send({ billDate: "2026-10-02" });
-    expect(forbidden.status).toBe(403);
-    expect(storage.updateVendorBillDate).not.toHaveBeenCalled();
+    expect(forbidden.status).toBe(409);
+    expect(storage.updateVendorBillDate).toHaveBeenCalledWith(7, "2026-10-02", "approved");
   });
 
   it("lets ordinary bill editors change a draft date without changing status", async () => {
@@ -598,7 +598,7 @@ describe("AUDIT-01 vendor-bill history", () => {
       const response = await request(app)
         .get(`/api/audit-logs?module=${module}&transactionId=7`);
       expect(response.status).toBe(403);
-      expect(response.body).toEqual({ error: "admin_required" });
+      expect(response.body.error).toBe("forbidden");
     }
     expect(storage.getAuditLogs).not.toHaveBeenCalled();
   });
@@ -631,7 +631,7 @@ describe("AUDIT-01 vendor-bill history", () => {
     const editEnd = routes.indexOf('app.patch("/api/vendor-bills/:id/payment-details"', editStart);
     const editRoute = routes.slice(editStart, editEnd);
     expect(editRoute).toContain('if (existing.status === "verified" || existing.status === "approved" || existing.status === "paid")');
-    expect(editRoute).toContain("if (!assertAdmin(req, res)) return;");
+    expect(editRoute).toContain('if (!assertFeatureAction(req, res, "vendor_bills", "edit")) return;');
     expect(editRoute).toContain('action: "status_reset"');
     const history = readFileSync("client/src/components/HistoryDialog.tsx", "utf8");
     expect(history).toContain('status_reset: "Status reset"');
@@ -724,13 +724,18 @@ describe("AUDIT-01 vendor-bill history", () => {
     }));
   });
 
-  it("limits the attention list to admins/owners and audits each isolated correction", async () => {
+  it("limits attention corrections to Owners and audits each isolated correction", async () => {
     fx.role = "manager";
     let response = await request(app).get("/api/vendor-bills/attention");
     expect(response.status).toBe(403);
     expect(storage.getVendorBills).not.toHaveBeenCalled();
 
     fx.role = "admin";
+    response = await request(app).get("/api/vendor-bills/attention");
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ error: "owner_required" });
+
+    fx.role = "owner";
     const siteBefore = makeBill({ siteId: null, siteScopeConfirmed: null });
     const siteAfter = makeBill({ siteId: null, siteScopeConfirmed: true });
     storage.getVendorBill.mockResolvedValue(siteBefore);
@@ -780,7 +785,7 @@ describe("AUDIT-01 vendor-bill history", () => {
     expect(response.status).toBe(403);
     expect(storage.confirmVendorBillAlpsPayer).not.toHaveBeenCalled();
 
-    fx.role = "admin";
+    fx.role = "owner";
     const before = makeBill({
       paidBy: " ALPS INFRA WORKS ",
       paymentAccountKey: null,

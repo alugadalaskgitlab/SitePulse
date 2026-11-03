@@ -5043,14 +5043,10 @@ export default function VendorBills() {
     const currentStatusIdx = STATUS_ORDER.indexOf(bill.status as any);
     const nextStatus = currentStatusIdx < STATUS_ORDER.length - 1 ? STATUS_ORDER[currentStatusIdx + 1] : null;
     const canEditBill = !bill.isCancelled &&
-      (user?.isOwner ||
-        (bill.status === "draft" && canEdit)) &&
+      (user?.isOwner || canEdit) &&
       (!bill.hireStatements?.length ||
         (bill.status === "draft" && bill.hireStatements.every(s => s.status === "draft")));
-    const canChangeBillDate = !bill.isCancelled && (
-      user?.isOwner ||
-      (bill.status === "draft" && canEdit)
-    );
+    const canChangeBillDate = !bill.isCancelled && (user?.isOwner || canEdit);
     const auditEntries = billAuditHistory.data || [];
     const createdAudit = auditEntries.find(entry => entry.action === "create");
     const lastChangeAudit = auditEntries.find(entry => entry.action !== "create") || createdAudit;

@@ -18,7 +18,11 @@ function visit(n: ts.Node) {
   ts.forEachChild(n, visit);
 }
 visit(ast);
-const compiled = ts.transpileModule(`${schemas}\nconst handler = ${handlerSource};`, {
+const handlerWithConfiguredCheck = handlerSource.replaceAll(
+  'await (await import("./featureAccess")).rolesHaveBeenConfigured()',
+  "await rolesHaveBeenConfigured()",
+);
+const compiled = ts.transpileModule(`${schemas}\nconst handler = ${handlerWithConfiguredCheck};`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText;
 function fixture(flags = {}) {
@@ -28,8 +32,8 @@ function fixture(flags = {}) {
     stored = matrix;
     if (role !== undefined) user.businessRole = role;
   });
-  const handler = new Function("z", "ROLE_TEMPLATES", "SECTION_KEYS", "emptyMatrix", "getUserById", "setUserPermissions",
-    `${compiled};return handler;`)(z, ROLE_TEMPLATES, SECTION_KEYS, emptyMatrix, async () => user, save);
+  const handler = new Function("z", "ROLE_TEMPLATES", "SECTION_KEYS", "emptyMatrix", "getUserById", "setUserPermissions", "rolesHaveBeenConfigured",
+    `${compiled};return handler;`)(z, ROLE_TEMPLATES, SECTION_KEYS, emptyMatrix, async () => user, save, async () => false);
   async function request(body: unknown, actor = { isAdmin: true }) {
     const res = { statusCode: 200, body: null as any, status(code: number) { this.statusCode = code; return this; },
       json(value: any) { this.body = value; return this; } };

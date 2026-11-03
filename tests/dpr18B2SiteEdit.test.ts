@@ -27,10 +27,10 @@ describe("DPR18 B2 SiteEdit equipment wiring", () => {
     expect(editor.match(/<BreakdownStoppageEditor/g)).toHaveLength(1);
     expect(editor).toContain("value={entry.breakdowns ?? []}");
     expect(editor).toContain("draftOnly={isDraftMode}");
-    expect(card).toContain("allowLinkedSourceEdit={isAdmin}");
+    expect(card).toContain("allowLinkedSourceEdit={canOverrideGeometry}");
     expect(card).toContain('enableTankContinuity={!isSubmittedCorrection && entry.dieselSource === "plant_stock"}');
     expect(card).toContain("historicalCorrection={isSubmittedCorrection}");
-    expect(editor).toContain("disabled={entry.plantUsageId != null && !isAdmin}");
+    expect(editor).toContain("disabled={entry.plantUsageId != null && !ownerOverride}");
   });
 
   it("defaults only new identified unlinked rows and never repairs hydrated historical nulls", () => {

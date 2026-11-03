@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import ts from "typescript";
 import { requirementApprovalBlock, isRequirementDecision } from "../shared/siteRequirementApproval";
-import { can, canAccessRule } from "../shared/featureAccess";
+import { can } from "../shared/featureAccess";
 import { emptyMatrix } from "../shared/permissions";
 import { FEATURES } from "../shared/featureAccess";
 
@@ -50,7 +50,6 @@ function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve
     "requireAuth",
     "requirementApprovalBlock",
     "isRequirementDecision",
-    "requestAccessRuleAllowed",
     "requestFeatureAllowed",
     "assertFeatureAction",
     `${compiled}\nreturn registerSiteRequirementRoutes;`,
@@ -59,7 +58,6 @@ function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve
     () => {},
     requirementApprovalBlock,
     isRequirementDecision,
-    (req: any, id: any) => canAccessRule(id, req.authUser, req.authFeatureAccess),
     (req: any, feature: any, action: any) => can(req.authUser, feature, action, req.authFeatureAccess),
     (req: any, res: any, feature: any, action: any) => {
       if (can(req.authUser, feature, action, req.authFeatureAccess)) return true;

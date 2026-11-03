@@ -27,14 +27,14 @@ function KpiCard({ label, value, sub, warn }: {
 }
 
 export default function StoresHub() {
-  const { sectionVisible, user } = useAuth();
+  const { sectionVisible, featureCan, user } = useAuth();
   const [, navigate] = useLocation();
   const [confirmTool, setConfirmTool] = useState<null | "reassign" | "rebuild">(null);
   const canStores = sectionVisible("stores_inventory");
   const canBulk = sectionVisible("plant_materials");
-  const canIrn = sectionVisible("irn_view") || sectionVisible("irn_raise");
-  const canPi = sectionVisible("purchase_indents_view") || sectionVisible("site_procurement") || sectionVisible("purchase_indents_raise");
-  const canDieselRegister = sectionVisible("diesel_req_view") || sectionVisible("site_diesel") || canStores;
+  const canIrn = featureCan("irn", "view");
+  const canPi = featureCan("purchase_indent", "view");
+  const canDieselRegister = featureCan("diesel_issue", "view");
 
   const { data: stock = [] } = useQuery<any[]>({
     queryKey: ["/api/stores/stock-summary"],

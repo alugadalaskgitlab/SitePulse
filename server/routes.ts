@@ -1,5 +1,5 @@
 import { DPR_SECTIONS, DPR_SECTION_FIELDS, normalizeDprSectionContext } from "../shared/dprSections";
-import { can as canFeature, canAccessRule, type AccessRuleId, type FeatureAction, type FeatureId } from "@shared/featureAccess";
+import { can as canFeature, type FeatureAction, type FeatureId } from "@shared/featureAccess";
 import { requirementApprovalBlock, isRequirementDecision } from "../shared/siteRequirementApproval";
 import { attachVendorBillEquipmentEvidence, resolveSavedEquipmentEvidenceSources } from "./vendorBillEquipmentEvidence";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, readSectionAggregate, saveDprSection, sectionSnapshot } from "./dprSections";
@@ -26,6 +26,7 @@ import { getBillFinancialTotals } from "../shared/vendorBillFinancialReport";
 import { buildSavedBillPresentationRows } from "../shared/vendorBillPresentation";
 import { getBaseSiteName } from "../shared/siteName";
 import { vendorIdentityDisplayName } from "../shared/vendorIdentityDisplay";
+import { vendorRateCardIdentity } from "../shared/vendorRateCardIdentity";
 import { receiptSlipSendWindow } from "../shared/receiptSlipStatus";
 import { resolveVendorNameMatch } from "./vendorNameResolution";
 import { isPartyNonPurchaseReceipt } from "@shared/materialReceiptParty";
@@ -187,13 +188,6 @@ import { registerManagementReportRoutes } from "./management-report";
 import { PROGRAMME_BAR_OUTCOMES, PROGRAMME_BAR_OUTCOME_REASONS, programmeBarOutcomeInputError } from "@shared/programmeBarOutcome";
 
 const ESTIMATOR_COOKIE = 'hlc_est_role';
-
-function requestAccessRuleAllowed(req: Request, id: AccessRuleId, _enabled = true): boolean {
-  return canAccessRule(id, req.authUser, {
-    ...(req.authFeatureAccess ?? { rolesConfigured: false }),
-    legacyPermissions: req.authPermissions,
-  });
-}
 
 function requestFeatureAllowed(req: Request, feature: FeatureId, action: FeatureAction): boolean {
   return canFeature(req.authUser, feature, action, {
@@ -3878,8 +3872,8 @@ export async function registerRoutes(
         materials: changedLinks("materials"), structureItems: changedLinks("structureItems") },
       changedLinks("equipment"), { versionSourceDprId: original.id });
   });
-  const correctionAccess = async (req: any, res: any) => {
-    if (!assertEdit(req, res, "site_dprs")) return false;
+  const correctionAccess = async (req: any, res: any, action: "view" | "edit" | "approve") => {
+    if (!assertFeatureAction(req, res, "dpr", action)) return false;
     const dpr = await storage.getDpr(Number(req.params.id));
     if (!dpr) { res.status(404).json({ message: "DPR not found." }); return false; }
     const sites = await getPermittedSiteNames(req);
@@ -3894,19 +3888,19 @@ export async function registerRoutes(
   };
   app.post("/api/dprs/:id/correction-review", async (req, res) => {
     try {
-      if (!await correctionAccess(req, res)) return;
+      if (!await correctionAccess(req, res, "edit")) return;
       res.json(await corrections.preview(Number(req.params.id), req.body.form, req.authUser!));
     } catch (error) { correctionFailure(res, error); }
   });
   app.get("/api/dprs/:id/corrections", async (req, res) => {
     try {
-      if (!await correctionAccess(req, res)) return;
+      if (!await correctionAccess(req, res, "view")) return;
       res.json(await corrections.list(Number(req.params.id)));
     } catch (error) { correctionFailure(res, error); }
   });
   app.post("/api/dprs/:id/corrections/:requestId", async (req, res) => {
     try {
-      if (!await correctionAccess(req, res) || !assertApprove(req, res, "edit_requests_review")) return;
+      if (!await correctionAccess(req, res, "approve")) return;
       res.json(await corrections.decide(Number(req.params.id), Number(req.params.requestId), req.body, req.authUser!));
     } catch (error) { correctionFailure(res, error); }
   });
@@ -6139,8 +6133,9 @@ export async function registerRoutes(
   }
 
   // EquipmentHub uses this shorter /plant/ prefix alias
-  app.get("/api/plant/equipment-usage", async (req, res) => {
+  app.get("/api/plant/equipment-usage", requireAuth, async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "equipment_usage", "view")) return;
       const dateParam = req.query.date as string | undefined;
       const filters = dateParam ? { dateFrom: dateParam, dateTo: dateParam } : {};
       const usageData = await storage.getEquipmentUsage(filters);
@@ -6152,7 +6147,8 @@ export async function registerRoutes(
 
   app.get("/api/reports/equipment-performance", requireAuth, async (req, res) => {
     try {
-      if (!assertViewEither(req, res, "equipment_performance_report", "plant_equipment")) return;
+      if (!assertFeatureAction(req, res, "reports", "view")) return;
+      if (!assertFeatureAction(req, res, "equipment_usage", "view")) return;
       const dateFrom = typeof req.query.dateFrom === "string" ? req.query.dateFrom : undefined;
       const dateTo = typeof req.query.dateTo === "string" ? req.query.dateTo : undefined;
       if ((dateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) || (dateTo && !/^\d{4}-\d{2}-\d{2}$/.test(dateTo))) {
@@ -7041,9 +7037,7 @@ export async function registerRoutes(
         id: id ? Number(id) : undefined,
         countDate: String(countDate),
         preparedBy: currentUserName(req) || "unknown",
-        isApprover: requestFeatureAllowed(req, "issues_stock", "verify") ||
-          (!req.authFeatureAccess?.rolesConfigured &&
-            (!!u.isAdmin || !!u.isOwner || !!req.authPermissions?.stock_reconciliation?.create)),
+        isApprover: requestFeatureAllowed(req, "issues_stock", "verify"),
         status,
         notes: notes ? String(notes) : undefined,
         rows,
@@ -7078,10 +7072,7 @@ export async function registerRoutes(
     try {
       const u = req.authUser;
       if (!u) return res.status(401).json({ error: "not_authenticated" });
-      const canView = requestFeatureAllowed(req, "issues_stock", "view") ||
-        (!req.authFeatureAccess?.rolesConfigured &&
-          (!!u.isAdmin || !!u.isOwner || !!req.authPermissions?.stock_reconciliation?.view ||
-            !!req.authPermissions?.plant_stock?.view));
+      const canView = requestFeatureAllowed(req, "issues_stock", "view");
       if (!canView) return res.status(403).json({ error: "forbidden", section: "stock_reconciliation", action: "view" });
       res.json(await storage.getStockReconciliations());
     } catch (err) {
@@ -7938,9 +7929,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/ldo-orphaned-rows", async (req, res) => {
     try {
-      if (!requestAccessRuleAllowed(req, "ldo_orphan_cleanup")) {
-        return res.status(403).json({ error: "owner_required" });
-      }
+      if (!assertAdmin(req, res)) return;
       const dateFrom = req.query.dateFrom as string | undefined;
       const dateTo = req.query.dateTo as string | undefined;
       const plant = req.query.plant as string | undefined;
@@ -8081,7 +8070,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/ldo-dip-readings/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertFeatureAction(req, res, "hmp_rmc", "cancel")) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteLdoDipReading(id);
       if (!deleted) return res.status(404).json({ message: "Reading not found" });
@@ -12990,13 +12979,16 @@ export async function registerRoutes(
   app.get("/api/vendor-bills/payables-preview", async (req, res) => {
     try {
       if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      const canViewPreview = requestFeatureAllowed(req, "reports", "view") &&
+        requestFeatureAllowed(req, "payables", "view");
+      if (!canViewPreview) {
+        return res.status(403).json({ error: "forbidden", feature: "payables", action: "view" });
+      }
       if (req.query.export === "1") {
-        if (!requestAccessRuleAllowed(req, "payables_preview") ||
+        if (!requestFeatureAllowed(req, "reports", "export") ||
           !requestFeatureAllowed(req, "payables", "export")) {
           return res.status(403).json({ error: "forbidden", feature: "payables", action: "export" });
         }
-      } else if (!requestAccessRuleAllowed(req, "payables_preview")) {
-        return res.status(403).json({ error: "forbidden", feature: "payables", action: "view" });
       }
       const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
         const parsed = new Date(`${value}T00:00:00Z`);
@@ -13459,11 +13451,7 @@ export async function registerRoutes(
       if (existing.isCancelled === true) {
         return res.status(409).json({ message: "A voided vendor bill's date cannot be changed" });
       }
-      if (existing.status === "draft") {
-        if (!assertEditEither(req, res, "vendor_bills", "vendor_bills_raise")) return;
-      } else if (!assertAdmin(req, res)) {
-        return;
-      }
+      if (!assertFeatureAction(req, res, "vendor_bills", "edit")) return;
       const bill = await storage.updateVendorBillDate(id, billDate, existing.status);
       if (!bill) {
         return res.status(409).json({ message: "The bill changed or was voided before its date could be saved. Reload and try again." });
@@ -13598,12 +13586,11 @@ export async function registerRoutes(
         });
       }
 
-      // Permission check: verified/approved/paid bills require admin.
+      // Editing any bill status is controlled by the same feature action.
+      // Reopen previously verified/approved/paid bills as drafts for review.
+      if (!assertFeatureAction(req, res, "vendor_bills", "edit")) return;
       if (existing.status === "verified" || existing.status === "approved" || existing.status === "paid") {
-        if (!assertAdmin(req, res)) return;
         input.status = "draft";
-      } else {
-        if (!assertEditEither(req, res, "vendor_bills", "vendor_bills_raise")) return;
       }
 
       if (existing.isCancelled === true) {
@@ -14288,6 +14275,7 @@ export async function registerRoutes(
 
   app.get("/api/vendor-rate-cards", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "rate_cards", "view")) return;
       const vendorName = req.query.vendorName as string | undefined;
       const cards = await storage.getVendorRateCards(vendorName || undefined);
       res.json(cards);
@@ -14299,6 +14287,7 @@ export async function registerRoutes(
 
   app.get("/api/vendor-rate-cards/discover", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "rate_cards", "view")) return;
       const vendorName = (req.query.vendorName as string || "").trim();
       if (!vendorName) {
         return res.status(400).json({ message: "vendorName is required" });
@@ -14313,7 +14302,13 @@ export async function registerRoutes(
 
   app.post("/api/vendor-rate-cards", async (req, res) => {
     try {
-      if (!assertCreateEither(req, res, "vendor_masters_manage", "admin_settings")) return;
+      const body = req.body ?? {};
+      const existing = await storage.getVendorRateCards(body.vendorName || undefined);
+      const identity = vendorRateCardIdentity(body.category, String(body.itemKey ?? ""), body.unit);
+      const isUpdate = existing.some(card =>
+        vendorRateCardIdentity(card.category, card.itemKey, card.unit) === identity,
+      );
+      if (!assertFeatureAction(req, res, "rate_cards", isUpdate ? "edit" : "add")) return;
       const card = await storage.upsertVendorRateCard(req.body);
       res.status(201).json(card);
     } catch (err) {
@@ -14325,7 +14320,7 @@ export async function registerRoutes(
 
   app.patch("/api/vendor-rate-cards/:id/transport-setup", async (req, res) => {
     try {
-      if (!assertCreateEither(req, res, "vendor_masters_manage", "admin_settings")) return;
+      if (!assertFeatureAction(req, res, "rate_cards", "edit")) return;
       const id = Number(req.params.id);
       const body = req.body;
       const fields = ["leadDistanceKm", "payloadMt", "ratePerKm"];
@@ -14349,8 +14344,22 @@ export async function registerRoutes(
 
   app.post("/api/vendor-rate-cards/bulk-upsert", async (req, res) => {
     try {
-      if (!assertCreateEither(req, res, "vendor_masters_manage", "admin_settings")) return;
-      const items = req.body.items as any[];
+      const items = req.body?.items;
+      if (!Array.isArray(items)) return res.status(400).json({ message: "items must be an array" });
+      const existingByVendor = new Map<string, Awaited<ReturnType<typeof storage.getVendorRateCards>>>();
+      for (const item of items) {
+        if (!(Number(item?.rate) > 0)) continue;
+        const vendorName = String(item?.vendorName ?? "").trim();
+        const cacheKey = vendorName.toUpperCase();
+        if (!existingByVendor.has(cacheKey)) {
+          existingByVendor.set(cacheKey, await storage.getVendorRateCards(vendorName || undefined));
+        }
+        const identity = vendorRateCardIdentity(item?.category, String(item?.itemKey ?? ""), item?.unit);
+        const isUpdate = (existingByVendor.get(cacheKey) ?? []).some(card =>
+          vendorRateCardIdentity(card.category, card.itemKey, card.unit) === identity,
+        );
+        if (!assertFeatureAction(req, res, "rate_cards", isUpdate ? "edit" : "add")) return;
+      }
       // Storage explicitly ignores basis fields on ALL legacy upserts, even
       // if a bill client sends numeric values or nulls for those fields.
       const results = [];
@@ -15719,7 +15728,6 @@ export async function registerRoutes(
     try {
       res.setHeader("Cache-Control", "private, no-store");
       if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
-      if (!assertAdmin(req, res)) return;
       const module = String(req.query.module || "");
       const transactionId = Number(req.query.transactionId);
       if (!module || !Number.isSafeInteger(transactionId) || transactionId <= 0) {
@@ -18423,8 +18431,8 @@ export async function registerRoutes(
       res.status(401).json({ message: "Authentication required" });
       return false;
     }
-    if (!requestAccessRuleAllowed(req, "execution_arrangement_outcome")) {
-      res.status(403).json({ message: "work_programme edit permission is required to record an outcome." });
+    if (!requestFeatureAllowed(req, "boq_programme", "approve")) {
+      res.status(403).json({ message: "Work Programme Approve permission is required to record an outcome." });
       return false;
     }
     return true;
@@ -21023,8 +21031,8 @@ export async function registerRoutes(
 
   async function assertCutFillProjectAccess(req: any, res: any, projectId: number, write = false): Promise<boolean> {
     if (!assertAuthed(req, res)) return false;
-    if (!requestAccessRuleAllowed(req, "cutfill_reconciliation_api")) {
-      res.status(403).json({ error: "forbidden", section: "work_programme_review", action: "edit" });
+    if (!requestFeatureAllowed(req, "dpr", "approve")) {
+      res.status(403).json({ error: "forbidden", feature: "dpr", action: "approve" });
       return false;
     }
     const [project] = await db.select({ id: boqProjectsTable.id, siteId: boqProjectsTable.siteId })
@@ -25773,13 +25781,14 @@ export function registerSiteRequirementRoutes(app: Express) {
     const t0 = Date.now();
     try {
       if (!assertFeatureAction(req, res, "site_requirements", "view")) return;
-      const canReview = requestFeatureAllowed(req, "site_requirements", "verify");
+      const canReview = requestFeatureAllowed(req, "site_requirements", "verify") ||
+        requestFeatureAllowed(req, "site_requirements", "approve");
       const filters: any = {};
       if (req.query.dateFrom) filters.dateFrom = req.query.dateFrom as string;
       if (req.query.dateTo)   filters.dateTo   = req.query.dateTo as string;
       if (req.query.siteId)   filters.siteId   = parseInt(req.query.siteId as string);
       if (req.query.status)   filters.status   = req.query.status as string;
-      // Non-admin/manager see only their own submissions
+      // Users without review or approval access see only their own submissions.
       if (!canReview) {
         filters.submittedBy = req.authUser.id;
       }
@@ -25800,7 +25809,8 @@ export function registerSiteRequirementRoutes(app: Express) {
       if (!assertFeatureAction(req, res, "site_requirements", "view")) return;
       const row = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!row) return res.status(404).json({ error: "Not found" });
-      const canReview = requestFeatureAllowed(req, "site_requirements", "verify");
+      const canReview = requestFeatureAllowed(req, "site_requirements", "verify") ||
+        requestFeatureAllowed(req, "site_requirements", "approve");
       const isCreator = row.submittedBy === req.authUser.id;
       if (!canReview && !isCreator) {
         return res.status(403).json({ error: "Access denied" });
@@ -25816,15 +25826,15 @@ export function registerSiteRequirementRoutes(app: Express) {
       const { status, pmRemarks } = req.body;
       if (!status) return res.status(400).json({ error: "status is required" });
       if (isRequirementDecision(status)) {
-        if (!requestAccessRuleAllowed(req, "site_req_outcome")) {
-          return res.status(403).json({ error: "forbidden", section: "site_requirements", action: "approve" });
+        if (!requestFeatureAllowed(req, "site_requirements", "approve")) {
+          return res.status(403).json({ error: "forbidden", feature: "site_requirements", action: "approve" });
         }
         const existing = await storage.getSiteRequirement(parseInt(req.params.id));
         if (!existing) return res.status(404).json({ error: "Not found" });
         const blocked = requirementApprovalBlock(req.authUser, existing.submittedBy);
         if (blocked) return res.status(403).json({ error: blocked });
-      } else if (!requestAccessRuleAllowed(req, "site_req_status_api")) {
-        return res.status(403).json({ error: "forbidden", section: "site_requirements", action: "edit" });
+      } else if (!requestFeatureAllowed(req, "site_requirements", "edit")) {
+        return res.status(403).json({ error: "forbidden", feature: "site_requirements", action: "edit" });
       }
       const row = await storage.updateSiteRequirementStatus(parseInt(req.params.id), {
         status,
@@ -25840,8 +25850,8 @@ export function registerSiteRequirementRoutes(app: Express) {
   // PATCH /api/site-requirements/:id/allocation — PM/manager sets per-section allocation status
   app.patch("/api/site-requirements/:id/allocation", requireAuth, async (req: any, res) => {
     try {
-      if (!requestAccessRuleAllowed(req, "site_req_allocation_api")) {
-        return res.status(403).json({ error: "forbidden", section: "site_requirements", action: "edit" });
+      if (!requestFeatureAllowed(req, "site_requirements", "edit")) {
+        return res.status(403).json({ error: "forbidden", feature: "site_requirements", action: "edit" });
       }
       // 06J: whitelist section-level fields only — this endpoint must never
       // write outcome/carry-forward/item-array keys (forgery + wipe protection).
@@ -25861,10 +25871,10 @@ export function registerSiteRequirementRoutes(app: Express) {
   // PATCH /api/site-requirements/:id/item-status — PM/Store/Equipment updates per-item allocation status
   app.patch("/api/site-requirements/:id/item-status", requireAuth, async (req: any, res) => {
     try {
-      const canStores = requestAccessRuleAllowed(req, "site_req_material_api");
-      const canEquipment = requestAccessRuleAllowed(req, "site_req_equipment_api");
-      const canLabour = requestAccessRuleAllowed(req, "site_req_labour_api");
-      const canImmediate = requestAccessRuleAllowed(req, "site_req_immediate_api");
+      const canStores = requestFeatureAllowed(req, "site_requirements", "edit");
+      const canEquipment = canStores;
+      const canLabour = canStores;
+      const canImmediate = canStores;
 
       const { category, itemIndex, lineKey, status, expectedBy, remarks,
         fulfilmentType, arrangementId, agencyNameSnapshot, exceptionReason } = req.body;
@@ -25969,12 +25979,10 @@ export function registerSiteRequirementRoutes(app: Express) {
     }
   });
 
-  // PATCH /api/site-requirements/:id/readiness — engineer confirms morning readiness
-  // Readiness confirmation is a morning site-check action (not an approval/allocation action).
-  // Any authenticated user may save readiness — the separate allocation/status endpoints
-  // remain gated to managers/admins only.
+  // PATCH /api/site-requirements/:id/readiness — record site readiness.
   app.patch("/api/site-requirements/:id/readiness", requireAuth, async (req: any, res) => {
     try {
+      if (!assertFeatureAction(req, res, "site_requirements", "edit")) return;
       const existing = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!existing) return res.status(404).json({ error: "Not found" });
       const { materialStatus, equipmentStatus, labourStatus, immediateStatus, remarks } = req.body;
@@ -26006,8 +26014,8 @@ export function registerSiteRequirementRoutes(app: Express) {
   // (submitted DPR billable progress) for the plan's BOQ item. PM/Admin only.
   app.get("/api/site-requirements/:id/execution-summary", requireAuth, async (req: any, res) => {
     try {
-      if (!requestAccessRuleAllowed(req, "site_req_execution_summary")) {
-        return res.status(403).json({ error: "forbidden", section: "site_requirements", action: "view" });
+      if (!requestFeatureAllowed(req, "site_requirements", "view")) {
+        return res.status(403).json({ error: "forbidden", feature: "site_requirements", action: "view" });
       }
       const plan = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!plan) return res.status(404).json({ error: "Not found" });
@@ -26049,8 +26057,8 @@ export function registerSiteRequirementRoutes(app: Express) {
   // JSONB-only persistence; never creates a DPR; never mutates arrangements.
   app.post("/api/site-requirements/:id/outcome", requireAuth, async (req: any, res) => {
     try {
-      if (!requestAccessRuleAllowed(req, "site_req_outcome")) {
-        return res.status(403).json({ error: "forbidden", section: "site_requirements", action: "approve" });
+      if (!requestFeatureAllowed(req, "site_requirements", "approve")) {
+        return res.status(403).json({ error: "forbidden", feature: "site_requirements", action: "approve" });
       }
       const plan = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!plan) return res.status(404).json({ error: "Not found" });

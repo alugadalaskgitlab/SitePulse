@@ -83,7 +83,7 @@ const request: DprCorrectionRequest = {
   requestReason: "Timings entered from contemporaneous site register",
   changes: review.changes, impact: review.impact, createdAt: "2026-08-29T09:25:00Z",
 };
-const historyProps = { requests: [request], loading: false, isAdmin: true, userId: 29, busy: false, onRetry: vi.fn(), onDecide: vi.fn().mockResolvedValue({}) };
+const historyProps = { requests: [request], loading: false, canApprove: true, userId: 29, busy: false, onRetry: vi.fn(), onDecide: vi.fn().mockResolvedValue({}) };
 describe("Administrator correction decisions", () => {
   it("prevents self-approval and exposes awaiting-approval history", () => {
     render(<DprCorrectionHistory {...historyProps} userId={17} />);
@@ -97,7 +97,7 @@ describe("Administrator correction decisions", () => {
     render(<DprCorrectionHistory {...historyProps} onDecide={onDecide} />);
     const action = screen.getByRole("button", { name: approve ? "Approve correction" : "Deny correction" }) as HTMLButtonElement;
     expect(action.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Administrator decision reason (required)"), { target: { value: "Register and impact checked" } });
+    fireEvent.change(screen.getByLabelText("Approval decision reason (required)"), { target: { value: "Register and impact checked" } });
     expect(action.disabled).toBe(true);
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(action);
@@ -105,10 +105,10 @@ describe("Administrator correction decisions", () => {
   });
   it("keeps the decision reason available when an unauthorized or stale review fails", async () => {
     render(<DprCorrectionHistory {...historyProps} onDecide={vi.fn().mockRejectedValue(new Error('409: {"message":"Correction is no longer pending"}'))} />);
-    fireEvent.change(screen.getByLabelText("Administrator decision reason (required)"), { target: { value: "Register checked" } });
+    fireEvent.change(screen.getByLabelText("Approval decision reason (required)"), { target: { value: "Register checked" } });
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Approve correction" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("no longer pending"));
-    expect((screen.getByLabelText("Administrator decision reason (required)") as HTMLTextAreaElement).value).toBe("Register checked");
+    expect((screen.getByLabelText("Approval decision reason (required)") as HTMLTextAreaElement).value).toBe("Register checked");
   });
 });

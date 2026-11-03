@@ -82,8 +82,8 @@ function UrgencyDot({ items }: { items: InternalRequisitionWithItems["items"] })
 function ProcurementQueueTab() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const { sectionCan } = useAuth();
-  const canProcure = sectionCan("site_procurement", "create") || sectionCan("purchase_indents_raise", "create");
+  const { featureCan } = useAuth();
+  const canProcure = featureCan("purchase_indent", "add");
 
   const { data: queueItems, isLoading } = useQuery<ProcurementQueueItem[]>({
     queryKey: ["/api/irn/procurement-queue"],
@@ -234,8 +234,8 @@ export default function IrnListPage() {
   const [raisedByFilter, setRaisedByFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const { sectionCan } = useAuth();
-  const canRaise = sectionCan("irn_raise", "create");
+  const { featureCan } = useAuth();
+  const canRaise = featureCan("irn", "add");
 
   const hasFilters = keyword || raisedByFilter || dateFrom || dateTo;
 

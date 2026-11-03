@@ -41,6 +41,13 @@ vi.mock("../server/auth", async (importOriginal) => {
   const inject = (req: any, _res: any, next: any) => {
     req.authUser = { id: 9, username: "test-pm", isAdmin: fx.role === "admin", isActive: true };
     req.authPermissions = {};
+    req.authFeatureAccess = {
+      rolesConfigured: true,
+      userRoles: fx.role === "manager" ? [1] : [],
+      roleTicks: {
+        1: { site_requirements: { view: true, approve: true } },
+      },
+    };
     req.session = { role: fx.role, username: "test-pm", userId: 9 };
     next();
   };

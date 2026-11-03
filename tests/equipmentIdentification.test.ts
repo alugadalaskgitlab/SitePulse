@@ -70,10 +70,10 @@ describe("EQUIP-05 identification review orchestration", () => {
     expect(master).toContain("Retry linking without creating another record");
   });
 
-  it("gates the review to the same Admin-or-Owner semantics as assertAdmin", () => {
+  it("gates the review with Equipment Use Verify on the screen and server", () => {
     const master = readFileSync("client/src/pages/Plant.tsx", "utf8");
-    const auth = readFileSync("server/auth-routes.ts", "utf8");
-    expect(master).toContain("const canReview = isAdmin || isOwner");
-    expect(auth).toMatch(/function assertAdmin[\s\S]*?!req\.authUser\.isAdmin && !req\.authUser\.isOwner/);
+    const routes = readFileSync("server/routes.ts", "utf8");
+    expect(master).toContain('const canReview = featureCan("equipment_usage", "verify")');
+    expect(routes).toContain('assertFeatureAction(req, res, "equipment_usage", "verify")');
   });
 });

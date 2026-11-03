@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { can as canFeature, canAccessRule, type FeatureAccessState } from "../shared/featureAccess";
+import { can as canFeature, type FeatureAccessState } from "../shared/featureAccess";
 import fs from "node:fs";
 import ts from "typescript";
 import express from "express";
@@ -227,9 +227,6 @@ app.use((req: any, _res, next) => {
 const dependencies = {
   app, storage: reader, z, buildVendorPayablesPreview, vendorBillItemMatchesSite,
   siteMatchesPermitted, financialSites,
-  requestAccessRuleAllowed: (req: any, id: any) => canAccessRule(id, req.authUser, {
-    ...(req.authFeatureAccess ?? { rolesConfigured: false }), legacyPermissions: req.authPermissions,
-  }),
   requestFeatureAllowed: (req: any, feature: any, action: any) => canFeature(req.authUser, feature, action, {
     ...(req.authFeatureAccess ?? { rolesConfigured: false }), legacyPermissions: req.authPermissions,
   }),
@@ -241,17 +238,21 @@ describe("VB-EXPORT-01 Part B actual endpoint permission and site gates", () => 
     featureAccess = {
       rolesConfigured: true,
       userRoles: [1],
-      roleTicks: { 1: { reports: { view: true }, payables: { view: true, export: exportAllowed } } },
+      roleTicks: { 1: {
+        reports: { view: true, export: exportAllowed },
+        payables: { view: true, export: exportAllowed },
+      } },
       legacyPermissions: {} as any,
     };
   };
   it("requires Reports View and Payables View; Export remains a separate tick", async () => {
     grantPayables(false);
     expect((await request(app).get("/api/vendor-bills/payables-preview").query(input)).status).toBe(200);
+    const readsBeforeExport = reader.getVendorBillAutoItems.mock.calls.length;
     expect((await request(app).get("/api/vendor-bills/payables-preview").query({ ...input, export: "1" })).status).toBe(403);
-    expect(reader.getVendorBillAutoItems).not.toHaveBeenCalled();
+    expect(reader.getVendorBillAutoItems).toHaveBeenCalledTimes(readsBeforeExport);
   });
-  it("permits export only when the Payables Export tick is granted", async () => {
+  it("permits export only when both Reports and Payables Export ticks are granted", async () => {
     grantPayables(true);
     expect((await request(app).get("/api/vendor-bills/payables-preview").query({ ...input, export: "1" })).status).toBe(200);
   });
@@ -292,7 +293,7 @@ describe("VB-EXPORT-01 Part B actual endpoint permission and site gates", () => 
     expect(ui.indexOf("await requestPayablesPreview(request, true)")).toBeLessThan(ui.indexOf("exportPayablesPreview(fresh, format)"));
     const page = fs.readFileSync("client/src/pages/VendorBills.tsx", "utf8");
     // The approved financial overview replaced the unsaved Payables Preview.
-    expect(page).toContain('sectionCan("vendor_financials", "view")');
+    expect(page).toContain('featureCan("payables", "view")');
     expect(page).not.toContain("<PayablesPreviewPanel");
   });
 });

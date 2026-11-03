@@ -61,4 +61,40 @@ describe("feature permission grid", () => {
       personalChanges: { site_requirements: { view: false } },
     });
   });
+
+  it("resets personal changes back to the selected role", async () => {
+    const writes: Record<string, unknown>[] = [];
+    const data = {
+      ...accessData,
+      personalChanges: { site_requirements: { view: false } },
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/users/41/feature-access") && init?.method === "PUT") {
+        writes.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify({ ok: true }));
+      }
+      if (url.endsWith("/api/auth/users/41/feature-access")) {
+        return new Response(JSON.stringify(data));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <FeaturePermissionsDialog userId={41} fullName="Kavita Rao" onClose={vi.fn()} onSaved={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    const view = await screen.findByTestId("feature-site_requirements-view") as HTMLInputElement;
+    expect(view.checked).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Reset to role" }));
+    expect(view.checked).toBe(true);
+    expect(view.closest("label")?.getAttribute("data-personal-change")).not.toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save access" }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]).toMatchObject({ roleIds: [7], personalChanges: {} });
+  });
 });

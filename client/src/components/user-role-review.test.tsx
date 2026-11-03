@@ -8,7 +8,13 @@ import { getQueryFn } from "@/lib/queryClient";
 import { PermissionReview, primaryRoleTemplates, proposeRole, retainedSensitivePermissions } from "./user-role-review";
 import { applyRoleTemplate, emptyMatrix, type PermissionMatrix } from "@shared/permissions";
 
-let actor = { isAdmin: true, canManagePermissions: true, permissionManagerScope: "full", permissions: emptyMatrix() };
+let actor = {
+  isAdmin: true,
+  canManagePermissions: true,
+  permissionManagerScope: "full",
+  permissions: emptyMatrix(),
+  featureCan: (feature: string, action: string) => feature === "users_permissions" && action === "edit",
+};
 const feedback = vi.hoisted(() => ({ toast: vi.fn() }));
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => actor }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: feedback.toast }) }));
@@ -26,6 +32,7 @@ let client: QueryClient;
 let creationResult: { id: number; setupOk: boolean; setupComplete: boolean; setupError?: string };
 let createBodies: Record<string, unknown>[];
 let featureAccessWrites: Record<string, unknown>[];
+let siteAccessWrites: Record<string, unknown>[];
 let retries: number;
 let permissionReads: number;
 let permissionClose: Mock<() => void>;
@@ -36,12 +43,19 @@ beforeEach(() => {
   designation = null;
   createBodies = [];
   featureAccessWrites = [];
+  siteAccessWrites = [];
   retries = 0;
   permissionReads = 0;
   permissionClose = vi.fn();
   feedback.toast.mockClear();
   creationResult = { id: 41, setupOk: true, setupComplete: true };
-  actor = { isAdmin: true, canManagePermissions: true, permissionManagerScope: "full", permissions: emptyMatrix() };
+  actor = {
+    isAdmin: true,
+    canManagePermissions: true,
+    permissionManagerScope: "full",
+    permissions: emptyMatrix(),
+    featureCan: (feature: string, action: string) => feature === "users_permissions" && action === "edit",
+  };
   client = new QueryClient({ defaultOptions: { queries: { retry: false, queryFn: getQueryFn({ on401: "throw" }) } } });
   Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn().mockReturnValue({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }) });
   HTMLElement.prototype.hasPointerCapture = () => false;
@@ -78,7 +92,13 @@ beforeEach(() => {
       }));
     }
     if (url.endsWith("/api/sites")) return new Response(JSON.stringify([{ id: 7, name: "Eastern Link Road", isActive: 1 }]));
-    if (url.endsWith("/api/auth/users/41/site-access")) return new Response(JSON.stringify({ siteIds: [7], allSites: false, setupComplete: true }));
+    if (url.endsWith("/api/auth/users/41/site-access")) {
+      if (init?.method === "PUT") {
+        siteAccessWrites.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify({ ok: true }));
+      }
+      return new Response(JSON.stringify({ siteIds: [7], allSites: false, setupComplete: true }));
+    }
     if (url.endsWith("/api/auth/users") && !init?.method) return new Response(JSON.stringify(users));
     if (url.endsWith("/api/auth/users") && init?.method === "POST") {
       createBodies.push(JSON.parse(String(init.body)));
@@ -410,6 +430,19 @@ describe("USER-ROLE-02 durable designation and reviewed saves", () => {
       roleIds: [],
       personalChanges: { site_requirements: { view: false } },
     });
+  }, 15000);
+
+  it("saves site scope through the person's Save button", async () => {
+    const onClose = vi.fn();
+    mount(<EditUserDialog userId={41} users={users} onClose={onClose} />);
+    const site = await screen.findByTestId("checkbox-edit-site-7") as HTMLInputElement;
+    expect(site.checked).toBe(true);
+    fireEvent.click(site);
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("button-edit-save"));
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(siteAccessWrites).toEqual([{ siteIds: [], allSites: false }]);
   }, 15000);
 });
 

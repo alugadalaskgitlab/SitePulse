@@ -22,7 +22,7 @@ describe("complete Vendor Bills export control", () => {
     expect(screen.queryByTestId("button-export-all-vendor-bills")).toBeNull();
 
     rerender(<CompleteVendorBillExportMenu canViewFinancials={true} canExport={true} isAdmin={false} isOwner={false} onExport={onExport} />);
-    expect(screen.queryByTestId("button-export-all-vendor-bills")).toBeNull();
+    expect(screen.getByTestId("button-export-all-vendor-bills")).toBeTruthy();
 
     rerender(<CompleteVendorBillExportMenu canViewFinancials={true} canExport={true} isAdmin={true} isOwner={false} onExport={onExport} />);
     expect(screen.getByText("Export all bills in your permitted scope (ignores page filters)")).toBeTruthy();

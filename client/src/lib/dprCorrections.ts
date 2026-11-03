@@ -96,8 +96,8 @@ export function correctionCanSubmit(review: DprCorrectionReview | null, reason: 
   return !!review && review.changes.length > 0 && review.blocked.length === 0 && !!reason.trim() && confirmed;
 }
 
-export function canReviewCorrection(isAdmin: boolean, userId: number | undefined, request: DprCorrectionRequest): boolean {
-  return isAdmin && userId != null && Number(userId) !== Number(request.requestedBy) && request.status === "pending";
+export function canReviewCorrection(canApprove: boolean, userId: number | undefined, request: DprCorrectionRequest): boolean {
+  return canApprove && userId != null && Number(userId) !== Number(request.requestedBy) && request.status === "pending";
 }
 
 export function correctionErrorMessage(error: unknown): string {

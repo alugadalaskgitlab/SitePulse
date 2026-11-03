@@ -11,7 +11,6 @@
  * DB; the maths that decide WHAT gets posted are fully covered here.
  */
 import { describe, it, expect } from "vitest";
-import type { Request, Response } from "express";
 import {
   RECONCILIATION_REASONS,
   normalizeUom,
@@ -26,8 +25,7 @@ import {
   STATUS_LABELS,
   RECONCILIATION_STATUSES,
 } from "@shared/stockReconciliation";
-import { emptyMatrix, fullMatrix } from "@shared/permissions";
-import { assertCreate, assertView } from "../server/auth-routes";
+import { can } from "@shared/featureAccess";
 
 // Material fixtures mirroring real prod config (20MM aggregate: CFT→Ton).
 const AGG_20MM = { conversionFactor: 0.043041565, conversionFromUom: "CFT", conversionToUom: "Ton" };
@@ -113,39 +111,40 @@ describe("Session summary", () => {
 });
 
 // ── Permission gate ──────────────────────────────────────────────────────────
-function makeReq(over: Partial<{ authUser: any; authPermissions: any }>): Request {
-  return {
-    authUser: { id: 1, isAdmin: false, isOwner: false, fullName: "T" },
-    authPermissions: emptyMatrix(),
-    ...over,
-  } as unknown as Request;
-}
-function makeRes() {
-  const res = {
-    _status: 0, _body: {} as any,
-    status(c: number) { this._status = c; return this; },
-    json(b: any) { this._body = b; return this; },
-  };
-  return res as unknown as Response & { _status: number };
-}
-
-describe("Posting permission — stock_reconciliation create", () => {
+describe("Stock reconciliation feature permissions", () => {
   it("admin/owner may post", () => {
-    expect(assertCreate(makeReq({ authUser: { id: 1, isAdmin: true, isOwner: false, fullName: "A" } }), makeRes(), "stock_reconciliation")).toBe(true);
-    expect(assertCreate(makeReq({ authUser: { id: 2, isAdmin: false, isOwner: true, fullName: "O" } }), makeRes(), "stock_reconciliation")).toBe(true);
+    expect(can({ id: 1, isAdmin: true, isOwner: false }, "issues_stock", "verify", { rolesConfigured: false })).toBe(true);
+    expect(can({ id: 2, isAdmin: false, isOwner: true }, "issues_stock", "verify", { rolesConfigured: true })).toBe(true);
   });
-  it("explicit stock_reconciliation create permission may post", () => {
-    expect(assertCreate(makeReq({ authPermissions: fullMatrix() }), makeRes(), "stock_reconciliation")).toBe(true);
+  it("a configured Verify role may post, while View alone may not", () => {
+    const state = {
+      rolesConfigured: true,
+      userRoles: [1],
+      roleTicks: { 1: { issues_stock: { view: true, verify: true } } },
+    };
+    expect(can({ id: 3, isAdmin: false, isOwner: false }, "issues_stock", "verify", state)).toBe(true);
+    expect(can({ id: 3, isAdmin: false, isOwner: false }, "issues_stock", "view", state)).toBe(true);
+    expect(can({ id: 4, isAdmin: false, isOwner: false }, "issues_stock", "verify", {
+      rolesConfigured: true,
+      userRoles: [2],
+      roleTicks: { 2: { issues_stock: { view: true } } },
+    })).toBe(false);
   });
   it("ordinary user without the permission is blocked (403)", () => {
-    const res = makeRes();
-    expect(assertCreate(makeReq({}), res, "stock_reconciliation")).toBe(false);
-    expect((res as any)._status).toBe(403);
+    expect(can({ id: 5, isAdmin: false, isOwner: false }, "issues_stock", "verify", {
+      rolesConfigured: true,
+      userRoles: [],
+    })).toBe(false);
   });
-  it("view of the report also requires the section (non-admin)", () => {
-    const res = makeRes();
-    expect(assertView(makeReq({}), res, "stock_reconciliation")).toBe(false);
-    expect(assertView(makeReq({ authPermissions: fullMatrix() }), makeRes(), "stock_reconciliation")).toBe(true);
+  it("legacy stock reconciliation create maps to Verify before role setup", () => {
+    expect(can({ id: 6, isAdmin: false, isOwner: false }, "issues_stock", "verify", {
+      rolesConfigured: false,
+      legacyPermissions: { stock_reconciliation: { create: true } } as any,
+    })).toBe(true);
+    expect(can({ id: 6, isAdmin: false, isOwner: false }, "issues_stock", "view", {
+      rolesConfigured: false,
+      legacyPermissions: { stock_reconciliation: { view: true } } as any,
+    })).toBe(true);
   });
 });
 

@@ -57,7 +57,7 @@ function invalidateDieselRequirementQueries() {
 export default function PlantMaterialReceipts() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
-  const { sectionCan, featureCan, user } = useAuth();
+  const { featureCan, user } = useAuth();
   const { companyName, companyInfo, logoFile } = useFeatureFlags();
   const canCreate = featureCan("plant_receipts", "add");
   const canEdit = featureCan("plant_receipts", "edit");
@@ -2224,7 +2224,7 @@ export default function PlantMaterialReceipts() {
                                         {canEdit && <Button size="icon" variant="ghost" onClick={() => handleEditClick(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>
                                           <Edit className="w-4 h-4" />
                                         </Button>}
-                                        {sectionCan("plant_materials", "delete") && <Button size="icon" variant="ghost" onClick={() => setCancelReceiptId(receipt.id)} data-testid={`button-cancel-receipt-${receipt.id}`} title="Cancel">
+                                        {featureCan("plant_receipts", "cancel") && <Button size="icon" variant="ghost" onClick={() => setCancelReceiptId(receipt.id)} data-testid={`button-cancel-receipt-${receipt.id}`} title="Cancel">
                                           <Ban className="w-4 h-4 text-amber-600" />
                                         </Button>}
                                       </>

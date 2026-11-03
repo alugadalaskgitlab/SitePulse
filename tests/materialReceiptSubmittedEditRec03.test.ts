@@ -52,7 +52,7 @@ describe("REC-03 Material Receipt update feedback and submitted edit controls", 
 
   it("lets direct editors open a submitted receipt with the explicit zero sentinel", () => {
     expect(source).toContain(
-      'const canDirectEditSubmittedReceipt = isOwnerOrAdmin || sectionCan("plant_materials", "edit")',
+      "const canDirectEditSubmittedReceipt = canEdit;",
     );
     expect(source).toContain(
       '(receipt as any).documentStatus === "submitted" && canDirectEditSubmittedReceipt',
@@ -82,7 +82,7 @@ describe("REC-03 Material Receipt update feedback and submitted edit controls", 
 
   it("leaves ordinary draft receipt editing on the existing control", () => {
     expect(source).toContain(
-      '(canEdit || isOwnerOrAdmin || sectionCan("plant_materials", "delete")) && (receipt as any).documentStatus !== "submitted"',
+      '(canEdit || featureCan("plant_receipts", "cancel")) && (receipt as any).documentStatus !== "submitted"',
     );
     expect(source).toContain("onClick={() => handleEditClick(receipt)}");
   });

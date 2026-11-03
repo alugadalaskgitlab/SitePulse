@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   can,
-  canAccessRule,
   canLegacySection,
+  legacyFeatureTick,
   projectFeaturePermissions,
   type FeatureAccessState,
   type LegacyActor,
@@ -12,6 +12,17 @@ import { emptyMatrix } from "../shared/permissions";
 const user: LegacyActor = { isActive: true, isAdmin: false, isOwner: false };
 
 describe("shared feature access", () => {
+  it("keeps report viewing separate from source-feature view, with explicit legacy mappings", () => {
+    const legacy = emptyMatrix();
+    legacy.site_diesel.view_reports = true;
+    legacy.vendor_bills_view.view_reports = true;
+    legacy.reports_hub.view_reports = true;
+
+    expect(legacyFeatureTick(legacy, "diesel_issue", "view")).toBe(false);
+    expect(legacyFeatureTick(legacy, "vendor_bills", "view")).toBe(true);
+    expect(legacyFeatureTick(legacy, "reports", "view")).toBe(true);
+  });
+
   it("uses the legacy matrix unchanged until explicit role setup", () => {
     const legacy = emptyMatrix();
     legacy.site_dprs.view = true;
@@ -19,6 +30,15 @@ describe("shared feature access", () => {
     expect(can(user, "dpr", "view", state)).toBe(true);
     expect(can(user, "dpr", "edit", state)).toBe(false);
     expect(projectFeaturePermissions(user, legacy, state, "/site/dashboard")).toBe(legacy);
+  });
+
+  it("maps legacy plant shift-log access to HMP/RMC", () => {
+    const legacy = emptyMatrix();
+    legacy.plant_shift_logs.view = true;
+    const state: FeatureAccessState = { rolesConfigured: false, legacyPermissions: legacy };
+
+    expect(legacyFeatureTick(legacy, "hmp_rmc", "view")).toBe(true);
+    expect(can(user, "hmp_rmc", "view", state)).toBe(true);
   });
 
   it("unions role grants and applies personal false overrides", () => {
@@ -38,23 +58,18 @@ describe("shared feature access", () => {
     expect(canLegacySection(user, emptyMatrix(), "stores_inventory", "view", state, "/stores/grns")).toBe(true);
   });
 
-  it("uses the same feature rule for the screen helper and API helper", () => {
+  it("uses the same feature action for the screen helper and API guard", () => {
     const state: FeatureAccessState = {
       rolesConfigured: true,
       userRoles: [1],
-      roleTicks: { 1: { site_requirements: { verify: true, edit: true }, boq_programme: { edit: true } } },
+      roleTicks: { 1: { site_requirements: { view: true, verify: true, edit: true }, boq_programme: { edit: true } } },
       legacyPermissions: emptyMatrix(),
     };
     const legacy = emptyMatrix();
-    const pairs = [
-      ["site_req_review_ui", "site_requirements", "verify"],
-      ["site_req_status_api", "site_requirements", "edit"],
-      ["execution_arrangement_outcome", "boq_programme", "edit"],
-    ] as const;
-    for (const [rule, feature, action] of pairs) {
-      expect(canAccessRule(rule, user, state)).toBe(can(user, feature, action, state));
-    }
-    expect(canLegacySection(user, legacy, "site_dprs", "edit", state, "/site/requirements")).toBe(true);
+    expect(can(user, "site_requirements", "verify", state)).toBe(true);
+    expect(canLegacySection(user, legacy, "site_dprs", "view", state, "/site/requirements")).toBe(true);
+    expect(can(user, "site_requirements", "edit", state)).toBe(true);
+    expect(can(user, "boq_programme", "approve", state)).toBe(false);
   });
 
   it("requires Reports and the source feature for report routes", () => {
@@ -69,6 +84,27 @@ describe("shared feature access", () => {
     expect(canLegacySection(user, emptyMatrix(), "reports_hub", "view", state, "/reports/progress")).toBe(true);
   });
 
+  it("uses each report page's own source feature, including plant and site-purchase reports", () => {
+    const state: FeatureAccessState = {
+      rolesConfigured: true,
+      userRoles: [1],
+      roleTicks: {
+        1: {
+          reports: { view: true },
+          hmp_rmc: { view: false },
+          plant_receipts: { view: true },
+          purchase_orders: { view: true },
+          purchase_indent: { view: false },
+        },
+      },
+      legacyPermissions: emptyMatrix(),
+    };
+    expect(canLegacySection(user, emptyMatrix(), "plant_heating_trends", "view", state, "/plant/heating-trends")).toBe(false);
+    state.roleTicks![1].hmp_rmc = { view: true };
+    expect(canLegacySection(user, emptyMatrix(), "plant_heating_trends", "view", state, "/plant/heating-trends")).toBe(true);
+    expect(canLegacySection(user, emptyMatrix(), "reports_hub", "view", state, "/reports/site-purchases")).toBe(true);
+  });
+
   it("hides unlicensed features", () => {
     const state: FeatureAccessState = {
       rolesConfigured: true,
@@ -77,6 +113,17 @@ describe("shared feature access", () => {
       licensedModules: ["roads"],
     };
     expect(can(user, "estimating", "view", state)).toBe(false);
+  });
+
+  it("keeps Estimating Owner-only even when licensed and explicitly granted", () => {
+    const state: FeatureAccessState = {
+      rolesConfigured: true,
+      userRoles: [1],
+      roleTicks: { 1: { estimating: { view: true, add: true, edit: true } } },
+      licensedModules: ["estimating"],
+    };
+    expect(can(user, "estimating", "view", state)).toBe(false);
+    expect(can({ ...user, isOwner: true }, "estimating", "view", state)).toBe(true);
   });
 
   it("keeps legacy Admin access only until feature roles are configured", () => {

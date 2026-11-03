@@ -34,7 +34,6 @@ import { useProjectArrangements, type ProjectArrangement } from "@/components/Ex
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateArrangementQueries } from "@/lib/arrangementCache";
 import { useAuth } from "@/lib/auth-context";
-import { useAccessRule } from "@/lib/accessRules";
 import { useToast } from "@/hooks/use-toast";
 import {
   approveExecutionArrangement,
@@ -112,10 +111,10 @@ export default function ExecutionArrangements() {
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id ?? "0", 10);
   const queryClient = useQueryClient();
-  const { sectionCan } = useAuth();
+  const { featureCan } = useAuth();
   const { toast } = useToast();
-  const canEditArrangements = sectionCan("work_programme", "edit");
-  const canSetArrangementOutcome = useAccessRule("execution_arrangement_outcome");
+  const canEditArrangements = featureCan("boq_programme", "edit");
+  const canSetArrangementOutcome = featureCan("boq_programme", "approve");
 
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");

@@ -722,9 +722,10 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
 export function EditUserDialog({ userId, users, onClose, onPermissions }: { userId: number; users: SafeUser[]; onClose: () => void; onPermissions?: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { user: currentUser, refresh } = useAuth();
+  const { user: currentUser, refresh, featureCan } = useAuth();
   const target = users.find((u) => u.id === userId);
-  const canManageFeatureAccess = !!currentUser?.isOwner || (currentUser?.id !== userId && !target?.isOwner);
+  const canManageFeatureAccess = !!currentUser?.isOwner ||
+    (currentUser?.id !== userId && !target?.isOwner && featureCan("users_permissions", "edit"));
   const accessQ = useQuery<{
     roleIds: number[];
     personalChanges: FeatureTicks;
@@ -739,6 +740,13 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
       return response.json();
     },
   });
+  const sitesQ = useQuery<{ id: number; name: string; isActive: number }[]>({
+    queryKey: ["/api/sites"],
+  });
+  const siteAccessQ = useQuery<{ siteIds: number[]; allSites: boolean }>({
+    queryKey: ["/api/auth/users", userId, "site-access"],
+    enabled: !!target,
+  });
 
   const [fullName, setFullName] = useState(target?.fullName ?? "");
   const [email, setEmail] = useState(target?.email ?? "");
@@ -747,11 +755,19 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
   const [reportsToUserId, setReportsToUserId] = useState(target?.reportsToUserId?.toString() ?? "");
   const [entryScope, setEntryScope] = useState<"own" | "team" | "all">(target?.entryScope ?? "own");
   const [selectedRoleIds, setSelectedRoleIds] = useState<number[] | null>(null);
+  const [selectedSiteIds, setSelectedSiteIds] = useState<number[] | null>(null);
+  const [allSites, setAllSites] = useState<boolean | null>(null);
   const [newPassword, setNewPassword] = useState("");
 
   useEffect(() => {
     if (accessQ.data && selectedRoleIds === null) setSelectedRoleIds(accessQ.data.roleIds);
   }, [accessQ.data, selectedRoleIds]);
+  useEffect(() => {
+    if (siteAccessQ.data && selectedSiteIds === null && allSites === null) {
+      setSelectedSiteIds(siteAccessQ.data.siteIds);
+      setAllSites(siteAccessQ.data.allSites);
+    }
+  }, [siteAccessQ.data, selectedSiteIds, allSites]);
 
   function buildPatch(): Record<string, unknown> {
     if (!target) return {};
@@ -770,6 +786,17 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
     if (entryScope !== (target.entryScope ?? "own")) patch.entryScope = entryScope;
     return patch;
   }
+
+  const currentSiteIds = siteAccessQ.data?.siteIds ?? [];
+  const selectedSiteIdsValue = selectedSiteIds ?? currentSiteIds;
+  const allSitesValue = allSites ?? !!siteAccessQ.data?.allSites;
+  const siteAccessChanged = !!siteAccessQ.data && !isOwnerVal && (
+    allSitesValue !== siteAccessQ.data.allSites ||
+    (!allSitesValue && (
+      selectedSiteIdsValue.length !== currentSiteIds.length ||
+      currentSiteIds.some(id => !selectedSiteIdsValue.includes(id))
+    ))
+  );
 
   const save = useMutation({
     mutationFn: async () => {
@@ -794,11 +821,18 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
       if (newPassword) {
         await apiRequest("POST", `/api/auth/users/${userId}/password`, { newPassword });
       }
+      if (siteAccessChanged && !isOwnerVal) {
+        await apiRequest("PUT", `/api/auth/users/${userId}/site-access`, {
+          siteIds: allSitesValue ? [] : selectedSiteIdsValue,
+          allSites: allSitesValue,
+        });
+      }
     },
     onSuccess: async () => {
       toast({ title: "User updated" });
       qc.invalidateQueries({ queryKey: ["/api/auth/users"] });
       qc.invalidateQueries({ queryKey: ["/api/auth/users", userId, "feature-access"] });
+      qc.invalidateQueries({ queryKey: ["/api/auth/users", userId, "site-access"] });
       if (currentUser?.id === userId) await refresh();
       onClose();
     },
@@ -812,7 +846,7 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
   const nextRoleIds = selectedRoleIds ?? originalRoleIds;
   const rolesDirty = originalRoleIds.length !== nextRoleIds.length ||
     originalRoleIds.some(id => !nextRoleIds.includes(id));
-  const dirty = Object.keys(buildPatch()).length > 0 || rolesDirty || newPassword.length > 0;
+  const dirty = Object.keys(buildPatch()).length > 0 || rolesDirty || siteAccessChanged || newPassword.length > 0;
   const hasContact = !!email.trim() || !!phone.trim();
   function leave(action: () => void) {
     if (save.isPending) return;
@@ -828,7 +862,7 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
         </DialogHeader>
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
-            {onPermissions && (currentUser?.isOwner || (currentUser?.id !== userId && !target.isOwner)) &&
+            {onPermissions && canManageFeatureAccess &&
               <Button size="sm" variant="outline" onClick={() => leave(onPermissions)} data-testid="button-edit-role">Feature permissions</Button>}
           </div>
           <div>
@@ -904,16 +938,53 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
               )}
             </section>
           )}
-          <div className="border-t pt-3">
-            <h3 className="mb-2 font-medium">Site access</h3>
-            <SiteAccessTab userId={userId} isAdmin={target.isAdmin} />
-          </div>
+          <section className="space-y-2 border-t pt-3">
+            <h3 className="font-medium">Sites</h3>
+            {siteAccessQ.isError || sitesQ.isError
+              ? <p role="alert" className="text-sm text-destructive">Site access could not be loaded. No changes have been saved.</p>
+              : null}
+            {isOwnerVal
+              ? <p className="text-sm text-muted-foreground">Owners have access to all sites.</p>
+              : <>
+                <div className="flex gap-4 text-sm">
+                  <label className="flex items-center gap-2">
+                    <input type="radio" checked={allSitesValue} onChange={() => setAllSites(true)} disabled={siteAccessQ.isLoading || siteAccessQ.isError} />
+                    All sites
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="radio" checked={!allSitesValue} onChange={() => setAllSites(false)} disabled={siteAccessQ.isLoading || siteAccessQ.isError} />
+                    Selected sites
+                  </label>
+                </div>
+                {!allSitesValue && (
+                  <div className="grid max-h-40 gap-2 overflow-y-auto rounded border p-3 sm:grid-cols-2">
+                    {(sitesQ.data ?? []).filter(site => site.isActive !== 0).map(site => (
+                      <label key={site.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          data-testid={`checkbox-edit-site-${site.id}`}
+                          checked={selectedSiteIdsValue.includes(site.id)}
+                          disabled={siteAccessQ.isLoading || siteAccessQ.isError}
+                          onChange={event => setSelectedSiteIds(current => {
+                            const ids = current ?? currentSiteIds;
+                            return event.target.checked
+                              ? [...ids, site.id]
+                              : ids.filter(id => id !== site.id);
+                          })}
+                        />
+                        {site.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </>}
+          </section>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => leave(onClose)} data-testid="button-edit-cancel">Cancel</Button>
           <Button
             onClick={() => save.mutate()}
-            disabled={!dirty || !fullName.trim() || !hasContact || save.isPending}
+            disabled={!dirty || !fullName.trim() || !hasContact || save.isPending || siteAccessQ.isLoading || siteAccessQ.isError || sitesQ.isLoading || sitesQ.isError}
             data-testid="button-edit-save"
           >
             {save.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}

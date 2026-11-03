@@ -344,7 +344,7 @@ describe("selective pre-tipper billing recovery", () => {
     expect(page).not.toContain("trip-daily-hire-composer");
     expect(page).not.toContain("equipment-hire-terms-composer");
     expect(page).toContain("monthly-hire-auto-summary");
-    expect(page).toContain('sectionCan("vendor_financials", "view")');
+    expect(page).toContain('featureCan("payables", "view")');
     const routes = readFileSync("server/routes.ts", "utf8");
     expect(routes).toContain("vendorFinancialGuard(storage)");
     expect(routes).toContain('"/api/site-material-trips/:id/hire-link"');

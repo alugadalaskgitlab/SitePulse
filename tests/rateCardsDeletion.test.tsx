@@ -11,6 +11,13 @@ vi.mock("wouter", () => ({
   useSearch: () => "?vendorName=RATE-CARD-TEST",
 }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+const access = vi.hoisted(() => ({ view: true, add: true, edit: true, cancel: true }));
+vi.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({
+    user: { id: 1, isOwner: false },
+    featureCan: (feature: string, action: keyof typeof access) => feature === "rate_cards" && access[action],
+  }),
+}));
 vi.mock("@/components/ui/select", async () => {
   const React = await import("react");
   return {
@@ -45,6 +52,7 @@ function makeClient() {
 }
 
 beforeEach(() => {
+  Object.assign(access, { view: true, add: true, edit: true, cancel: true });
   currentRows = persistedManualRows.map(row => ({ ...row }));
   failingDeleteId = null;
   deferDelete = false;
@@ -64,7 +72,7 @@ beforeEach(() => {
     }
     if (url.includes("/api/vendor-rate-cards?vendorName=")) return new Response(JSON.stringify(currentRows));
     if (url.includes("/api/equipment-master/canonical-types")) return new Response(JSON.stringify(["ROLLER", "HARVESTER"]));
-    if (url.includes("/api/plant-materials")) return new Response(JSON.stringify([{ name: "SAND" }]));
+    if (url.includes("/api/plant-module/materials")) return new Response(JSON.stringify([{ name: "SAND" }]));
     if (url.includes("/api/vendor-rate-cards/") && init?.method === "DELETE") {
       const id = Number(url.split("/").pop());
       if (id === failingDeleteId) return new Response(JSON.stringify({ message: "delete failed" }), { status: 500 });

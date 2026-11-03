@@ -452,7 +452,7 @@ describe("DPR20 B2 snapshot fuel facts do not compete with canonical Actual", ()
 
   it("preserves the permission-aware consumption path and opts SiteReport into compact print, retaining default audit CSS", () => {
     const source = readFileSync("client/src/pages/SiteReport.tsx", "utf8");
-    expect(source).toContain('sectionCan("equipment_performance_report", "view") || sectionCan("plant_equipment", "view")');
+    expect(source).toContain('featureCan("reports", "view") && featureCan("equipment_usage", "view")');
     expect(source).toContain("useDprEquipmentPerformance(dpr, canViewPerformance, user?.id, completePerformanceContext)");
     const renderer = readFileSync("client/src/components/DprEquipmentReadOnlyRow.tsx", "utf8");
     expect(source).toContain("canonical={resolveDprActualEfficiency");

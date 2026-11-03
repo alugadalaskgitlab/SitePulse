@@ -116,7 +116,7 @@ beforeAll(async () => {
 }, 30000);
 beforeEach(() => {
   fx.user = { id: 7, isAdmin: false };
-  fx.permissions = { site_diesel: { view: true } };
+  fx.permissions = { site_diesel: { view: true }, reports_hub: { view: true } };
   storage.getDieselComparisonReport.mockClear();
   storage.getDieselComparisonEquipmentSources.mockClear();
 });

@@ -5,6 +5,7 @@ import ts from "typescript";
 import express from "express";
 import request from "supertest";
 import { getBaseSiteName, siteMatchesPermitted, vendorBillVisibleToSites, vendorBillItemMatchesSite } from "../shared/siteName";
+import { can as canFeature, canLegacySection } from "../shared/featureAccess";
 import { aggregateGstBreakdown, computeBillGstByCategory } from "../shared/vendor-bill-gst";
 import PDFDocument from "pdfkit";
 import { buildGstRegisterPdf } from "../server/gstRegisterPdf";
@@ -35,12 +36,18 @@ function find(predicate: (n: ts.Node) => boolean, root: ts.Node = ast): ts.Node 
   if (!found) throw new Error("Missing production node");
   return found;
 }
-const helpers = ["getPermittedSiteNames", "permittedReportPlants", "assertReportPlant",
+const helpers = ["getPermittedSiteNames", "getRequestPermittedSiteIds", "permittedReportPlants", "assertReportPlant",
   "resolveVendorBillSite", "scopeVendorBillsToSiteAccess", "assertTripSiteAccess", "resolveTrendsRange"];
 const helperText = helpers.map(name => find(n => ts.isFunctionDeclaration(n) && n.name?.text === name).getText(ast)).join("\n");
+const featureGuardText = ["requestFeatureAllowed", "assertFeatureAction"]
+  .map(name => find(n => ts.isFunctionDeclaration(n) && n.name?.text === name).getText(ast)).join("\n");
 const authSource = fs.readFileSync("server/auth-routes.ts", "utf8");
 const authAst = ts.createSourceFile("auth.ts", authSource, ts.ScriptTarget.Latest, true);
 const exportGuard = find(n => ts.isFunctionDeclaration(n) && n.name?.text === "assertReportExport", authAst)
+  .getText(authAst).replace(/^export /, "");
+const hasSectionAccess = find(n => ts.isFunctionDeclaration(n) && n.name?.text === "hasSectionAccess", authAst)
+  .getText(authAst).replace(/^export /, "");
+const viewGuard = find(n => ts.isFunctionDeclaration(n) && n.name?.text === "assertView", authAst)
   .getText(authAst).replace(/^export /, "");
 const endpoints = [
   ["get", "/api/vendor-bills/export", "vendor_bills"],
@@ -58,7 +65,10 @@ const storage = {
   getUserSiteAccess: vi.fn(async () => permittedIds.map(siteId => ({ siteId }))),
   getUserPermittedSiteIds: vi.fn(async () => permittedIds),
   getSites: vi.fn(async () => [{ id: 1, name: "SITE A" }, { id: 2, name: "SITE B" }]),
-  listPlantSettings: vi.fn(async () => [{ plantName: "Plant A", siteName: "SITE A" }, { plantName: "Plant B", siteName: "SITE B" }]),
+  listPlantSettings: vi.fn(async () => [
+    { plantName: "Plant A", siteName: "SITE A", siteId: 1 },
+    { plantName: "Plant B", siteName: "SITE B", siteId: 2 },
+  ]),
   getVendorBill: vi.fn(async () => ({ id: 2, siteId: 2, status: "approved" })),
   getInternalRequisition: vi.fn(async () => ({ id: 2, siteId: 2, status: "approved" })),
   getVendorBills: vi.fn(async () => [1, 2].map(id => ({
@@ -88,6 +98,7 @@ const dependencies = { storage, siteMatchesPermitted, vendorBillVisibleToSites, 
   financialSites, recordedVendorTds, filterFinancialBills, buildVendorFinancialWorkbook,
   buildVendorBillExport, buildVendorBillCompleteWorkbook,
   aggregateGstBreakdown, computeBillGstByCategory, normalizeVendorBillAdditionalAdjustments, PDFDocument, xlsx, archiver, buildGstRegisterPdf,
+  canFeature, canLegacySection,
   getCompanyLogoPath: () => null,
   // Report layout is not under test here; preserve actual PDF/ZIP streaming.
   renderDailyPlantPdfBody: async (doc: any, _date: string, summary: any) => doc.text(summary.plantName),
@@ -98,7 +109,7 @@ for (const [method, path] of endpoints) {
   const node = find(n => ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)
     && n.expression.expression.getText(ast) === "app" && n.expression.name.text === method
     && ts.isStringLiteral(n.arguments[0]) && n.arguments[0].text === path) as ts.CallExpression;
-  const body = `${helperText}\n${exportGuard}\nconst ISO_DATE_RE=/^\\d{4}-\\d{2}-\\d{2}$/;\nreturn (${node.arguments[1].getText(ast)});`;
+  const body = `${featureGuardText}\n${helperText}\n${hasSectionAccess}\n${viewGuard}\n${exportGuard}\nconst ISO_DATE_RE=/^\\d{4}-\\d{2}-\\d{2}$/;\nreturn (${node.arguments[1].getText(ast)});`;
   const compiled = ts.transpile(body, { target: ts.ScriptTarget.ES2022 });
   app[method](path, new Function(...Object.keys(dependencies), compiled)(...Object.values(dependencies)));
 }
@@ -201,11 +212,12 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect((await request(app).get("/api/vendor-bills/export?format=json")).status).toBe(403);
     expect(storage.getVendorBills).not.toHaveBeenCalled();
   });
-  it("requires Administrator or Owner even when financial viewing is granted", async () => {
+  it("allows the explicit Vendor Bills Export tick without requiring Administrator or Owner", async () => {
     authUser = { id: 7 };
     permissions.vendor_bills = { export: true };
-    expect((await request(app).get("/api/vendor-bills/export?format=json")).status).toBe(403);
-    expect(storage.getVendorBills).not.toHaveBeenCalled();
+    const response = await request(app).get("/api/vendor-bills/export?format=json");
+    expect(response.status).toBe(200);
+    expect(storage.getVendorBills).toHaveBeenCalled();
   });
   it("returns complete JSON and XLSX from the same assembly contract, within admin site scope", async () => {
     authUser = { id: 7, isAdmin: true, fullName: "Site Administrator" };
@@ -437,12 +449,16 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
   for (const [method, path, key] of endpoints) {
     it(`${method.toUpperCase()} ${path}: Reports without Export returns 403`, async () => {
       permissions[key] = { view: true, export: false, view_reports: true };
+      permissions.reports_hub = { view: true };
+      permissions.hmp_operations = { view: true };
       expect((await request(app)[method](url(path)).send({ entries: [{ date: "2026-10-01", plant: "Plant B" }] })).status).toBe(403);
       expect(storage.getVendorBills).not.toHaveBeenCalled();
       expect(storage.getDailyPlantSummary).not.toHaveBeenCalled();
     });
     it(`${method.toUpperCase()} ${path}: other-site request returns 403`, async () => {
       permissions[key] = { view: true, export: true };
+      permissions.reports_hub = { view: true };
+      permissions.hmp_operations = { view: true };
       const response = await request(app)[method](url(path))
         .query(path.includes("vendor-bills/export") ? { siteId: 2 } : { plant: "Plant B" })
         .send({ entries: [{ date: "2026-10-01", plant: "Plant B" }] });
@@ -461,14 +477,18 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect(response.text).not.toContain("SECRET VENDOR");
   });
   it("daily report CSV contains only plants linked to permitted sites", async () => {
-    permissions.plant_daily_reports = { export: true };
+    permissions.plant_daily_reports = { view: true, export: true };
+    permissions.reports_hub = { view: true };
+    permissions.hmp_operations = { view: true };
     const response = await request(app).get("/api/plant-module/daily-reports-export?format=csv");
     expect(response.status).toBe(200);
     expect(response.text).toContain("Plant A");
     expect(response.text).not.toContain("Plant B");
   });
   it("no site grants exports no plant rows", async () => {
-    permissions.plant_daily_reports = { export: true };
+    permissions.plant_daily_reports = { view: true, export: true };
+    permissions.reports_hub = { view: true };
+    permissions.hmp_operations = { view: true };
     permittedIds = [];
     const response = await request(app).get("/api/plant-module/daily-reports-export?format=csv");
     expect(response.status).toBe(200);
@@ -476,7 +496,9 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect(response.text).not.toContain("Plant B");
   });
   it("permitted daily PDF requests only the permitted plant", async () => {
-    permissions.plant_daily_reports = { export: true };
+    permissions.plant_daily_reports = { view: true, export: true };
+    permissions.reports_hub = { view: true };
+    permissions.hmp_operations = { view: true };
     storage.getDailyPlantSummary.mockResolvedValue({ plantName: "Plant A" });
     const response = await request(app).get("/api/plant-module/daily-reports/2026-10-01/pdf?plant=Plant%20A");
     expect(response.status).toBe(200);
@@ -484,7 +506,9 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect(storage.getDailyPlantSummary).toHaveBeenCalledExactlyOnceWith("2026-10-01", "Plant A");
   });
   it("permitted heating Excel requests only the permitted plant", async () => {
-    permissions.plant_heating = { export: true };
+    permissions.plant_heating_trends = { view: true, export: true };
+    permissions.reports_hub = { view: true };
+    permissions.hmp_operations = { view: true };
     storage.getHeatingTrends.mockResolvedValue({ rows: [], summary: {}, plantName: "Plant A" });
     const response = await request(app).get("/api/plant-module/heating-trends/excel?plant=Plant%20A&dateFrom=2026-10-01&dateTo=2026-10-02");
     expect(response.status).toBe(200);
@@ -512,7 +536,9 @@ describe("VB-EXPORT-01 actual export route callbacks", () => {
     expect((await request(app).get("/api/irn/2/issue-voucher?voucherId=99")).status).toBe(403);
   });
   it("permitted ZIP builds only the requested permitted plant", async () => {
-    permissions.plant_daily_reports = { export: true };
+    permissions.plant_daily_reports = { view: true, export: true };
+    permissions.reports_hub = { view: true };
+    permissions.hmp_operations = { view: true };
     const entries = [{ date: "2026-10-01", plant: "Plant A" }];
     const response = await request(app).post("/api/plant-module/daily-reports/bulk-zip").send({ entries });
     expect(response.status).toBe(200);

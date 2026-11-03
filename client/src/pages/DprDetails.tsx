@@ -32,10 +32,10 @@ export default function DprDetails() {
   const [, setLocation] = useLocation();
   const id = parseInt(params?.id || "0");
   const { data: dpr, isLoading, error } = useDpr(id);
-  const { sectionCan, featureCan, user } = useAuth();
-  const canEdit = sectionCan("site_dprs", "edit");
+  const { featureCan, user } = useAuth();
+  const canEdit = featureCan("dpr", "edit");
   const canDelete = featureCan("dpr", "cancel");
-  const canViewPerformance = sectionCan("equipment_performance_report", "view") || sectionCan("plant_equipment", "view");
+  const canViewPerformance = featureCan("reports", "view") && featureCan("equipment_usage", "view");
   const completePerformanceContext = hasCompleteDprPerformanceContext(user);
   const performance = useDprEquipmentPerformance(dpr, canViewPerformance, user?.id, completePerformanceContext);
   const { toast } = useToast();

@@ -10,7 +10,6 @@ import { ChevronLeft, Download, Factory, Building2, Loader2 } from "lucide-react
 import * as XLSX from "xlsx";
 import { format, subMonths } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
-import { useAccessRule } from "@/lib/accessRules";
 import { useOrigin } from "@/hooks/use-origin";
 import type { Party, PlantSettingsWithSite } from "@shared/schema";
 
@@ -26,7 +25,8 @@ type SummaryRow = {
 import { ReportExportGate } from "@/components/ReportExportGate";
 
 export default function PlantProjectReport() {
-  const canViewDispatchSummary = useAccessRule("plant_project_report");
+  const { featureCan } = useAuth();
+  const canViewDispatchSummary = featureCan("reports", "view") && featureCan("hmp_rmc", "view");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "reports" });
 

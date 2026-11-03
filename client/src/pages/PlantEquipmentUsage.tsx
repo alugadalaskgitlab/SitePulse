@@ -58,11 +58,11 @@ export default function PlantEquipmentUsage() {
   const { uploadFile } = useUpload();
   const { sectionCan, featureCan, user } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
-  const canCreate = sectionCan("plant_equipment", "create");
-  const canCreateEquipmentMaster = sectionCan("master_equipment", "create");
-  const canEdit = sectionCan("plant_equipment", "edit");
+  const canCreate = featureCan("equipment_usage", "add");
+  const canCreateEquipmentMaster = featureCan("masters", "add");
+  const canEdit = featureCan("equipment_usage", "edit");
   const canDelete = featureCan("equipment_usage", "cancel");
-  const canExport = sectionCan("plant_equipment", "export");
+  const canExport = featureCan("equipment_usage", "export");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);

@@ -6,7 +6,14 @@ import { queryClient } from "@/lib/queryClient";
 import RateCards from "@/pages/RateCards";
 
 const toast = vi.hoisted(() => vi.fn());
+const access = vi.hoisted(() => ({ view: true, add: true, edit: true, cancel: true }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast }) }));
+vi.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({
+    user: { id: 1, isOwner: false },
+    featureCan: (feature: string, action: keyof typeof access) => feature === "rate_cards" && access[action],
+  }),
+}));
 let saveStatus = 200;
 let writes: any[] = [];
 beforeEach(() => {

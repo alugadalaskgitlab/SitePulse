@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import ts from "typescript";
 import { ACTIONS, ROLE_TEMPLATES, SECTION_KEYS, applyRoleTemplate, emptyMatrix } from "../shared/permissions";
+import { canLegacySection } from "../shared/featureAccess";
 
 describe("commercial user role templates", () => {
   it("offers eight ordinary roles alongside the existing privileged Administrator flow", () => {
@@ -53,11 +54,11 @@ describe("commercial user role templates", () => {
 // Exercise actual production guards, without booting repair jobs.
 const source = fs.readFileSync("server/auth-routes.ts", "utf8");
 const ast = ts.createSourceFile("auth.ts", source, ts.ScriptTarget.Latest, true);
-const names = ["assertCreate", "assertEdit", "assertApprove", "assertDelete", "assertDeleteEither"];
+const names = ["hasSectionAccess", "assertCreate", "assertEdit", "assertApprove", "assertDelete", "assertDeleteEither"];
 const js = ts.transpileModule(ast.statements.filter(n => ts.isFunctionDeclaration(n) &&
   names.includes(n.name?.text ?? "")).map(n => n.getText(ast).replace(/^export /, "")).join("\n"),
   { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-const guards = new Function(`${js};return {${names.join(",")}};`)();
+const guards = new Function("canLegacySection", `${js};return {${names.join(",")}};`)(canLegacySection);
 it("real guards accept ordinary Full Operations Create/Edit/Approve and refuse Delete", () => {
   const req = { authUser: { id: 99, isAdmin: false, isOwner: false }, authPermissions: applyRoleTemplate("operations_director") };
   const res = { code: 200, status(code: number) { this.code = code; return this; }, json() { return this; } };

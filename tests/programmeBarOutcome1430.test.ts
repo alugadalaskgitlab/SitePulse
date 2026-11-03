@@ -68,7 +68,7 @@ describe("Task 1430 programme-bar outcome contract", () => {
   it("guards writes with management authority and project-site scope, and enriches picker bars", () => {
     const routes = readFileSync("server/routes.ts", "utf8");
     expect(routes).toContain("assertOutcomeManagerAuthority");
-    expect(routes).toContain('["manager", "pm", "project_manager"].includes(role)');
+    expect(routes).toContain('requestFeatureAllowed(req, "boq_programme", "approve")');
     expect(routes).toContain('assertView(req, res, "site_dprs")');
     expect(routes).toContain("assertOutcomeProjectScope");
     expect(routes).toContain("siteMatchesPermitted(site.name, permitted)");

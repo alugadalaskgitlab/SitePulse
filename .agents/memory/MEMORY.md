@@ -4,7 +4,7 @@
 - [Labour worker names](labour-worker-name-preservation.md) — optional detail, authoritative Count; replacement saves must preserve names and rebase row identities without overwriting in-flight edits.
 - [Equipment print parity](read-only-equipment-print-parity.md) — card removal requires audit-detail parity and actual multi-page PDF checks; print DOM visibility alone misses clipping.
 - [Commercial Strategy](commercial-strategy.md) — Option A (per-customer deployments), 3+ customers in sight, multi-project mockup on canvas, navigation fixes applied May 2026
-- [Permission System v2](permission-system-v2.md) — permission-manager scope, backward-compatible OR gates, and approval separation.
+- [Unified permission model](permission-system-v2.md) — shared screen/server gates, preserved legacy access through explicit Owner setup, and report-source requirements.
 - [Permission preservation](permission-preservation.md) — retain the full matrix; preserve access additively before tightening gates; development checks never imply production migration.
 - [Tank Calibration](tank-calibration.md) — Per-plant tank calibration fully built; fallback to hardcoded dip charts when no config set
 - [Mix Calculator Separation](mix-calculator-separation.md) — Calculator is a separate product (not SiteLog commercial copy); spin-out = new Repl + standalone auth + own DB

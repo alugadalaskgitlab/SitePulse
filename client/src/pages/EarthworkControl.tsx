@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAccessRule } from "@/lib/accessRules";
+import { useAuth } from "@/lib/auth-context";
 import { ArrangementStatusBadge } from "@/components/EarthworkArrangementDialog";
 import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
 import type { EarthworkArrangementSummary } from "@shared/planningEngine";
@@ -104,7 +104,8 @@ export default function EarthworkControl() {
   const projectId = parseInt(params.id ?? "0", 10);
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const canManageReconciliation = useAccessRule("cutfill_reconciliation_ui");
+  const { featureCan } = useAuth();
+  const canManageReconciliation = featureCan("dpr", "approve");
   const [activationDate, setActivationDate] = useState("");
   const [openingQty, setOpeningQty] = useState<Record<number, string>>({});
   const [openingRemarks, setOpeningRemarks] = useState<Record<number, string>>({});
@@ -228,7 +229,7 @@ export default function EarthworkControl() {
             <div className="space-y-1"><label className="text-[10px] font-semibold text-slate-600">Activation date</label>
               <input type="date" className="h-8 rounded border border-slate-300 bg-white px-2 text-[12px]" value={activationDate} disabled={!canManageReconciliation} onChange={e => setActivationDate(e.target.value)} /></div>
             {canManageReconciliation && <Button size="sm" className="h-8 text-[11px]" disabled={reconciliationMutation.isPending} onClick={() => reconciliationMutation.mutate({ url: `/api/boq/projects/${projectId}/cut-fill-reconciliation/activation`, body: { activationDate: activationDate || null } })}>Save activation</Button>}
-            {!canManageReconciliation && <span className="text-[10px] text-slate-500 pb-2">Read-only: PM/Admin confirmation required</span>}
+            {!canManageReconciliation && <span className="text-[10px] text-slate-500 pb-2">Read-only: DPR Approve permission required</span>}
           </div>
           {reconciliationLoading ? <div className="h-8 rounded bg-blue-100 animate-pulse" /> : excavationItems.length === 0 ? <p className="text-[11px] text-slate-500">No roadway-excavation BOQ items found.</p> : (
             <div className="divide-y divide-blue-200 rounded border border-blue-200 bg-white">

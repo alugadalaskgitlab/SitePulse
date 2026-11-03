@@ -71,8 +71,9 @@ function roleAccessDiff(user: SetupUser, roleIds: number[], roles: RoleRow[], is
   const changes: Array<{ feature: string; action: string; allow: boolean }> = [];
   for (const feature of FEATURES) {
     for (const action of feature.actions) {
-      const legacy = user.legacyTicks[feature.id]?.[action] === true;
-      const roleGranted = selected.some(role => role.ticks[feature.id]?.[action] === true);
+      const restricted = feature.inactive || (feature.id === "estimating" && !isOwner);
+      const legacy = !restricted && user.legacyTicks[feature.id]?.[action] === true;
+      const roleGranted = !restricted && selected.some(role => role.ticks[feature.id]?.[action] === true);
       if (legacy !== roleGranted) changes.push({ feature: feature.label, action: ACTION_LABELS[action], allow: legacy });
     }
   }
@@ -82,14 +83,15 @@ function roleAccessDiff(user: SetupUser, roleIds: number[], roles: RoleRow[], is
 function roleAccessPreview(user: SetupUser, roleIds: number[], roles: RoleRow[], isOwner: boolean) {
   const selected = roles.filter(role => roleIds.includes(role.id));
   return FEATURES.flatMap(feature => feature.actions.map(action => {
-    const roleGranted = selected.some(role => role.ticks[feature.id]?.[action] === true);
-    const legacyGranted = user.legacyTicks[feature.id]?.[action] === true;
+    const restricted = feature.inactive || (feature.id === "estimating" && !isOwner);
+    const roleGranted = !restricted && selected.some(role => role.ticks[feature.id]?.[action] === true);
+    const legacyGranted = !restricted && user.legacyTicks[feature.id]?.[action] === true;
     const personalChange = !isOwner && roleGranted !== legacyGranted;
     return {
       featureId: feature.id,
       featureLabel: feature.label,
       actionLabel: ACTION_LABELS[action],
-      allowed: isOwner || (personalChange ? legacyGranted : roleGranted),
+      allowed: !feature.inactive && (isOwner || (personalChange ? legacyGranted : roleGranted)),
       personalChange,
     };
   }));
@@ -116,7 +118,7 @@ export default function AccessRoles() {
 
   useEffect(() => {
     const preview = previewQuery.data;
-    if (!preview || !rolesQuery.data) return;
+    if (!preview || !rolesQuery.data || (!rolesQuery.data.roles.length && !preview.rolesConfigured)) return;
     setChoices(current => {
       if (Object.keys(current).length) return current;
       return Object.fromEntries(preview.users.map(person => [
@@ -129,7 +131,7 @@ export default function AccessRoles() {
         },
       ]));
     });
-  }, [previewQuery.data]);
+  }, [previewQuery.data, rolesQuery.data]);
 
   const roles = rolesQuery.data?.roles ?? [];
   const setup = previewQuery.data;
@@ -231,7 +233,7 @@ export default function AccessRoles() {
     const roleIds = current.roleIds.includes(roleId)
       ? current.roleIds.filter(id => id !== roleId)
       : [...current.roleIds, roleId];
-    setChoices({ ...choices, [userId]: { ...current, roleIds, adminChoiceConfirmed: true } });
+    setChoices({ ...choices, [userId]: { ...current, roleIds } });
   };
 
   const currentScopeOptions = useMemo(() => [
@@ -279,7 +281,7 @@ export default function AccessRoles() {
               <div className="overflow-x-auto">
                 <table className="min-w-[900px] w-full border-collapse text-sm">
                   <thead><tr className="border-b text-left">
-                    <th className="p-2">Person</th><th className="p-2">Suggested roles</th><th className="p-2">Current site scope</th><th className="p-2">Record unlock</th><th className="p-2">Owner</th><th className="p-2">Resulting access</th>
+                    <th className="p-2">Person</th><th className="p-2">Roles</th><th className="p-2">Current site scope</th><th className="p-2">Record unlock</th><th className="p-2">Owner</th><th className="p-2">Resulting access</th>
                   </tr></thead>
                   <tbody>
                     {[...setup.users].sort((a, b) => Number(b.isAdmin && !b.isOwner) - Number(a.isAdmin && !a.isOwner)).map(person => {
@@ -350,7 +352,10 @@ export default function AccessRoles() {
                                       <h4 className="font-semibold">{group.label}</h4>
                                       {FEATURES.filter(feature => feature.group === group.id && isFeatureLicensed(feature.id, featureAccess?.licensedModules)).map(feature => (
                                         <div key={feature.id} className="border-b py-1">
-                                          <div className="font-medium">{feature.label}{feature.inactive ? " · Inactive" : ""}</div>
+                                  <div className="font-medium">
+                                    {feature.label}
+                                    {feature.inactive ? " · Inactive" : feature.id === "estimating" ? " · Owners only" : ""}
+                                  </div>
                                           <ul className="grid gap-x-3 sm:grid-cols-2">
                                             {resultingTicks.filter(tick => tick.featureId === feature.id).map(tick => (
                                               <li key={tick.actionLabel} className={tick.personalChange ? "text-amber-800" : "text-muted-foreground"}>
@@ -384,7 +389,7 @@ export default function AccessRoles() {
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-3">
-                  {unresolvedAdmins.length > 0 && <span role="alert" className="text-sm text-destructive">Choose Owner or role for each Admin.</span>}
+                  {unresolvedAdmins.length > 0 && <span role="alert" className="text-sm text-destructive">Choose Owner or role for each Admin and confirm the selected roles.</span>}
                   <button className="rounded bg-primary px-4 py-2 text-primary-foreground" onClick={() => setSetupConfirmation(true)} disabled={unresolvedAdmins.length > 0}>
                     Set up roles
                   </button>
@@ -439,10 +444,21 @@ export default function AccessRoles() {
                     <div className="space-y-2">
                       {FEATURES.filter(feature => feature.group === group.id && isFeatureLicensed(feature.id, featureAccess?.licensedModules)).map(feature => (
                         <div key={feature.id} className="grid gap-2 border-b pb-2 md:grid-cols-[minmax(200px,1fr)_repeat(9,minmax(68px,auto))]">
-                          <div className="font-medium">{feature.label}{feature.inactive && <span className="ml-2 text-xs text-muted-foreground">Not active</span>}</div>
+                          <div className="font-medium">
+                            {feature.label}
+                            {feature.inactive && <span className="ml-2 text-xs text-muted-foreground">Not active</span>}
+                            {!feature.inactive && feature.id === "estimating" && <span className="ml-2 text-xs text-muted-foreground">Owners only</span>}
+                          </div>
                           {feature.actions.map(action => (
                             <label key={action} className="flex items-center gap-1 text-xs">
-                              <input type="checkbox" disabled={feature.inactive} checked={roleDraft.ticks[feature.id]?.[action] === true} onChange={event => setRoleTick(feature.id, action, event.target.checked)} />
+                              <input
+                                type="checkbox"
+                                aria-label={`${feature.label} ${ACTION_LABELS[action]}`}
+                                data-testid={`role-tick-${feature.id}-${action}`}
+                                disabled={feature.inactive || feature.id === "estimating"}
+                                checked={roleDraft.ticks[feature.id]?.[action] === true}
+                                onChange={event => setRoleTick(feature.id, action, event.target.checked)}
+                              />
                               {ACTION_LABELS[action]}
                             </label>
                           ))}

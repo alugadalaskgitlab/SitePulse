@@ -73,13 +73,23 @@ function error(res: Response, err: unknown) {
 }
 
 export function registerVendorMasterRoutes(app: Express, permittedSites: (req: Request) => Promise<string[] | null>) {
-  const canView = (req: Request, res: Response) => assertView(req, res, "master_parties");
+  const canView = (req: Request, res: Response) => {
+    if (!req.authUser) {
+      res.status(401).json({ error: "not_authenticated" });
+      return false;
+    }
+    return assertView(req, res, "master_parties");
+  };
   const featureAllowed = (req: Request, feature: FeatureId, action: FeatureAction) =>
     canFeature(req.authUser, feature, action, {
       ...(req.authFeatureAccess ?? { rolesConfigured: false }),
       legacyPermissions: req.authPermissions,
     });
   const canManage = (req: Request, res: Response, action: "add" | "edit") => {
+    if (!req.authUser) {
+      res.status(401).json({ error: "not_authenticated" });
+      return false;
+    }
     if (featureAllowed(req, "masters", action)) return true;
     res.status(403).json({ error: "forbidden", feature: "masters", action });
     return false;
