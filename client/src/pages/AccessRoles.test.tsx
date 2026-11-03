@@ -11,6 +11,7 @@ const authState = vi.hoisted(() => ({
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => authState }));
 
 const role = { id: 7, name: "Project Manager", scopeDefault: "all", sort: 1, ticks: { dpr: { view: true } } };
+const secondRole = { id: 8, name: "Site Engineer", scopeDefault: "own", sort: 2, ticks: { site_requirements: { view: true } } };
 const adminUser = {
   id: 2, fullName: "Admin Two", email: "admin@example.test", isActive: true,
   isAdmin: true, isOwner: false, businessRole: "Project Manager", suggestedRoleIds: [7],
@@ -75,7 +76,7 @@ describe("Settings roles page", () => {
     ]);
   });
 
-  it("keeps Estimating Owner-only and inactive actions disabled in role editing", async () => {
+  it("discards role drafts on Cancel changes, confirms role switches, and keeps saved ticks unchanged", async () => {
     let saved: any;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -83,6 +84,49 @@ describe("Settings roles page", () => {
         saved = JSON.parse(String(init.body));
         return new Response(JSON.stringify({ ok: true, role: { ...role, ...saved } }));
       }
+      if (url.endsWith("/api/access-control/roles")) {
+        return new Response(JSON.stringify({ roles: [role, secondRole] }));
+      }
+      if (url.endsWith("/api/access-control/setup-preview")) {
+        return new Response(JSON.stringify({ roles: [role, secondRole], rolesConfigured: true, users: [] }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Project Manager" }));
+    const estimating = await screen.findByTestId("role-tick-estimating-view") as HTMLInputElement;
+    const inactive = screen.getByTestId("role-tick-ra_bills-view") as HTMLInputElement;
+    expect(estimating.disabled).toBe(false);
+    expect(estimating.checked).toBe(false);
+    expect(inactive.disabled).toBe(true);
+
+    fireEvent.click(estimating);
+    fireEvent.click(screen.getByTestId("role-tick-dpr-add"));
+    fireEvent.change(screen.getByLabelText("Role name"), { target: { value: "Unsaved name" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel changes" }));
+    expect((screen.getByLabelText("Role name") as HTMLInputElement).value).toBe("Project Manager");
+    expect((screen.getByTestId("role-tick-estimating-view") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByTestId("role-tick-dpr-add") as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByRole("button", { name: "Cancel changes" })).toBeNull();
+    expect(saved).toBeUndefined();
+
+    fireEvent.click(screen.getByTestId("role-tick-dpr-add"));
+    fireEvent.click(screen.getByRole("button", { name: "Site Engineer" }));
+    expect(await screen.findByRole("alertdialog")).toBeTruthy();
+    expect(screen.getByText("Discard unsaved changes to Project Manager?")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect((screen.getByTestId("role-tick-dpr-add") as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Site Engineer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect((await screen.findByLabelText("Role name") as HTMLInputElement).value).toBe("Site Engineer");
+    expect(saved).toBeUndefined();
+  });
+
+  it("asks before Back and discards the unsaved role draft when confirmed", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
       if (url.endsWith("/api/access-control/roles")) {
         return new Response(JSON.stringify({ roles: [role] }));
       }
@@ -94,15 +138,14 @@ describe("Settings roles page", () => {
 
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Project Manager" }));
-    const estimating = await screen.findByTestId("role-tick-estimating-view") as HTMLInputElement;
-    const inactive = screen.getByTestId("role-tick-ra_bills-view") as HTMLInputElement;
-    expect(estimating.disabled).toBe(true);
-    expect(inactive.disabled).toBe(true);
-
     fireEvent.click(screen.getByTestId("role-tick-dpr-add"));
-    fireEvent.click(screen.getByRole("button", { name: "Save role" }));
-    await waitFor(() => expect(saved).toBeTruthy());
-    expect(saved.ticks.dpr.add).toBe(true);
-    expect(saved.ticks.estimating).toBeUndefined();
+    fireEvent.click(screen.getByRole("link", { name: "← Back" }));
+    expect(await screen.findByRole("alertdialog")).toBeTruthy();
+    expect(screen.getByText("Discard unsaved changes to Project Manager?")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect((screen.getByTestId("role-tick-dpr-add") as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole("link", { name: "← Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/admin/settings"));
   });
 });

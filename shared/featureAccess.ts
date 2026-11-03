@@ -290,7 +290,6 @@ export function can(
   const definition = FEATURES.find(item => item.id === feature);
   if (!user || user.isActive === false || !definition || definition.inactive ||
       !isFeatureLicensed(feature, state.licensedModules)) return false;
-  if (feature === "estimating" && !user.isOwner) return false;
   if (user.isOwner) return true;
   if (user.isAdmin && !state.rolesConfigured) return true;
   if (!state.rolesConfigured) {

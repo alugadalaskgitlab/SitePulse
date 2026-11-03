@@ -156,7 +156,6 @@ export function FeaturePermissionsDialog({
                                 <span className="text-sm font-medium">
                                   {feature.label}
                                   {feature.inactive && <span className="ml-2 text-xs text-muted-foreground">Inactive</span>}
-                                  {feature.id === "estimating" && <span className="ml-2 text-xs text-muted-foreground">Owners only</span>}
                                 </span>
                         {ACTIONS.filter(action => feature.actions.includes(action)).map(action => (
                           <label key={action} data-personal-change={hasPersonalChange(feature.id, action) || undefined}
@@ -165,7 +164,7 @@ export function FeaturePermissionsDialog({
                               type="checkbox"
                               aria-label={`${feature.label} ${ACTION_LABEL[action]}`}
                               data-testid={`feature-${feature.id}-${action}`}
-                              disabled={feature.inactive || feature.id === "estimating"}
+                              disabled={feature.inactive}
                               checked={effective(feature.id, action)}
                               onChange={event => setPermission(feature.id, action, event.target.checked)}
                             />

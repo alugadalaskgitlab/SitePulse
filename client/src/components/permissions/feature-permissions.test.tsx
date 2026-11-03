@@ -97,4 +97,36 @@ describe("feature permission grid", () => {
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0]).toMatchObject({ roleIds: [7], personalChanges: {} });
   });
+
+  it("lets a person tick Estimating and Cancel closes without saving the draft", async () => {
+    const onClose = vi.fn();
+    const writes: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/users/41/feature-access") && init?.method === "PUT") {
+        writes.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify({ ok: true }));
+      }
+      if (url.endsWith("/api/auth/users/41/feature-access")) {
+        return new Response(JSON.stringify(accessData));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <FeaturePermissionsDialog userId={41} fullName="Kavita Rao" onClose={onClose} onSaved={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    const estimating = await screen.findByTestId("feature-estimating-view") as HTMLInputElement;
+    expect(estimating.disabled).toBe(false);
+    expect(estimating.checked).toBe(false);
+    fireEvent.click(estimating);
+    expect(estimating.checked).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(writes).toHaveLength(0);
+  });
 });

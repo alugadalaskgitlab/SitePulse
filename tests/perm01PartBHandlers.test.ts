@@ -3,12 +3,19 @@ import express from "express";
 import { createServer } from "node:http";
 import request from "supertest";
 
-const actor = { permissions: {} as Record<string, Record<string, boolean>>, id: 51, admin: false, owner: false };
+const actor = {
+  permissions: {} as Record<string, Record<string, boolean>>,
+  featureAccess: null as any,
+  id: 51,
+  admin: false,
+  owner: false,
+};
 vi.mock("../server/auth", async (importOriginal) => {
   const original = await importOriginal<typeof import("../server/auth")>();
   const inject = (req: any, _res: any, next: any) => {
     req.authUser = { id: actor.id, username: "synthetic-user", fullName: "Synthetic User", isAdmin: actor.admin, isOwner: actor.owner };
     req.authPermissions = actor.permissions;
+    if (actor.featureAccess) req.authFeatureAccess = actor.featureAccess;
     next();
   };
   return { ...original, requireAuth: inject, optionalAuth: inject };
@@ -60,6 +67,7 @@ beforeEach(() => {
   actor.id = 51;
   actor.admin = false;
   actor.owner = false;
+  actor.featureAccess = null;
   vi.clearAllMocks();
 });
 
@@ -72,10 +80,10 @@ const routes = [
   { method: "post", path: "/api/vendor-aliases", action: "create", key: "vendor_masters_manage", storage: "addVendorAlias", body: { canonicalName: "Synthetic supplier", alias: "Synthetic alternate" } },
   { method: "post", path: "/api/vendor-rate-cards", action: "create", key: "vendor_masters_manage", storage: "upsertVendorRateCard", body: { vendorName: "Synthetic supplier", rate: 10 } },
   { method: "post", path: "/api/vendor-rate-cards/bulk-upsert", action: "create", key: "vendor_masters_manage", storage: "upsertVendorRateCard", body: { items: [{ vendorName: "Synthetic supplier", rate: 10 }] } },
-  { method: "post", path: "/api/concrete-estimates", action: "create", key: "concrete_estimates_manage", ownerOnly: true, storage: "createConcreteEstimate", body: { name: "Synthetic estimate", state: {} } },
-  { method: "patch", path: "/api/concrete-estimates/7", action: "edit", key: "concrete_estimates_manage", ownerOnly: true, storage: "updateConcreteEstimate", body: { name: "Synthetic revision" } },
-  { method: "post", path: "/api/concrete/v2/estimates", action: "create", key: "concrete_estimates_manage", ownerOnly: true, storage: "createConcreteEstimateV2", body: { name: "Synthetic estimate v2", state: {} } },
-  { method: "patch", path: "/api/concrete/v2/estimates/7", action: "edit", key: "concrete_estimates_manage", ownerOnly: true, storage: "updateConcreteEstimateV2", body: { name: "Synthetic revision v2" } },
+  { method: "post", path: "/api/concrete-estimates", action: "create", key: "concrete_estimates_manage", storage: "createConcreteEstimate", body: { name: "Synthetic estimate", state: {} } },
+  { method: "patch", path: "/api/concrete-estimates/7", action: "edit", key: "concrete_estimates_manage", storage: "updateConcreteEstimate", body: { name: "Synthetic revision" } },
+  { method: "post", path: "/api/concrete/v2/estimates", action: "create", key: "concrete_estimates_manage", storage: "createConcreteEstimateV2", body: { name: "Synthetic estimate v2", state: {} } },
+  { method: "patch", path: "/api/concrete/v2/estimates/7", action: "edit", key: "concrete_estimates_manage", storage: "updateConcreteEstimateV2", body: { name: "Synthetic revision v2" } },
   { method: "post", path: "/api/notifications", action: "create", key: "admin_notifications_manage", ownerOnly: true, storage: "createNotification", body: { type: "info", title: "Synthetic notice", message: "Synthetic message" } },
 ] as const;
 
@@ -132,16 +140,34 @@ describe("PERM-01 B: actual handlers with mocked storage (no business DB writes)
     }
   });
 
-  it("retains estimate ownership and admin-only deletions independently of granular access", async () => {
+  it("uses Estimating Edit for estimate updates and still requires separate Cancel access for deletion", async () => {
     actor.permissions = { concrete_estimates_manage: { create: true, edit: true }, sites_plants_manage: { create: true, edit: true } };
     actor.id = 52;
     for (const path of ["/api/concrete-estimates/7", "/api/concrete/v2/estimates/7"]) {
-      expect((await request(app).patch(path).send({ name: "Synthetic revision" })).status).toBe(403);
+      expect((await request(app).patch(path).send({ name: "Synthetic revision" })).status).toBeLessThan(300);
     }
-    expect(storage.updateConcreteEstimate).not.toHaveBeenCalled();
-    expect(storage.updateConcreteEstimateV2).not.toHaveBeenCalled();
+    expect(storage.updateConcreteEstimate).toHaveBeenCalled();
+    expect(storage.updateConcreteEstimateV2).toHaveBeenCalled();
     expect((await request(app).delete("/api/sites/7")).status).toBe(403);
     expect((await request(app).delete("/api/concrete-estimates/7")).status).toBe(403);
+  });
+
+  it("allows a non-Owner with Estimating View and returns 403 without the View tick", async () => {
+    actor.featureAccess = {
+      rolesConfigured: true,
+      userRoles: [4],
+      roleTicks: { 4: { estimating: { view: true } } },
+      licensedModules: ["estimating"],
+    };
+    expect((await request(app).get("/api/concrete-estimates")).status).toBe(200);
+
+    actor.featureAccess = {
+      rolesConfigured: true,
+      userRoles: [4],
+      roleTicks: { 4: {} },
+      licensedModules: ["estimating"],
+    };
+    expect((await request(app).get("/api/concrete-estimates")).status).toBe(403);
   });
 
   it("requires Rate Cards Cancel for DELETE even when Edit is granted", async () => {

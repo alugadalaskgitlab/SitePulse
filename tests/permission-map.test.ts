@@ -21,7 +21,7 @@ describe("feature permission catalog", () => {
     ]);
   });
 
-  it("keeps Estimating owner-only by default and RA bills visible but inactive", () => {
+  it("keeps Estimating unticked in role defaults and RA bills visible but inactive", () => {
     expect(Object.keys(DEFAULT_ROLE_TICKS).every(role =>
       !Object.keys(DEFAULT_ROLE_TICKS[role as keyof typeof DEFAULT_ROLE_TICKS])
         .some(key => key.startsWith("estimating.")),

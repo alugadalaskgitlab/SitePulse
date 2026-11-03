@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
@@ -71,7 +72,7 @@ function roleAccessDiff(user: SetupUser, roleIds: number[], roles: RoleRow[], is
   const changes: Array<{ feature: string; action: string; allow: boolean }> = [];
   for (const feature of FEATURES) {
     for (const action of feature.actions) {
-      const restricted = feature.inactive || (feature.id === "estimating" && !isOwner);
+      const restricted = feature.inactive;
       const legacy = !restricted && user.legacyTicks[feature.id]?.[action] === true;
       const roleGranted = !restricted && selected.some(role => role.ticks[feature.id]?.[action] === true);
       if (legacy !== roleGranted) changes.push({ feature: feature.label, action: ACTION_LABELS[action], allow: legacy });
@@ -83,7 +84,7 @@ function roleAccessDiff(user: SetupUser, roleIds: number[], roles: RoleRow[], is
 function roleAccessPreview(user: SetupUser, roleIds: number[], roles: RoleRow[], isOwner: boolean) {
   const selected = roles.filter(role => roleIds.includes(role.id));
   return FEATURES.flatMap(feature => feature.actions.map(action => {
-    const restricted = feature.inactive || (feature.id === "estimating" && !isOwner);
+    const restricted = feature.inactive;
     const roleGranted = !restricted && selected.some(role => role.ticks[feature.id]?.[action] === true);
     const legacyGranted = !restricted && user.legacyTicks[feature.id]?.[action] === true;
     const personalChange = !isOwner && roleGranted !== legacyGranted;
@@ -97,15 +98,35 @@ function roleAccessPreview(user: SetupUser, roleIds: number[], roles: RoleRow[],
   }));
 }
 
+type PendingDiscard =
+  | { kind: "switch-role"; roleId: number }
+  | { kind: "navigate"; target: string };
+
+function cloneRole(role: RoleRow): RoleRow {
+  return { ...role, ticks: structuredClone(role.ticks) };
+}
+
+function roleDraftHasChanges(draft: RoleRow | null, saved: RoleRow | null): boolean {
+  if (!draft || !saved) return false;
+  return draft.name !== saved.name ||
+    draft.scopeDefault !== saved.scopeDefault ||
+    JSON.stringify(draft.ticks) !== JSON.stringify(saved.ticks);
+}
+
 export default function AccessRoles() {
   const { user, featureAccess } = useAuth();
   const queryClient = useQueryClient();
+  const [location, setLocation] = useLocation();
   const [message, setMessage] = useState("");
   const [choices, setChoices] = useState<Record<number, SetupChoice>>({});
   const [activeRoleId, setActiveRoleId] = useState<number | null>(null);
   const [roleDraft, setRoleDraft] = useState<RoleRow | null>(null);
   const [newRoleName, setNewRoleName] = useState("");
   const [setupConfirmation, setSetupConfirmation] = useState(false);
+  const [pendingDiscard, setPendingDiscard] = useState<PendingDiscard | null>(null);
+  const activeLocationRef = useRef(location);
+  const hasUnsavedChangesRef = useRef(false);
+  activeLocationRef.current = location;
 
   const rolesQuery = useQuery<{ roles: RoleRow[] }>({
     queryKey: ["/api/access-control/roles"],
@@ -137,6 +158,8 @@ export default function AccessRoles() {
   const setup = previewQuery.data;
   const rolesConfigured = setup?.rolesConfigured ?? false;
   const activeRole = roles.find(role => role.id === activeRoleId) ?? null;
+  const hasUnsavedChanges = roleDraftHasChanges(roleDraft, activeRole);
+  hasUnsavedChangesRef.current = hasUnsavedChanges;
   const unresolvedAdmins = (setup?.users ?? []).filter(person => {
     if (!person.isAdmin || person.isOwner) return false;
     const choice = choices[person.id] ?? {
@@ -148,8 +171,70 @@ export default function AccessRoles() {
   });
 
   useEffect(() => {
-    if (!roleDraft && activeRole) setRoleDraft({ ...activeRole, ticks: structuredClone(activeRole.ticks) });
+    if (!roleDraft && activeRole) setRoleDraft(cloneRole(activeRole));
   }, [activeRole, roleDraft]);
+
+  useEffect(() => {
+    const onDocumentClick = (event: MouseEvent) => {
+      if (!hasUnsavedChangesRef.current || event.defaultPrevented || event.button !== 0 ||
+          event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest("a[href]") as HTMLAnchorElement | null;
+      if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+      const destinationUrl = new URL(anchor.href, window.location.href);
+      if (destinationUrl.origin !== window.location.origin) return;
+      const destination = `${destinationUrl.pathname}${destinationUrl.search}${destinationUrl.hash}`;
+      if (destination === activeLocationRef.current) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setPendingDiscard({ kind: "navigate", target: destination });
+    };
+
+    const onPopState = (event: PopStateEvent) => {
+      if (!hasUnsavedChangesRef.current) return;
+      const target = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      window.history.pushState(window.history.state, "", activeLocationRef.current);
+      setPendingDiscard({ kind: "navigate", target });
+    };
+
+    document.addEventListener("click", onDocumentClick, true);
+    window.addEventListener("popstate", onPopState, true);
+    return () => {
+      document.removeEventListener("click", onDocumentClick, true);
+      window.removeEventListener("popstate", onPopState, true);
+    };
+  }, []);
+
+  const requestRoleSelection = (roleId: number) => {
+    if (roleId === activeRoleId) return;
+    if (hasUnsavedChanges) {
+      setPendingDiscard({ kind: "switch-role", roleId });
+      return;
+    }
+    const targetRole = roles.find(role => role.id === roleId);
+    if (!targetRole) return;
+    setActiveRoleId(roleId);
+    setRoleDraft(cloneRole(targetRole));
+  };
+
+  const discardAndContinue = () => {
+    if (!pendingDiscard) return;
+    const action = pendingDiscard;
+    setPendingDiscard(null);
+    if (activeRole) setRoleDraft(cloneRole(activeRole));
+    if (action.kind === "switch-role") {
+      const targetRole = roles.find(role => role.id === action.roleId);
+      if (targetRole) {
+        setActiveRoleId(targetRole.id);
+        setRoleDraft(cloneRole(targetRole));
+      }
+      return;
+    }
+    setLocation(action.target);
+  };
 
   const saveSetup = useMutation({
     mutationFn: () => apiRequest("POST", "/api/access-control/setup", {
@@ -262,10 +347,35 @@ export default function AccessRoles() {
     <main className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
+          <Link href="/admin/settings" className="mb-2 inline-block text-sm text-muted-foreground hover:text-foreground hover:underline">
+            ← Back
+          </Link>
           <h1 className="text-2xl font-semibold">Roles</h1>
         </div>
       </header>
       {message && <p role="status" className="rounded border p-3 text-sm">{message}</p>}
+      {pendingDiscard && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation">
+          <section
+            className="w-full max-w-md space-y-4 rounded-lg border bg-background p-5 shadow-xl"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="discard-role-title"
+          >
+            <h2 id="discard-role-title" className="font-semibold">
+              Discard unsaved changes to {activeRole?.name ?? roleDraft?.name}?
+            </h2>
+            <div className="flex justify-end gap-2">
+              <button className="rounded border px-4 py-2" onClick={() => setPendingDiscard(null)}>
+                Keep editing
+              </button>
+              <button className="rounded bg-destructive px-4 py-2 text-destructive-foreground" onClick={discardAndContinue}>
+                Discard
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {!rolesConfigured ? (
         <section className="space-y-4 rounded-lg border p-4">
@@ -354,7 +464,7 @@ export default function AccessRoles() {
                                         <div key={feature.id} className="border-b py-1">
                                   <div className="font-medium">
                                     {feature.label}
-                                    {feature.inactive ? " · Inactive" : feature.id === "estimating" ? " · Owners only" : ""}
+                                    {feature.inactive ? " · Inactive" : ""}
                                   </div>
                                           <ul className="grid gap-x-3 sm:grid-cols-2">
                                             {resultingTicks.filter(tick => tick.featureId === feature.id).map(tick => (
@@ -405,10 +515,7 @@ export default function AccessRoles() {
             <ul className="space-y-1">
               {roles.map(role => (
                 <li key={role.id}>
-                  <button className={`w-full rounded px-3 py-2 text-left ${activeRoleId === role.id ? "bg-muted font-medium" : "hover:bg-muted/60"}`} onClick={() => {
-                    setActiveRoleId(role.id);
-                    setRoleDraft({ ...role, ticks: structuredClone(role.ticks) });
-                  }}>{role.name}</button>
+                  <button className={`w-full rounded px-3 py-2 text-left ${activeRoleId === role.id ? "bg-muted font-medium" : "hover:bg-muted/60"}`} onClick={() => requestRoleSelection(role.id)}>{role.name}</button>
                 </li>
               ))}
             </ul>
@@ -431,6 +538,15 @@ export default function AccessRoles() {
                 <button className="rounded bg-primary px-4 py-2 text-primary-foreground" onClick={() => saveRole.mutate()} disabled={saveRole.isPending}>
                   {saveRole.isPending ? "Saving…" : "Save role"}
                 </button>
+                {hasUnsavedChanges && (
+                  <button
+                    className="rounded border px-4 py-2"
+                    onClick={() => activeRole && setRoleDraft(cloneRole(activeRole))}
+                    disabled={saveRole.isPending}
+                  >
+                    Cancel changes
+                  </button>
+                )}
                 <button className="rounded border px-4 py-2 text-destructive" onClick={() => deleteRole.mutate(roleDraft.id)} disabled={deleteRole.isPending}>
                   Delete role
                 </button>
@@ -447,7 +563,6 @@ export default function AccessRoles() {
                           <div className="font-medium">
                             {feature.label}
                             {feature.inactive && <span className="ml-2 text-xs text-muted-foreground">Not active</span>}
-                            {!feature.inactive && feature.id === "estimating" && <span className="ml-2 text-xs text-muted-foreground">Owners only</span>}
                           </div>
                           {feature.actions.map(action => (
                             <label key={action} className="flex items-center gap-1 text-xs">
@@ -455,7 +570,7 @@ export default function AccessRoles() {
                                 type="checkbox"
                                 aria-label={`${feature.label} ${ACTION_LABELS[action]}`}
                                 data-testid={`role-tick-${feature.id}-${action}`}
-                                disabled={feature.inactive || feature.id === "estimating"}
+                                disabled={feature.inactive}
                                 checked={roleDraft.ticks[feature.id]?.[action] === true}
                                 onChange={event => setRoleTick(feature.id, action, event.target.checked)}
                               />

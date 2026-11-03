@@ -115,15 +115,16 @@ describe("shared feature access", () => {
     expect(can(user, "estimating", "view", state)).toBe(false);
   });
 
-  it("keeps Estimating Owner-only even when licensed and explicitly granted", () => {
+  it("allows licensed Estimating role ticks for non-Owners while Owners retain their bypass", () => {
     const state: FeatureAccessState = {
       rolesConfigured: true,
       userRoles: [1],
       roleTicks: { 1: { estimating: { view: true, add: true, edit: true } } },
       licensedModules: ["estimating"],
     };
-    expect(can(user, "estimating", "view", state)).toBe(false);
+    expect(can(user, "estimating", "view", state)).toBe(true);
     expect(can({ ...user, isOwner: true }, "estimating", "view", state)).toBe(true);
+    expect(can(user, "estimating", "view", { ...state, roleTicks: { 1: {} } })).toBe(false);
   });
 
   it("keeps legacy Admin access only until feature roles are configured", () => {
