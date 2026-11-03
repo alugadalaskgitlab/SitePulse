@@ -25314,7 +25314,7 @@ export async function registerRoutes(
   // seed and reclassification functions below are NOT application-startup work.
   // They require an explicitly reviewed migration, never an environment toggle.
 
-  registerSiteRequirementRoutes(app);
+  registerSiteRequirementRoutes(app, getPermittedSiteNames);
 
   return httpServer;
 }
@@ -25750,7 +25750,15 @@ async function ensureBoqItemNameColumn() {
 // PATCH  /api/site-requirements/:id/status — PM/Admin updates status
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function registerSiteRequirementRoutes(app: Express) {
+export function registerSiteRequirementRoutes(
+  app: Express,
+  getPermittedSiteNames: (req: any) => Promise<string[] | null>,
+) {
+  const canAccessRequirementSite = async (req: any, row: any) => {
+    const permittedSiteNames = await getPermittedSiteNames(req);
+    return permittedSiteNames === null ||
+      (!!row?.site && siteMatchesPermitted(row.site, permittedSiteNames));
+  };
   app.post("/api/site-requirements", requireAuth, async (req: any, res) => {
     try {
       if (!assertFeatureAction(req, res, "site_requirements", "add")) return;
@@ -25802,6 +25810,7 @@ export function registerSiteRequirementRoutes(app: Express) {
       if (!canViewSiteRequirements(req)) {
         return res.status(403).json({ error: "forbidden", feature: "site_requirements", action: "view" });
       }
+      const permittedSiteNames = await getPermittedSiteNames(req);
       const canReview = requestFeatureAllowed(req, "site_requirements", "verify") ||
         requestFeatureAllowed(req, "site_requirements", "approve");
       const filters: any = {};
@@ -25814,11 +25823,14 @@ export function registerSiteRequirementRoutes(app: Express) {
         filters.submittedBy = req.authUser.id;
       }
       const rows = await storage.listSiteRequirements(filters);
+      const visibleRows = permittedSiteNames === null
+        ? rows
+        : rows.filter((row: any) => !!row.site && siteMatchesPermitted(row.site, permittedSiteNames));
       const dur = Date.now() - t0;
       if (dur > 200 || process.env.NODE_ENV !== "production") {
-        console.log(`[perf] GET /api/site-requirements → ${rows.length} rows in ${dur}ms`);
+        console.log(`[perf] GET /api/site-requirements → ${visibleRows.length} rows in ${dur}ms`);
       }
-      res.json(rows.map((row: any) => redactRequirementAllocations(req, row)));
+      res.json(visibleRows.map((row: any) => redactRequirementAllocations(req, row)));
     } catch (err: any) {
       console.error("GET /api/site-requirements error:", err);
       res.status(500).json({ error: err.message });
@@ -25832,6 +25844,9 @@ export function registerSiteRequirementRoutes(app: Express) {
       }
       const row = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!row) return res.status(404).json({ error: "Not found" });
+      if (!await canAccessRequirementSite(req, row)) {
+        return res.status(403).json({ error: "Access denied for this site" });
+      }
       const canReview = requestFeatureAllowed(req, "site_requirements", "verify") ||
         requestFeatureAllowed(req, "site_requirements", "approve");
       const isCreator = row.submittedBy === req.authUser.id;
@@ -25894,6 +25909,11 @@ export function registerSiteRequirementRoutes(app: Express) {
           return res.status(403).json({ error: "forbidden", ...permission });
         }
       }
+      const requirement = await storage.getSiteRequirement(parseInt(req.params.id));
+      if (!requirement) return res.status(404).json({ error: "Not found" });
+      if (!await canAccessRequirementSite(req, requirement)) {
+        return res.status(403).json({ error: "Access denied for this site" });
+      }
       const data: Record<string, any> = {
         updatedByName: req.session?.username ?? null,
         updatedAt: new Date().toISOString(),
@@ -25925,7 +25945,7 @@ export function registerSiteRequirementRoutes(app: Express) {
       }
 
       // Per-category permission check
-      const permission = category === "materials"
+      const permission: { feature: FeatureId; action: FeatureAction } = category === "materials"
         ? { feature: "requirement_allocation_material", action: "allocate" }
         : category === "equipment"
           ? { feature: "requirement_allocation_equipment", action: "allocate" }
@@ -25942,6 +25962,9 @@ export function registerSiteRequirementRoutes(app: Express) {
       const reqId = parseInt(req.params.id);
       const reqRow = await storage.getSiteRequirement(reqId);
       if (!reqRow) return res.status(404).json({ error: "Not found" });
+      if (!await canAccessRequirementSite(req, reqRow)) {
+        return res.status(403).json({ error: "Access denied for this site" });
+      }
       const lines: any[] =
         category === "materials" ? ((reqRow.materials as any[]) ?? [])
         : category === "equipment" ? ((reqRow.equipment as any[]) ?? [])

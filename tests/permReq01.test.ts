@@ -5,6 +5,7 @@ import { requirementApprovalBlock, isRequirementDecision } from "../shared/siteR
 import { can } from "../shared/featureAccess";
 import { emptyMatrix } from "../shared/permissions";
 import { FEATURES } from "../shared/featureAccess";
+import { siteMatchesPermitted } from "../shared/siteName";
 
 function extract(file: string, name: string) {
   const ast = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
@@ -14,7 +15,12 @@ function extract(file: string, name: string) {
   }).outputText;
 }
 const compiled = extract("server/routes.ts", "registerSiteRequirementRoutes");
-function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve = true, creator: number | null = 7) {
+function fixture(
+  actor: any = { id: 7, isAdmin: false, isOwner: false },
+  approve = true,
+  creator: number | null = 7,
+  permittedSiteNames: string[] | null = null,
+) {
   const featureState: any = {
     rolesConfigured: true,
     userRoles: [1],
@@ -33,6 +39,7 @@ function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve
   };
   const row = {
     id: 11, submittedBy: creator, status: "submitted", revisionStatus: "revision_requested",
+    site: "West",
     materials: [], equipment: [], labour: [],
     allocationStatus: {
       materials: "available", materialsRemark: "material remark",
@@ -66,6 +73,8 @@ function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve
     "requestFeatureAllowed",
     "assertFeatureAction",
     "validateFulfilment",
+    "getPermittedSiteNames",
+    "siteMatchesPermitted",
     `${compiled}\nreturn registerSiteRequirementRoutes;`,
   )(
     storage,
@@ -79,8 +88,10 @@ function fixture(actor: any = { id: 7, isAdmin: false, isOwner: false }, approve
       return false;
     },
     () => ({ ok: true, value: {} }),
+    async () => permittedSiteNames,
+    siteMatchesPermitted,
   );
-  register(app);
+  register(app, async () => permittedSiteNames);
   async function call(method: string, path: string, body: any = {}) {
     const res = { code: 200, body: null as any, status(c: number) { this.code = c; return this; }, json(b: any) { this.body = b; return this; } };
     await handlers.get(`${method} ${path}`)!({
@@ -172,6 +183,23 @@ describe("PERM-REQ-01 backend production handlers", () => {
     expect(response.body[0].allocationStatus.materialItems).toEqual([{ status: "arranged", remarks: "material item" }]);
     expect(response.body[0].allocationStatus.equipmentItems).toBeUndefined();
     expect(response.body[0].allocationStatus.labourItems).toBeUndefined();
+  });
+  it("limits allocation list, detail and writes to the user's existing site access", async () => {
+    const f = fixture({ id: 8 }, false, 7, ["West"]);
+    f.row.site = "East";
+    f.featureState.roleTicks[1].site_requirements.view = false;
+    f.featureState.roleTicks[1].requirement_allocation_material = { view: true, allocate: true };
+
+    expect((await f.call("get", "/api/site-requirements")).body).toEqual([]);
+    expect((await f.call("get", "/api/site-requirements/:id")).code).toBe(403);
+    expect((await f.call("patch", "/api/site-requirements/:id/item-status", {
+      category: "materials", itemIndex: 0, status: "arranged",
+    })).code).toBe(403);
+    expect((await f.call("patch", "/api/site-requirements/:id/allocation", {
+      materials: "available",
+    })).code).toBe(403);
+    expect(f.storage.updateSiteRequirementItemStatus).not.toHaveBeenCalled();
+    expect(f.storage.updateSiteRequirementAllocation).not.toHaveBeenCalled();
   });
   it("does not treat a name, designation or truthy string as Owner", () => {
     expect(requirementApprovalBlock({ id: 7, isOwner: "true" as any }, 7)).toContain("cannot approve");
