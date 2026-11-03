@@ -8,10 +8,10 @@ import type { WholeBillSnapshot } from "./wholeBillSnapshot";
 import { wholeBillPricingNotes } from "./wholeBillSnapshot";
 import { EQUIPMENT_LOG_COLUMNS } from "./equipmentLogEvidence";
 
-const state = vi.hoisted(() => ({ permission: true, engineer: false, admin: true, save: vi.fn() }));
+const state = vi.hoisted(() => ({ permission: true, engineer: false, admin: true, owner: false, save: vi.fn() }));
 vi.mock("./wholeBillExport", () => ({ saveWholeBillFile: state.save }));
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
-  isAdmin: state.admin, user: { isFieldEngineer: state.engineer },
+  isAdmin: state.admin, user: { isFieldEngineer: state.engineer, isOwner: state.owner },
   sectionCan: (_section: string, permission: string) => permission === "export" ? state.permission : true,
   featureCan: (_feature: string, action: string) => action === "export" ? state.permission : true,
   sectionVisible: () => true,
@@ -42,7 +42,7 @@ let statusFailure: string | null;
 let requests: Array<{ url: string; method: string; body?: any }>;
 beforeEach(() => {
   queryClient.clear();
-  state.permission = true; state.engineer = false; state.admin = true;
+  state.permission = true; state.engineer = false; state.admin = true; state.owner = false;
   state.save.mockReset().mockResolvedValue({ cancelled: false, notes: [] });
   bill = structuredClone(baseBill);
   autoItems = [];
@@ -191,6 +191,7 @@ describe("VB-LAYOUT-01 recorded payment display", () => {
   });
 
   it("refreshes Bill Detail after recording a paid amount and leaves a real partial balance", async () => {
+    state.owner = true;
     bill.status = "paid";
     bill.netPayableAmount = 170040;
     bill.amountPaid = null;
@@ -230,6 +231,7 @@ describe("VB-EXPORT-02 Part B actual VendorBills page wiring", () => {
     equipment: { meterType: "hour_meter", consumptionNorm: 9, hireDieselResponsibility: "hlc" },
   };
   it.each(["auto:dpr_log", "manual"])("saved verified view and edit retain %s evidence, site chip and unchanged financials", async source => {
+    state.owner = true;
     bill.billType = "all";
     bill.status = "verified";
     bill.items[0] = { ...bill.items[0], category: "equipment", description: "JCB-SITE",
@@ -395,6 +397,7 @@ describe("VB-EXPORT-02 Part A actual VendorBills page wiring", () => {
     expect((await clickExport("footer", "pdf")).totals).toEqual(snapshot.totals);
   });
   it.each(["draft", "verified", "approved", "paid"])("editing %s preserves real status and current unsaved rates/adjustments", async status => {
+    state.owner = true;
     bill.status = status;
     await openDetail();
     fireEvent.click(screen.getByTestId("button-edit-bill"));
@@ -414,20 +417,28 @@ describe("VB-EXPORT-02 Part A actual VendorBills page wiring", () => {
     state.save.mockClear();
     expect((await clickExport("header", "pdf")).totals).toEqual(snapshot.totals);
   });
-  it.each([{ permission: false, engineer: false }, { permission: true, engineer: true }])(
-    "no whole-bill controls in actual new/detail page for %o", async permissions => {
-      state.admin = false;
-      Object.assign(state, permissions);
-      await openDetail();
-      expect(screen.queryByTestId("whole-bill-export-header")).toBeNull();
-      expect(screen.queryByTestId("whole-bill-export-footer")).toBeNull();
-      fireEvent.click(screen.getByTestId("button-back-detail"));
-      fireEvent.click(screen.getByTestId("button-new-bill"));
-      expect(screen.queryByTestId("whole-bill-export-header")).toBeNull();
-      expect(screen.queryByTestId("whole-bill-export-footer")).toBeNull();
-      expect(state.save).not.toHaveBeenCalled();
-    },
-  );
+  it("hides whole-bill controls when Export is not granted", async () => {
+    state.admin = false;
+    state.permission = false;
+    await openDetail();
+    expect(screen.queryByTestId("whole-bill-export-header")).toBeNull();
+    expect(screen.queryByTestId("whole-bill-export-footer")).toBeNull();
+    fireEvent.click(screen.getByTestId("button-back-detail"));
+    fireEvent.click(screen.getByTestId("button-new-bill"));
+    expect(screen.queryByTestId("whole-bill-export-header")).toBeNull();
+    expect(screen.queryByTestId("whole-bill-export-footer")).toBeNull();
+    expect(state.save).not.toHaveBeenCalled();
+  });
+  it("honors the Export tick even when the user is a field engineer", async () => {
+    state.admin = false;
+    state.engineer = true;
+    state.permission = true;
+    await openDetail();
+    expect(screen.getByTestId("whole-bill-export-footer")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("button-back-detail"));
+    fireEvent.click(screen.getByTestId("button-new-bill"));
+    expect(screen.getByTestId("whole-bill-export-header")).toBeTruthy();
+  });
   it("retains an authoritative saved amount with missing rate and exposes the conflict", async () => {
     bill.items[0].rate = null;
     await openDetail();

@@ -465,7 +465,8 @@ export async function registerRoutes(
     }
     const canView = requestFeatureAllowed(req, "diesel_issue", "view") ||
       requestFeatureAllowed(req, "issues_stock", "view");
-    if (!canView) {
+    const canViewReports = allowDedicatedView || requestFeatureAllowed(req, "reports", "view");
+    if (!canView || !canViewReports) {
       res.status(403).json({ error: "forbidden", action: "view" });
       return false;
     }
@@ -11729,7 +11730,7 @@ export async function registerRoutes(
 
   app.get("/api/diesel-requirements/recent-items", async (req, res) => {
     try {
-      if (!assertDieselOrStoresView(req, res)) return;
+      if (!assertDieselOrStoresView(req, res, true)) return;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
       const ids = await storage.getRecentDieselItemIds(limit);
       res.json(ids);

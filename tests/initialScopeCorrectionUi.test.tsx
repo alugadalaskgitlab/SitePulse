@@ -13,6 +13,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
+import { AuthProvider } from "../client/src/lib/auth-context";
 import ScopeSetup from "../client/src/pages/ScopeSetup";
 
 const segment = {
@@ -87,7 +88,7 @@ function renderPage() {
   const { hook } = memoryLocation({ path: "/work-program/77/scope" });
   return render(
     <QueryClientProvider client={qc}>
-      <Router hook={hook}><ScopeSetup /></Router>
+      <Router hook={hook}><AuthProvider><ScopeSetup /></AuthProvider></Router>
     </QueryClientProvider>,
   );
 }

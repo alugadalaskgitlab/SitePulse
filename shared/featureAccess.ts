@@ -266,7 +266,9 @@ export function legacyFeatureTick(
   return keys.some(section => {
     const row = matrix[section];
     if (!row) return false;
-    if (action === "view") return row.view || row.view_reports;
+    if (action === "view") {
+      return row.view || ((feature === "reports" || feature === "vendor_bills") && row.view_reports);
+    }
     if (action === "add") return row.create;
     if (action === "edit") return row.edit;
     if (action === "cancel") return row.delete;

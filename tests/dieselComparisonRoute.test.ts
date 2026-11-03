@@ -53,12 +53,19 @@ describe("DIESEL-05 real daily route", () => {
   });
   it.each([
     ["site_diesel", "view"], ["stores_inventory", "view"],
-    ["site_diesel", "create"], ["site_diesel", "edit"],
-    ["diesel_req_raise", "view"], ["diesel_req_raise", "create"], ["diesel_req_raise", "edit"],
+    ["diesel_req_raise", "view"],
   ])("allows existing permission %s.%s without setup", async (section, action) => {
-    fx.permissions = { [section]: { [action]: true } };
+    fx.permissions = { [section]: { [action]: true }, reports_hub: { view: true } };
     expect((await request(app).get(daily)).status).toBe(200);
     expect((await request(app).get(path)).status).toBe(200);
+  });
+  it.each([
+    ["site_diesel", "create"], ["site_diesel", "edit"],
+    ["diesel_req_raise", "create"], ["diesel_req_raise", "edit"],
+  ])("does not let non-view action %s.%s read report data", async (section, action) => {
+    fx.permissions = { [section]: { [action]: true }, reports_hub: { view: true } };
+    expect((await request(app).get(daily)).status).toBe(403);
+    expect((await request(app).get(path)).status).toBe(403);
   });
   it("allows administrators without a new permission", async () => {
     fx.user = { id: 7, isAdmin: true }; fx.permissions = {};
@@ -68,7 +75,7 @@ describe("DIESEL-05 real daily route", () => {
     fx.user = { id: 7, isAdmin: false, isOwner: true }; fx.permissions = {};
     expect((await request(app).get(daily)).status).toBe(200);
     fx.user = { id: 7, isAdmin: false };
-    fx.permissions = { site_diesel: { view_reports: true } };
+    fx.permissions = { site_diesel: { view_reports: true }, reports_hub: { view: true } };
     const result = await request(app).get(daily);
     expect(result.status).toBe(403);
     expect(result.body).toEqual((await request(app).get(path)).body);
