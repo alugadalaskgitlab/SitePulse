@@ -1027,7 +1027,7 @@ export function RequirementCard({
           )}
 
           {/* PM review controls — overall status + section allocation */}
-          {(canEditRequirement || canApproveRequirements) && (
+          {(canManageAllocation || canEditRequirement || canApproveRequirements) && (
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
 
               {/* Overall allocation form */}
@@ -1078,6 +1078,8 @@ export function RequirementCard({
               ))}
 
               {/* Status review */}
+              {(canEditRequirement || canApproveRequirements) && (
+                <>
               {canApproveRequirements && approvalBlock && <p role="status" data-testid={`approval-block-${req.id}`} className="text-xs text-amber-800">{approvalBlock}</p>}
               {!editing ? (
                 <div className="flex gap-2 flex-wrap">
@@ -1112,6 +1114,8 @@ export function RequirementCard({
                     <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
                   </div>
                 </div>
+              )}
+                </>
               )}
             </div>
           )}

@@ -102,4 +102,20 @@ describe("PERM-REQ-01 actual requirement card", () => {
     expect(screen.queryByText(`${category}-allocation-secret`)).toBeNull();
     expect(screen.queryByTestId(buttonId)).toBeNull();
   });
+
+  it("lets an allocation-only user set allocation without opening review controls", () => {
+    const grants = (feature: string, action: string) =>
+      feature === "requirement_allocation_material" && action === "allocate";
+    open(
+      { id: 8, isOwner: false },
+      7,
+      "original",
+      false,
+      grants,
+      { materials: [{ lineKey: "material-1", materialName: "WMM", qty: 5, uom: "MT" }] },
+    );
+
+    expect(screen.getByTestId("button-set-alloc-11")).toBeTruthy();
+    expect(screen.queryByTestId("button-review-11")).toBeNull();
+  });
 });

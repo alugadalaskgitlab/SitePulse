@@ -74,6 +74,24 @@ describe("FeaturePermissionsDialog", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("discards a person-level edit when Cancel is pressed", async () => {
+    const requests: Array<{ url: string; method?: string }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ url: String(input), method: init?.method });
+      return new Response(JSON.stringify(access), { status: 200 });
+    }));
+    const { onClose, onSaved } = renderDialog();
+
+    const allocate = await screen.findByTestId("feature-requirement_allocation_material-allocate");
+    fireEvent.click(allocate);
+    expect((allocate as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(requests.some(request => request.method === "PUT")).toBe(false);
+  });
+
   it("shows a save failure inside the dialog and leaves it open", async () => {
     vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "PUT") {
@@ -89,5 +107,18 @@ describe("FeaturePermissionsDialog", () => {
     expect(screen.getByText("Permission change failed")).toBeTruthy();
     expect(onSaved).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("contains a render failure inside the access window instead of replacing the page", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...access,
+      roles: [{ ...access.roles[0], ticks: undefined }],
+    }))));
+    renderDialog();
+
+    expect(await screen.findByText("Access window couldn’t be loaded")).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("No changes were saved");
   });
 });

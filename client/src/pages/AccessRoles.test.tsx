@@ -124,6 +124,36 @@ describe("Settings roles page", () => {
     expect(saved).toBeUndefined();
   });
 
+  it("shows new allocation and diesel requirement actions as unticked role controls", async () => {
+    let saved: any;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/access-control/roles/7") && init?.method === "PATCH") {
+        saved = JSON.parse(String(init.body));
+        return new Response(JSON.stringify({ ok: true, role: { ...role, ...saved } }));
+      }
+      if (url.endsWith("/api/access-control/roles")) return new Response(JSON.stringify({ roles: [role] }));
+      if (url.endsWith("/api/access-control/setup-preview")) {
+        return new Response(JSON.stringify({ roles: [role], rolesConfigured: true, users: [] }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Project Manager" }));
+    const materialAllocate = await screen.findByTestId("role-tick-requirement_allocation_material-allocate") as HTMLInputElement;
+    const dieselVerify = screen.getByTestId("role-tick-diesel_requirement-verify") as HTMLInputElement;
+    expect(materialAllocate.checked).toBe(false);
+    expect(dieselVerify.checked).toBe(false);
+    fireEvent.click(materialAllocate);
+    fireEvent.click(dieselVerify);
+    fireEvent.click(screen.getByRole("button", { name: "Save role" }));
+
+    await waitFor(() => expect(saved).toBeTruthy());
+    expect(saved.ticks.requirement_allocation_material.allocate).toBe(true);
+    expect(saved.ticks.diesel_requirement.verify).toBe(true);
+  });
+
   it("asks before Back and discards the unsaved role draft when confirmed", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

@@ -14,7 +14,7 @@ if (typeof window !== "undefined") {
   });
 }
 
-export class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBoundaryState> {
+export class AppErrorBoundary extends Component<{ children: ReactNode; fallback?: ReactNode }, AppErrorBoundaryState> {
   state: AppErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError(): AppErrorBoundaryState {
@@ -28,6 +28,7 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, AppErro
   render() {
     if (!this.state.hasError) return this.props.children;
 
+    if (this.props.fallback) return this.props.fallback;
     return (
       <main className="flex min-h-[50vh] items-center justify-center p-6">
         <section

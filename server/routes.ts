@@ -12030,13 +12030,12 @@ export async function registerRoutes(
 
   app.put("/api/diesel-requirements/:id", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "diesel_requirement", "edit")) return;
       const id = Number(req.params.id);
       const { pin: _pin, ...data } = req.body;
 
       const existing = await storage.getDieselRequirement(id);
       if (!existing) return res.status(404).json({ message: "Diesel requirement not found" });
-
-      if (!assertFeatureAction(req, res, "diesel_requirement", "edit")) return;
 
       const validatedData = createDieselRequirementRequestSchema.parse(data);
       const requirement = await storage.updateDieselRequirement(id, validatedData);

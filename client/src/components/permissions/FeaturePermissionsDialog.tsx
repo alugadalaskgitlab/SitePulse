@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
+import { AppErrorBoundary } from "@/components/AppRecovery";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -67,17 +68,44 @@ function errorMessage(error: unknown): string | null {
   return raw;
 }
 
-export function FeaturePermissionsDialog({
-  userId,
-  fullName,
-  onClose,
-  onSaved,
-}: {
+type FeaturePermissionsDialogProps = {
   userId: number;
   fullName: string;
   onClose: () => void;
   onSaved: () => void;
-}) {
+};
+
+export function FeaturePermissionsDialog(props: FeaturePermissionsDialogProps) {
+  const { onClose } = props;
+  return (
+    <Dialog open onOpenChange={open => !open && onClose()}>
+      <AppErrorBoundary
+        fallback={
+          <DialogContent className="w-[calc(100vw-1rem)] max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Access window couldn’t be loaded</DialogTitle>
+            </DialogHeader>
+            <p role="alert" className="py-4 text-sm text-muted-foreground">
+              Something went wrong while showing this person’s access. No changes were saved.
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        }
+      >
+        <FeaturePermissionsDialogContent {...props} />
+      </AppErrorBoundary>
+    </Dialog>
+  );
+}
+
+function FeaturePermissionsDialogContent({
+  userId,
+  fullName,
+  onClose,
+  onSaved,
+}: FeaturePermissionsDialogProps) {
   const { isOwner } = useAuth();
   const queryClient = useQueryClient();
   const query = useQuery({
@@ -138,8 +166,7 @@ export function FeaturePermissionsDialog({
 
   const displayError = errorMessage(save.error);
   return (
-    <Dialog open onOpenChange={open => !open && onClose()}>
-      <DialogContent className="flex h-[90dvh] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden">
+    <DialogContent className="flex h-[90dvh] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden">
         <DialogHeader className="shrink-0 pb-4">
           <DialogTitle>Feature access — {fullName}</DialogTitle>
         </DialogHeader>
@@ -217,6 +244,5 @@ export function FeaturePermissionsDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
   );
 }
