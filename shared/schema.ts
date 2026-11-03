@@ -2872,6 +2872,8 @@ export const users = pgTable("users", {
   // False while guided user creation hasn't finished permissions + site
   // access. Setup-incomplete non-admin users get NO site-scoped data.
   setupComplete: boolean("setup_complete").notNull().default(true),
+  reportsToUserId: integer("reports_to_user_id"),
+  entryScope: text("entry_scope"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastLoginAt: timestamp("last_login_at"),
 });
@@ -2890,6 +2892,41 @@ export const userPermissions = pgTable("user_permissions", {
   canNotify: boolean("can_notify").notNull().default(false),
 }, (t) => ({
   userSectionUq: uniqueIndex("user_permissions_user_section_uq").on(t.userId, t.sectionKey),
+}));
+
+export const roles = pgTable("roles", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  scopeDefault: text("scope_default").notNull().default("all"),
+  sort: integer("sort").notNull().default(0),
+});
+
+export const roleTicks = pgTable("role_ticks", {
+  id: serial("id").primaryKey(),
+  roleId: integer("role_id").notNull().references(() => roles.id, { onDelete: "cascade" }),
+  feature: text("feature").notNull(),
+  action: text("action").notNull(),
+  granted: boolean("granted").notNull().default(true),
+}, (t) => ({
+  roleFeatureActionUq: uniqueIndex("role_ticks_role_feature_action_uq").on(t.roleId, t.feature, t.action),
+}));
+
+export const userRoles = pgTable("user_roles", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  roleId: integer("role_id").notNull().references(() => roles.id, { onDelete: "cascade" }),
+}, (t) => ({
+  userRoleUq: uniqueIndex("user_roles_user_role_uq").on(t.userId, t.roleId),
+}));
+
+export const userTickChanges = pgTable("user_tick_changes", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  feature: text("feature").notNull(),
+  action: text("action").notNull(),
+  granted: boolean("granted").notNull(),
+}, (t) => ({
+  userFeatureActionUq: uniqueIndex("user_tick_changes_user_feature_action_uq").on(t.userId, t.feature, t.action),
 }));
 
 // ============================================
@@ -4376,6 +4413,10 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 
 export type UserPermission = typeof userPermissions.$inferSelect;
+export type AccessRole = typeof roles.$inferSelect;
+export type AccessRoleTick = typeof roleTicks.$inferSelect;
+export type UserAccessRole = typeof userRoles.$inferSelect;
+export type UserTickChange = typeof userTickChanges.$inferSelect;
 export type UserDevice = typeof userDevices.$inferSelect;
 export type UserSession = typeof userSessions.$inferSelect;
 export type RecordUnlockLog = typeof recordUnlockLog.$inferSelect;

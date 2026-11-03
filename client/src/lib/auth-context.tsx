@@ -11,8 +11,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { bindDprEntryModeUser } from "@/lib/dprEntryMode";
 import { bindWorkspaceModeUser } from "@/lib/workspaceMode";
-import { canViewVendorFinancials } from "@shared/vendorFinancialAccess";
-import { useFeatureFlags } from "@/lib/featureFlags";
+import { can as canFeature, canLegacySection, type FeatureAccessState, type FeatureAction, type FeatureId } from "@shared/featureAccess";
 import {
   STRICT_IDLE_MINUTES,
   type PermissionMatrix,
@@ -40,9 +39,11 @@ export type AuthUser = {
   sessionPolicy: "strict" | "sticky";
   canManagePermissions: boolean;
   permissionManagerScope: "full" | "partial" | null;
+  reportsToUserId?: number | null;
+  entryScope?: "own" | "team" | "all" | null;
 };
 
-type MeResponse = { user: AuthUser; permissions: PermissionMatrix };
+type MeResponse = { user: AuthUser; permissions: PermissionMatrix; featureAccess?: FeatureAccessState };
 
 type AuthContextType = {
   user: AuthUser | null;
@@ -59,7 +60,6 @@ type AuthContextType = {
   // admin. Independent of isManager; do NOT use isManager-derived logic to
   // infer this.
   isFieldEngineer: boolean;
-  accessRulesV2: boolean;
   // true if this user can manage permissions (admin or permission manager flag)
   canManagePermissions: boolean;
   // "full" | "partial" — only meaningful when canManagePermissions is true
@@ -68,6 +68,8 @@ type AuthContextType = {
   sectionCan: (section: SectionKey, action: Action) => boolean;
   sectionVisible: (section: SectionKey) => boolean;
   canApprove: (section: SectionKey) => boolean;
+  featureCan: (feature: FeatureId, action: FeatureAction) => boolean;
+  featureAccess: FeatureAccessState;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -78,9 +80,8 @@ const TAB_OPEN_KEY = "hlc_tab_open";
 const SESSION_PING_PATH = "/api/auth/me";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const qc = useQueryClient();
-  const { accessRulesV2 } = useFeatureFlags();
   const lastActivityRef = useRef<number>(Date.now());
 
   // Tab-close detection: if sessionStorage doesn't carry our marker on this
@@ -150,32 +151,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextType>(() => {
     const u = meQuery.data?.user ?? null;
     const perms = meQuery.data?.permissions ?? emptyMatrix();
+    const featureAccess = meQuery.data?.featureAccess ?? {
+      rolesConfigured: false,
+      legacyPermissions: perms,
+    };
+
+    const featureCan = (feature: FeatureId, action: FeatureAction): boolean =>
+      canFeature(u, feature, action, { ...featureAccess, legacyPermissions: perms });
 
     const sectionCan = (section: SectionKey, action: Action): boolean => {
       if (!u) return false;
-      if (section === "vendor_financials") return action === "view" && canViewVendorFinancials(u, perms);
-      if (u.isAdmin || u.isOwner) return true;
-      const row = perms[section];
-      return !!row && !!row[action];
+      return canLegacySection(u, perms, section, action, featureAccess, location);
     };
 
     const sectionVisible = (section: SectionKey): boolean => {
-      if (!u) return false;
-      if (section === "vendor_financials") return canViewVendorFinancials(u, perms);
-      if (u.isAdmin || u.isOwner) return true;
-      const row = perms[section];
-      return !!row && !!row.view;
+      return sectionCan(section, "view");
     };
 
     const canApprove = (section: SectionKey): boolean => {
-      if (!u) return false;
-      if (u.isAdmin || u.isOwner) return true;
-      const row = perms[section];
-      return !!row && !!row.approve;
+      return sectionCan(section, "approve");
     };
 
-    const canManagePermissions = !!u?.isAdmin || !!u?.isOwner || !!u?.canManagePermissions;
-    const permissionManagerScope = (u?.isAdmin || u?.isOwner)
+    const rolesConfigured = featureAccess.rolesConfigured;
+    const canManagePermissions = !!u && (
+      sectionCan("user_management", "view") ||
+      sectionCan("user_management", "create") ||
+      sectionCan("user_management", "edit")
+    );
+    const permissionManagerScope = (u?.isOwner || (u?.isAdmin && !rolesConfigured))
       ? "full"
       : (u?.permissionManagerScope as "full" | "partial" | null) ?? null;
 
@@ -184,16 +187,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       permissions: perms,
       isLoading: meQuery.isLoading,
       isAuthenticated: !!u,
-      isAdmin: !!u?.isAdmin,
+      isAdmin: !!u?.isAdmin && (!rolesConfigured || !!u?.isOwner),
       isOwner: !!u?.isOwner,
       isManager: !!u && !u.isAdmin,
       isFieldEngineer: !!u?.isFieldEngineer,
-      accessRulesV2,
       canManagePermissions,
       permissionManagerScope,
       sectionCan,
       sectionVisible,
       canApprove,
+      featureCan,
+      featureAccess,
       refresh: async () => {
         await meQuery.refetch();
       },
@@ -212,7 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         navigate("/login");
       },
     };
-  }, [meQuery, qc, navigate, accessRulesV2]);
+  }, [meQuery, qc, navigate, location]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -40,11 +40,9 @@ import {
   SESSION_COOKIE_NAME,
   DEVICE_COOKIE_NAME,
 } from "@shared/permissions";
+import { canLegacySection, type FeatureAccessState } from "@shared/featureAccess";
+import { loadFeatureAccessState } from "./featureAccess";
 import { and, eq, gt, isNull, desc, sql } from "drizzle-orm";
-import {
-  ACCESS_RULES_V2_SETTING_KEY,
-  parseAccessRulesV2Setting,
-} from "@shared/accessRulesV2";
 import * as crypto from "crypto";
 import bcrypt from "bcryptjs";
 import type { Request, Response, NextFunction } from "express";
@@ -197,7 +195,7 @@ export function userHasPermission(
   section: SectionKey,
   action: Action,
 ): boolean {
-  if (userOrAdmin.isAdmin || userOrAdmin.isOwner) return true;
+  if (userOrAdmin.isOwner) return true;
   const sec = matrix[section];
   if (!sec) return false;
   return !!sec[action];
@@ -555,6 +553,7 @@ declare module "express-serve-static-core" {
   interface Request {
     authUser?: User;
     authPermissions?: PermissionMatrix;
+    authFeatureAccess?: FeatureAccessState;
     authSessionId?: number;
     authDeviceId?: number;
   }
@@ -601,6 +600,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       req.authSessionId = sess.sessionId;
       req.authDeviceId = sess.deviceId;
       req.authPermissions = await loadUserPermissionsMatrix(sess.user.id);
+      req.authFeatureAccess = await loadFeatureAccessState(sess.user.id, req.authPermissions);
       touchSessionActivity(sess.sessionId, sess.deviceId).catch(() => {});
     }
   } catch {
@@ -625,6 +625,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     req.authSessionId = sess.sessionId;
     req.authDeviceId = sess.deviceId;
     req.authPermissions = await loadUserPermissionsMatrix(sess.user.id);
+    req.authFeatureAccess = await loadFeatureAccessState(sess.user.id, req.authPermissions);
     // Touch activity asynchronously (not awaited) — never blocks the request.
     touchSessionActivity(sess.sessionId, sess.deviceId).catch(() => {});
     next();
@@ -639,26 +640,18 @@ export function requirePermission(section: SectionKey, action: Action) {
     const u = req.authUser;
     const m = req.authPermissions;
     if (!u || !m) return res.status(401).json({ error: "not_authenticated" });
-    if (u.isAdmin) return next();
-    if (u.isOwner) {
-      try {
-        const [setting] = await db.select({ value: appSettings.value })
-          .from(appSettings)
-          .where(eq(appSettings.key, ACCESS_RULES_V2_SETTING_KEY))
-          .limit(1);
-        if (parseAccessRulesV2Setting(setting?.value)) return next();
-      } catch {
-        // A missing/unavailable setting preserves the legacy permission rule.
-      }
-    }
-    if (m[section] && m[section][action]) return next();
+    const allowed = canLegacySection(u, m, section, action, req.authFeatureAccess ?? {
+      rolesConfigured: false,
+      legacyPermissions: m,
+    }, req.path);
+    if (allowed) return next();
     return res.status(403).json({ error: "forbidden", section, action });
   };
 }
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
-  if (!req.authUser.isAdmin) return res.status(403).json({ error: "admin_required" });
+  if (!req.authUser.isOwner) return res.status(403).json({ error: "owner_required" });
   next();
 }
 
