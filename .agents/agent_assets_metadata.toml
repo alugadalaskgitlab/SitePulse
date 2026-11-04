@@ -6247,3 +6247,31 @@ mtime_ms = 1793758715124
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a1e8ccc6-f96b-4eef-9285-778fe3eaadff/cac94dae-7392-4b1c-9548-ce7396f95107"
 storage_version_token = "1793759093384554"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "Xu79ju0GMhnyprOIrrgkB"
+uri = "file://generated-artifacts/vendor-bill-readings-sample.pdf"
+type = "pdf"
+title = "Synthetic equipment bill PDF"
+description = "One-page sample showing meter readings, times, trip working, and billed quantities. No bill was saved."
+logical_id = "e2da2192-de63-409e-9cc2-d1e18a6260bf"
+content_hash = "sha256:45373bf7554ad24f1fcf495ac554506c1ce212c45354ecfe18231396c08c6a14"
+size = 18964
+mtime_ms = 1793762002927
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/e2da2192-de63-409e-9cc2-d1e18a6260bf/79ed06c5-1313-41d1-8b95-a50fb45124cf"
+storage_version_token = "1793762195556755"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "U4MmsFIaEvi8_Y6co9JLX"
+uri = "file://generated-artifacts/vendor-bill-readings-sample-preview.jpg"
+type = "image"
+title = "Sample PDF page preview"
+description = "Image preview of the synthetic equipment bill PDF; it is not a live bill-screen screenshot."
+logical_id = "776a3578-4307-4847-be55-d006104c17e0"
+content_hash = "sha256:0ac1562dc4c21054df366c09095dd053dd1bf102c2b38e16e2e63bf17a51586b"
+size = 93290
+mtime_ms = 1793762003447
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/776a3578-4307-4847-be55-d006104c17e0/8ad95246-d754-4286-b49b-682c0cc0b1d2"
+storage_version_token = "1793762197349829"
+content_type = "image/jpeg"

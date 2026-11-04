@@ -57,7 +57,7 @@ export function resolveSavedEquipmentEvidenceSources<T extends Item>(items: T[],
       text(candidate.unit) === text(item.unit) &&
       stableDescription(candidate.description) === stableDescription(item.description) &&
       text(candidate.siteName) === text(item.siteName));
-    const keys = [...new Set(matches.map(equipmentEvidenceKey))];
+    const keys = Array.from(new Set(matches.map(equipmentEvidenceKey).filter((key): key is string => !!key)));
     return keys.length === 1 ? { ...item, sourceId: keys[0] } : item;
   });
 }
@@ -84,7 +84,7 @@ export function projectEquipmentEvidence<T extends Item>(
 export async function attachVendorBillEquipmentEvidence<T extends Item>(
   items: T[], permittedSites: string[] | null,
 ): Promise<T[]> {
-  const keys = [...new Set(items.map(equipmentEvidenceKey).filter((key): key is string => !!key))];
+  const keys = Array.from(new Set(items.map(equipmentEvidenceKey).filter((key): key is string => !!key)));
   const ids = (prefix: string) => keys.filter(key => key.startsWith(prefix + ":")).map(key => Number(key.split(":")[1]));
   const logIds = ids("dpr_equipment"), usageIds = ids("plant_usage");
   const records: EvidenceRecord[] = [];

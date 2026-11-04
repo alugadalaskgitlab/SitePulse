@@ -198,11 +198,18 @@ describe("VB-EXPORT-02 B equipment log evidence", () => {
     const sameProjection = projectEquipmentLogEvidence(full(), 1, "DAYS");
     expect(sameProjection.mismatchNote).toBeNull();
 
+    const firstMeter = full();
+    firstMeter.log.entryType = "time_meter";
+    const secondMeter = full();
+    secondMeter.log.entryType = "time_meter";
+    secondMeter.log.openingReading = 500;
+    secondMeter.log.closingReading = 502.6;
+    secondMeter.log.hoursWorked = 2.6;
     const items = [
       { date: "2026-09-12", category: "equipment", description: "JCB-SITE A", qty: 1.1, unit: "HRS", rate: 100, amount: 110,
-        equipmentLogEvidence: full() },
+        equipmentLogEvidence: firstMeter },
       { date: "2026-09-12", category: "equipment", description: "JCB-SITE B", qty: 2.6, unit: "HRS", rate: 100, amount: 260,
-        equipmentLogEvidence: { ...full(), log: { ...full().log, openingReading: 500, closingReading: 502.6 } } },
+        equipmentLogEvidence: secondMeter },
       { date: "2026-09-12", category: "equipment", description: "TIPPER", qty: 3, unit: "TRIPS", rate: 100, amount: 300,
         equipmentLogEvidence: trip },
     ];
@@ -230,11 +237,11 @@ describe("VB-EXPORT-02 B equipment log evidence", () => {
       totals: { subtotal: 670, gst: [], totalGst: 0, adjustments: [], tds: { label: "IT TDS", amount: 0 }, netPayable: 670 },
     };
     const pdf = buildWholeBillPdf(snapshot);
-    const pdfText = Array.from(pdf.output().matchAll(/\(([^)]*)\) Tj/g)).map(match => match[1]).join(" ");
+    const rawPdf = pdf.output();
     expect(pdf.getNumberOfPages()).toBe(1);
-    expect(pdfText).toContain("EQUIPMENT USAGE DETAILS");
-    expect(pdfText).toContain("HMR 2,594.4");
-    expect(pdfText).toContain("3 trips x 8.5 km x 2 = 51 km");
+    expect(rawPdf).toContain("EQUIPMENT USAGE DETAILS");
+    expect(rawPdf).toContain("HMR 2,594.4");
+    expect(rawPdf).toContain("3 trips x 8.5 km x 2 = 51 km");
     const workbook = buildWholeBillWorkbook(snapshot);
     const sheet = XLSX.utils.sheet_to_json(workbook.Sheets.Equipment, { header: 1, defval: null }) as unknown[][];
     const headers = sheet.find(row => row.includes("Start reading"))!;
