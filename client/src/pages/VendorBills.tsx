@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { vendorBillHsdRecoveryMonths, vendorBillStatusError, type HsdRecoveryVerificationMonth } from "@/lib/vendorBillStatusError";
 import { vendorBillingIdentityLabel, type VendorBillingIdentity } from "@/components/vendor-bills/vendorBillingIdentityLabel";
 import { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
+import { normalizeVendorBillActorName, vendorBillStatusAction } from "@shared/vendorBillAccess";
 import { hasFrozenTripDailyHire, FROZEN_TRIP_DAILY_MESSAGE } from "@shared/vendorBillRecovery";
 import { isAlpsLikeFreeTextPayer } from "@shared/vendorBillAttention";
 export { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
@@ -5051,6 +5052,19 @@ export default function VendorBills() {
     const createdAudit = auditEntries.find(entry => entry.action === "create");
     const lastChangeAudit = auditEntries.find(entry => entry.action !== "create") || createdAudit;
     const voidAudit = auditEntries.find(entry => entry.action === "void");
+    const verifierAudit = auditEntries.find(entry =>
+      (entry.newValues as Record<string, unknown> | null)?.status === "verified",
+    );
+    const verifierIsCurrentUser = verifierAudit?.userId != null
+      ? verifierAudit.userId === user?.id
+      : !!normalizeVendorBillActorName(bill.verifiedBy) &&
+        normalizeVendorBillActorName(bill.verifiedBy) ===
+          normalizeVendorBillActorName(user?.fullName);
+    const isBillRaiser = bill.authorUserId != null && bill.authorUserId === user?.id;
+    const canApproveThisBill = !!user?.isOwner || (!isBillRaiser && !verifierIsCurrentUser);
+    const canAdvanceStatus = nextStatus != null &&
+      featureCan("vendor_bills", vendorBillStatusAction(nextStatus)) &&
+      (nextStatus !== "approved" || canApproveThisBill);
     const auditDateLabel = (value: AuditLog["createdAt"]) =>
       value ? new Date(value).toLocaleString() : "time unavailable";
     const hasPersistedHireStatements = Array.isArray((bill as any).hireStatements) && (bill as any).hireStatements.length > 0;
@@ -5341,7 +5355,7 @@ export default function VendorBills() {
             </div>}
 
             <div className="flex gap-2 pt-2 flex-wrap">
-              {canEdit && !bill.isCancelled && nextStatus && (
+              {canAdvanceStatus && !bill.isCancelled && nextStatus && (
                 <Button
                   size="sm"
                   onClick={() => handleStatusChange(bill.id, nextStatus)}

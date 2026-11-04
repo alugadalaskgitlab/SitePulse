@@ -97,6 +97,7 @@ import { buildVendorFinancialWorkbook } from "./vendorFinancialWorkbook";
 import { financialSites, vendorFinancialGuard } from "./vendorFinancialAccess";
 import { buildPreviousBillingContext } from "@shared/vendorBillPreviousContext";
 import { buildVendorBillExport } from "@shared/vendorBillExport";
+import { normalizeVendorBillActorName, vendorBillStatusAction } from "@shared/vendorBillAccess";
 import { buildVendorBillCompleteWorkbook } from "./vendorBillCompleteWorkbook";
 import { buildTallyExportReadiness, parseTallyExportConfig, trimTallyMappingName } from "@shared/tallyExportReadiness";
 import { buildTallyImportXml, buildTallyVoucherPreview } from "@shared/tallyVoucher";
@@ -5016,7 +5017,7 @@ export async function registerRoutes(
   });
   app.post("/api/equipment-hire/statements/:id/approve", async (req, res) => {
     try {
-      if (!assertApprove(req, res, "vendor_bills_approve")) return;
+      if (!assertFeatureAction(req, res, "vendor_bills", "approve")) return;
       const expected = hireRevisionBody.parse(req.body);
       const id = z.coerce.number().int().positive().parse(req.params.id), statement = await storage.getHireStatement(id);
       if (!statement) return res.status(404).json({ message: "Hire statement not found" });
@@ -5051,7 +5052,8 @@ export async function registerRoutes(
       const result = await storage.createHireStatementVendorBill(id, { billDate: statement.periodTo, billType: "equipment", vendorName: statement.vendorName,
          siteId: createInput.siteId, siteScopeConfirmed: true,
         periodFrom: statement.periodFrom, periodTo: statement.periodTo, status: "draft", totalAmount: statement.netAmount,
-         notes: `Hire statement #${statement.id}`, items: [{ date: statement.periodTo, category: "equipment", description: `HIRE - EQUIPMENT #${statement.equipmentId}`, qty: statement.quantity, unit: statement.billingBasis, rate: statement.rate, amount: statement.netAmount, source: "hire_statement", equipmentId: statement.equipmentId, siteName: selectedSite?.name ?? null }] });
+        additionalAdjustments: [],
+         notes: `Hire statement #${statement.id}`, items: [{ date: statement.periodTo, category: "equipment", description: `HIRE - EQUIPMENT #${statement.equipmentId}`, qty: statement.quantity, unit: statement.billingBasis, rate: statement.rate, amount: statement.netAmount, source: "hire_statement", equipmentId: statement.equipmentId, siteName: selectedSite?.name ?? null }] }, req.authUser?.id ?? null);
       if (result.created) {
         await recordChange(req, storage, {
           module: "vendor_bills",
@@ -10099,7 +10101,7 @@ export async function registerRoutes(
   // A scoped pending list: unlike a global counter, this never leaks inaccessible sites.
   app.get("/api/purchase-orders/pending", async (req, res) => {
     try {
-      if (!assertApprove(req, res, "purchase_indents_approve")) return;
+      if (!assertFeatureAction(req, res, "purchase_orders", "approve")) return;
       const rows = await db.select().from(purchaseOrders).where(eq(purchaseOrders.status, "submitted"));
       const permitted = await getPermittedSiteNames(req), sites = await storage.getSites();
       const indents = await storage.getPurchaseIndents();
@@ -10243,7 +10245,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/:id/items/:itemId/purchase-order/decision", async (req, res) => {
     try {
-      if (!assertApprove(req, res, "purchase_indents_approve")) return;
+      if (!assertFeatureAction(req, res, "purchase_orders", "approve")) return;
       const scoped = await scopedPoItem(req, res);
       if (!scoped) return;
       const decision = z.object({ action: z.enum(["approve", "reject"]), reason: z.string().trim().max(500).optional() }).strict().parse(req.body);
@@ -10311,7 +10313,7 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { pin, approvedItems, remarks } = req.body;
 
-      if (!assertApprove(req, res, "purchase_indents_approve")) return;
+      if (!assertFeatureAction(req, res, "purchase_indent", "approve")) return;
       // Self-approval prevention: the approver must differ from the raiser.
       const existingIndent = await storage.getPurchaseIndent(id);
       if (!existingIndent) return res.status(404).json({ message: "Purchase indent not found" });
@@ -10359,7 +10361,7 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { reason } = req.body;
 
-      if (!assertApprove(req, res, "purchase_indents_approve")) return;
+      if (!assertFeatureAction(req, res, "purchase_indent", "approve")) return;
       const rejectedBy = currentUserName(req);
 
       if (!reason || typeof reason !== "string") {
@@ -10382,7 +10384,7 @@ export async function registerRoutes(
   app.patch("/api/purchase-indents/:id/stores-verify", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      if (!assertCreate(req, res, "stores_inventory")) return;
+      if (!assertFeatureAction(req, res, "purchase_indent", "verify")) return;
 
       const verifySchema = z.object({
         items: z.array(z.object({
@@ -11251,8 +11253,9 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Cancellation reason is required" });
       }
 
-      // Hard-cancel requires PM/Admin (purchase_indents_approve) — purchasers use "Not Available" or "Recommend Cancellation" via purchaser-action instead
-      if (!assertApprove(req, res, "purchase_indents_approve")) return;
+      // Hard-cancel requires the dedicated PI cancel action; purchasers use
+      // "Not Available" or "Recommend Cancellation" via purchaser-action.
+      if (!assertFeatureAction(req, res, "purchase_indent", "cancel")) return;
       const cancelledBy = currentUserName(req);
       const item = await storage.cancelPurchaseItem(itemId, cancelledBy, reason);
       if (!item) {
@@ -11463,7 +11466,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/:id/service-completion", async (req, res) => {
     try {
-      if (!assertApprove(req, res, "purchase_indents_approve")) return;
+      if (!assertFeatureAction(req, res, "purchase_indent", "verify")) return;
       const indentId = Number(req.params.id);
       const verifiedBy = currentUserName(req);
       const verifiedByUserId = req.authUser?.id ?? 0;
@@ -13507,7 +13510,7 @@ export async function registerRoutes(
           if (typeof projectSite === "string" && projectSite.trim()) (group as any).projectSite = projectSite.trim().slice(0, 240);
         });
       }
-      const bill = await storage.createVendorBill(input);
+      const bill = await storage.createVendorBill(input, req.authUser?.id ?? null);
       await recordChange(req, storage, {
         module: "vendor_bills",
         transactionId: bill.id,
@@ -13633,7 +13636,7 @@ export async function registerRoutes(
   // permission as marking a bill paid; never changes status or timestamps.
   app.patch("/api/vendor-bills/:id/payment-details", async (req, res) => {
     try {
-      if (!assertApprove(req, res, "vendor_bills_approve")) return;
+      if (!assertFeatureAction(req, res, "vendor_bills", "final")) return;
       const id = Number(req.params.id);
       const { reason: changeReasonRaw, ...detailsBody } = req.body ?? {};
       const changeReason = z.string().trim().max(500).nullable().optional().parse(changeReasonRaw);
@@ -13678,34 +13681,27 @@ export async function registerRoutes(
         reason: z.string().trim().max(500).nullable().optional(),
       });
       const { status, reason, amountPaid } = statusSchema.parse(req.body);
-      let before: any;
-
-      if (status === "approved") {
-        if (!assertApprove(req, res, "vendor_bills_approve")) return;
-        // Self-approval prevention for vendor bills.
-        before = await storage.getVendorBill(id);
-        const mayBypassSelfApproval = req.authUser?.isOwner ||
-          (req.authUser?.isAdmin && !req.authFeatureAccess?.rolesConfigured);
-        if (!mayBypassSelfApproval && before && before.authorUserId && before.authorUserId === req.authUser?.id) {
-          return res.status(403).json({ message: "You cannot approve a bill you created." });
-        }
-      } else if (status === "verified") {
-        if (!assertApprove(req, res, "vendor_bills_verify")) return;
-        // Self-approval prevention for verification too.
-        before = await storage.getVendorBill(id);
-        const mayBypassSelfApproval = req.authUser?.isOwner ||
-          (req.authUser?.isAdmin && !req.authFeatureAccess?.rolesConfigured);
-        if (!mayBypassSelfApproval && before && before.authorUserId && before.authorUserId === req.authUser?.id) {
-          return res.status(403).json({ message: "You cannot verify a bill you created." });
-        }
-      } else if (status === "paid") {
-        if (!assertApprove(req, res, "vendor_bills_approve")) return;
-      } else {
-        if (!assertEdit(req, res, "vendor_bills")) return;
-      }
-      if (!before) before = await storage.getVendorBill(id);
+      if (!assertFeatureAction(req, res, "vendor_bills", vendorBillStatusAction(status))) return;
+      const before = await storage.getVendorBill(id);
       if (!before) return res.status(404).json({ message: "Vendor bill not found" });
       if (before.isCancelled === true) return res.status(409).json({ message: "A voided vendor bill cannot change status" });
+      if (status === "approved" && !req.authUser?.isOwner) {
+        if (before.authorUserId != null && before.authorUserId === req.authUser?.id) {
+          return res.status(403).json({ message: "You cannot approve a bill you created." });
+        }
+        const auditLogs = await storage.getAuditLogs("vendor_bills", id);
+        const verifierEvent = auditLogs.find(entry => {
+          const after = entry.newValues as Record<string, unknown> | null;
+          return after?.status === "verified";
+        });
+        const verifiedByCurrentUser = verifierEvent?.userId != null
+          ? verifierEvent.userId === req.authUser?.id
+          : !!normalizeVendorBillActorName(before.verifiedBy) &&
+            normalizeVendorBillActorName(before.verifiedBy) === normalizeVendorBillActorName(currentUserName(req));
+        if (verifiedByCurrentUser) {
+          return res.status(403).json({ message: "You cannot approve a bill you verified." });
+        }
+      }
       if (status === "paid" && !Object.prototype.hasOwnProperty.call(req.body ?? {}, "amountPaid")) {
         return res.status(400).json({
           message: "Enter the paid amount before marking the bill paid. Enter 0 only if that is the recorded amount.",
@@ -15108,13 +15104,25 @@ export async function registerRoutes(
 
   app.patch("/api/stores/grns/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "stores_inventory")) return;
+      const { acceptanceStatus, acceptanceRemarks, status, indentRef, overrideReason, itemAcceptance } = req.body;
+      if (status !== undefined && !["draft", "finalized"].includes(status)) {
+        return res.status(400).json({ error: "Invalid status value" });
+      }
+      if (status === "finalized") {
+        if (!assertFeatureAction(req, res, "grn", "verify")) return;
+      } else if (status === "draft") {
+        if (!assertFeatureAction(req, res, "grn", "edit")) return;
+      }
+      const hasEditableFields = acceptanceStatus !== undefined ||
+        acceptanceRemarks !== undefined ||
+        itemAcceptance !== undefined ||
+        (indentRef !== undefined && status !== "finalized");
+      if (hasEditableFields && !assertFeatureAction(req, res, "grn", "edit")) return;
+
       const id = parseInt(req.params.id);
       const existing = await storage.getStoreGrn(id);
       if (!existing) return res.status(404).json({ error: "GRN not found" });
       if (existing.isCancelled) return res.status(409).json({ error: "Cannot edit a cancelled GRN" });
-
-      const { acceptanceStatus, acceptanceRemarks, status, indentRef, overrideReason, itemAcceptance } = req.body;
       const updateData: Parameters<typeof storage.updateStoreGrn>[1] = {};
 
       if (acceptanceStatus !== undefined) {
@@ -15125,9 +15133,6 @@ export async function registerRoutes(
         updateData.acceptanceRemarks = acceptanceRemarks ?? null;
       }
       if (status !== undefined) {
-        if (!["draft", "finalized"].includes(status)) {
-          return res.status(400).json({ error: "Invalid status value" });
-        }
         // Separation-of-duties check: the person who auto-created this GRN (the purchaser)
         // cannot finalize it — that must be done by someone in Stores.
         if (status === "finalized" && (existing as any).createdByUserId && req.authUser) {
@@ -17136,7 +17141,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/scope-segments/:segId/confirm", async (req, res) => {
     try {
-      if (!assertApprove(req, res, "project_scope")) return;
+      if (!assertFeatureAction(req, res, "boq_programme", "approve")) return;
       const segId = parseInt(req.params.segId);
       const authUser = (req as any).authUser;
       const segment = await storage.confirmProjectScopeSegment(segId, authUser?.id ?? null);
@@ -21941,7 +21946,7 @@ export async function registerRoutes(
         const pendingPeek = readPending((current as any).pendingRevision);
         if (!pendingPeek) return res.status(404).json({ error: "REVISION_NOT_FOUND", message: "This arrangement has no pending revision." });
         const isProposerDiscard = body.revisionAction === "discard" && pendingPeek.proposedByUserId != null && pendingPeek.proposedByUserId === user?.id;
-        if (!isProposerDiscard && !assertApprove(req, res, "work_programme")) return;
+        if (!isProposerDiscard && !assertFeatureAction(req, res, "boq_programme", "approve")) return;
 
         // Row-locked transaction: serialize against concurrent proposals/decisions.
         const result: any = await db.transaction(async (tx) => {
@@ -22025,7 +22030,7 @@ export async function registerRoutes(
 
           if (body.saveIntent === "apply_now") {
             // §21 Admin Edit and Apply Now — approver-only, reason mandatory, versioned.
-            if (!assertApprove(req, res, "work_programme")) return;
+            if (!assertFeatureAction(req, res, "boq_programme", "approve")) return;
             if (!body.editReason || !String(body.editReason).trim()) {
               return res.status(400).json({ error: "ADMIN_APPLY_REASON_REQUIRED", message: "A reason is mandatory for Edit and Apply Now." });
             }

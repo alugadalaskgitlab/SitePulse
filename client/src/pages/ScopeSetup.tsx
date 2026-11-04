@@ -69,6 +69,7 @@ export default function ScopeSetup() {
   const { data: items = [] } = useQuery<any[]>({ queryKey: [`/api/boq/projects/${projectId}/items`] });
   const { featureCan } = useAuth();
   const canCorrectInitialScope = featureCan("boq_programme", "edit");
+  const canConfirmScope = featureCan("boq_programme", "approve");
 
   // ── corridor card state ────────────────────────────────────────────────────
   const [corridorEdit, setCorridorEdit] = useState(false);
@@ -583,9 +584,11 @@ export default function ScopeSetup() {
                       )}
                       {s.status === "draft" && (
                         <>
-                          <Button variant="ghost" size="icon" title="Confirm" disabled={confirmMutation.isPending} onClick={() => confirmMutation.mutate(s.id)}>
-                            <CheckCircle2 className="h-4 w-4 text-green-600" />
-                          </Button>
+                          {canConfirmScope && (
+                            <Button variant="ghost" size="icon" title="Confirm" disabled={confirmMutation.isPending} onClick={() => confirmMutation.mutate(s.id)}>
+                              <CheckCircle2 className="h-4 w-4 text-green-600" />
+                            </Button>
+                          )}
                           <DeleteGate sections={["project_scope"]}><Button variant="ghost" size="icon" title="Delete draft" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(s.id)}>
                             <Trash2 className="h-4 w-4 text-red-600" />
                           </Button></DeleteGate>

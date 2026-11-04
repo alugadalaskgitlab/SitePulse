@@ -95,11 +95,15 @@ describe("PERM-01 Part A server route guards", () => {
     const pi = routes.slice(routes.indexOf('app.post("/api/purchase-indents/route-corrections/apply"'), routes.indexOf('app.get("/api/diesel-requirements"'));
     expect(pi).not.toMatch(/assert(?:Create|Edit)\(req, res, "site_procurement"\)/);
     expect(routes).not.toMatch(/assert(?:Create|Edit)\(req, res, "site_diesel"\)/);
-    expect(pi).toContain('assertApprove(req, res, "purchase_indents_approve")');
+    expect(pi).toContain('assertFeatureAction(req, res, "purchase_indent", "approve")');
+    expect(pi).toContain('assertFeatureAction(req, res, "purchase_indent", "verify")');
+    expect(pi).toContain('assertFeatureAction(req, res, "purchase_indent", "cancel")');
     expect(routes).toContain('if (!assertCreate(req, res, "site_procurement")) return;'); // material requirements, not PI
-    expect(routes).toContain('if (!assertEdit(req, res, "vendor_bills")) return;'); // status workflow, outside three routes
     expect(routes).toContain('if (!assertFeatureAction(req, res, "diesel_requirement", "approve")) return;');
-    expect(routes).toContain('if (!assertApprove(req, res, "vendor_bills_approve")) return;');
+    expect(routes).toContain('if (!assertFeatureAction(req, res, "vendor_bills", vendorBillStatusAction(status))) return;');
+    expect(routes).toContain('if (!assertFeatureAction(req, res, "vendor_bills", "final")) return;');
+    expect(routes).toContain('if (!assertFeatureAction(req, res, "vendor_bills", "approve")) return;');
+    expect(routes).toContain('if (!assertFeatureAction(req, res, "purchase_orders", "approve")) return;');
     expect(routes).toContain('if (!await assertPiDeliveryScope(req, res, indentId, [req.body])) return;');
     expect(routes).toContain('if (existing.status === "verified" || existing.status === "approved" || existing.status === "paid") {');
   });

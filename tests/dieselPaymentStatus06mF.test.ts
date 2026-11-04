@@ -244,8 +244,9 @@ describe("06M-F Tests K/L — vendor bill paymentRecordedBy", () => {
   it("L: route-level permission + self-approval prevention untouched", () => {
     const src = fs.readFileSync("server/routes.ts", "utf8");
     const route = src.slice(src.indexOf('"/api/vendor-bills/:id/status"'), src.indexOf('"/api/vendor-bills/:id/pdf"'));
-    expect(route).toContain('assertApprove(req, res, "vendor_bills_approve")');
-    expect(route).toContain("You cannot approve a bill you created.");
+    expect(route).toContain('vendorBillStatusAction(status)');
+    expect(route).toContain('You cannot approve a bill you created.');
+    expect(route).toContain('You cannot approve a bill you verified.');
     expect(route).not.toContain("paymentRecordedBy"); // server-set in storage, no client input
   });
   it("M: /payment-details endpoint byte-for-byte concerns unchanged (mode/paidBy only)", () => {

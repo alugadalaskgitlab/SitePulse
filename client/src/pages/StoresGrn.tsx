@@ -92,6 +92,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const { user, featureCan } = useAuth();
   const canSeeStaleGrnAlert = featureCan("grn", "view");
   const canEditGrnAcceptance = featureCan("grn", "edit");
+  const canFinalizeGrn = featureCan("grn", "verify");
   const { uploadFile } = useUpload();
   const [stagedGrnPhotos, setStagedGrnPhotos] = useState<File[]>([]);
   const grnPhotoInputRef = useRef<HTMLInputElement>(null);
@@ -1242,28 +1243,32 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                           <span className="text-xs"><strong>Separation of duties:</strong> You raised the purchase indent for this GRN. A different Stores person should finalise it. Ask your Admin to override if needed.</span>
                         </div>
                       )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1 text-sm border-amber-400 text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-900/20"
-                        data-testid="button-edit-draft"
-                        onClick={() => openDraftForEdit(selectedGrn)}
-                      >
-                        <Pencil className="w-3 h-3" /> Edit Draft
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="gap-1 text-sm bg-green-600 hover:bg-green-700 text-white"
-                        data-testid="button-finalise-grn"
-                        disabled={!!(selectedGrn.sourcePiIndentId && selectedGrn.createdByUserId && user && selectedGrn.createdByUserId === user.id && !user.isOwner)}
-                        onClick={() => {
-                          setDraftFinaliseIndentRef(selectedGrn.indentRef || "");
-                          setDraftFinaliseOverride(false);
-                          setFinalisingDraft(true);
-                        }}
-                      >
-                        <Zap className="w-3 h-3" /> Finalise GRN
-                      </Button>
+                      {canEditGrnAcceptance && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 text-sm border-amber-400 text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-900/20"
+                          data-testid="button-edit-draft"
+                          onClick={() => openDraftForEdit(selectedGrn)}
+                        >
+                          <Pencil className="w-3 h-3" /> Edit Draft
+                        </Button>
+                      )}
+                      {canFinalizeGrn && (
+                        <Button
+                          size="sm"
+                          className="gap-1 text-sm bg-green-600 hover:bg-green-700 text-white"
+                          data-testid="button-finalise-grn"
+                          disabled={!!(selectedGrn.sourcePiIndentId && selectedGrn.createdByUserId && user && selectedGrn.createdByUserId === user.id && !user.isOwner)}
+                          onClick={() => {
+                            setDraftFinaliseIndentRef(selectedGrn.indentRef || "");
+                            setDraftFinaliseOverride(false);
+                            setFinalisingDraft(true);
+                          }}
+                        >
+                          <Zap className="w-3 h-3" /> Finalise GRN
+                        </Button>
+                      )}
                     </>
                   )}
                   {canEditGrnAcceptance && !editingAcceptance && selectedGrn.status !== "draft" && !selectedGrn.isCancelled && (

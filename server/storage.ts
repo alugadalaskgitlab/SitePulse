@@ -1593,7 +1593,7 @@ export interface IStorage {
   getVendorBillHireSiteActivity(periods: { equipmentId: number; periodFrom: string; periodTo: string }[]): Promise<{
     equipmentId: number; equipmentName: string | null; date: string; siteName: string | null;
   }[]>;
-  createVendorBill(data: CreateVendorBillRequest): Promise<VendorBillWithItems>;
+  createVendorBill(data: CreateVendorBillRequest, authorUserId?: number | null): Promise<VendorBillWithItems>;
   updateVendorBill(id: number, data: CreateVendorBillRequest): Promise<VendorBillWithItems | undefined>;
   updateVendorBillStatus(id: number, status: string, actor: string, paidAmount?: number): Promise<VendorBillWithItems | undefined>;
   correctVendorBillSiteScope(id: number, siteId: number | null): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
@@ -1646,7 +1646,7 @@ export interface IStorage {
   updateHireStatement(id: number, data: Partial<InsertHireStatement>): Promise<HireStatement | undefined>;
   replaceHireStatementExceptions(statementId: number, expectedRevision: number, rows: Omit<InsertHireStatementException, "statementId">[], statementPatch: Partial<InsertHireStatement>): Promise<{ statement: HireStatement; exceptions: HireStatementException[] }>;
   transitionHireStatement(id: number, expectedRevision: number, allowedStatuses: string[], data: Partial<InsertHireStatement>): Promise<HireStatement | undefined>;
-  createHireStatementVendorBill(statementId: number, bill: Omit<CreateVendorBillRequest, "items" | "billNo"> & { items: Omit<InsertVendorBillItem, "billId">[] }): Promise<{ statement: HireStatement; bill: VendorBillWithItems; created: boolean }>;
+  createHireStatementVendorBill(statementId: number, bill: Omit<CreateVendorBillRequest, "items" | "billNo"> & { items: Omit<InsertVendorBillItem, "billId">[] }, authorUserId?: number | null): Promise<{ statement: HireStatement; bill: VendorBillWithItems; created: boolean }>;
   getVendorNames(): Promise<string[]>;
   getHlcPartyId(): Promise<number | null>;
   getVendorNamesByIds(ids: number[]): Promise<{ id: number; name: string }[]>;
@@ -18386,7 +18386,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async createVendorBill(data: CreateVendorBillRequest): Promise<VendorBillWithItems> {
+  async createVendorBill(data: CreateVendorBillRequest, authorUserId?: number | null): Promise<VendorBillWithItems> {
     const billNo = await this.generateVendorBillNo();
 
     return await db.transaction(async (tx) => {
@@ -18435,6 +18435,7 @@ export class DatabaseStorage implements IStorage {
         approvedBy: data.approvedBy?.toUpperCase() || data.approvedBy,
         approvedAt: data.approvedAt,
         paidAt: data.paidAt,
+        authorUserId: authorUserId ?? null,
         amountPaid: null,
         paymentAccountKey: (data as any).paymentAccountKey ?? null,
         paymentRemarks: data.paymentRemarks?.toUpperCase() || data.paymentRemarks,
@@ -18569,7 +18570,7 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async createHireStatementVendorBill(statementId: number, data: Omit<CreateVendorBillRequest, "items" | "billNo"> & { items: Omit<InsertVendorBillItem, "billId">[] }): Promise<{ statement: HireStatement; bill: VendorBillWithItems; created: boolean }> {
+  async createHireStatementVendorBill(statementId: number, data: Omit<CreateVendorBillRequest, "items" | "billNo"> & { items: Omit<InsertVendorBillItem, "billId">[] }, authorUserId?: number | null): Promise<{ statement: HireStatement; bill: VendorBillWithItems; created: boolean }> {
     return db.transaction(async (tx) => {
       // Lock makes the linked-bill check and creation indivisible even when two
       // reviewers submit the action concurrently.
@@ -18602,6 +18603,7 @@ export class DatabaseStorage implements IStorage {
         adjustmentLabel: (data as any).adjustmentLabel?.toUpperCase() || null,
         adjustmentAmount: (data as any).adjustmentAmount || 0,
         additionalAdjustments: normalizeVendorBillAdditionalAdjustments((data as any).additionalAdjustments),
+        authorUserId: authorUserId ?? null,
         amountPaid: null,
       }).returning();
       // The standalone statement was approved before this route was reached.

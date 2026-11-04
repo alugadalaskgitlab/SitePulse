@@ -37,6 +37,7 @@ vi.mock("../server/auth", () => ({
     (req as any).authUser = fx.user;
     (req as any).authPermissions = {
       purchase_indents_view: { view: fx.permissions.view, export: fx.permissions.export },
+      purchase_indents_approve: { approve: fx.permissions.approve },
     };
     next();
   },

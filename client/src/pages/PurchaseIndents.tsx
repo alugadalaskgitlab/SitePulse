@@ -610,6 +610,8 @@ export default function PurchaseIndents() {
   const canViewStores = featureCan("issues_stock", "view");
   const canCreateStores = featureCan("issues_stock", "add");
   const isApprover = featureCan("purchase_indent", "approve");
+  const canVerifyIndent = featureCan("purchase_indent", "verify");
+  const canApprovePurchaseOrder = featureCan("purchase_orders", "approve");
   const canDelete = featureCan("purchase_indent", "cancel");
   const canForceClose = currentUser?.isOwner === true;
   const { getPlantBackLink } = useOrigin();
@@ -940,7 +942,7 @@ export default function PurchaseIndents() {
   });
   const { data: pendingPurchaseOrders = [] } = useQuery<{ id: number; itemId: number; indentId: number; indentNo: string; description: string }[]>({
     queryKey: ["/api/purchase-orders/pending"],
-    enabled: isApprover,
+    enabled: canApprovePurchaseOrder,
     queryFn: async () => {
       const response = await fetch("/api/purchase-orders/pending", { credentials: "include" });
       if (!response.ok) throw new Error((await response.json()).message || "Failed to load pending Purchase Orders");
@@ -1898,8 +1900,8 @@ export default function PurchaseIndents() {
 
     if ((indent.status === "pending" && storesNotVerified) || (indent.status === "stores_check" && storesNotVerified)) {
       // Stores write permission takes priority — dual-role users (stores + approver) verify stock first
-      if (canCreateStores) {
-        // Stores user with write permission → verification view
+      if (canVerifyIndent) {
+        // PI verifier → verification view
         const verifs: Record<number, StoreItemVerification> = {};
         indent.items.forEach(item => {
           verifs[item.id] = {
@@ -2421,7 +2423,7 @@ export default function PurchaseIndents() {
         </div>
         {view === "list" && (
           <div className="flex items-center gap-2 flex-wrap">
-            {isApprover && <Button variant="outline" onClick={() => document.getElementById("pending-purchase-orders")?.scrollIntoView({ behavior: "smooth" })} data-testid="button-po-pending">
+            {canApprovePurchaseOrder && <Button variant="outline" onClick={() => document.getElementById("pending-purchase-orders")?.scrollIntoView({ behavior: "smooth" })} data-testid="button-po-pending">
               PO approvals {pendingPurchaseOrders.length > 0 && <Badge className="ml-2">{pendingPurchaseOrders.length}</Badge>}
             </Button>}
             <Button
@@ -2597,7 +2599,7 @@ export default function PurchaseIndents() {
 
       {view === "list" && (
         <>
-          {isApprover && <Card id="pending-purchase-orders" data-testid="po-pending-list">
+          {canApprovePurchaseOrder && <Card id="pending-purchase-orders" data-testid="po-pending-list">
             <CardHeader><CardTitle className="text-base">Purchase Orders awaiting approval ({pendingPurchaseOrders.length})</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               {pendingPurchaseOrders.length === 0 && <p className="text-sm text-muted-foreground">No Purchase Orders awaiting your review.</p>}
@@ -2818,7 +2820,7 @@ export default function PurchaseIndents() {
                             const ss = (indent as any).storesStatus as string | null;
                             const storesNotVerified = !ss || ss !== "verified";
                             const _piType = (indent as any).piType ?? "stores";
-                            if (!((indent.status === "stores_check" || indent.status === "pending") && storesNotVerified && canCreateStores && _piType !== "material")) return null;
+                            if (!((indent.status === "stores_check" || indent.status === "pending") && storesNotVerified && canVerifyIndent && _piType !== "material")) return null;
                             return (
                               <button
                                 className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-300 dark:border-cyan-700 px-2 py-0.5 rounded-full hover:bg-cyan-100 dark:hover:bg-cyan-900/50 transition-colors"
@@ -3402,7 +3404,7 @@ export default function PurchaseIndents() {
 
                   {(() => {
                     const allVerified = selectedIndent.items.every(item => !!storeItemVerifications[item.id]?.stockStatus);
-                    return (
+                    return canVerifyIndent ? (
                       <div className="pt-2 border-t space-y-3">
                         {!allVerified && (
                           <p className="text-sm text-muted-foreground italic">Set stock status for all items to enable submission.</p>
@@ -3421,7 +3423,7 @@ export default function PurchaseIndents() {
                           </Button>
                         </div>
                       </div>
-                    );
+                    ) : null;
                   })()}
                 </CardContent>
               </Card>
@@ -3573,9 +3575,11 @@ export default function PurchaseIndents() {
                             <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Stores verification required</p>
                             <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">Complete stock verification before items can be approved.</p>
                           </div>
-                          <Button size="sm" variant="outline" className="border-amber-400 text-amber-800 dark:text-amber-300 hover:bg-amber-100 shrink-0 text-sm" onClick={() => openDetail(selectedIndent)} data-testid="button-stores-verify-now">
-                            Verify Now
-                          </Button>
+                          {canVerifyIndent && (
+                            <Button size="sm" variant="outline" className="border-amber-400 text-amber-800 dark:text-amber-300 hover:bg-amber-100 shrink-0 text-sm" onClick={() => openDetail(selectedIndent)} data-testid="button-stores-verify-now">
+                              Verify Now
+                            </Button>
+                          )}
                         </CardContent>
                       </Card>
                     );
@@ -4427,7 +4431,7 @@ export default function PurchaseIndents() {
                     <span className="font-medium">{item.description}</span>
                     <PurchaseOrderWorkflow indentId={selectedIndent.id} itemId={item.id} canRaise={canCreate}
                       allowNew={!["pending", "stores_check", "rejected"].includes(selectedIndent.status)}
-                      canApprove={isApprover}
+                      canApprove={canApprovePurchaseOrder}
                       onPreview={() => openPoPreview(selectedIndent.id, item.id)} />
                   </div>
                 ))}
@@ -4887,13 +4891,13 @@ export default function PurchaseIndents() {
                               if (ps === "AWAITING_SERVICE_VERIFICATION") {
                                 const purchasedBy = (item as any).purchasedBy ?? "";
                                 const isSelf = purchasedBy && purchasedBy.toUpperCase() === (currentUser?.fullName || "").toUpperCase();
-                                if (isSelf || !isApprover) {
+                                if (isSelf || !canVerifyIndent) {
                                   return (
                                     <div className="pt-1">
                                       <div className="flex items-center gap-2 p-2 rounded-lg bg-violet-50 border border-violet-200 text-violet-700 text-sm">
                                         <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
                                         <span className="font-semibold text-xs">Service — Awaiting Verification</span>
-                                        <span className="text-xs ml-auto opacity-70">Another approver must verify</span>
+                                        <span className="text-xs ml-auto opacity-70">Another authorised verifier must confirm</span>
                                       </div>
                                     </div>
                                   );
@@ -5727,7 +5731,7 @@ export default function PurchaseIndents() {
               <Button
                 type="button"
                 className="bg-violet-600 hover:bg-violet-700 text-white"
-                disabled={!serviceCompletionForm.completionStatus || serviceCompletionMutation.isPending}
+                disabled={!canVerifyIndent || !serviceCompletionForm.completionStatus || serviceCompletionMutation.isPending}
                 onClick={() => {
                   if (!serviceCompletionItemId) return;
                   const activeItem = selectedIndent?.items?.find((i: any) => i.id === serviceCompletionItemId);

@@ -93,82 +93,87 @@ export function CreatePersonDialog({ open, onClose }: { open: boolean; onClose: 
 
   return (
     <Dialog open={open} onOpenChange={value => !value && onClose()}>
-      <DialogContent className="max-h-[90dvh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex h-[90dvh] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-3xl flex-col gap-0 overflow-hidden">
+        <DialogHeader className="shrink-0 pb-4" data-testid="create-person-dialog-header">
           <DialogTitle>Add person</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-1"><Label>Full name</Label><Input data-testid="input-person-name" value={fullName} onChange={event => setFullName(event.target.value)} /></label>
-          <label className="grid gap-1"><Label>Email</Label><Input data-testid="input-person-email" type="email" value={email} onChange={event => setEmail(event.target.value)} /></label>
-          <label className="grid gap-1"><Label>Phone</Label><Input data-testid="input-person-phone" type="tel" value={phone} onChange={event => setPhone(event.target.value)} /></label>
-          <label className="grid gap-1"><Label>Initial password</Label><Input data-testid="input-person-password" type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} /></label>
-          <label className="grid gap-1"><Label>Reports to</Label>
-            <Select value={reportsToUserId || "none"} onValueChange={value => setReportsToUserId(value === "none" ? "" : value)}>
-              <SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
-                <SelectItem value="none">No reporting line</SelectItem>
-                {activePeople.map(person => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </label>
-          <label className="grid gap-1"><Label>Whose entries</Label>
-            <Select value={entryScope} onValueChange={value => {
-              setEntryScope(value as EntryScope);
-              setEntryScopeTouched(true);
-            }}>
-              <SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
-                <SelectItem value="own">Own</SelectItem><SelectItem value="team">Team</SelectItem><SelectItem value="all">All</SelectItem>
-              </SelectContent>
-            </Select>
-          </label>
-        </div>
-
-        {isOwner && (
-          <label className="flex items-center justify-between rounded border p-3">
-            <span className="font-medium">Owner</span>
-            <Switch checked={isOwnerNew} onCheckedChange={setIsOwnerNew} />
-          </label>
-        )}
-
-        {!isOwnerNew && (
-          <section className="space-y-2">
-            <h3 className="font-medium">Roles</h3>
-            {rolesQuery.isError ? <p role="alert" className="text-sm text-destructive">Roles could not be loaded.</p> : null}
-            {!rolesQuery.isLoading && !rolesQuery.isError && (rolesQuery.data?.roles ?? []).length === 0
-              ? <p className="text-sm text-muted-foreground">No roles are set up yet.</p>
-              : null}
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {(rolesQuery.data?.roles ?? []).map(role => (
-                <label key={role.id} className="flex items-center gap-2 rounded border p-2 text-sm">
-                    <Checkbox data-testid={`checkbox-person-role-${role.id}`} checked={roleIds.includes(role.id)} onCheckedChange={checked => {
-                    setRoleIds(current => checked ? [...current, role.id] : current.filter(id => id !== role.id));
-                    if (checked && !entryScopeTouched && roleIds.length === 0) setEntryScope(role.scopeDefault);
-                  }} />
-                  {role.name}
-                </label>
-              ))}
-            </div>
-          </section>
-        )}
-
-        <section className="space-y-2">
-          <h3 className="font-medium">Sites</h3>
-          <div className="flex gap-4 text-sm">
-            <label className="flex items-center gap-2"><input type="radio" checked={siteMode === "selected"} onChange={() => setSiteMode("selected")} />Selected sites</label>
-            <label className="flex items-center gap-2"><input type="radio" checked={siteMode === "all"} onChange={() => setSiteMode("all")} />All sites</label>
+        <div
+          data-testid="create-person-scroll-area"
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-2"
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-1"><Label>Full name</Label><Input data-testid="input-person-name" value={fullName} onChange={event => setFullName(event.target.value)} /></label>
+            <label className="grid gap-1"><Label>Email</Label><Input data-testid="input-person-email" type="email" value={email} onChange={event => setEmail(event.target.value)} /></label>
+            <label className="grid gap-1"><Label>Phone</Label><Input data-testid="input-person-phone" type="tel" value={phone} onChange={event => setPhone(event.target.value)} /></label>
+            <label className="grid gap-1"><Label>Initial password</Label><Input data-testid="input-person-password" type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} /></label>
+            <label className="grid gap-1"><Label>Reports to</Label>
+              <Select value={reportsToUserId || "none"} onValueChange={value => setReportsToUserId(value === "none" ? "" : value)}>
+                <SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
+                  <SelectItem value="none">No reporting line</SelectItem>
+                  {activePeople.map(person => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="grid gap-1"><Label>Whose entries</Label>
+              <Select value={entryScope} onValueChange={value => {
+                setEntryScope(value as EntryScope);
+                setEntryScopeTouched(true);
+              }}>
+                <SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
+                  <SelectItem value="own">Own</SelectItem><SelectItem value="team">Team</SelectItem><SelectItem value="all">All</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
           </div>
-          {siteMode === "selected" && (
-            <div className="grid max-h-40 gap-2 overflow-y-auto rounded border p-3 sm:grid-cols-2">
-              {activeSites.map(site => <label key={site.id} className="flex items-center gap-2 text-sm">
-                <Checkbox data-testid={`checkbox-person-site-${site.id}`} checked={siteIds.includes(site.id)} onCheckedChange={checked => {
-                  setSiteIds(current => checked ? [...current, site.id] : current.filter(id => id !== site.id));
-                }} />{site.name}
-              </label>)}
-              {!sitesQuery.isLoading && activeSites.length === 0 && <p className="text-sm text-muted-foreground">No active sites found.</p>}
-            </div>
+
+          {isOwner && (
+            <label className="flex items-center justify-between rounded border p-3">
+              <span className="font-medium">Owner</span>
+              <Switch checked={isOwnerNew} onCheckedChange={setIsOwnerNew} />
+            </label>
           )}
-        </section>
-        {create.error instanceof Error && <p role="alert" className="text-sm text-destructive">{create.error.message}</p>}
-        <DialogFooter>
+
+          {!isOwnerNew && (
+            <section className="space-y-2">
+              <h3 className="font-medium">Roles</h3>
+              {rolesQuery.isError ? <p role="alert" className="text-sm text-destructive">Roles could not be loaded.</p> : null}
+              {!rolesQuery.isLoading && !rolesQuery.isError && (rolesQuery.data?.roles ?? []).length === 0
+                ? <p className="text-sm text-muted-foreground">No roles are set up yet.</p>
+                : null}
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {(rolesQuery.data?.roles ?? []).map(role => (
+                  <label key={role.id} className="flex items-center gap-2 rounded border p-2 text-sm">
+                    <Checkbox data-testid={`checkbox-person-role-${role.id}`} checked={roleIds.includes(role.id)} onCheckedChange={checked => {
+                      setRoleIds(current => checked ? [...current, role.id] : current.filter(id => id !== role.id));
+                      if (checked && !entryScopeTouched && roleIds.length === 0) setEntryScope(role.scopeDefault);
+                    }} />
+                    {role.name}
+                  </label>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="space-y-2">
+            <h3 className="font-medium">Sites</h3>
+            <div className="flex gap-4 text-sm">
+              <label className="flex items-center gap-2"><input type="radio" checked={siteMode === "selected"} onChange={() => setSiteMode("selected")} />Selected sites</label>
+              <label className="flex items-center gap-2"><input type="radio" checked={siteMode === "all"} onChange={() => setSiteMode("all")} />All sites</label>
+            </div>
+            {siteMode === "selected" && (
+              <div className="grid max-h-40 gap-2 overflow-y-auto rounded border p-3 sm:grid-cols-2">
+                {activeSites.map(site => <label key={site.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox data-testid={`checkbox-person-site-${site.id}`} checked={siteIds.includes(site.id)} onCheckedChange={checked => {
+                    setSiteIds(current => checked ? [...current, site.id] : current.filter(id => id !== site.id));
+                  }} />{site.name}
+                </label>)}
+                {!sitesQuery.isLoading && activeSites.length === 0 && <p className="text-sm text-muted-foreground">No active sites found.</p>}
+              </div>
+            )}
+          </section>
+          {create.error instanceof Error && <p role="alert" className="text-sm text-destructive">{create.error.message}</p>}
+        </div>
+        <DialogFooter data-testid="create-person-dialog-footer" className="shrink-0 border-t pt-3">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={() => create.mutate()} disabled={create.isPending || rolesQuery.isLoading || rolesQuery.isError || (!isOwnerNew && roleIds.length === 0) || sitesQuery.isLoading}>
             {create.isPending ? "Creating…" : "Create person"}

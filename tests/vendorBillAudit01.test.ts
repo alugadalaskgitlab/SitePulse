@@ -8,7 +8,7 @@ import { projectVendorLedger, projectVendorPayables } from "../shared/vendorPaya
 import { getBillFinancialTotals } from "../shared/vendorBillFinancialReport";
 import { billReviewAmounts } from "../shared/vendorBillReview";
 
-const fx: { role: string; permissions: any; allSitesAccess: boolean } = {
+const fx: { role: string; permissions: any; allSitesAccess: boolean; featureAccess?: any } = {
   role: "admin",
   permissions: {},
   allSitesAccess: true,
@@ -37,6 +37,7 @@ vi.mock("../server/auth", async (importOriginal) => {
       allSitesAccess: fx.allSitesAccess,
     };
     req.authPermissions = fx.permissions;
+    req.authFeatureAccess = fx.featureAccess;
     req.session = { role: fx.role, username: "audit-user", userId: 9 };
     next();
   };
@@ -108,6 +109,15 @@ const billPayload = {
   items: [],
 };
 
+function vendorBillFeatureState(ticks: Record<string, boolean>) {
+  return {
+    rolesConfigured: true,
+    userRoles: [1],
+    roleTicks: { 1: { vendor_bills: ticks } },
+    legacyPermissions: {},
+  };
+}
+
 beforeAll(async () => {
   ({ storage } = await import("../server/storage"));
   const { registerRoutes } = await import("../server/routes");
@@ -121,6 +131,7 @@ beforeEach(() => {
   fx.role = "admin";
   fx.permissions = {};
   fx.allSitesAccess = true;
+  fx.featureAccess = undefined;
   storage.getVendorBill.mockResolvedValue(undefined);
   storage.getVendorBills.mockResolvedValue([]);
   storage.getVendorBillHireSiteActivity.mockResolvedValue([]);
@@ -436,6 +447,10 @@ describe("AUDIT-01 vendor-bill history", () => {
     storage.createVendorBill.mockResolvedValue(created);
     const createResponse = await request(app).post("/api/vendor-bills").send({ ...billPayload, siteId: null });
     expect(createResponse.status).toBe(201);
+    expect(storage.createVendorBill).toHaveBeenLastCalledWith(
+      expect.objectContaining({ siteId: null, siteScopeConfirmed: true }),
+      9,
+    );
     expect(storage.logAudit).toHaveBeenLastCalledWith(expect.objectContaining({
       module: "vendor_bills", transactionId: 21, action: "create", oldValues: null, newValues: created,
     }));
@@ -612,6 +627,7 @@ describe("AUDIT-01 vendor-bill history", () => {
     expect(route).toContain("recordChange(req, storage");
     expect(route).toContain("siteId: z.union([z.number().int().positive(), z.null()])");
     expect(route).toContain("siteScopeConfirmed: true");
+    expect(route).toContain("req.authUser?.id ?? null");
     expect(route).toContain("assertTripSiteAccess");
 
     const storageSource = readFileSync("server/storage.ts", "utf8");
@@ -620,6 +636,7 @@ describe("AUDIT-01 vendor-bill history", () => {
     const storageMethod = storageSource.slice(storageStart, storageEnd);
     expect(storageMethod).toContain("siteId: data.siteId ?? null");
     expect(storageMethod).toContain("siteScopeConfirmed: data.siteScopeConfirmed ?? null");
+    expect(storageMethod).toContain("authorUserId: authorUserId ?? null");
 
     const attentionPage = readFileSync("client/src/pages/VendorBillsAttention.tsx", "utf8");
     expect(attentionPage).toContain('row.kinds.includes("paid_amount") && !row.kinds.includes("negative_net")');
@@ -651,6 +668,11 @@ describe("AUDIT-01 vendor-bill history", () => {
   });
 
   it("resolves the bill author by user id on detail only and leaves the stored author id untouched", async () => {
+    const storageSource = readFileSync("server/storage.ts", "utf8");
+    const createStart = storageSource.indexOf("async createVendorBill(");
+    const createEnd = storageSource.indexOf("\n  async ", createStart + 10);
+    expect(storageSource.slice(createStart, createEnd)).toContain("authorUserId: authorUserId ?? null");
+
     const { db } = await import("../server/db");
     const where = vi.fn().mockResolvedValue([{ fullName: "Original Author", username: "author" }]);
     const select = vi.spyOn(db, "select").mockReturnValue({
@@ -722,6 +744,62 @@ describe("AUDIT-01 vendor-bill history", () => {
       oldValues: expect.objectContaining({ status: "approved" }),
       newValues: expect.objectContaining({ status: "paid", amountPaid: 0 }),
     }));
+  });
+
+  it("uses independent verify and approve ticks and lets the bill raiser verify", async () => {
+    fx.role = "engineer";
+    fx.featureAccess = vendorBillFeatureState({ technical_verify: true });
+    storage.getVendorBill.mockResolvedValue(makeBill({ status: "draft", authorUserId: 9 }));
+    storage.updateVendorBillStatus.mockResolvedValue(makeBill({ status: "verified", authorUserId: 9 }));
+
+    const verifyResponse = await request(app).patch("/api/vendor-bills/7/status").send({ status: "verified" });
+    expect(verifyResponse.status).toBe(200);
+    expect(storage.updateVendorBillStatus).toHaveBeenCalledWith(7, "verified", "Audit User", undefined);
+
+    storage.updateVendorBillStatus.mockClear();
+    storage.getVendorBill.mockResolvedValue(makeBill({ status: "verified", authorUserId: 10, verifiedBy: "Verifier" }));
+    storage.getAuditLogs.mockResolvedValue([{ userId: 8, newValues: { status: "verified" } }]);
+    const approveWithoutTick = await request(app).patch("/api/vendor-bills/7/status").send({ status: "approved" });
+    expect(approveWithoutTick.status).toBe(403);
+    expect(storage.updateVendorBillStatus).not.toHaveBeenCalled();
+  });
+
+  it("blocks bill raiser and verifier approval except for the Owner", async () => {
+    fx.role = "engineer";
+    fx.featureAccess = vendorBillFeatureState({ approve: true });
+    storage.getVendorBill.mockResolvedValue(makeBill({ status: "verified", authorUserId: 9 }));
+
+    let response = await request(app).patch("/api/vendor-bills/7/status").send({ status: "approved" });
+    expect(response.status).toBe(403);
+    expect(response.body.message).toBe("You cannot approve a bill you created.");
+
+    storage.getVendorBill.mockResolvedValue(makeBill({ status: "verified", authorUserId: 10, verifiedBy: "Audit User" }));
+    storage.getAuditLogs.mockResolvedValue([{ userId: 9, newValues: { status: "verified" } }]);
+    response = await request(app).patch("/api/vendor-bills/7/status").send({ status: "approved" });
+    expect(response.status).toBe(403);
+    expect(response.body.message).toBe("You cannot approve a bill you verified.");
+
+    fx.role = "owner";
+    storage.updateVendorBillStatus.mockResolvedValue(makeBill({ status: "approved", authorUserId: 9 }));
+    response = await request(app).patch("/api/vendor-bills/7/status").send({ status: "approved" });
+    expect(response.status).toBe(200);
+    expect(storage.updateVendorBillStatus).toHaveBeenCalledWith(7, "approved", "Audit User", undefined);
+  });
+
+  it("requires Final access, rather than Approve access, to mark a bill paid", async () => {
+    fx.role = "engineer";
+    storage.getVendorBill.mockResolvedValue(makeBill({ status: "approved", authorUserId: 10 }));
+    fx.featureAccess = vendorBillFeatureState({ final: true });
+    storage.updateVendorBillStatus.mockResolvedValue(makeBill({ status: "paid", amountPaid: 100 }));
+
+    let response = await request(app).patch("/api/vendor-bills/7/status").send({ status: "paid", amountPaid: 100 });
+    expect(response.status).toBe(200);
+
+    storage.updateVendorBillStatus.mockClear();
+    fx.featureAccess = vendorBillFeatureState({ approve: true });
+    response = await request(app).patch("/api/vendor-bills/7/status").send({ status: "paid", amountPaid: 100 });
+    expect(response.status).toBe(403);
+    expect(storage.updateVendorBillStatus).not.toHaveBeenCalled();
   });
 
   it("limits attention corrections to Owners and audits each isolated correction", async () => {
