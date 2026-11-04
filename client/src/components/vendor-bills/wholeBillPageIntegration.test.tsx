@@ -292,6 +292,66 @@ describe("VB-EXPORT-02 Part B actual VendorBills page wiring", () => {
   });
 });
 
+describe("VB-SETTLE-01 mark-paid dialog", () => {
+  it("prefills the bank amount and requires a reason for a short settlement", async () => {
+    bill.status = "approved";
+    bill.netPayableAmount = 1_000;
+    bill.amountPaid = 995;
+    await openDetail();
+
+    fireEvent.click(screen.getByTestId("button-advance-status"));
+    const amount = await screen.findByTestId("input-vendor-bill-paid-status-amount") as HTMLInputElement;
+    expect(amount.value).toBe("995");
+    expect(screen.getByTestId("text-vendor-bill-payment-difference").textContent).toContain("Short paid by ₹5.00");
+    expect(screen.getByTestId("button-settlement-rounded-off")).toBeTruthy();
+    expect((screen.getByTestId("button-confirm-vendor-bill-paid") as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByTestId("button-settlement-rounded-off"));
+    fireEvent.change(screen.getByTestId("input-vendor-bill-settlement-reason"), {
+      target: { value: "Agreed rounding" },
+    });
+    fireEvent.click(screen.getByTestId("button-confirm-vendor-bill-paid"));
+
+    await waitFor(() => expect(requests.find(request => request.url === "/api/vendor-bills/731/status")?.body)
+      .toEqual({
+        status: "paid", amountPaid: 995,
+        settlementType: "rounded_off", settlementReason: "Agreed rounding",
+      }));
+  });
+
+  it("submits an exact saved amount without a settlement prompt", async () => {
+    bill.status = "approved";
+    bill.netPayableAmount = 1_000;
+    bill.amountPaid = 1_000;
+    window.history.replaceState(null, "", "/finance/vendor-bills?billId=731");
+    mount();
+    await screen.findByTestId("text-detail-title");
+
+    fireEvent.click(screen.getByTestId("button-advance-status"));
+    const amount = await screen.findByTestId("input-vendor-bill-paid-status-amount") as HTMLInputElement;
+    expect(amount.value).toBe("1000");
+    expect(screen.queryByTestId("section-vendor-bill-settlement")).toBeNull();
+    fireEvent.click(screen.getByTestId("button-confirm-vendor-bill-paid"));
+
+    await waitFor(() => expect(requests.find(request => request.url === "/api/vendor-bills/731/status")?.body)
+      .toEqual({ status: "paid", amountPaid: 1_000 }));
+  });
+
+  it("hides round-off above the non-Owner limit and leaves carry-forward available", async () => {
+    bill.status = "approved";
+    bill.netPayableAmount = 1_000;
+    bill.amountPaid = 850;
+    await openDetail();
+
+    fireEvent.click(screen.getByTestId("button-advance-status"));
+    await screen.findByTestId("section-vendor-bill-settlement");
+    expect(screen.queryByTestId("button-settlement-rounded-off")).toBeNull();
+    expect(screen.getByTestId("button-settlement-carried-forward")).toBeTruthy();
+    expect(screen.getByTestId("section-vendor-bill-settlement").textContent)
+      .toContain("Round off is available only up to ₹100.00 for non-Owners.");
+  });
+});
+
 describe("VB-PAY-02 return navigation from VendorBills", () => {
   const payablesLedger = "/reports/vendor-payables/vendor/3?dateFrom=2026-10-01&dateTo=2026-10-31";
 

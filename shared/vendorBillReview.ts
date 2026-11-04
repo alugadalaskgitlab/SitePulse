@@ -1,8 +1,10 @@
+import { vendorBillBalance } from "./vendorBillSettlement";
+
 /** Read-only projections. Never settle credits or infer a payment from status. */
 export function billReviewAmounts(bill: any, totals: { totalAmount: number; totalGst: number; primaryAdjustment: number; additionalTotal: number; tds: number; netTotal: number }) {
   const net = bill.netPayableAmount == null ? totals.netTotal : Number(bill.netPayableAmount);
   const paid = bill.amountPaid == null || bill.amountPaid === "" || !Number.isFinite(Number(bill.amountPaid)) ? null : Number(bill.amountPaid);
-  const balance = paid == null ? null : net - paid;
+  const balance = vendorBillBalance(net, paid, bill.settlementType);
   return {
     gross: totals.totalAmount, gst: totals.totalGst,
     adjustments: totals.primaryAdjustment + totals.additionalTotal - totals.tds,
@@ -48,6 +50,6 @@ export function previousBillingSummary(current: any, permitted: any[], totals: (
   // cumulative amountPaid does not establish the last payment amount.
   return { rows, excludedRows, gross: amounts.reduce((s, a) => s + a.gross, 0),
     paid: known ? amounts.reduce((s, a) => s + a.paid!, 0) : null,
-    balance: known ? amounts.reduce((s, a) => s + a.balance!, 0) : null,
+    balance: known ? amounts.reduce((s, a) => s + (a.balance ?? 0), 0) : null,
     lastPayment: null };
 }

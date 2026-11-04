@@ -14,6 +14,7 @@ import {
   type BillExportCell, type WholeBillSnapshot,
 } from "./wholeBillSnapshot";
 import { vendorBillMasterBottomRows, vendorBillMasterTopRows } from "./vendorBillMasterDetails";
+import { vendorBillSettlementLine } from "@shared/vendorBillSettlement";
 
 export type WholeBillExportFormat = "xlsx" | "pdf";
 const printable = (value: BillExportCell) => String(value ?? "")
@@ -97,6 +98,26 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
     ...(snapshot.equipmentType ? [`Equipment type: ${snapshot.equipmentType}`] : []),
     ...vendorBillMasterTopRows(snapshot.vendorMasterDetails).map(({ label, value }) => `${label}: ${value}`),
   ];
+  const paymentRows: BillExportCell[][] = [];
+  if (snapshot.paymentInfo?.amountPaid != null) {
+    paymentRows.push(["PAYMENT DETAILS", "", ""]);
+    paymentRows.push(["Paid", `₹${snapshot.paymentInfo.amountPaid.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, ""]);
+    const settlementLine = vendorBillSettlementLine({
+      settlementType: snapshot.paymentInfo.settlementType,
+      settlementAmount: snapshot.paymentInfo.settlementAmount,
+      settlementReason: snapshot.paymentInfo.settlementReason,
+    });
+    if (snapshot.paymentInfo.settlementType === "rounded_off" && settlementLine) {
+      paymentRows.push(["Settlement", settlementLine, ""]);
+    }
+    paymentRows.push([
+      "Balance this bill",
+      snapshot.paymentInfo.settlementType === "carried_forward" && settlementLine
+        ? settlementLine
+        : snapshot.paymentInfo.balance == null ? "" : `₹${snapshot.paymentInfo.balance.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      "",
+    ]);
+  }
   let headerEndY = 16;
   for (const line of headerLines) {
     headerEndY += doc.splitTextToSize(printable(line), pageWidth - 20).length * 3.4 + 1;
@@ -141,7 +162,7 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
   const headerLabels = new Set(["Company", "Vendor", "Bill number", "Bill date", "Period from", "Period to", "Site", "Bill type", "Equipment type", "Status", "Generated"]);
   renderTable("BILL SUMMARY / ADJUSTMENTS", ["Detail", "Value / Amount", "Reason / Reference"],
     exportSummaryRows(snapshot).filter(row => row.length && !headerLabels.has(String(row[0])))
-      .map(row => [row[0], row[1] ?? "", row[2] ?? ""]),
+      .map(row => [row[0], row[1] ?? "", row[2] ?? ""]).concat(paymentRows),
     pageHeaderHeight, false);
   for (const review of snapshot.hireReviews || []) {
     const grossRow: BillExportCell[] = Array(MONTHLY_BILL_HEADERS.length).fill("");

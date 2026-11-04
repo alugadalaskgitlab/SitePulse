@@ -136,6 +136,34 @@ describe("whole-bill workbook and PDF", () => {
     expect(workbookText).not.toContain("ABCDE1234F");
   });
 
+  it("prints settlement amounts and reasons in both generic and equipment bill PDFs", () => {
+    const base = {
+      ...exampleSnapshot(),
+      saved: true,
+      status: "paid",
+      paymentInfo: {
+        amountPaid: 99.5,
+        balance: 0,
+        settlementType: "rounded_off" as const,
+        settlementAmount: 0.5,
+        settlementReason: "Agreed rounding",
+      },
+    };
+    const genericPdf = buildWholeBillPdf(base).output();
+    expect(genericPdf).toContain("Paid");
+    expect(genericPdf).toContain("Rounded off Rs. 0.50 -");
+    expect(genericPdf).toContain("Agreed rounding");
+    expect(genericPdf).toContain("Balance this bill");
+    expect(genericPdf).toContain("Rs. 0.00");
+
+    const equipmentPdf = buildWholeBillPdf({ ...base, billType: "equipment" }).output();
+    expect(equipmentPdf).toContain("Paid");
+    expect(equipmentPdf).toContain("Rounded off Rs. 0.50 -");
+    expect(equipmentPdf).toContain("Agreed rounding");
+    expect(equipmentPdf).toContain("Balance this bill");
+    expect(equipmentPdf).toContain("Rs. 0.00");
+  });
+
   it("places Summary first and never creates empty combined category sheets", () => {
     const snapshot = exampleSnapshot();
     snapshot.sections.push({ category: "transport", subtotal: 0, groups: [] });

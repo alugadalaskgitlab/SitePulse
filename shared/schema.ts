@@ -2411,6 +2411,11 @@ export const vendorBills = pgTable("vendor_bills", {
   netPayableAmount: numeric("net_payable_amount", { precision: 14, scale: 2, mode: "number" }),
   amountPaid: numeric("amount_paid", { precision: 14, scale: 2, mode: "number" }),
   paymentAccountKey: text("payment_account_key"),
+  settlementType: text("settlement_type"),
+  settlementAmount: numeric("settlement_amount", { precision: 14, scale: 2 }),
+  settlementReason: text("settlement_reason"),
+  settledBy: text("settled_by"),
+  settledAt: text("settled_at"),
   createdAt: timestamp("created_at").defaultNow(),
   // Per-user record locking (Task #229).
   authorUserId: integer("author_user_id"),

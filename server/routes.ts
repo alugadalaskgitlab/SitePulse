@@ -93,6 +93,7 @@ import { buildGstRegisterPdf } from "./gstRegisterPdf";
 import { canViewVendorFinancials, recordedVendorTds, vendorFinancialSiteIds } from "@shared/vendorFinancialAccess";
 import { recordChange } from "../shared/recordChange";
 import { filterFinancialBills } from "@shared/vendorBillFinancialReport";
+import { canRoundOffVendorBill, hasVendorBillCentPrecision, vendorBillDifference } from "@shared/vendorBillSettlement";
 import { buildVendorFinancialWorkbook } from "./vendorFinancialWorkbook";
 import { financialSites, vendorFinancialGuard } from "./vendorFinancialAccess";
 import { buildPreviousBillingContext } from "@shared/vendorBillPreviousContext";
@@ -12185,6 +12186,48 @@ export async function registerRoutes(
     }
   });
 
+  const VENDOR_BILL_ROUND_OFF_SETTING = "vendor_bill_round_off_limit";
+  const DEFAULT_VENDOR_BILL_ROUND_OFF_LIMIT = 100;
+  const getVendorBillRoundOffLimit = async () => {
+    const [setting] = await db.select({ value: appSettings.value })
+      .from(appSettings)
+      .where(eq(appSettings.key, VENDOR_BILL_ROUND_OFF_SETTING))
+      .limit(1);
+    const value = setting ? Number(setting.value) : DEFAULT_VENDOR_BILL_ROUND_OFF_LIMIT;
+    return Number.isFinite(value) && value >= 0 ? value : DEFAULT_VENDOR_BILL_ROUND_OFF_LIMIT;
+  };
+
+  app.get("/api/vendor-bills/settlement-settings", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+    res.setHeader("Cache-Control", "private, no-store");
+    try {
+      res.json({ roundOffLimit: await getVendorBillRoundOffLimit() });
+    } catch {
+      res.status(503).json({ message: "Unable to load vendor bill settlement settings" });
+    }
+  });
+
+  app.patch("/api/vendor-bills/settlement-settings", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+    if (req.authUser.isOwner !== true) return res.status(403).json({ message: "Only the Owner can change the round-off limit." });
+    try {
+      const { roundOffLimit } = z.object({
+        roundOffLimit: z.number().finite().min(0),
+      }).strict().parse(req.body ?? {});
+      await db.insert(appSettings)
+        .values({ key: VENDOR_BILL_ROUND_OFF_SETTING, value: String(roundOffLimit) })
+        .onConflictDoUpdate({
+          target: appSettings.key,
+          set: { value: String(roundOffLimit) },
+        });
+      res.json({ roundOffLimit });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "Enter a valid non-negative round-off limit." });
+      console.error("Vendor bill settlement setting save failed:", error);
+      res.status(503).json({ message: "Unable to save the vendor bill round-off limit" });
+    }
+  });
+
   app.use(vendorFinancialGuard(storage));
 
   const loadTallyExportState = async (req: any) => {
@@ -13646,7 +13689,7 @@ export async function registerRoutes(
       const detailsSchema = z.object({
         paymentMode: z.enum(["cash", "credit", "advance", "upi", "cheque", "rtgs"]).nullable().optional(),
         paidBy: z.string().max(120).nullable().optional(),
-        amountPaid: z.number().finite().nonnegative().nullable().optional(),
+        amountPaid: z.number().finite().nonnegative().refine(hasVendorBillCentPrecision, "Paid amount can have at most two decimal places.").nullable().optional(),
         paymentAccountKey: z.string().max(120).nullable().optional(),
       });
       const details = detailsSchema.parse(detailsBody);
@@ -13680,10 +13723,12 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const statusSchema = z.object({
         status: z.enum(["draft", "verified", "approved", "paid"]),
-        amountPaid: z.number().finite().nonnegative().optional(),
+        amountPaid: z.number().finite().nonnegative().refine(hasVendorBillCentPrecision, "Paid amount can have at most two decimal places.").optional(),
         reason: z.string().trim().max(500).nullable().optional(),
+        settlementType: z.enum(["rounded_off", "carried_forward"]).optional(),
+        settlementReason: z.string().trim().max(500).optional(),
       });
-      const { status, reason, amountPaid } = statusSchema.parse(req.body);
+      const { status, reason, amountPaid, settlementType, settlementReason } = statusSchema.parse(req.body);
       if (!assertFeatureAction(req, res, "vendor_bills", vendorBillStatusAction(status))) return;
       const before = await storage.getVendorBill(id);
       if (!before) return res.status(404).json({ message: "Vendor bill not found" });
@@ -13712,7 +13757,35 @@ export async function registerRoutes(
       }
       const actor = currentUserName(req);
 
-      const bill = await storage.updateVendorBillStatus(id, status, actor, amountPaid);
+      let settlement: { type: "rounded_off" | "carried_forward"; amount: number; reason: string } | undefined;
+      if (status === "paid" && amountPaid != null) {
+        const netPayable = before.netPayableAmount == null
+          ? getBillFinancialTotals(before).netTotal
+          : Number(before.netPayableAmount);
+        const difference = vendorBillDifference(netPayable, amountPaid);
+        if (difference !== 0) {
+          if (!settlementType || !settlementReason?.trim()) {
+            return res.status(400).json({
+              message: "Choose Round off / settle or Carry forward and enter a reason for the payment difference.",
+            });
+          }
+          const isOwner = req.authUser?.isOwner === true;
+          const limit = isOwner ? 0 : await getVendorBillRoundOffLimit();
+          if (settlementType === "rounded_off" &&
+            !canRoundOffVendorBill(isOwner, difference, limit)) {
+            return res.status(403).json({
+              message: "This difference is above the Owner round-off limit. Choose Carry forward.",
+            });
+          }
+          settlement = { type: settlementType, amount: difference, reason: settlementReason.trim() };
+        } else if (settlementType || settlementReason?.trim()) {
+          return res.status(400).json({ message: "A settlement is only needed when the paid amount differs from net payable." });
+        }
+      }
+
+      const bill = settlement
+        ? await storage.updateVendorBillStatus(id, status, actor, amountPaid, settlement)
+        : await storage.updateVendorBillStatus(id, status, actor, amountPaid);
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }

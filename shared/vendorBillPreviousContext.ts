@@ -1,5 +1,6 @@
 import { getBillFinancialTotals } from "./vendorBillFinancialReport";
 import { billReviewAmounts, previousBillingSummary } from "./vendorBillReview";
+import { vendorBillSettlementLine } from "./vendorBillSettlement";
 
 export type PreviousBillingAdjustment = {
   label: string;
@@ -23,6 +24,7 @@ export type PreviousBillingRow = {
   provisional: boolean;
   runningBalance: number | null;
   adjustments: PreviousBillingAdjustment[];
+  settlementNote: string | null;
 };
 
 export type PreviousBillingContext = {
@@ -60,7 +62,7 @@ export function buildPreviousBillingContext(current: any, permittedBills: any[])
     ];
 
     paymentGap ||= amounts.paid == null;
-    subtotal += amounts.net - (amounts.paid ?? 0);
+    subtotal += amounts.balance ?? amounts.net;
     return {
       id: bill.id,
       billNo: bill.billNo,
@@ -77,6 +79,9 @@ export function buildPreviousBillingContext(current: any, permittedBills: any[])
       provisional: amounts.provisional,
       runningBalance: paymentGap ? null : subtotal,
       adjustments,
+      settlementNote: bill.settlementType === "carried_forward"
+        ? `Carried forward from ${bill.billNo}${bill.settlementReason ? ` — ${String(bill.settlementReason).trim()}` : ""}`
+        : null,
     };
   });
 

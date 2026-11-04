@@ -21,6 +21,13 @@ import { useToast } from "@/hooks/use-toast";
 import { vendorBillHsdRecoveryMonths, vendorBillStatusError, type HsdRecoveryVerificationMonth } from "@/lib/vendorBillStatusError";
 import { vendorBillingIdentityLabel, type VendorBillingIdentity } from "@/components/vendor-bills/vendorBillingIdentityLabel";
 import { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
+import {
+  canRoundOffVendorBill,
+  hasVendorBillCentPrecision,
+  vendorBillBalance,
+  vendorBillDifference,
+  vendorBillSettlementLine,
+} from "@shared/vendorBillSettlement";
 import { normalizeVendorBillActorName, vendorBillStatusAction } from "@shared/vendorBillAccess";
 import { hasFrozenTripDailyHire, FROZEN_TRIP_DAILY_MESSAGE } from "@shared/vendorBillRecovery";
 import { isAlpsLikeFreeTextPayer } from "@shared/vendorBillAttention";
@@ -445,6 +452,8 @@ export function VendorBillPaymentDetails({
   // recorded cumulative figure; keep the existing payment-entry workflow.
   const effectivePaid = bill.amountPaid != null && bill.amountPaid !== "" && Number.isFinite(Number(bill.amountPaid))
     ? Number(bill.amountPaid) : null;
+  const settlementLine = vendorBillSettlementLine(bill);
+  const displayBalance = vendorBillBalance(netPayable, effectivePaid, bill.settlementType);
   const isMissingPaidAmount = bill.status === "paid" && effectivePaid == null;
   const needsMissingPaidAmount = isMissingPaidAmount && Number.isFinite(netPayable) && netPayable >= 0;
   const missingPaidAmountValue = Number(missingPaidAmount);
@@ -513,7 +522,11 @@ export function VendorBillPaymentDetails({
             PAID BY: {vendorBillPaidByLabel(bill.paidBy)}
           </Badge>
           <Badge variant="outline">PAID: {effectivePaid == null ? "—" : `₹${formatCurrency(effectivePaid)}`}</Badge>
-          <Badge variant="outline">BALANCE THIS BILL: {effectivePaid == null ? "—" : `₹${formatCurrency(netPayable - effectivePaid)}`}</Badge>
+          <Badge variant="outline">BALANCE THIS BILL: {displayBalance == null ? "—" : bill.settlementType === "carried_forward"
+            ? settlementLine
+            : `₹${formatCurrency(displayBalance)}`}</Badge>
+          {settlementLine && bill.settlementType === "rounded_off" &&
+            <Badge variant="outline">SETTLEMENT: {settlementLine}</Badge>}
           {selectedAccount && <Badge variant="outline">ACCOUNT: {selectedAccount.name}</Badge>}
         </div>
       ) : (
@@ -571,18 +584,25 @@ export function VendorBillPaymentDetails({
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Paid This Bill (cumulative ₹)</p>
               <Input
-                type="number" min="0" max={netPayable} step="0.01" value={amountPaid}
+                type="number" min="0" step="0.01" value={amountPaid}
                 onChange={e => setAmountPaid(e.target.value)}
                 data-testid="input-vb-amount-paid"
               />
               <p className="mt-1 text-[10px] text-muted-foreground">
-                Net payable ₹{formatCurrency(netPayable)} · balance {amountPaid === "" ? "—" : `₹${formatCurrency(Math.max(0, netPayable - Number(amountPaid)))}`}
+                Net payable ₹{formatCurrency(netPayable)} · {amountPaid === "" ? "balance —" : (() => {
+                  const difference = vendorBillDifference(netPayable, Number(amountPaid));
+                  return difference < 0
+                    ? `credit ₹${formatCurrency(Math.abs(difference))}`
+                    : `balance ₹${formatCurrency(difference)}`;
+                })()}
               </p>
             </div>
           )}
           <div className="sm:col-span-3 flex gap-2 justify-end">
             <Button variant="outline" size="sm" onClick={() => setEditing(false)} data-testid="button-cancel-payment-details">CANCEL</Button>
-            <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-payment-details">
+            <Button size="sm" onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending || (isEquipmentHire && amountPaid !== "" && !hasVendorBillCentPrecision(Number(amountPaid)))}
+              data-testid="button-save-payment-details">
               {saveMutation.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />} SAVE
             </Button>
           </div>
@@ -664,6 +684,11 @@ export default function VendorBills() {
   const canVoid = !!user?.isOwner;
   const canMarkPaid = featureCan("vendor_bills", "final");
   const canExport = featureCan("vendor_bills", "export");
+  const { data: settlementSettings } = useQuery<{ roundOffLimit: number }>({
+    queryKey: ["/api/vendor-bills/settlement-settings"],
+    enabled: canMarkPaid,
+  });
+  const roundOffLimit = settlementSettings?.roundOffLimit ?? 100;
 
   const [view, setView] = useState<ViewMode>("list");
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);
@@ -790,8 +815,22 @@ export default function VendorBills() {
   };
 
   const [pendingDeleteAction, setPendingDeleteAction] = useState<{ billId: number; billNo?: string; status?: string } | null>(null);
-  const [pendingPaidStatus, setPendingPaidStatus] = useState<{ billId: number; billNo: string } | null>(null);
+  const [pendingPaidStatus, setPendingPaidStatus] = useState<{ billId: number; billNo: string; netPayable: number } | null>(null);
   const [paidStatusAmount, setPaidStatusAmount] = useState("");
+  const [paidSettlementType, setPaidSettlementType] = useState<"rounded_off" | "carried_forward">("carried_forward");
+  const [paidSettlementReason, setPaidSettlementReason] = useState("");
+  const paidStatusAmountNumber = Number(paidStatusAmount);
+  const paidStatusDifference = pendingPaidStatus && paidStatusAmount !== "" && Number.isFinite(paidStatusAmountNumber)
+    ? vendorBillDifference(pendingPaidStatus.netPayable, paidStatusAmountNumber)
+    : 0;
+  const paidStatusNeedsSettlement = !!pendingPaidStatus && paidStatusAmount !== "" && paidStatusDifference !== 0;
+  const paidStatusRoundOffAllowed = canRoundOffVendorBill(!!user?.isOwner, paidStatusDifference, roundOffLimit);
+
+  useEffect(() => {
+    if (paidStatusNeedsSettlement && !paidStatusRoundOffAllowed && paidSettlementType !== "carried_forward") {
+      setPaidSettlementType("carried_forward");
+    }
+  }, [paidStatusNeedsSettlement, paidStatusRoundOffAllowed, paidSettlementType]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
   const [voidBillAction, setVoidBillAction] = useState<{ billId: number; billNo: string } | null>(null);
@@ -1249,8 +1288,15 @@ export default function VendorBills() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status, amountPaid }: { id: number; status: string; amountPaid?: number }) =>
-      apiRequest("PATCH", `/api/vendor-bills/${id}/status`, { status, ...(amountPaid === undefined ? {} : { amountPaid }) }),
+    mutationFn: ({ id, status, amountPaid, settlementType, settlementReason }: {
+      id: number; status: string; amountPaid?: number;
+      settlementType?: "rounded_off" | "carried_forward"; settlementReason?: string;
+    }) =>
+      apiRequest("PATCH", `/api/vendor-bills/${id}/status`, {
+        status,
+        ...(amountPaid === undefined ? {} : { amountPaid }),
+        ...(settlementType ? { settlementType, settlementReason } : {}),
+      }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
       if (selectedBillId) {
@@ -1261,6 +1307,8 @@ export default function VendorBills() {
       );
       setPendingPaidStatus(null);
       setPaidStatusAmount("");
+      setPaidSettlementType("carried_forward");
+      setPaidSettlementReason("");
       toast({ title: "Bill status updated" });
     },
     onError: (err: Error, variables) => {
@@ -2627,8 +2675,13 @@ export default function VendorBills() {
   const handleStatusChange = (billId: number, newStatus: string) => {
     if (newStatus === "paid") {
       const bill = bills?.find(row => row.id === billId);
-      setPaidStatusAmount("");
-      setPendingPaidStatus({ billId, billNo: bill?.billNo || `#${billId}` });
+      const netPayable = bill?.netPayableAmount == null
+        ? (bill ? getBillFinancialTotals(bill).netTotal : 0)
+        : Number(bill.netPayableAmount);
+      setPaidStatusAmount(bill?.amountPaid == null ? "" : String(bill.amountPaid));
+      setPaidSettlementType("carried_forward");
+      setPaidSettlementReason("");
+      setPendingPaidStatus({ billId, billNo: bill?.billNo || `#${billId}`, netPayable });
       return;
     }
     statusMutation.mutate({ id: billId, status: newStatus });
@@ -5159,6 +5212,17 @@ export default function VendorBills() {
           .map((statement: any) => String(statement.equipmentType || "").trim()).filter(Boolean))).join(", ") || undefined,
         billType: type, billTypeLabel: getBillTypeLabel(type), saved: true, status: bill.status,
         vendorMasterDetails: b.vendorMasterDetails ?? null,
+        paymentInfo: {
+          amountPaid: b.amountPaid == null ? null : Number(b.amountPaid),
+          balance: vendorBillBalance(
+            b.netPayableAmount == null ? detailFinancials.netTotal : Number(b.netPayableAmount),
+            b.amountPaid == null ? null : Number(b.amountPaid),
+            b.settlementType,
+          ),
+          settlementType: b.settlementType ?? null,
+          settlementAmount: b.settlementAmount == null ? null : Number(b.settlementAmount),
+          settlementReason: b.settlementReason ?? null,
+        },
         generatedAt: new Date().toISOString(), notes: bill.notes || "",
         financialRows: buildSavedBillPresentationRows(b, detailFinancials),
         hireReviews: projectBillHireReviews(b),
@@ -5479,14 +5543,16 @@ export default function VendorBills() {
           if (!open) {
             setPendingPaidStatus(null);
             setPaidStatusAmount("");
+            setPaidSettlementType("carried_forward");
+            setPaidSettlementReason("");
           }
         }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Record the paid amount</DialogTitle>
+              <DialogTitle>Mark bill paid</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
-              Enter the amount actually paid for bill {pendingPaidStatus?.billNo}. The bill cannot be marked PAID without an amount; enter 0 only if zero is the recorded amount.
+              Confirm the actual bank amount for bill {pendingPaidStatus?.billNo}. This amount is saved as entered; bill totals are not changed.
             </p>
             <div className="space-y-2">
               <Label htmlFor="vendor-bill-paid-status-amount">Amount paid (₹)</Label>
@@ -5499,17 +5565,83 @@ export default function VendorBills() {
                 onChange={event => setPaidStatusAmount(event.target.value)}
                 data-testid="input-vendor-bill-paid-status-amount"
               />
+              {paidStatusAmount !== "" && Number.isFinite(paidStatusAmountNumber) && pendingPaidStatus && (
+                <p className="text-xs text-muted-foreground" data-testid="text-vendor-bill-payment-difference">
+                  {paidStatusDifference === 0
+                    ? `Matches net payable ₹${formatCurrency(pendingPaidStatus.netPayable)}`
+                    : paidStatusDifference > 0
+                      ? `Short paid by ₹${formatCurrency(paidStatusDifference)}`
+                      : `Paid ₹${formatCurrency(Math.abs(paidStatusDifference))} more than net payable`}
+                </p>
+              )}
             </div>
+            {paidStatusNeedsSettlement && (
+              <div className="space-y-3 rounded-md border p-3" data-testid="section-vendor-bill-settlement">
+                <p className="text-sm font-medium">How should this difference be handled?</p>
+                <div className="flex flex-wrap gap-2" role="group" aria-label="Settlement choice">
+                  {paidStatusRoundOffAllowed && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={paidSettlementType === "rounded_off" ? "default" : "outline"}
+                      aria-pressed={paidSettlementType === "rounded_off"}
+                      onClick={() => setPaidSettlementType("rounded_off")}
+                      data-testid="button-settlement-rounded-off"
+                    >Round off / settle</Button>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={paidSettlementType === "carried_forward" ? "default" : "outline"}
+                    aria-pressed={paidSettlementType === "carried_forward"}
+                    onClick={() => setPaidSettlementType("carried_forward")}
+                    data-testid="button-settlement-carried-forward"
+                  >Carry forward</Button>
+                </div>
+                {!paidStatusRoundOffAllowed && (
+                  <p className="text-xs text-muted-foreground">
+                    Round off is available only up to ₹{formatCurrency(roundOffLimit)} for non-Owners.
+                  </p>
+                )}
+                {paidStatusAmount !== "" && Number.isFinite(paidStatusAmountNumber) &&
+                  !hasVendorBillCentPrecision(paidStatusAmountNumber) && (
+                    <p className="text-xs text-destructive">Enter an amount with no more than two decimal places.</p>
+                  )}
+                <div className="space-y-1">
+                  <Label htmlFor="vendor-bill-settlement-reason">Reason *</Label>
+                  <Input
+                    id="vendor-bill-settlement-reason"
+                    value={paidSettlementReason}
+                    onChange={event => setPaidSettlementReason(event.target.value)}
+                    maxLength={500}
+                    placeholder={paidSettlementType === "rounded_off" ? "e.g. Rounded off on payment" : "e.g. Balance with next bill"}
+                    data-testid="input-vendor-bill-settlement-reason"
+                  />
+                </div>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setPendingPaidStatus(null)}>CANCEL</Button>
+              <Button variant="outline" onClick={() => {
+                setPendingPaidStatus(null);
+                setPaidStatusAmount("");
+                setPaidSettlementReason("");
+                setPaidSettlementType("carried_forward");
+              }}>CANCEL</Button>
               <Button
                 onClick={() => pendingPaidStatus && statusMutation.mutate({
                   id: pendingPaidStatus.billId,
                   status: "paid",
-                  amountPaid: Number(paidStatusAmount),
+                  amountPaid: paidStatusAmountNumber,
+                  ...(paidStatusNeedsSettlement ? {
+                    settlementType: paidSettlementType,
+                    settlementReason: paidSettlementReason.trim(),
+                  } : {}),
                 })}
                 disabled={statusMutation.isPending || paidStatusAmount === "" ||
-                  !Number.isFinite(Number(paidStatusAmount)) || Number(paidStatusAmount) < 0}
+                  !Number.isFinite(paidStatusAmountNumber) || paidStatusAmountNumber < 0 ||
+                  !hasVendorBillCentPrecision(paidStatusAmountNumber) ||
+                  (paidStatusNeedsSettlement && (!paidSettlementReason.trim() ||
+                    (paidSettlementType === "rounded_off" && !paidStatusRoundOffAllowed)))}
                 data-testid="button-confirm-vendor-bill-paid"
               >
                 {statusMutation.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />} MARK PAID

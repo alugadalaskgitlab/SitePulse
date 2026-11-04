@@ -11,6 +11,7 @@ import {
 } from "./wholeBillSnapshot";
 import { drawPdfBillFooter, drawPdfBillHeader, INK_LIGHT_TABLE } from "./pdfExportStyle";
 import { vendorBillMasterBottomRows, vendorBillMasterTopRows } from "./vendorBillMasterDetails";
+import { vendorBillSettlementLine } from "@shared/vendorBillSettlement";
 
 const printable = (value: unknown) => String(value ?? "")
   .replace(/₹/g, "Rs. ").replace(/[−–—→]/g, "-").replace(/×/g, "x").replace(/·/g, " / ");
@@ -339,6 +340,24 @@ export function buildWholeBillEquipmentPdf(snapshot: WholeBillSnapshot): jsPDF {
   additional.forEach(row => summaryRows.push([row.label, amountText(row.amount)]));
   credits.forEach(row => summaryRows.push([row.label, amountText(row.amount)]));
   summaryRows.push(["NET PAYABLE", amountText(totalRowValue(snapshot, statements, "netPayable"))]);
+  if (snapshot.paymentInfo?.amountPaid != null) {
+    summaryRows.push(["PAYMENT DETAILS", ""]);
+    summaryRows.push(["Paid", amountText(snapshot.paymentInfo.amountPaid)]);
+    const settlementLine = vendorBillSettlementLine({
+      settlementType: snapshot.paymentInfo.settlementType,
+      settlementAmount: snapshot.paymentInfo.settlementAmount,
+      settlementReason: snapshot.paymentInfo.settlementReason,
+    });
+    if (snapshot.paymentInfo.settlementType === "rounded_off" && settlementLine) {
+      summaryRows.push(["Settlement", printable(settlementLine)]);
+    }
+    summaryRows.push([
+      "Balance this bill",
+      snapshot.paymentInfo.settlementType === "carried_forward" && settlementLine
+        ? printable(settlementLine)
+        : amountText(snapshot.paymentInfo.balance),
+    ]);
+  }
 
   const rowCount = Math.max(leftRows.length, summaryRows.length);
   const pairedRows: string[][] = Array.from({ length: rowCount }, (_, index) => [

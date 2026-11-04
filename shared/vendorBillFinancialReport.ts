@@ -73,7 +73,9 @@ export function getBillFinancialTotals(bill: any) {
 
 export function billPaymentPosition(bill: any) {
   const amounts = billReviewAmounts(bill, getBillFinancialTotals(bill));
-  const contradictory = bill.status === "paid" && amounts.balance != null && Math.abs(amounts.balance) >= 0.005;
+  const recognizedSettlement = bill.settlementType === "rounded_off" || bill.settlementType === "carried_forward";
+  const contradictory = bill.status === "paid" && !recognizedSettlement &&
+    amounts.balance != null && Math.abs(amounts.balance) >= 0.005;
   return { ...amounts, contradictory, unconfirmed: amounts.paid == null || contradictory };
 }
 

@@ -34,6 +34,21 @@ it.each(["all", "ALL", "equipment"])("includes amount/account in %s save payload
   expect(fetch).toHaveBeenCalledWith("/api/vendor-bills/company-accounts?includeThirdParty=true", { credentials: "include" });
 });
 
+it("allows the saved bank amount to exceed net payable without capping it", async () => {
+  mount(<VendorBillPaymentDetails canEditPayment bill={{
+    id: 14, billType: "equipment", status: "approved", netPayableAmount: 1_000,
+    amountPaid: 1_000, paidBy: "company", paymentAccountKey: "bank",
+  }} />);
+  fireEvent.click(screen.getByTestId("button-edit-payment-details"));
+  fireEvent.change(screen.getByTestId("input-vb-amount-paid"), { target: { value: "1000.01" } });
+  expect(screen.getByTestId("button-save-payment-details").hasAttribute("disabled")).toBe(false);
+  fireEvent.click(screen.getByTestId("button-save-payment-details"));
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/vendor-bills/14/payment-details", expect.objectContaining({
+    method: "PATCH",
+    body: JSON.stringify({ paymentMode: null, paidBy: "company", amountPaid: 1000.01, paymentAccountKey: "bank" }),
+  })));
+});
+
 it("renders the account selector for a material bill without showing cumulative payment", async () => {
   mount(<VendorBillPaymentDetails canEditPayment bill={{ id: 2, billType: "material", paidBy: "company" }} />);
   fireEvent.click(screen.getByTestId("button-edit-payment-details"));
@@ -69,6 +84,26 @@ it("shows recorded paid and balance amounts for a material bill", () => {
   }} />);
   expect(screen.getByText("PAID: ₹1,23,050.00")).toBeTruthy();
   expect(screen.getByText("BALANCE THIS BILL: ₹0.00")).toBeTruthy();
+});
+
+it("shows rounded-off and carried-forward settlement labels without changing the saved amount", () => {
+  mount(<VendorBillPaymentDetails canEditPayment={false} bill={{
+    id: 241, billType: "equipment", status: "paid", netPayableAmount: 100,
+    amountPaid: 90, settlementType: "rounded_off", settlementAmount: 10,
+    settlementReason: "Agreed rounding",
+  }} />);
+  expect(screen.getByText("PAID: ₹90.00")).toBeTruthy();
+  expect(screen.getByText("BALANCE THIS BILL: ₹0.00")).toBeTruthy();
+  expect(screen.getByText("SETTLEMENT: Rounded off ₹10.00 — Agreed rounding")).toBeTruthy();
+
+  cleanup();
+  mount(<VendorBillPaymentDetails canEditPayment={false} bill={{
+    id: 242, billType: "equipment", status: "paid", netPayableAmount: 100,
+    amountPaid: 120, settlementType: "carried_forward", settlementAmount: -20,
+    settlementReason: "Advance with next bill",
+  }} />);
+  expect(screen.getByText("PAID: ₹120.00")).toBeTruthy();
+  expect(screen.getByText("BALANCE THIS BILL: ₹20.00 advance carried to next bill — Advance with next bill")).toBeTruthy();
 });
 
 it("keeps unknown paid and balance amounts as dashes on a material bill", () => {

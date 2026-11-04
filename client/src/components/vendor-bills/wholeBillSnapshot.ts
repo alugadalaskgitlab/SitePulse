@@ -166,6 +166,13 @@ export type WholeBillSnapshot = {
   logoDataUrl?: string | null;
   vendorName: string;
   vendorMasterDetails?: VendorMasterBillDetails | null;
+  paymentInfo?: {
+    amountPaid: number | null;
+    balance: number | null;
+    settlementType?: "rounded_off" | "carried_forward" | null;
+    settlementAmount?: number | null;
+    settlementReason?: string | null;
+  };
   billNo: string;
   billDate: string;
   periodFrom: string;

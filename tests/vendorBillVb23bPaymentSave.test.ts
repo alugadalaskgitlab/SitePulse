@@ -109,7 +109,7 @@ describe("VB-23B vendor bill payment save", () => {
 
   it.each([
     ["a negative amount", { amountPaid: -1 }, {}, "BAD_REQUEST"],
-    ["an amount above the frozen ceiling", { amountPaid: 10_000.01 }, {}, "BAD_REQUEST"],
+    ["an amount with more than two decimals", { amountPaid: 10_000.001 }, {}, "BAD_REQUEST"],
     ["a null amount on a frozen bill", { amountPaid: null }, {}, "BAD_REQUEST"],
     ["an amount while draft", { amountPaid: 1 }, { status: "draft" }, "CONFLICT"],
     ["an amount while verified", { amountPaid: 1 }, { status: "verified" }, "CONFLICT"],
@@ -125,6 +125,38 @@ describe("VB-23B vendor bill payment save", () => {
       new DatabaseStorage().updateVendorBillPaymentDetails(231, details),
     ).rejects.toMatchObject({ code });
     expect(fx.writes).toEqual([]);
+  });
+
+  it("saves the exact overpayment so Mark Paid can carry it forward", async () => {
+    bill();
+    queuePaymentSaveAndPaidTransition();
+    const storage = new DatabaseStorage();
+
+    await storage.updateVendorBillPaymentDetails(231, { amountPaid: 10_000.01 });
+    const paid = await storage.updateVendorBillStatus(231, "paid", "accounts user", 10_000.01, {
+      type: "carried_forward", amount: -0.01, reason: "Advance with next bill",
+    });
+
+    expect(fx.writes[0]).toEqual({ amountPaid: 10_000.01 });
+    expect(paid).toMatchObject({
+      status: "paid",
+      amountPaid: 10_000.01,
+      netPayableAmount: 10_000,
+      totalAmount: 12_000,
+      settlementType: "carried_forward",
+      settlementAmount: -0.01,
+      settlementReason: "Advance with next bill",
+      settledBy: "ACCOUNTS USER",
+      settledAt: expect.any(String),
+    });
+    expect(fx.writes[1]).toMatchObject({
+      amountPaid: 10_000.01,
+      settlementType: "carried_forward",
+      settlementAmount: -0.01,
+      settlementReason: "Advance with next bill",
+      settledBy: "ACCOUNTS USER",
+      settledAt: expect.any(String),
+    });
   });
 
   it("retains the existing cumulative-payment behavior for equipment bills", async () => {

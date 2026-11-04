@@ -111,7 +111,10 @@ export function VendorRunningStatement({ bill, bills, loading, error }: { bill: 
                  <td className="p-2">{money(row.paid)}
                  {row.paidAt && <span className="block">Paid status recorded: {row.paidAt}</span>}
                </td>
-                <td className="p-2">{money(row.balance)}</td>
+                <td className="p-2">
+                  {money(row.balance)}
+                  {row.settlementNote && <span className="block text-muted-foreground">{row.settlementNote}</span>}
+                </td>
                 <td className="p-2">{money(row.credit)}{row.provisional && row.credit > 0 && " (provisional)"}</td>
                 <td className="p-2">{money(row.runningBalance)}</td>
              </tr>

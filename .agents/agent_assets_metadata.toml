@@ -6275,3 +6275,31 @@ mtime_ms = 1793762003447
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/776a3578-4307-4847-be55-d006104c17e0/8ad95246-d754-4286-b49b-682c0cc0b1d2"
 storage_version_token = "1793762197349829"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "NsTm2fy01q0UTDFuhg12j"
+uri = "file://generated-artifacts/vendor-bill-settlement-sample.pdf"
+type = "pdf"
+title = "Sample equipment bill PDF"
+description = "One-page sample with the configured logo, ₹995 paid against ₹1,000 net, and ₹5 carried forward with a reason."
+logical_id = "a0d2442a-c55b-4fbc-ab67-d9aad472f9f6"
+content_hash = "sha256:2e2988fb3c3bc073ac908e1817051709d2efeccdc4261c812c22a4a4322d468e"
+size = 31610
+mtime_ms = 1793791518953
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a0d2442a-c55b-4fbc-ab67-d9aad472f9f6/80d8ad3f-cec8-46ac-89fb-09c94b2d4c98"
+storage_version_token = "1793791840968008"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "E2HYAChWrl2OqNTpRIYB2"
+uri = "file://generated-artifacts/vendor-bill-settlement-sample-page.png"
+type = "image"
+title = "Rendered sample PDF page"
+description = "Rendered A4 portrait screenshot of the sample equipment bill."
+logical_id = "9066d0c1-42d8-4672-bb7b-376167077d3d"
+content_hash = "sha256:7d37987d18045e078f504cbe864b99b4407bd6586b63388ae63b5a5827a9a7a9"
+size = 97929
+mtime_ms = 1793791519325
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9066d0c1-42d8-4672-bb7b-376167077d3d/3c7b7ef5-8c74-40eb-b4c1-0495b336b660"
+storage_version_token = "1793791842883380"
+content_type = "image/png"

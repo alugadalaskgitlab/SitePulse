@@ -734,11 +734,20 @@ describe("AUDIT-01 vendor-bill history", () => {
     expect(response.body.message).toBe("Enter the paid amount before marking the bill paid. Enter 0 only if that is the recorded amount.");
     expect(storage.updateVendorBillStatus).not.toHaveBeenCalled();
 
-    const paid = makeBill({ status: "paid", billType: "material", amountPaid: 0 });
+    const paid = makeBill({
+      status: "paid", billType: "material", amountPaid: 0,
+      settlementType: "carried_forward", settlementAmount: 100,
+      settlementReason: "No payment; carry forward",
+    });
     storage.updateVendorBillStatus.mockResolvedValue(paid);
-    response = await request(app).patch("/api/vendor-bills/7/status").send({ status: "paid", amountPaid: 0 });
+    response = await request(app).patch("/api/vendor-bills/7/status").send({
+      status: "paid", amountPaid: 0,
+      settlementType: "carried_forward", settlementReason: "No payment; carry forward",
+    });
     expect(response.status).toBe(200);
-    expect(storage.updateVendorBillStatus).toHaveBeenCalledWith(7, "paid", "Audit User", 0);
+    expect(storage.updateVendorBillStatus).toHaveBeenCalledWith(7, "paid", "Audit User", 0, {
+      type: "carried_forward", amount: 100, reason: "No payment; carry forward",
+    });
     expect(storage.logAudit).toHaveBeenLastCalledWith(expect.objectContaining({
       action: "update",
       oldValues: expect.objectContaining({ status: "approved" }),

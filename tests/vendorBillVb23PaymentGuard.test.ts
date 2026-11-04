@@ -315,7 +315,7 @@ describe("VB-23 vendor bill paid-transition storage guard", () => {
 
       await expect(transition).rejects.toMatchObject({
         code: "CONFLICT",
-        message: "Record the remaining equipment hire balance before marking this bill paid.",
+        message: "Choose Round off / settle or Carry forward and enter a reason for the payment difference.",
       });
       expect(fixtures.writes).toEqual([]);
     },
@@ -349,14 +349,49 @@ describe("VB-23 vendor bill paid-transition storage guard", () => {
     },
   );
 
-  it("does not apply the equipment payment guard to a material bill", async () => {
-    await markPaid(approvedBill("MATERIAL", 1));
+  it("requires an explicit settlement for a material bill with a payment difference", async () => {
+    await expect(markPaid(approvedBill("MATERIAL", 1))).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "Choose Round off / settle or Carry forward and enter a reason for the payment difference.",
+    });
+    expect(fixtures.writes).toEqual([]);
+  });
 
-    expect(fixtures.writes).toHaveLength(1);
+  it("records round-off settlement metadata without changing bill totals", async () => {
+    const existing = approvedBill("ALL", 9_989.2);
+    fixtures.selectedRows.push([existing], [], []);
+    fixtures.returnedBill = { ...existing, status: "paid" };
+
+    const result = await new DatabaseStorage().updateVendorBillStatus(23, "paid", "accounts user", 9_989.2, {
+      type: "rounded_off", amount: 10.8, reason: "Rounded off on payment",
+    });
+
+    expect(result).toMatchObject({ status: "paid", amountPaid: 9_989.2, netPayableAmount: 10_000, totalAmount: 12_000 });
     expect(fixtures.writes[0]).toMatchObject({
       status: "paid",
-      amountPaid: 1,
-      paymentRecordedBy: "ACCOUNTS USER",
+      amountPaid: 9_989.2,
+      settlementType: "rounded_off",
+      settlementAmount: 10.8,
+      settlementReason: "Rounded off on payment",
+      settledBy: "ACCOUNTS USER",
+      settledAt: expect.any(String),
+    });
+  });
+
+  it("stores overpayment as a negative carried-forward amount", async () => {
+    const existing = approvedBill("EQUIPMENT", 10_025);
+    fixtures.selectedRows.push([existing], [], []);
+    fixtures.returnedBill = { ...existing, status: "paid" };
+
+    await new DatabaseStorage().updateVendorBillStatus(23, "paid", "accounts user", 10_025, {
+      type: "carried_forward", amount: -25, reason: "Advance with next bill",
+    });
+
+    expect(fixtures.writes[0]).toMatchObject({
+      amountPaid: 10_025,
+      settlementType: "carried_forward",
+      settlementAmount: -25,
+      settlementReason: "Advance with next bill",
     });
   });
 

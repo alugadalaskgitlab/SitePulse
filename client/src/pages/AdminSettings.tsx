@@ -38,6 +38,7 @@ export default function AdminSettings() {
   // LDO Received By defaults
   const [ldoTank1ReceivedBy, setLdoTank1ReceivedBy] = useState("");
   const [ldoTank2ReceivedBy, setLdoTank2ReceivedBy] = useState("");
+  const [vendorBillRoundOffLimit, setVendorBillRoundOffLimit] = useState("100");
 
   const { data: brandingData } = useQuery<{
     companyName: string; companyShortName: string; appTagline: string; logoFile: string;
@@ -100,6 +101,30 @@ export default function AdminSettings() {
   const { data: ldoReceivedByData } = useQuery<{ tank1: string | null; tank2: string | null }>({
     queryKey: ["/api/admin/ldo-received-by"],
     enabled: authenticated,
+  });
+  const { data: settlementSettings } = useQuery<{ roundOffLimit: number }>({
+    queryKey: ["/api/vendor-bills/settlement-settings"],
+    enabled: authenticated,
+  });
+  useEffect(() => {
+    if (settlementSettings) setVendorBillRoundOffLimit(String(settlementSettings.roundOffLimit));
+  }, [settlementSettings]);
+  const saveVendorBillRoundOffLimit = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("PATCH", "/api/vendor-bills/settlement-settings", {
+        roundOffLimit: Number(vendorBillRoundOffLimit),
+      });
+      return response.json() as Promise<{ roundOffLimit: number }>;
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/vendor-bills/settlement-settings"], data);
+      toast({ title: "Vendor bill round-off limit saved" });
+    },
+    onError: (error: any) => toast({
+      title: "Could not save round-off limit",
+      description: error.message || "Please try again.",
+      variant: "destructive",
+    }),
   });
 
   useEffect(() => {
@@ -273,6 +298,38 @@ export default function AdminSettings() {
       <Link href="/admin/settings/roles">
         <Button variant="outline" data-testid="button-access-roles">Access roles</Button>
       </Link>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Vendor bill round-off limit</CardTitle>
+          <CardDescription>
+            Differences above this amount can only be carried forward by non-Owners. Owners may round off any amount. Default: ₹100.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-end gap-3">
+          <div className="space-y-2">
+            <Label htmlFor="vendor-bill-round-off-limit">Round-off limit (₹)</Label>
+            <Input
+              id="vendor-bill-round-off-limit"
+              type="number"
+              min="0"
+              step="0.01"
+              value={vendorBillRoundOffLimit}
+              onChange={event => setVendorBillRoundOffLimit(event.target.value)}
+              data-testid="input-vendor-bill-round-off-limit"
+            />
+          </div>
+          <Button
+            onClick={() => saveVendorBillRoundOffLimit.mutate()}
+            disabled={saveVendorBillRoundOffLimit.isPending || vendorBillRoundOffLimit === "" ||
+              !Number.isFinite(Number(vendorBillRoundOffLimit)) || Number(vendorBillRoundOffLimit) < 0}
+            data-testid="button-save-vendor-bill-round-off-limit"
+          >
+            {saveVendorBillRoundOffLimit.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Save limit
+          </Button>
+        </CardContent>
+      </Card>
 
 
       <Card>

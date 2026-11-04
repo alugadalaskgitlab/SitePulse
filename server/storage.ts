@@ -135,6 +135,7 @@ import { resolveConversion, convertToBase, computeAdjustment, isNoChange, comput
 import { resolvePermittedSiteIds } from "@shared/siteAccess";
 import { getBaseSiteName, siteMatchesPermitted, vendorBillItemMatchesSite } from "@shared/siteName";
 import { getBillFinancialTotals } from "@shared/vendorBillFinancialReport";
+import { hasVendorBillCentPrecision } from "@shared/vendorBillSettlement";
 import { isAlpsLikeFreeTextPayer } from "@shared/vendorBillAttention";
 import { formatPersonName } from "@shared/personName";
 import {
@@ -1595,7 +1596,13 @@ export interface IStorage {
   }[]>;
   createVendorBill(data: CreateVendorBillRequest, authorUserId?: number | null): Promise<VendorBillWithItems>;
   updateVendorBill(id: number, data: CreateVendorBillRequest): Promise<VendorBillWithItems | undefined>;
-  updateVendorBillStatus(id: number, status: string, actor: string, paidAmount?: number): Promise<VendorBillWithItems | undefined>;
+  updateVendorBillStatus(
+    id: number,
+    status: string,
+    actor: string,
+    paidAmount?: number,
+    settlement?: { type: "rounded_off" | "carried_forward"; amount: number; reason: string },
+  ): Promise<VendorBillWithItems | undefined>;
   correctVendorBillSiteScope(id: number, siteId: number | null): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
   correctRecordedVendorBillSiteScope(id: number, siteId: number | null): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
   correctVendorBillPeriod(id: number, periodFrom: string, periodTo: string): Promise<{ before: VendorBill; after: VendorBill } | undefined>;
@@ -18798,6 +18805,11 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS net_payable_amount numeric(14,2)`));
     await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS amount_paid numeric(14,2)`));
     await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS payment_account_key text`));
+    await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS settlement_type text`));
+    await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS settlement_amount numeric(14,2)`));
+    await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS settlement_reason text`));
+    await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS settled_by text`));
+    await db.execute(sql.raw(`ALTER TABLE vendor_bills ADD COLUMN IF NOT EXISTS settled_at text`));
     // This compact JSON setting is intentionally the entire company-account
     // model for VB-01; no banking or reconciliation records are created.
     await db.execute(sql.raw(`INSERT INTO app_settings (key, value)
@@ -18882,17 +18894,19 @@ export class DatabaseStorage implements IStorage {
         if (!["approved", "paid"].includes(existing.status)) {
           throw Object.assign(new Error("Record a partial payment only after the equipment hire bill is approved."), { code: "CONFLICT" });
         }
-        const ceiling = Number(existing.netPayableAmount ?? existing.totalAmount ?? 0);
         if (details.amountPaid == null && existing.netPayableAmount != null) {
           throw Object.assign(new Error("A frozen equipment-hire bill requires a cumulative paid amount; use zero for no payment."), { code: "BAD_REQUEST" });
         }
         if (existing.status === "paid" && existing.amountPaid == null && details.amountPaid != null) {
           throw Object.assign(new Error("Record a missing paid amount from the Bills Needing Attention page."), { code: "CONFLICT" });
         }
-        if (details.amountPaid != null && (details.amountPaid < 0 || details.amountPaid > ceiling)) {
-          throw Object.assign(new Error("Paid amount must be between zero and this bill's net payable amount."), { code: "BAD_REQUEST" });
+        if (details.amountPaid != null && details.amountPaid < 0) {
+          throw Object.assign(new Error("Paid amount cannot be negative."), { code: "BAD_REQUEST" });
         }
-        if (existing.status === "paid" && details.amountPaid != null && Number(details.amountPaid) !== Number(existing.amountPaid ?? ceiling)) {
+        if (details.amountPaid != null && !hasVendorBillCentPrecision(details.amountPaid)) {
+          throw Object.assign(new Error("Paid amount can have at most two decimal places."), { code: "BAD_REQUEST" });
+        }
+        if (existing.status === "paid" && details.amountPaid != null && Number(details.amountPaid) !== Number(existing.amountPaid)) {
           throw Object.assign(new Error("A paid bill's cumulative amount is locked."), { code: "CONFLICT" });
         }
         setData.amountPaid = details.amountPaid;
@@ -18942,7 +18956,13 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async updateVendorBillStatus(id: number, status: string, actor: string, paidAmount?: number): Promise<VendorBillWithItems | undefined> {
+  async updateVendorBillStatus(
+    id: number,
+    status: string,
+    actor: string,
+    paidAmount?: number,
+    settlement?: { type: "rounded_off" | "carried_forward"; amount: number; reason: string },
+  ): Promise<VendorBillWithItems | undefined> {
     const changed = await db.transaction(async (tx) => {
       const [existing] = await tx.select().from(vendorBills).where(eq(vendorBills.id, id)).limit(1).for("update");
       if (!existing) return false;
@@ -18962,6 +18982,9 @@ export class DatabaseStorage implements IStorage {
       }
       if (status === "paid" && (paidAmount == null || !Number.isFinite(paidAmount) || paidAmount < 0)) {
         throw Object.assign(new Error("Enter the paid amount before marking the bill paid. Enter 0 only if that is the recorded amount."), { code: "BAD_REQUEST" });
+      }
+      if (status === "paid" && paidAmount != null && !hasVendorBillCentPrecision(paidAmount)) {
+        throw Object.assign(new Error("Paid amount can have at most two decimal places."), { code: "BAD_REQUEST" });
       }
       if (status === "verified" && linkedStatements.length) {
         // Preserve terminal legacy statements created before the integrated
@@ -19069,11 +19092,24 @@ export class DatabaseStorage implements IStorage {
         // 06M-F §7A: record WHO marked it paid, same actor convention as
         // verifiedBy/approvedBy above. Purely additive display data.
         updates.paymentRecordedBy = actorUpper;
-        if (["equipment", "all"].includes(existing.billType.toLowerCase())) {
-          const netPayable = Number(existing.netPayableAmount ?? existing.totalAmount ?? 0);
-          if (paidAmount! < netPayable) {
-            throw Object.assign(new Error("Record the remaining equipment hire balance before marking this bill paid."), { code: "CONFLICT" });
+        const paidItems = await tx.select().from(vendorBillItems).where(eq(vendorBillItems.billId, id));
+        const netPayable = existing.netPayableAmount == null
+          ? getBillFinancialTotals({ ...existing, items: paidItems }).netTotal
+          : Number(existing.netPayableAmount);
+        const difference = Math.round((netPayable - paidAmount! + Number.EPSILON) * 100) / 100;
+        if (difference !== 0) {
+          if (!settlement || !["rounded_off", "carried_forward"].includes(settlement.type) ||
+            !settlement.reason?.trim() || !Number.isFinite(settlement.amount) ||
+            Math.round((settlement.amount + Number.EPSILON) * 100) / 100 !== difference) {
+            throw Object.assign(new Error("Choose Round off / settle or Carry forward and enter a reason for the payment difference."), { code: "CONFLICT" });
           }
+          updates.settlementType = settlement.type;
+          updates.settlementAmount = difference;
+          updates.settlementReason = settlement.reason.trim();
+          updates.settledBy = actorUpper;
+          updates.settledAt = now;
+        } else if (settlement) {
+          throw Object.assign(new Error("A settlement can only be recorded when the paid amount differs from net payable."), { code: "BAD_REQUEST" });
         }
         updates.amountPaid = paidAmount;
       }
