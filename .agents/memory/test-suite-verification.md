@@ -91,6 +91,16 @@ discovery. Starting it inside the test shell kept it available for the run.
 preserve failed setup evidence, and require the expected explicit-skip count
 before treating a full run as a comparable release gate.
 
+In this Nix container, a temporary PostgreSQL server may need
+`unix_socket_directories` set to the cluster's temporary directory; the default
+`/run/postgresql` directory may not exist.
+
+**Why:** PostgreSQL refused startup when it could not create its default socket
+lock file, even though its data directory and TCP listener were valid.
+
+**How to apply:** Pass `-c unix_socket_directories=<tempdir>` to `pg_ctl` and
+keep TCP enabled for test clients.
+
 When retiring a billing input, preserve audit-evidence checks and positive
 bill-save coverage separately from the new non-billability checks.
 
