@@ -1623,7 +1623,7 @@ export interface IStorage {
     id: number,
     onBeforeDelete?: (bill: VendorBillWithItems, executor: any) => Promise<void>,
   ): Promise<boolean>;
-  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null, hlcPartyId?: number | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[]>;
+  getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null, hlcPartyId?: number | null, options?: { includeZeroQuantity?: boolean }): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null })[]>;
   getEquipmentHireVendors(periodFrom: string, periodTo: string): Promise<{
     vendorName: string;
     equipmentCount: number;
@@ -19529,7 +19529,7 @@ export class DatabaseStorage implements IStorage {
     ];
   }
 
-  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null, knownHlcPartyId?: number | null): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null; actualMt?: number | null; physicalQuantity?: number; physicalUnit?: string | null })[]> {
+  async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null, knownHlcPartyId?: number | null, options?: { includeZeroQuantity?: boolean }): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null; actualMt?: number | null; physicalQuantity?: number; physicalUnit?: string | null })[]> {
     const vendorVariants = await this.resolveVendorAliases(vendorName);
     const vendorVariantKeys = new Set(vendorVariants.map(ownerNameKey));
     const selectedIdentities = (await db.select().from(identityVendors)).filter(v =>
@@ -19711,7 +19711,7 @@ export class DatabaseStorage implements IStorage {
           const qty = calcQty({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: row.entryType, openingReading: row.openingReading, closingReading: row.closingReading });
           const hours = calcHours({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime, openingReading: row.openingReading, closingReading: row.closingReading });
           const dieselVal = row.diesel || 0;
-          if (qty > 0) {
+          if (qty > 0 || options?.includeZeroQuantity) {
             const machineName = eqMap.get(row.equipmentId!)?.name || row.machine;
             const label = entryTypeLabel(row.entryType);
             const taskPart = row.task ? ` - ${row.task.toUpperCase()}` : "";
@@ -19749,7 +19749,7 @@ export class DatabaseStorage implements IStorage {
           const qty = calcQty({ hoursOrKmRun: row.hoursOrKmRun, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: et, openingReading: row.openingReading, closingReading: row.closingReading });
           const hours = calcHours({ hoursOrKmRun: row.hoursOrKmRun, startTime: row.startTime, endTime: row.endTime, openingReading: row.openingReading, closingReading: row.closingReading });
           const dieselVal = row.dieselIssued || 0;
-          if (qty > 0) {
+          if (qty > 0 || options?.includeZeroQuantity) {
             const machineName = eqMap.get(row.equipmentId)?.name || "EQUIPMENT";
             const label = entryTypeLabel(et);
             const taskPart = row.task ? ` - ${row.task.toUpperCase()}` : "";

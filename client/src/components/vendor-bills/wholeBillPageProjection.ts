@@ -42,6 +42,9 @@ export function projectVendorBillPageItems({
   })));
   const toRow = (item: ScreenItem): BillExportRow => {
     const diesel = item.description?.match(/DIESEL:\s*(\d+(?:\.\d+)?)L/i);
+    const equipmentLog = item.category === "equipment"
+      ? projectEquipmentLogEvidence(item.equipmentLogEvidence, item.qty, item.unit)
+      : null;
     return {
       date: item.date || "", category: item.category || "other", description: item.description || "",
       qty: item.qty ?? 0, unit: item.unit || "", rate: item.rate || null, amount: item.amount ?? 0,
@@ -57,13 +60,16 @@ export function projectVendorBillPageItems({
             "Lead difference": `lead ${item.leadDistance ?? 0} km (card ${item.transportPricing.cardLeadDistanceKm} km)`,
           } : {}),
         } : {}),
-        ...(item.category === "equipment" ? projectEquipmentLogEvidence(item.equipmentLogEvidence).columns : {}),
+        ...(equipmentLog ? equipmentLog.columns : {}),
         ...(diesel && Number(diesel[1]) > 0 ? { "Diesel (L)": Number(diesel[1]) } : {}),
         ...(item.physicalQuantity != null && item.physicalUnit && item.physicalUnit !== item.unit
           ? { "Physical quantity": item.physicalQuantity, "Physical unit": item.physicalUnit } : {}),
         ...(item.unitRateWarning ? { "Rate warning": item.unitRateWarning } : {}),
         ...(item.billedIn ? { "Billed in": item.billedIn.billNo, "Billed status": item.billedIn.billStatus.toUpperCase() } : {}),
       },
+      ...(equipmentLog && (equipmentLog.lines.length || equipmentLog.mismatchNote)
+        ? { equipmentLogLines: [...equipmentLog.lines, ...(equipmentLog.mismatchNote ? [equipmentLog.mismatchNote] : [])] }
+        : {}),
     };
   };
   if (!shouldGroup && billType !== "all") {

@@ -22,6 +22,8 @@ export type BillExportRow = {
   leadDistance?: number | null;
   /** Already displayed secondary facts, not newly fetched evidence. */
   details?: Record<string, BillExportCell>;
+  /** Read-only log facts rendered beneath the bill line in PDF output. */
+  equipmentLogLines?: string[];
 };
 export type BillExportDateGroup = {
   label: string;
@@ -280,7 +282,10 @@ export const BILL_LINE_HEADERS = [
 ];
 export const BILL_LINE_END_HEADERS = ["Qty", "Unit", "Rate", "Amount"];
 
-export function billSectionTable(section: BillExportSection) {
+export function billSectionTable(
+  section: BillExportSection,
+  options: { equipmentLogLinesInDescription?: boolean } = {},
+) {
   const details = Array.from(new Set(section.groups.flatMap(group => group.rows.flatMap(row => Object.keys(row.details || {})))));
   const headers = [...BILL_LINE_HEADERS, ...details, ...BILL_LINE_END_HEADERS];
   const amountIndex = headers.length - 1;
@@ -296,8 +301,11 @@ export function billSectionTable(section: BillExportSection) {
     values.push(subtotalRow(group.label, group.subtotal));
     for (const row of group.rows) {
       const priced = isBillExportPriced(row);
+      const description = options.equipmentLogLinesInDescription && row.equipmentLogLines?.length
+        ? `${row.description}\n${row.equipmentLogLines.join("\n")}`
+        : row.description;
       values.push([
-        row.date, BILL_EXPORT_SHEET_NAMES[row.category] || row.category, row.description,
+        row.date, BILL_EXPORT_SHEET_NAMES[row.category] || row.category, description,
         getBaseSiteName(row.siteName || ""), row.suppliedTo || "", row.transporter || "", row.vehicleNumber || "", row.receiptNumber || "",
         row.leadDistance ?? null,
         ...details.map(key => row.details?.[key] ?? null),

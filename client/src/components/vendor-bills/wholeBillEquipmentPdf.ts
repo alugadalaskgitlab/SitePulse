@@ -382,6 +382,42 @@ export function buildWholeBillEquipmentPdf(snapshot: WholeBillSnapshot): jsPDF {
   });
 
   let billNotesY = Number((doc as any).lastAutoTable?.finalY || y + 2) + 4;
+  const equipmentUsageRows = populatedBillSections(snapshot)
+    .filter(section => section.category.toLowerCase() === "equipment")
+    .flatMap(section => section.groups.flatMap(group => group.rows))
+    .filter(row => row.equipmentLogLines?.length);
+  if (equipmentUsageRows.length) {
+    if (billNotesY > pageHeight - 84) {
+      doc.addPage("a4", "portrait");
+      billNotesY = drawPdfBillHeader(doc, header) + 3;
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(25, 25, 25);
+    doc.text("EQUIPMENT USAGE DETAILS", 10, billNotesY);
+    const usageBody = equipmentUsageRows.map(row => [
+      dateText(row.date),
+      `${row.description}\n${row.equipmentLogLines!.map(printable).join(" · ")}`,
+      `${Number(row.qty || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })} ${row.unit}`.trim(),
+    ]);
+    autoTable(doc, {
+      startY: billNotesY + 2,
+      head: [["Date", "Equipment line · log detail", "Billed qty"]],
+      body: usageBody,
+      ...INK_LIGHT_TABLE,
+      styles: { ...INK_LIGHT_TABLE.styles, fontSize: 5.8, cellPadding: 1.2, overflow: "linebreak" },
+      headStyles: { ...INK_LIGHT_TABLE.headStyles, fontSize: 5.8 },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 135 },
+        2: { cellWidth: 25, halign: "right" },
+      },
+      margin: { left: 10, right: 10, top: headerBottom + 2, bottom: 70 },
+      showHead: "everyPage",
+      didDrawPage: drawHeader,
+    });
+    billNotesY = Number((doc as any).lastAutoTable?.finalY || billNotesY + 2) + 4;
+  }
   if (snapshot.notes?.trim()) {
     const noteLines = doc.splitTextToSize(printable(`Notes / remarks: ${snapshot.notes.trim()}`), pageWidth - 20);
     if (billNotesY + noteLines.length * 3.2 < pageHeight - 46) {

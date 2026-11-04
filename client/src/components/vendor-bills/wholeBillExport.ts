@@ -194,7 +194,7 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
     }
   }
   for (const section of populatedBillSections(snapshot)) {
-    const content = billSectionTable(section);
+    const content = billSectionTable(section, { equipmentLogLinesInDescription: true });
     table(BILL_EXPORT_SHEET_NAMES[section.category] || section.category, content.headers, content.values);
   }
   const pages = doc.getNumberOfPages();

@@ -4295,7 +4295,10 @@ export default function VendorBills() {
                         data-testid={`input-item-desc-${idx}`}
                       />
                     )}
-                    <EquipmentLogFacts category={item.category} evidence={item.equipmentLogEvidence} rowKey={`form-${idx}`} />
+                    <EquipmentLogFacts
+                      category={item.category} evidence={item.equipmentLogEvidence}
+                      billedQty={item.qty} billedUnit={item.unit} rowKey={`form-${idx}`}
+                    />
                     <TransportPricingNote note={item.transportPricingNote} vendorName={vendorName} />
                   </td>
                   {hasSuppliedOrTransporter && (
@@ -5610,7 +5613,11 @@ export default function VendorBills() {
                         <TransportPricingRow item={item} groupItems={transportGroups.get(idx)} />
                       )}
                       <span>{item.description}</span>
-                      <EquipmentLogFacts category={item.category} evidence={item.equipmentLogEvidence as EquipmentLogEvidence | null | undefined} rowKey={`detail-${idx}`} />
+                      <EquipmentLogFacts
+                        category={item.category}
+                        evidence={item.equipmentLogEvidence as EquipmentLogEvidence | null | undefined}
+                        billedQty={item.qty} billedUnit={item.unit} rowKey={`detail-${idx}`}
+                      />
                       <div className="flex items-center gap-1 flex-wrap">
                         {item.transportPricing?.basis === "trip" && item.transportPricing.actualMt == null && (
                           <Badge variant="outline" className="text-[11px] text-amber-800 border-amber-400 dark:text-amber-300" data-testid={`badge-detail-no-transport-weight-${idx}`}>

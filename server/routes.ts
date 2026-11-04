@@ -13420,7 +13420,10 @@ export async function registerRoutes(
       const needsLegacyEvidence = bill.items.some(item =>
         item.category?.toLowerCase() === "equipment" && item.source === "auto" && item.equipmentId && !item.hireStatementId);
       const candidates = needsLegacyEvidence && bill.periodFrom && bill.periodTo
-        ? await storage.getVendorBillAutoItems(bill.vendorName, "equipment", bill.periodFrom, bill.periodTo)
+        ? await storage.getVendorBillAutoItems(
+          bill.vendorName, "equipment", bill.periodFrom, bill.periodTo,
+          null, null, null, { includeZeroQuantity: true },
+        )
         : [];
       const evidenceItems = resolveSavedEquipmentEvidenceSources(bill.items, candidates);
       res.json({ ...bill, authorName, items: await attachVendorBillEquipmentEvidence(evidenceItems, await getPermittedSiteNames(req)) });
