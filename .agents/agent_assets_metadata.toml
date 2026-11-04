@@ -6219,3 +6219,31 @@ mtime_ms = 1793516303126
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/26cc2fb1-f958-43d4-8a16-2c4cc88d9417/1376a5d2-b9b4-4d24-9de3-8759b72530d8"
 storage_version_token = "1793516584044129"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "dhjnchxTlgIYTSFN6dNqh"
+uri = "file://generated-artifacts/VB-DETAIL-02E-bill-screen.png"
+type = "image"
+title = "Vendor bill detail screen"
+description = "Synthetic test bill showing the Draft actor and linked Vendor Master fields; not a live bill."
+logical_id = "020903cc-072b-4fd1-b4fa-95144ce3bb86"
+content_hash = "sha256:47297dd47b12913034835aa3abbccd18619d89b51b2b8a0c4f2a9e7e8483fa1d"
+size = 173387
+mtime_ms = 1793758672616
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/020903cc-072b-4fd1-b4fa-95144ce3bb86/0594660e-db6b-49e9-b400-264bebdc6691"
+storage_version_token = "1793759091653877"
+content_type = "image/png"
+
+[[outputs]]
+id = "Olb60Mf1RyiZzT6Bp5UzO"
+uri = "file://generated-artifacts/VB-DETAIL-02E-sample.pdf"
+type = "pdf"
+title = "Vendor bill PDF sample"
+description = "One-page A4 portrait export from the same synthetic test bill, with populated Vendor Master details."
+logical_id = "a1e8ccc6-f96b-4eef-9285-778fe3eaadff"
+content_hash = "sha256:043d3442d18fad5a6ebcc83718fa893bf3d029455698706c37846bf2726801c2"
+size = 21090
+mtime_ms = 1793758715124
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a1e8ccc6-f96b-4eef-9285-778fe3eaadff/cac94dae-7392-4b1c-9548-ce7396f95107"
+storage_version_token = "1793759093384554"
+content_type = "application/pdf"

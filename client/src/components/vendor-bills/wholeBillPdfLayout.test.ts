@@ -7,6 +7,19 @@ describe("whole bill PDF layout", () => {
     const snapshot: WholeBillSnapshot = {
       companyName: "Highlane Constructions",
       vendorName: "Vendor",
+      vendorMasterDetails: {
+        name: "Vendor",
+        businessName: "Vendor Equipment Works",
+        address: "17 Road, Jaipur",
+        gstNumber: "08ABCDE1234F1Z5",
+        contactPersonName: "Ramesh Sharma",
+        contactPhone: "9876543210",
+        panNumber: "ABCDE1234F",
+        bankAccountName: "Vendor Equipment Works",
+        bankName: "State Bank",
+        bankAccountNumber: "1234567890",
+        bankIfsc: "SBIN0000123",
+      },
       billNo: "HLC/VB/2026/0064",
       billDate: "2026-10-01",
       periodFrom: "2026-08-01",
@@ -147,5 +160,27 @@ describe("whole bill PDF layout", () => {
     expect(pdf.output()).toContain("Rs. 25,951.61");
     expect(pdf.output()).toContain("3,080.65");
     expect(pdf.output()).toContain("NET PAYABLE");
+    for (const detail of [
+      "Business name: Vendor Equipment Works",
+      "Address: 17 Road, Jaipur",
+      "GSTIN: 08ABCDE1234F1Z5",
+      "Contact person: Ramesh Sharma",
+      "Phone: 9876543210",
+      "PAN: ABCDE1234F",
+      "Bank account name: Vendor Equipment Works",
+      "Bank name: State Bank",
+      "Account number: 1234567890",
+      "IFSC: SBIN0000123",
+    ]) {
+      expect(pdf.output()).toContain(detail);
+    }
+
+    const nameOnlyPdf = buildWholeBillPdf({
+      ...snapshot,
+      vendorMasterDetails: { name: "Vendor" },
+    }).output();
+    for (const label of ["Business name:", "Address:", "GSTIN:", "Contact person:", "Phone:", "PAN:", "Bank account name:", "Bank name:", "Account number:", "IFSC:"]) {
+      expect(nameOnlyPdf).not.toContain(label);
+    }
   });
 });

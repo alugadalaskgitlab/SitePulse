@@ -95,6 +95,47 @@ describe("whole-bill snapshot projection", () => {
 });
 
 describe("whole-bill workbook and PDF", () => {
+  it("includes populated Vendor Master details in PDF headers and omits empty fields", () => {
+    const snapshot = exampleSnapshot();
+    snapshot.vendorMasterDetails = {
+      name: "NARASIMHULU",
+      businessName: "Narasimhulu Transport",
+      address: "17 Road, Jaipur",
+      gstNumber: "08ABCDE1234F1Z5",
+      contactPersonName: "Ramesh Sharma",
+      contactPhone: "9876543210",
+      panNumber: "ABCDE1234F",
+      bankAccountName: "Narasimhulu Transport",
+      bankName: "State Bank",
+      bankAccountNumber: "1234567890",
+      bankIfsc: "SBIN0000123",
+    };
+    const fullPdf = buildWholeBillPdf(snapshot).output();
+    for (const detail of [
+      "Business name: Narasimhulu Transport", "Address: 17 Road, Jaipur",
+      "GSTIN: 08ABCDE1234F1Z5", "Contact person: Ramesh Sharma", "Phone: 9876543210",
+    ]) expect(fullPdf).toContain(detail);
+    for (const detail of [
+      "PAN: ABCDE1234F", "Bank account name: Narasimhulu Transport", "Bank name: State Bank",
+      "Account number: 1234567890", "IFSC: SBIN0000123",
+    ]) expect(fullPdf).toContain(detail);
+
+    const nameOnlyPdf = buildWholeBillPdf({
+      ...snapshot,
+      vendorMasterDetails: { name: "NARASIMHULU" },
+    }).output();
+    for (const label of ["Business name:", "Address:", "GSTIN:", "Contact person:", "Phone:", "PAN:", "Bank account name:", "Bank name:", "Account number:", "IFSC:"]) {
+      expect(nameOnlyPdf).not.toContain(label);
+    }
+    const workbook = buildWholeBillWorkbook(snapshot);
+    const workbookText = Object.values(workbook.Sheets)
+      .flatMap(sheet => XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, { header: 1 }).flat())
+      .map(value => String(value ?? ""))
+      .join(" ");
+    expect(workbookText).not.toContain("Rajesh Equipment Services Pvt Ltd");
+    expect(workbookText).not.toContain("ABCDE1234F");
+  });
+
   it("places Summary first and never creates empty combined category sheets", () => {
     const snapshot = exampleSnapshot();
     snapshot.sections.push({ category: "transport", subtotal: 0, groups: [] });

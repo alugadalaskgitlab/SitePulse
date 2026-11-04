@@ -1,6 +1,7 @@
 import type { BillingDailyRow, EquipmentHireExportData } from "./EquipmentHireBillOutput";
 import type { HireReview } from "@shared/vendorBillLayout";
 import { getBaseSiteName } from "@shared/siteName";
+import type { VendorMasterBillDetails } from "./vendorBillMasterDetails";
 
 export type BillExportCell = string | number | null;
 export type BillExportRow = {
@@ -162,6 +163,7 @@ export type WholeBillSnapshot = {
   /** Set only while building a PDF; the Excel snapshot carries no image data. */
   logoDataUrl?: string | null;
   vendorName: string;
+  vendorMasterDetails?: VendorMasterBillDetails | null;
   billNo: string;
   billDate: string;
   periodFrom: string;

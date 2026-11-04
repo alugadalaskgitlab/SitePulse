@@ -10,6 +10,7 @@ import {
   type HireStatementExport,
 } from "./wholeBillSnapshot";
 import { drawPdfBillFooter, drawPdfBillHeader, INK_LIGHT_TABLE } from "./pdfExportStyle";
+import { vendorBillMasterBottomRows, vendorBillMasterTopRows } from "./vendorBillMasterDetails";
 
 const printable = (value: unknown) => String(value ?? "")
   .replace(/₹/g, "Rs. ").replace(/[−–—→]/g, "-").replace(/×/g, "x").replace(/·/g, " / ");
@@ -204,6 +205,8 @@ function totalRowValue(snapshot: WholeBillSnapshot, statements: HireStatementExp
 
 function makeHeader(snapshot: WholeBillSnapshot, statements: HireStatementExport[]) {
   const details = detailLines(snapshot, statements);
+  const vendorDetails = vendorBillMasterTopRows(snapshot.vendorMasterDetails)
+    .map(({ label, value }) => `${label}: ${value}`);
   return {
     title: "EQUIPMENT HIRE BILL",
     companyName: "Highlane Constructions",
@@ -213,9 +216,14 @@ function makeHeader(snapshot: WholeBillSnapshot, statements: HireStatementExport
     periodFrom: snapshot.periodFrom,
     periodTo: snapshot.periodTo,
     status: snapshot.saved ? snapshot.status.toUpperCase() : "UNSAVED",
-    detailLines: details.length ? details : snapshot.equipmentType
-      ? [`Vendor: ${snapshot.vendorName} · Equipment type: ${snapshot.equipmentType} · Site: ${snapshot.site || "Not recorded"}`]
-      : [],
+    detailLines: [
+      ...(details.length
+        ? details
+        : snapshot.equipmentType
+          ? [`Vendor: ${snapshot.vendorName} · Equipment type: ${snapshot.equipmentType} · Site: ${snapshot.site || "Not recorded"}`]
+          : []),
+      ...vendorDetails,
+    ],
   };
 }
 
@@ -361,7 +369,7 @@ export function buildWholeBillEquipmentPdf(snapshot: WholeBillSnapshot): jsPDF {
       2: { cellWidth: 75 },
       3: { cellWidth: 27, halign: "right" },
     },
-    margin: { left: 10, right: 10, top: headerBottom + 2, bottom: 44 },
+    margin: { left: 10, right: 10, top: headerBottom + 2, bottom: 70 },
     didDrawPage: drawHeader,
     didParseCell: cell => {
       const raw = cell.row.raw as string[] | undefined;
@@ -382,6 +390,26 @@ export function buildWholeBillEquipmentPdf(snapshot: WholeBillSnapshot): jsPDF {
       doc.setTextColor(45, 45, 45);
       doc.text(noteLines, 10, billNotesY);
       billNotesY += noteLines.length * 3.2 + 3;
+    }
+  }
+  const vendorBottomDetails = vendorBillMasterBottomRows(snapshot.vendorMasterDetails);
+  if (vendorBottomDetails.length) {
+    const detailLines = vendorBottomDetails.map(({ label, value }) => `${label}: ${value}`);
+    const detailLineHeight = 3;
+    const detailHeight = 4 + detailLines.reduce((sum, line) =>
+      sum + doc.splitTextToSize(printable(line), pageWidth - 20).length * detailLineHeight, 0);
+    let detailsY = Math.max(billNotesY, pageHeight - 42 - detailHeight - 3);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.setTextColor(45, 45, 45);
+    doc.text("VENDOR TAX / BANK DETAILS", 10, detailsY);
+    detailsY += 3.5;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.2);
+    for (const line of detailLines) {
+      const wrapped = doc.splitTextToSize(printable(line), pageWidth - 20);
+      doc.text(wrapped, 10, detailsY);
+      detailsY += wrapped.length * detailLineHeight;
     }
   }
   addSignatures(doc, pageHeight - 42);

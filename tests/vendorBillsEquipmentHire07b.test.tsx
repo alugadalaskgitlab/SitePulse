@@ -273,23 +273,23 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     });
   });
 
-  it("shows every paid status event with its recorded actor and date/time, and labels missing evidence", async () => {
+  it("shows every paid status event with proper-cased actors and omits missing evidence placeholders", async () => {
     billDetailOverrideForTest = {
       ...historicalBill,
       status: "paid",
       createdAt: "2026-08-01T06:30:00.000Z",
-      authorName: "Original Author",
+      authorName: "ORIGINAL AUTHOR",
       verifiedAt: "2026-08-02 08:15:00",
-      verifiedBy: "Verifier",
+      verifiedBy: "SITE VERIFIER",
       approvedAt: "2026-08-03 09:45:00",
-      approvedBy: "Approver",
+      approvedBy: "SITE APPROVER",
       paidAt: "2026-08-04 10:20:00",
-      paymentRecordedBy: "Cashier",
+      paymentRecordedBy: "CASHIER",
     };
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-81"));
     const statusSteps = await screen.findByTestId("status-steps");
-    for (const text of ["draft", "verified", "approved", "paid", "Original Author", "Verifier", "Approver", "Cashier",
+    for (const text of ["draft", "verified", "approved", "paid", "Original Author", "Site Verifier", "Site Approver", "Cashier",
       "01-Aug-26 06:30", "02-Aug-26 08:15", "03-Aug-26 09:45", "04-Aug-26 10:20"]) {
       expect(statusSteps.textContent).toContain(text);
     }
@@ -311,10 +311,63 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-81"));
     const missingEvidenceSteps = await screen.findByTestId("status-steps");
-    expect(missingEvidenceSteps.textContent).toContain("author not recorded");
-    expect(missingEvidenceSteps.textContent).toContain("not recorded");
-    expect(missingEvidenceSteps.textContent).toContain("date and time not recorded");
-    expect(missingEvidenceSteps.textContent).toContain("time not recorded");
+    expect(missingEvidenceSteps.textContent).not.toMatch(/not recorded/i);
+    expect(missingEvidenceSteps.textContent).toContain("02-Aug-26");
+    expect(missingEvidenceSteps.textContent).toContain("04-Aug-26");
+    expect(screen.queryByTestId("status-step-meta-draft")).toBeNull();
+    expect(screen.queryByTestId("status-step-meta-verified")).toBeTruthy();
+    expect(screen.queryByTestId("status-step-meta-approved")).toBeNull();
+    expect(screen.queryByTestId("status-step-meta-paid")).toBeTruthy();
+  });
+
+  it("shows only the raiser on a draft and renders linked Vendor Master details only when populated", async () => {
+    billDetailOverrideForTest = {
+      ...historicalBill,
+      status: "draft",
+      createdAt: "2026-08-01T06:30:00.000Z",
+      authorName: "SUNIL KUMAR",
+      vendorId: 501,
+      vendorMasterDetails: {
+        name: "HISTORICAL HIRE",
+        businessName: "HISTORICAL HIRE EQUIPMENT",
+        address: "17 ROAD, JAIPUR",
+        gstNumber: "08ABCDE1234F1Z5",
+        contactPersonName: "RAJESH SHARMA",
+        contactPhone: "9876543210",
+        panNumber: "ABCDE1234F",
+        bankAccountName: "HISTORICAL HIRE",
+        bankName: "STATE BANK",
+        bankAccountNumber: "1234567890",
+        bankIfsc: "SBIN0000123",
+      },
+    };
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-81"));
+    const statusSteps = await screen.findByTestId("status-steps");
+    expect(statusSteps.textContent).toContain("Sunil Kumar");
+    expect(statusSteps.textContent).toContain("01-Aug-26 06:30");
+    expect(statusSteps.textContent).not.toMatch(/not recorded/i);
+    expect(screen.queryByTestId("status-step-meta-verified")).toBeNull();
+    expect(screen.queryByTestId("status-step-meta-approved")).toBeNull();
+    expect(screen.queryByTestId("status-step-meta-paid")).toBeNull();
+
+    const topDetails = screen.getByTestId("vendor-master-top-details");
+    for (const value of ["HISTORICAL HIRE EQUIPMENT", "17 ROAD, JAIPUR", "08ABCDE1234F1Z5", "Rajesh Sharma", "9876543210"]) {
+      expect(topDetails.textContent).toContain(value);
+    }
+    const bottomDetails = screen.getByTestId("vendor-master-bottom-details");
+    for (const value of ["ABCDE1234F", "HISTORICAL HIRE", "STATE BANK", "1234567890", "SBIN0000123"]) {
+      expect(bottomDetails.textContent).toContain(value);
+    }
+
+    cleanup();
+    queryClient.clear();
+    billDetailOverrideForTest = { ...historicalBill, status: "draft", vendorId: 502, vendorMasterDetails: { name: "ONLY NAME" } };
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-81"));
+    expect((await screen.findByTestId("text-vendor-name")).textContent).toBe("HISTORICAL HIRE");
+    expect(screen.queryByTestId("vendor-master-top-details")).toBeNull();
+    expect(screen.queryByTestId("vendor-master-bottom-details")).toBeNull();
   });
 
   it("confirms an approved edit before writes, keeps cancel inert, and saves drafts without confirmation", async () => {
@@ -362,7 +415,7 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     draftConfirm.mockRestore();
   });
 
-  it("shows the original author beside the draft creation date or the explicit missing-author notice", async () => {
+  it("shows a recorded draft author and omits an unrecorded author", async () => {
     billDetailOverrideForTest = {
       ...historicalBill,
       createdAt: "2026-09-01T08:30:00.000Z",
@@ -379,7 +432,7 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     billDetailOverrideForTest = { ...historicalBill, authorName: null };
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-81"));
-    expect((await screen.findByTestId("status-steps")).textContent).toContain("author not recorded");
+    expect((await screen.findByTestId("status-steps")).textContent).not.toMatch(/author not recorded|not recorded/i);
   });
 
   it("Test A: discovers a vendor through the generic activity endpoint and pulls equipment items", async () => {

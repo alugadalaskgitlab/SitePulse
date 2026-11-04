@@ -13,6 +13,7 @@ import {
   billSectionTable, billSummaryRows, populatedBillSections, wholeBillFilename, wholeBillPricingNotes,
   type BillExportCell, type WholeBillSnapshot,
 } from "./wholeBillSnapshot";
+import { vendorBillMasterBottomRows, vendorBillMasterTopRows } from "./vendorBillMasterDetails";
 
 export type WholeBillExportFormat = "xlsx" | "pdf";
 const printable = (value: BillExportCell) => String(value ?? "")
@@ -87,7 +88,20 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
     return buildWholeBillEquipmentPdf(snapshot);
   }
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-  const pageHeaderHeight = 52;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const headerLines = [
+    `Vendor: ${snapshot.vendorName} | Bill: ${snapshot.saved ? snapshot.billNo : "Not yet saved"} | Status: ${billExportStatus(snapshot)}`,
+    `Bill date: ${snapshot.billDate} | Period: ${snapshot.periodFrom} to ${snapshot.periodTo}`,
+    `Site: ${getBaseSiteName(snapshot.site || "")} | Bill type: ${snapshot.billTypeLabel} | Generated: ${snapshot.generatedAt}`,
+    ...(snapshot.equipmentType ? [`Equipment type: ${snapshot.equipmentType}`] : []),
+    ...vendorBillMasterTopRows(snapshot.vendorMasterDetails).map(({ label, value }) => `${label}: ${value}`),
+  ];
+  let headerEndY = 16;
+  for (const line of headerLines) {
+    headerEndY += doc.splitTextToSize(printable(line), pageWidth - 20).length * 3.4 + 1;
+  }
+  const pageHeaderHeight = Math.max(52, headerEndY + 3);
   const renderTable = (title: string, headers: string[], rows: BillExportCell[][], startY: number, addPage: boolean) => {
     if (addPage) doc.addPage();
     autoTable(doc, {
@@ -140,9 +154,24 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
       startY, false);
   }
   const abstractTableEnd = Number((doc as any).lastAutoTable?.finalY || pageHeaderHeight);
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const signatureY = Math.min(abstractTableEnd + 9, pageHeight - 27);
+  const vendorBottomRows = vendorBillMasterBottomRows(snapshot.vendorMasterDetails);
+  let signatureY = Math.min(abstractTableEnd + 9, pageHeight - 27);
+  if (vendorBottomRows.length) {
+    let detailY = abstractTableEnd + 5;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.setTextColor(45, 45, 45);
+    doc.text("VENDOR TAX / BANK DETAILS", 16, detailY);
+    detailY += 4;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.5);
+    for (const { label, value } of vendorBottomRows) {
+      const wrapped = doc.splitTextToSize(printable(`${label}: ${value}`), pageWidth - 32);
+      doc.text(wrapped, 16, detailY);
+      detailY += wrapped.length * 3.2;
+    }
+    signatureY = Math.min(detailY + 5, pageHeight - 27);
+  }
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(70, 70, 70);
@@ -179,14 +208,8 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
     doc.text(printable(`${snapshot.companyName} / VENDOR BILL`), 10, 10);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    const lines = [
-      `Vendor: ${snapshot.vendorName} | Bill: ${snapshot.saved ? snapshot.billNo : "Not yet saved"} | Status: ${billExportStatus(snapshot)}`,
-      `Bill date: ${snapshot.billDate} | Period: ${snapshot.periodFrom} to ${snapshot.periodTo}`,
-      `Site: ${getBaseSiteName(snapshot.site || "")} | Bill type: ${snapshot.billTypeLabel} | Generated: ${snapshot.generatedAt}`,
-      ...(snapshot.equipmentType ? [`Equipment type: ${snapshot.equipmentType}`] : []),
-    ];
     let y = 16;
-    for (const line of lines) {
+    for (const line of headerLines) {
       const wrapped = doc.splitTextToSize(printable(line), width - 20);
       doc.text(wrapped, 10, y);
       y += wrapped.length * 3.4 + 1;

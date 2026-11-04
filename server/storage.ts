@@ -17847,10 +17847,28 @@ export class DatabaseStorage implements IStorage {
     const linkedVendorName = bill?.vendorId == null
       ? null
       : (await currentVendorNamesByIds([bill.vendorId])).get(Number(bill.vendorId)) ?? null;
+    const [vendorMasterDetails] = bill?.vendorId == null
+      ? []
+      : await db.select({
+          name: identityVendors.name,
+          businessName: identityVendors.businessName,
+          address: identityVendors.address,
+          gstNumber: identityVendors.gstNumber,
+          contactPersonName: identityVendors.contactPersonName,
+          contactPhone: identityVendors.contactPhone,
+          panNumber: identityVendors.panNumber,
+          bankAccountName: identityVendors.bankAccountName,
+          bankName: identityVendors.bankName,
+          bankAccountNumber: identityVendors.bankAccountNumber,
+          bankIfsc: identityVendors.bankIfsc,
+        }).from(identityVendors)
+          .where(eq(identityVendors.id, bill.vendorId))
+          .limit(1);
     return bill
       ? {
           ...bill,
            linkedVendorName,
+           vendorMasterDetails: vendorMasterDetails ?? null,
           hireStatements: (Array.isArray(bill.hireStatements) ? bill.hireStatements : []).map((statement: any) => {
             const { equipment, ...savedStatement } = statement;
             return { ...savedStatement, equipmentType: equipment?.equipmentType || null };

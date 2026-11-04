@@ -53,7 +53,9 @@ import SavedBillCalendars from "@/components/vendor-bills/SavedBillCalendars";
 import { calendarMonths, projectBillHireReviews, projectHireReview } from "@shared/vendorBillLayout";
 import { buildSavedBillPresentationRows } from "@shared/vendorBillPresentation";
 import { vendorIdentityDisplayName } from "@shared/vendorIdentityDisplay";
+import { formatPersonName } from "@shared/personName";
 import { VendorBillFinancialSummary, VendorRunningStatement } from "@/components/vendor-bills/VendorBillReview";
+import { vendorBillMasterBottomRows, vendorBillMasterTopRows } from "@/components/vendor-bills/vendorBillMasterDetails";
 import HireActivityBreakdownCalendar, { hireActivityBreakdownSheetRows } from "@/components/vendor-bills/HireActivityBreakdownCalendar";
 import WholeBillExportButtons from "@/components/vendor-bills/WholeBillExportButtons";
 import CompleteVendorBillExportMenu, { downloadCompleteVendorBillExport, type CompleteVendorBillExportFormat } from "@/components/vendor-bills/CompleteVendorBillExportMenu";
@@ -88,22 +90,22 @@ const formatDate = (dateStr: string | null | undefined) => {
 };
 
 const formatTimestamp = (ts: string | Date | null | undefined): string => {
-  if (!ts) return "date and time not recorded";
+  if (!ts) return "";
   try {
     let d: Date;
     if (typeof ts === "string" && /^\d{4}-\d{2}-\d{2}$/.test(ts)) {
       d = new Date(`${ts}T00:00:00`);
-      if (Number.isNaN(d.getTime()) || format(d, "yyyy-MM-dd") !== ts) return "date and time not recorded";
-      return `${format(d, "dd-MMM-yy")} · time not recorded`;
+      if (Number.isNaN(d.getTime()) || format(d, "yyyy-MM-dd") !== ts) return "";
+      return format(d, "dd-MMM-yy");
     }
     if (typeof ts === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(ts)) {
       d = new Date(ts.replace(" ", "T") + "Z");
     } else {
       d = new Date(ts as string);
     }
-    if (Number.isNaN(d.getTime())) return "date and time not recorded";
+    if (Number.isNaN(d.getTime())) return "";
     return format(d, "dd-MMM-yy HH:mm");
-  } catch { return "date and time not recorded"; }
+  } catch { return ""; }
 };
 
 type ViewMode = "list" | "form" | "detail";
@@ -2965,12 +2967,12 @@ export default function VendorBills() {
     const stepMeta: Record<string, { timestamp?: string | null; actor?: string | null }> = {
       draft: {
         timestamp: formatTimestamp(meta?.createdAt),
-        actor: meta?.authorName?.trim() || "author not recorded",
+        actor: formatPersonName(meta?.authorName),
       },
-      verified: { timestamp: formatTimestamp(meta?.verifiedAt), actor: meta?.verifiedBy?.trim() || "not recorded" },
-      approved: { timestamp: formatTimestamp(meta?.approvedAt), actor: meta?.approvedBy?.trim() || "not recorded" },
+      verified: { timestamp: formatTimestamp(meta?.verifiedAt), actor: formatPersonName(meta?.verifiedBy) },
+      approved: { timestamp: formatTimestamp(meta?.approvedAt), actor: formatPersonName(meta?.approvedBy) },
       // 06M-F §7A: show who marked it paid, same as verified/approved actors.
-      paid: { timestamp: formatTimestamp(meta?.paidAt), actor: meta?.paymentRecordedBy?.trim() || "not recorded" },
+      paid: { timestamp: formatTimestamp(meta?.paidAt), actor: formatPersonName(meta?.paymentRecordedBy) },
     };
     return (
       <div className="flex items-start gap-1 flex-wrap" data-testid="status-steps">
@@ -2991,11 +2993,11 @@ export default function VendorBills() {
                   {isActive && <Circle className="w-2 h-2 mr-1 fill-current" />}
                   {step}
                 </Badge>
-                {(isDone || isActive) && (
-                  <span className="text-[12px] text-muted-foreground whitespace-nowrap leading-tight">{sm.timestamp}</span>
-                )}
-                {(isDone || isActive) && (
-                  <span className="text-[12px] font-medium text-muted-foreground whitespace-nowrap leading-tight">{sm.actor}</span>
+                {(isDone || isActive) && (sm.timestamp || sm.actor) && (
+                  <div className="flex flex-col items-center gap-0.5" data-testid={`status-step-meta-${step}`}>
+                    {sm.timestamp && <span className="text-[12px] text-muted-foreground whitespace-nowrap leading-tight">{sm.timestamp}</span>}
+                    {sm.actor && <span className="text-[12px] font-medium text-muted-foreground whitespace-nowrap leading-tight">{sm.actor}</span>}
+                  </div>
                 )}
                 {step === "paid" && (isDone || isActive) && <VendorBillPaidAccount paymentAccountKey={meta?.paymentAccountKey} />}
               </div>
@@ -5153,6 +5155,7 @@ export default function VendorBills() {
         equipmentType: Array.from(new Set((b.hireStatements || [])
           .map((statement: any) => String(statement.equipmentType || "").trim()).filter(Boolean))).join(", ") || undefined,
         billType: type, billTypeLabel: getBillTypeLabel(type), saved: true, status: bill.status,
+        vendorMasterDetails: b.vendorMasterDetails ?? null,
         generatedAt: new Date().toISOString(), notes: bill.notes || "",
         financialRows: buildSavedBillPresentationRows(b, detailFinancials),
         hireReviews: projectBillHireReviews(b),
@@ -5237,6 +5240,15 @@ export default function VendorBills() {
               <div>
                 <p className="text-sm text-muted-foreground uppercase">Vendor</p>
                 <p className="text-xl font-bold" data-testid="text-vendor-name">{detailVendorName}</p>
+                {vendorBillMasterTopRows(bill.vendorMasterDetails).length > 0 && (
+                  <dl className="mt-1 space-y-0.5 text-sm text-muted-foreground" data-testid="vendor-master-top-details">
+                    {vendorBillMasterTopRows(bill.vendorMasterDetails).map(({ label, value }) => (
+                      <div key={label} className="flex flex-wrap gap-x-1">
+                        <dt className="font-medium">{label}:</dt><dd>{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
                 {savedHireTerms.length > 0 && <div className="mt-2 space-y-1 rounded-md bg-muted/30 p-2 text-xs" data-testid="equipment-hire-header-details">
                   <p className="font-semibold">Equipment hire terms</p>
                   {savedHireTerms.map((term: any) => <div key={term.key} className="flex flex-wrap gap-x-4 gap-y-1">
@@ -5802,6 +5814,20 @@ export default function VendorBills() {
             })()}
           </CardContent>
         </Card>
+
+        {vendorBillMasterBottomRows(bill.vendorMasterDetails).length > 0 && (
+          <Card data-testid="vendor-master-bottom-details">
+            <CardContent className="py-3">
+              <dl className="grid grid-cols-1 gap-x-5 gap-y-1 text-sm sm:grid-cols-2">
+                {vendorBillMasterBottomRows(bill.vendorMasterDetails).map(({ label, value }) => (
+                  <div key={label} className="flex flex-wrap gap-x-1">
+                    <dt className="font-medium">{label}:</dt><dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </CardContent>
+          </Card>
+        )}
 
         {bill.notes && (
           <Card>

@@ -2596,6 +2596,20 @@ export type VendorBillWithItems = VendorBill & {
   hireStatements?: (HireStatement & { exceptions: HireStatementException[] })[];
   /** Bill Detail-only resolved author display name; never persisted. */
   authorName?: string | null;
+  /** Read-only linked Vendor Master fields for bill display and export. */
+  vendorMasterDetails?: {
+    name: string;
+    businessName: string | null;
+    address: string | null;
+    gstNumber: string | null;
+    contactPersonName: string | null;
+    contactPhone: string | null;
+    panNumber: string | null;
+    bankAccountName: string | null;
+    bankName: string | null;
+    bankAccountNumber: string | null;
+    bankIfsc: string | null;
+  } | null;
 };
 
 const hireGroupDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
