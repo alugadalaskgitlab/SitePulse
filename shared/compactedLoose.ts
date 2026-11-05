@@ -45,7 +45,8 @@ export function compactedLooseProfileFromInputs(inputs: {
     rolledDensity: parseNumericInput(inputs.rolledDensity),
     rollingPct: parseNumericInput(inputs.rollingPct),
     looseFactor: extraLoosePct == null ? null : looseFactorFromExtraLoosePercent(extraLoosePct),
-    wastagePct: parseNumericInput(inputs.wastagePct),
+    // Wastage is optional; an empty field means 0%, not an incomplete profile.
+    wastagePct: parseNumericInput(inputs.wastagePct) ?? 0,
   };
 }
 
@@ -102,13 +103,12 @@ export function hasCompleteCompactedLooseProfile(
   rolledDensity: number;
   rollingPct: number;
   looseFactor: number;
-  wastagePct: number;
 } {
   return !!profile &&
     finite(profile.rolledDensity) && profile.rolledDensity > 0 &&
     finite(profile.rollingPct) && profile.rollingPct > 0 &&
     finite(profile.looseFactor) && profile.looseFactor >= 1 &&
-    finite(profile.wastagePct) && profile.wastagePct >= 0;
+    (profile.wastagePct == null || (finite(profile.wastagePct) && profile.wastagePct >= 0));
 }
 
 export function resolveCompactedLooseProfile(
@@ -130,13 +130,14 @@ export function calculateCompactedLooseQuantity(
   if (!Number.isFinite(compactedCum) || compactedCum < 0 || !hasCompleteCompactedLooseProfile(profile)) {
     return null;
   }
+  const wastagePct = profile.wastagePct ?? 0;
   const compactedDensity = profile.rolledDensity * profile.rollingPct / 100;
   const looseWeightPerCum = compactedDensity / profile.looseFactor;
   const compactedMt = compactedCum * compactedDensity;
   const looseCum = compactedCum * profile.looseFactor;
   const looseCft = looseCum * CUBIC_FEET_PER_CUBIC_METRE;
-  const wastageMt = compactedMt * profile.wastagePct / 100;
-  const wastageLooseCum = looseCum * profile.wastagePct / 100;
+  const wastageMt = compactedMt * wastagePct / 100;
+  const wastageLooseCum = looseCum * wastagePct / 100;
   const wastageLooseCft = wastageLooseCum * CUBIC_FEET_PER_CUBIC_METRE;
   return {
     compactedDensity,
@@ -155,12 +156,14 @@ export function calculateCompactedLooseQuantity(
 }
 
 export function looseFactorFromExtraLoosePercent(percent: number): number | null {
-  return Number.isFinite(percent) && percent >= 0 ? 1 + percent / 100 : null;
+  if (!Number.isFinite(percent) || percent < 0) return null;
+  return Math.round((1 + percent / 100) * 10_000) / 10_000;
 }
 
 export function extraLoosePercentFromFactor(factor: NumericInput): number | null {
   const value = parseNumericInput(factor);
-  return value != null && value >= 1 ? (value - 1) * 100 : null;
+  if (value == null || value < 1) return null;
+  return Math.round((value - 1) * 100 * 100) / 100;
 }
 
 export type MaterialQuantityBasis = "compacted" | "loose";

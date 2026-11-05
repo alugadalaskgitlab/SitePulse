@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 const fixtures = vi.hoisted(() => ({
   materials: [] as any[],
   templates: [] as any[],
+  mutationPayloads: [] as any[],
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -14,7 +15,20 @@ vi.mock("@tanstack/react-query", () => ({
     if (key === "/api/plant-module/mix-templates") return { data: fixtures.templates, isLoading: false, refetch: vi.fn() };
     return { data: [], isLoading: false, refetch: vi.fn() };
   },
-  useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useMutation: () => ({
+    mutate: (variables: any) => {
+      fixtures.mutationPayloads.push(variables);
+      if (variables?.name && variables?.procurementRoute) {
+        fixtures.materials.push({
+          ...variables,
+          id: 2,
+          bulkDensity: variables.bulkDensity ?? null,
+          savedBulkDensity: variables.bulkDensity ?? null,
+        });
+      }
+    },
+    isPending: false,
+  }),
 }));
 
 vi.mock("@/lib/queryClient", () => ({
@@ -81,8 +95,13 @@ function previewText(testId: string): string {
 
 describe("compacted-and-loose Material Master forms", () => {
   beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
     fixtures.materials = [];
     fixtures.templates = [];
+    fixtures.mutationPayloads = [];
   });
 
   afterEach(cleanup);
@@ -110,6 +129,9 @@ describe("compacted-and-loose Material Master forms", () => {
     render(<MaterialMaster />);
     fireEvent.click(screen.getByTestId("button-add-material"));
 
+    fireEvent.change(screen.getByTestId("input-material-name"), { target: { value: "GSB" } });
+    fireEvent.click(screen.getByTestId("select-material-procurement-route"));
+    fireEvent.click(await screen.findByRole("option", { name: /Bulk Material/ }));
     fireEvent.change(screen.getByTestId("input-rolled-density"), { target: { value: "2.2" } });
     fireEvent.change(screen.getByTestId("input-rolling-pct"), { target: { value: "98" } });
     fireEvent.change(screen.getByTestId("input-extra-loose-pct"), { target: { value: "20" } });
@@ -121,6 +143,22 @@ describe("compacted-and-loose Material Master forms", () => {
     const density = screen.getByTestId("input-bulk-density") as HTMLInputElement;
     expect(density.value).toBe("1.80");
     expect(density.readOnly).toBe(true);
+
+    fireEvent.click(screen.getByTestId("button-save-material"));
+    expect(fixtures.mutationPayloads[0].looseFactor).toBe(1.2);
+    expect(fixtures.mutationPayloads[0].wastagePct).toBe(0);
+
+    cleanup();
+    render(<MaterialMaster />);
+    fireEvent.click(screen.getByTestId("button-edit-material-2"));
+    expect((await screen.findByTestId("input-extra-loose-pct") as HTMLInputElement).value).toBe("20");
+    const reopenedWastage = screen.getByTestId("input-wastage-pct") as HTMLInputElement;
+    expect(reopenedWastage.value).toBe("0");
+    expect(reopenedWastage.placeholder).toBe("");
+    expect(previewText("compacted-loose-preview")).toContain("Weight 215.6 MT · Loose 120 cum (4,238 CFT)");
+    const reopenedDensity = screen.getByTestId("input-bulk-density") as HTMLInputElement;
+    expect(reopenedDensity.value).toBe("1.80");
+    expect(reopenedDensity.readOnly).toBe(true);
   });
 
   it("keeps material and mix-template profile state independent while showing the same calculation", async () => {

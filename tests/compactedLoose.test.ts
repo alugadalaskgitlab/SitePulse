@@ -5,6 +5,7 @@ import {
   compactedLooseProfileFromInputs,
   extraLoosePercentFromFactor,
   looseWeightPerCumFromProfile,
+  looseFactorFromExtraLoosePercent,
   resolveCompactedLooseProfile,
   withEffectiveMaterialDensity,
   type CompactedLooseProfile,
@@ -75,6 +76,23 @@ describe("compacted and loose quantities", () => {
     expect(calculateCompactedLooseQuantity(100, noExtraLoose)).not.toBeNull();
   });
 
+  it("defaults empty wastage to zero while keeping the three conversion inputs sufficient", () => {
+    const profileWithoutWastage = compactedLooseProfileFromInputs({
+      rolledDensity: "2.2",
+      rollingPct: "98",
+      extraLoosePct: "20",
+      wastagePct: "",
+    });
+    expect(profileWithoutWastage.wastagePct).toBe(0);
+    expect(calculateCompactedLooseQuantity(100, profileWithoutWastage)?.requiredMt).toBeCloseTo(215.6);
+    expect(calculateCompactedLooseQuantity(100, {
+      rolledDensity: 2.2,
+      rollingPct: 98,
+      looseFactor: 1.2,
+      wastagePct: null,
+    })?.wastageMt).toBe(0);
+  });
+
   it("accepts saved numeric profile values as numbers or numeric strings", () => {
     for (const values of [
       { rolledDensity: 2.2, rollingPct: 98, extraLoosePct: 20, wastagePct: 0 },
@@ -85,6 +103,8 @@ describe("compacted and loose quantities", () => {
       expect(calculateCompactedLooseQuantity(100, parsed)?.looseCum).toBeCloseTo(120);
     }
     expect(extraLoosePercentFromFactor("1.2")).toBeCloseTo(20);
+    expect(extraLoosePercentFromFactor(1.125)).toBe(12.5);
+    expect(looseFactorFromExtraLoosePercent(12.345)).toBe(1.1235);
   });
 
   it("uses calculated loose density for conversions without persisting it over saved bulk density", () => {

@@ -3157,7 +3157,7 @@ export function MaterialMaster() {
                   <div>
                     <Label htmlFor="material-wastage-pct">Wastage</Label>
                     <Input id="material-wastage-pct" type="number" min="0" step="0.1" value={wastagePct}
-                      onChange={e => setWastagePct(e.target.value)} placeholder="0" data-testid="input-wastage-pct" />
+                      onChange={e => setWastagePct(e.target.value)} data-testid="input-wastage-pct" />
                     <p className="text-xs text-muted-foreground mt-0.5">%</p>
                   </div>
                 </div>
@@ -3937,7 +3937,7 @@ export function MixTemplateMaster() {
                   <div>
                     <Label htmlFor="template-wastage-pct">Wastage</Label>
                     <Input id="template-wastage-pct" type="number" min="0" step="0.1" value={wastagePct}
-                      onChange={e => setWastagePct(e.target.value)} placeholder="0" data-testid="input-template-wastage-pct" />
+                      onChange={e => setWastagePct(e.target.value)} data-testid="input-template-wastage-pct" />
                     <p className="text-xs text-muted-foreground mt-0.5">%</p>
                   </div>
                 </div>
