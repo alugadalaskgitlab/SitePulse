@@ -81,16 +81,16 @@ export default function MaterialBalanceReport() {
 
   const exportRows = useMemo(() => (reportQuery.data?.rows ?? []).map((row) => ({
     Material: row.materialName,
-    "BOQ rolled quantity": `${number(row.rolledQuantity)} ${row.rolledUom}`,
+    "BOQ rolled quantity": row.valuesConfigured ? `${number(row.rolledQuantity)} ${row.rolledUom}` : "Values not set",
     "Required compacted (Cum)": row.valuesConfigured ? number(row.compactedCum) : "Values not set",
     "Required (MT)": row.valuesConfigured ? number(row.requiredMt) : "Values not set",
     "Required loose (Cum)": row.valuesConfigured ? number(row.requiredLooseCum) : "Values not set",
     "Required loose (CFT)": row.valuesConfigured ? number(row.requiredLooseCft) : "Values not set",
     "Wastage (MT)": row.valuesConfigured ? number(row.wastageMt) : "Values not set",
-    "Wastage (Cum)": row.valuesConfigured ? number(row.wastageCum) : "Values not set",
-    "Received (MT)": number(row.receivedMt),
-    "Used (MT)": number(row.usedMt),
-    "Difference (MT)": number(row.differenceMt),
+    "Wastage (loose Cum)": row.valuesConfigured ? number(row.wastageCum) : "Values not set",
+    "Received (MT)": row.valuesConfigured ? number(row.receivedMt) : "Values not set",
+    "Used (MT)": row.valuesConfigured ? number(row.usedMt) : "Values not set",
+    "Difference (MT)": row.valuesConfigured ? number(row.differenceMt) : "Values not set",
     Sources: [...row.receivedSources, ...row.usedSources].join("; "),
     Attribution: row.attributions.join(", "),
   })), [reportQuery.data]);
@@ -115,17 +115,17 @@ export default function MaterialBalanceReport() {
     doc.text("Difference = Received minus Used. BOQ requirement is the full current project quantity.", 14, 27);
     autoTable(doc, {
       startY: 32,
-      head: [["Material", "BOQ rolled", "Required comp. Cum", "Required MT", "Loose Cum / CFT", "Wastage MT / Cum", "Received MT", "Used MT", "Difference MT", "Source / attribution"]],
+      head: [["Material", "BOQ rolled", "Required comp. Cum", "Required MT", "Loose Cum / CFT", "Wastage MT / loose Cum", "Received MT", "Used MT", "Difference MT", "Source / attribution"]],
       body: report.rows.map((row) => [
         row.materialName,
-        `${number(row.rolledQuantity)} ${row.rolledUom}`,
+        row.valuesConfigured ? `${number(row.rolledQuantity)} ${row.rolledUom}` : "Values not set",
         row.valuesConfigured ? number(row.compactedCum) : "Values not set",
         row.valuesConfigured ? number(row.requiredMt) : "Values not set",
         row.valuesConfigured ? `${number(row.requiredLooseCum)} / ${number(row.requiredLooseCft, 0)}` : "Values not set",
         row.valuesConfigured ? `${number(row.wastageMt)} / ${number(row.wastageCum)}` : "Values not set",
-        number(row.receivedMt),
-        number(row.usedMt),
-        number(row.differenceMt),
+        row.valuesConfigured ? number(row.receivedMt) : "Values not set",
+        row.valuesConfigured ? number(row.usedMt) : "Values not set",
+        row.valuesConfigured ? number(row.differenceMt) : "Values not set",
         [...row.attributions, ...row.receivedSources, ...row.usedSources].join("; "),
       ]),
       styles: { fontSize: 6.5, textColor: [45, 45, 45], lineColor: [175, 175, 175] },
@@ -190,7 +190,7 @@ export default function MaterialBalanceReport() {
               <table className="min-w-[1320px] w-full text-sm">
                 <thead className="bg-muted/60 text-left">
                   <tr>
-                    {["Material", "BOQ rolled quantity", "Required compacted Cum", "Required MT", "Loose Cum", "Loose CFT", "Wastage MT", "Wastage Cum", "Received MT", "Used MT", "Difference MT", "Sources / attribution"].map((heading) => (
+                    {["Material", "BOQ rolled quantity", "Required compacted Cum", "Required MT", "Loose Cum", "Loose CFT", "Wastage MT", "Wastage loose Cum", "Received MT", "Used MT", "Difference MT", "Sources / attribution"].map((heading) => (
                       <th key={heading} className="whitespace-nowrap px-3 py-2 font-semibold">{heading}</th>
                     ))}
                   </tr>
@@ -199,16 +199,16 @@ export default function MaterialBalanceReport() {
                   {reportQuery.data.rows.map((row) => (
                     <tr key={row.materialName} className="border-t align-top">
                       <td className="px-3 py-2 font-medium">{row.materialName}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{number(row.rolledQuantity)} {row.rolledUom}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{row.valuesConfigured ? `${number(row.rolledQuantity)} ${row.rolledUom}` : "Values not set"}</td>
                       <td className="px-3 py-2">{row.valuesConfigured ? number(row.compactedCum) : "Values not set"}</td>
                       <td className="px-3 py-2">{row.valuesConfigured ? number(row.requiredMt) : "Values not set"}</td>
                       <td className="px-3 py-2">{row.valuesConfigured ? number(row.requiredLooseCum) : "Values not set"}</td>
                       <td className="px-3 py-2">{row.valuesConfigured ? number(row.requiredLooseCft, 0) : "Values not set"}</td>
                       <td className="px-3 py-2">{row.valuesConfigured ? number(row.wastageMt) : "Values not set"}</td>
                       <td className="px-3 py-2">{row.valuesConfigured ? number(row.wastageCum) : "Values not set"}</td>
-                      <td className="px-3 py-2">{number(row.receivedMt)}</td>
-                      <td className="px-3 py-2">{number(row.usedMt)}</td>
-                      <td className="px-3 py-2">{number(row.differenceMt)}</td>
+                      <td className="px-3 py-2">{row.valuesConfigured ? number(row.receivedMt) : "Values not set"}</td>
+                      <td className="px-3 py-2">{row.valuesConfigured ? number(row.usedMt) : "Values not set"}</td>
+                      <td className="px-3 py-2">{row.valuesConfigured ? number(row.differenceMt) : "Values not set"}</td>
                       <td className="px-3 py-2 text-xs">
                         {[...row.attributions, ...row.receivedSources, ...row.usedSources].join(" · ") || "No linked actuals"}
                       </td>

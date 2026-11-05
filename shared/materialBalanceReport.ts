@@ -181,6 +181,17 @@ export function buildMaterialBalanceRows(
   }
 
   for (const row of rows.values()) {
+    if (!row.valuesConfigured) {
+      row.rolledQuantity = null;
+      row.compactedCum = null;
+      row.requiredMt = null;
+      row.requiredLooseCum = null;
+      row.requiredLooseCft = null;
+      row.wastageMt = null;
+      row.wastageCum = null;
+      row.receivedMt = null;
+      row.usedMt = null;
+    }
     row.differenceMt = row.receivedMt == null || row.usedMt == null
       ? null
       : row.receivedMt - row.usedMt;

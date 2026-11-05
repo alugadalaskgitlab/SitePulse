@@ -128,6 +128,7 @@ import {
 } from "@shared/executionArrangementCategories";
 import { normalizeMaterialLabel, checkMappingUomCompatibility } from "@shared/boqNormalise";
 import { buildMaterialBalanceRows, type MaterialBalanceQuantity, type MaterialBalanceRequirement } from "@shared/materialBalanceReport";
+import { resolveCompactedLooseProfile } from "@shared/compactedLoose";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
 import { classifyWorkType, STANDARD_CONCRETE_DESIGNS, isStructureOrLocationScheduledItem, isShoulderDesc } from "@shared/workTypeRecipes";
@@ -19874,6 +19875,8 @@ export async function registerRoutes(
             lte(dprsTable.date, to),
             eq(dprsTable.isDeleted, false),
             eq(dprsTable.isCancelled, false),
+            eq(dprsTable.isSuperseded, false),
+            eq(dprsTable.dprStatus, "submitted"),
             or(eq(progressEntriesTable.noSiteWork, false), isNull(progressEntriesTable.noSiteWork)),
             isNotNull(progressEntriesTable.boqItemId),
           )),
@@ -19884,15 +19887,15 @@ export async function registerRoutes(
       const masterById = new Map(materialMasters.map((material) => [material.id, material]));
       const profileFor = (name: string, fallback?: any) => {
         const master = masterByName.get(normalName(name));
-        if (master) {
-          return {
+        const masterProfile = master
+          ? {
             rolledDensity: master.rolledDensity == null ? null : Number(master.rolledDensity),
             rollingPct: master.rollingPct == null ? null : Number(master.rollingPct),
             looseFactor: master.looseFactor == null ? null : Number(master.looseFactor),
             wastagePct: master.wastagePct == null ? null : Number(master.wastagePct),
-          };
-        }
-        return fallback ?? null;
+          }
+          : null;
+        return resolveCompactedLooseProfile(masterProfile, fallback);
       };
       const requirements: MaterialBalanceRequirement[] = [];
       const sources: MaterialBalanceQuantity[] = [];

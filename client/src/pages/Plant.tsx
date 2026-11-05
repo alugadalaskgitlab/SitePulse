@@ -2679,7 +2679,7 @@ export function MaterialMaster() {
   const [bulkDensity, setBulkDensity] = useState("");
   const [volumeUom, setVolumeUom] = useState("CFT");
   const [rolledDensity, setRolledDensity] = useState("");
-  const [rollingPct, setRollingPct] = useState("");
+  const [rollingPct, setRollingPct] = useState("98");
   const [extraLoosePct, setExtraLoosePct] = useState("");
   const [wastagePct, setWastagePct] = useState("");
   
@@ -2863,7 +2863,7 @@ export function MaterialMaster() {
     setBulkDensity("");
     setVolumeUom("CFT");
     setRolledDensity("");
-    setRollingPct("");
+    setRollingPct("98");
     setExtraLoosePct("");
     setWastagePct("");
     setShowAdvancedConversions(false);
@@ -3138,7 +3138,11 @@ export function MaterialMaster() {
                     <Label htmlFor="material-extra-loose">Extra loose</Label>
                     <Input id="material-extra-loose" type="number" min="0" step="0.1" value={extraLoosePct}
                       onChange={e => setExtraLoosePct(e.target.value)} placeholder="20" data-testid="input-extra-loose-pct" />
-                    <p className="text-xs text-muted-foreground mt-0.5">Enter %; factor 1.20</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {extraLoosePct.trim()
+                        ? `Factor ${looseFactorFromExtraLoosePercent(Number(extraLoosePct))?.toFixed(2) ?? "—"}`
+                        : "Enter %, e.g. 20 (factor 1.20)"}
+                    </p>
                   </div>
                   <div>
                     <Label htmlFor="material-wastage-pct">Wastage</Label>
@@ -3497,7 +3501,7 @@ export function MixTemplateMaster() {
   const [ldoNorm, setLdoNorm] = useState("6");
   const [densityTPerCum, setDensityTPerCum] = useState("");
   const [rolledDensity, setRolledDensity] = useState("");
-  const [rollingPct, setRollingPct] = useState("");
+  const [rollingPct, setRollingPct] = useState("98");
   const [extraLoosePct, setExtraLoosePct] = useState("");
   const [wastagePct, setWastagePct] = useState("");
   const [binderGrade, setBinderGrade] = useState("VG-30");
@@ -3644,7 +3648,7 @@ export function MixTemplateMaster() {
     setLdoNorm("6");
     setDensityTPerCum("");
     setRolledDensity("");
-    setRollingPct("");
+    setRollingPct("98");
     setExtraLoosePct("");
     setWastagePct("");
     setBinderGrade("VG-30");
@@ -3914,7 +3918,11 @@ export function MixTemplateMaster() {
                     <Label htmlFor="template-extra-loose">Extra loose</Label>
                     <Input id="template-extra-loose" type="number" min="0" step="0.1" value={extraLoosePct}
                       onChange={e => setExtraLoosePct(e.target.value)} placeholder="20" data-testid="input-template-extra-loose-pct" />
-                    <p className="text-xs text-muted-foreground mt-0.5">Enter %; factor 1.20</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {extraLoosePct.trim()
+                        ? `Factor ${looseFactorFromExtraLoosePercent(Number(extraLoosePct))?.toFixed(2) ?? "—"}`
+                        : "Enter %, e.g. 20 (factor 1.20)"}
+                    </p>
                   </div>
                   <div>
                     <Label htmlFor="template-wastage-pct">Wastage</Label>

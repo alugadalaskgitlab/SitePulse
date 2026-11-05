@@ -47,10 +47,13 @@ describe("material balance report calculations", () => {
       },
     ], []);
 
-    expect(row.rolledQuantity).toBe(20);
+    expect(row.rolledQuantity).toBeNull();
     expect(row.valuesConfigured).toBe(false);
     expect(row.compactedCum).toBeNull();
     expect(row.requiredMt).toBeNull();
     expect(row.requiredLooseCum).toBeNull();
+    expect(row.receivedMt).toBeNull();
+    expect(row.usedMt).toBeNull();
+    expect(row.differenceMt).toBeNull();
   });
 });

@@ -34,6 +34,7 @@ import { boqItemDisplayName } from "@/lib/itemName";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import {
   calculateCompactedLooseQuantity,
+  boqQuantityToCompactedCum,
   type CompactedLooseProfile,
 } from "@shared/compactedLoose";
 import { resolveEquipmentBoqHours } from "@shared/equipmentActivityAllocations";
@@ -106,25 +107,26 @@ function CompactedLooseDemand({
               <th className="px-2 py-2 text-right">Compacted Cum</th>
               <th className="px-2 py-2 text-right">MT</th>
               <th className="px-2 py-2 text-right">Loose Cum / CFT</th>
-              <th className="px-2 py-2 text-right">Wastage MT / Cum</th>
+              <th className="px-2 py-2 text-right">Wastage MT / loose Cum</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(item => {
               const profile = item.layerQuantityProfile as CompactedLooseProfile | null | undefined;
               const workQty = quantitiesByItem.get(Number(item.id)) ?? Number(item.currentQty ?? 0);
-              const unit = canonicalizeUnit(item.canonicalUnit ?? item.unit ?? "");
               const thicknessMm = Number(item.layerConfig?.thicknessMm);
-              const compactedCum =
-                unit === "Cum" ? workQty
-                : unit === "Sqm" && thicknessMm > 0 ? workQty * thicknessMm / 1000
-                : null;
+              const compactedCum = boqQuantityToCompactedCum(
+                workQty,
+                canonicalizeUnit(item.canonicalUnit ?? item.unit ?? ""),
+                thicknessMm,
+                profile,
+              );
               const result = compactedCum == null
                 ? null
                 : calculateCompactedLooseQuantity(compactedCum, profile);
               const state = compactedCum == null
-                ? "Needs conversion"
-                : !result ? "Values not set" : null;
+                ? "needs conversion"
+                : !result ? "values not set" : null;
               return (
                 <tr key={item.id} className="border-t" data-testid={`compacted-loose-demand-${item.id}`}>
                   <td className="px-3 py-2">
@@ -142,7 +144,7 @@ function CompactedLooseDemand({
                   </td>
                   <td className="px-2 py-2 text-right font-mono">
                     {state ?? `${numberOrDash(result?.looseCum)} / ${numberOrDash(result?.looseCft, 0)} CFT`}
-                    {result && <div className="text-[10px] text-slate-400">+ {numberOrDash(result.wastageLooseCum)} Cum wastage</div>}
+                    {result && <div className="text-[10px] text-slate-400">+ {numberOrDash(result.wastageLooseCum)} loose Cum wastage</div>}
                   </td>
                   <td className="px-2 py-2 text-right font-mono">
                     {state ?? `${numberOrDash(result?.wastageMt)} MT / ${numberOrDash(result?.wastageLooseCum)} Cum`}

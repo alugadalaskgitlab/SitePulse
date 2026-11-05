@@ -40,6 +40,18 @@ export function hasCompleteCompactedLooseProfile(
     finite(profile.wastagePct) && profile.wastagePct >= 0;
 }
 
+export function resolveCompactedLooseProfile(
+  primary: CompactedLooseProfile | null | undefined,
+  fallback: CompactedLooseProfile | null | undefined,
+): CompactedLooseProfile | null {
+  if (hasCompleteCompactedLooseProfile(primary)) return primary;
+  if (hasCompleteCompactedLooseProfile(fallback)) return fallback;
+  const hasAnyValue = (profile: CompactedLooseProfile | null | undefined) =>
+    !!profile && Object.values(profile).some((value) => value != null && value !== "");
+  if (hasAnyValue(primary)) return primary ?? null;
+  return fallback ?? primary ?? null;
+}
+
 export function calculateCompactedLooseQuantity(
   compactedCum: number,
   profile: CompactedLooseProfile | null | undefined,
@@ -109,6 +121,30 @@ function canonicalVolumeMassUom(value: string): string {
   if (["CUM", "M³", "M3"].includes(unit)) return "CUM";
   if (["CFT", "CUFT", "FT³"].includes(unit)) return "CFT";
   return unit;
+}
+
+export function boqQuantityToCompactedCum(
+  quantity: number,
+  uom: string,
+  thicknessMm: number | null | undefined,
+  profile: CompactedLooseProfile | null | undefined,
+): number | null {
+  if (!Number.isFinite(quantity) || quantity < 0) return null;
+  const unit = canonicalVolumeMassUom(uom);
+  if (unit === "CUM") return quantity;
+  if (unit === "CFT") return quantity / CUBIC_FEET_PER_CUBIC_METRE;
+  if (unit === "SQM" || unit === "SQFT") {
+    if (!finite(thicknessMm) || thicknessMm <= 0) return null;
+    const squareMetres = unit === "SQFT" ? quantity * 0.09290304 : quantity;
+    return squareMetres * thicknessMm / 1000;
+  }
+  if (unit === "MT" || unit === "KG") {
+    if (!hasCompleteCompactedLooseProfile(profile)) return null;
+    const mt = unit === "KG" ? quantity / 1000 : quantity;
+    const compactedDensity = profile.rolledDensity * profile.rollingPct / 100;
+    return compactedDensity > 0 ? mt / compactedDensity : null;
+  }
+  return null;
 }
 
 /**
