@@ -3,6 +3,7 @@ import {
   boqQuantityToCompactedCum,
   calculateCompactedLooseQuantity,
   compactedLooseProfileFromInputs,
+  extraLoosePercentFromFactor,
   looseWeightPerCumFromProfile,
   resolveCompactedLooseProfile,
   withEffectiveMaterialDensity,
@@ -72,6 +73,18 @@ describe("compacted and loose quantities", () => {
     });
     expect(noExtraLoose.looseFactor).toBe(1);
     expect(calculateCompactedLooseQuantity(100, noExtraLoose)).not.toBeNull();
+  });
+
+  it("accepts saved numeric profile values as numbers or numeric strings", () => {
+    for (const values of [
+      { rolledDensity: 2.2, rollingPct: 98, extraLoosePct: 20, wastagePct: 0 },
+      { rolledDensity: "2.2", rollingPct: "98", extraLoosePct: "20", wastagePct: "0" },
+    ]) {
+      const parsed = compactedLooseProfileFromInputs(values);
+      expect(calculateCompactedLooseQuantity(100, parsed)?.compactedMt).toBeCloseTo(215.6);
+      expect(calculateCompactedLooseQuantity(100, parsed)?.looseCum).toBeCloseTo(120);
+    }
+    expect(extraLoosePercentFromFactor("1.2")).toBeCloseTo(20);
   });
 
   it("uses calculated loose density for conversions without persisting it over saved bulk density", () => {

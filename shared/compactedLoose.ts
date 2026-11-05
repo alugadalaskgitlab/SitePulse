@@ -25,23 +25,27 @@ export interface CompactedLooseQuantity {
 const finite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
+type NumericInput = string | number | null | undefined;
+
+function parseNumericInput(raw: NumericInput): number | null {
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
 export function compactedLooseProfileFromInputs(inputs: {
-  rolledDensity: string;
-  rollingPct: string;
-  extraLoosePct: string;
-  wastagePct: string;
+  rolledDensity: NumericInput;
+  rollingPct: NumericInput;
+  extraLoosePct: NumericInput;
+  wastagePct: NumericInput;
 }): CompactedLooseProfile {
-  const numberOrNull = (raw: string): number | null => {
-    if (raw.trim() === "") return null;
-    const value = Number(raw);
-    return Number.isFinite(value) ? value : null;
-  };
-  const extraLoosePct = numberOrNull(inputs.extraLoosePct);
+  const extraLoosePct = parseNumericInput(inputs.extraLoosePct);
   return {
-    rolledDensity: numberOrNull(inputs.rolledDensity),
-    rollingPct: numberOrNull(inputs.rollingPct),
+    rolledDensity: parseNumericInput(inputs.rolledDensity),
+    rollingPct: parseNumericInput(inputs.rollingPct),
     looseFactor: extraLoosePct == null ? null : looseFactorFromExtraLoosePercent(extraLoosePct),
-    wastagePct: numberOrNull(inputs.wastagePct),
+    wastagePct: parseNumericInput(inputs.wastagePct),
   };
 }
 
@@ -154,8 +158,9 @@ export function looseFactorFromExtraLoosePercent(percent: number): number | null
   return Number.isFinite(percent) && percent >= 0 ? 1 + percent / 100 : null;
 }
 
-export function extraLoosePercentFromFactor(factor: number | null | undefined): number | null {
-  return finite(factor) && factor >= 1 ? (factor - 1) * 100 : null;
+export function extraLoosePercentFromFactor(factor: NumericInput): number | null {
+  const value = parseNumericInput(factor);
+  return value != null && value >= 1 ? (value - 1) * 100 : null;
 }
 
 export type MaterialQuantityBasis = "compacted" | "loose";

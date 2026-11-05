@@ -45,6 +45,12 @@ import {
 } from "@/lib/equipmentIdentification";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
 
+function formatCompactedLooseValue(value: number, maximumFractionDigits = 2): string {
+  return Number(value.toFixed(maximumFractionDigits)).toLocaleString("en-IN", {
+    maximumFractionDigits,
+  });
+}
+
 export default function Plant() {
   const searchString = useSearch();
   const params = new URLSearchParams(searchString || window.location.search);
@@ -3095,7 +3101,7 @@ export function MaterialMaster() {
                       step="0.01"
                       min="0.1"
                       max="5"
-                      value={materialLooseDensity != null ? materialLooseDensity.toFixed(3) : bulkDensity}
+                      value={materialLooseDensity != null ? materialLooseDensity.toFixed(2) : bulkDensity}
                       onChange={e => setBulkDensity(e.target.value)}
                       placeholder="e.g. 1.8"
                       className="h-8 text-sm"
@@ -3108,15 +3114,13 @@ export function MaterialMaster() {
                   <div className="text-sm rounded bg-background border px-3 py-2 space-y-0.5">
                     <p className="font-medium text-foreground">Derived conversion factor:</p>
                     {volumeUom === "CFT" ? (
-                      <>
-                        <p className="text-muted-foreground">1 CFT = {((materialLooseDensity ?? parseFloat(bulkDensity)) / 35.3147).toFixed(5)} Ton</p>
-                        <p className="text-muted-foreground">1530 CFT = {(1530 * (materialLooseDensity ?? parseFloat(bulkDensity)) / 35.3147).toFixed(2)} Ton (example)</p>
-                      </>
+                      <p className="text-muted-foreground">
+                        1 CFT = {((materialLooseDensity ?? parseFloat(bulkDensity)) / 35.3147).toFixed(3)} MT · 100 CFT = {(100 * (materialLooseDensity ?? parseFloat(bulkDensity)) / 35.3147).toFixed(2)} MT
+                      </p>
                     ) : (
-                      <>
-                        <p className="text-muted-foreground">1 m³ = {(materialLooseDensity ?? parseFloat(bulkDensity)).toFixed(3)} Ton</p>
-                        <p className="text-muted-foreground">43.32 m³ = {(43.32 * (materialLooseDensity ?? parseFloat(bulkDensity))).toFixed(2)} Ton (example)</p>
-                      </>
+                      <p className="text-muted-foreground">
+                        1 cum = {(materialLooseDensity ?? parseFloat(bulkDensity)).toFixed(2)} MT · 10 cum = {(10 * (materialLooseDensity ?? parseFloat(bulkDensity))).toFixed(2)} MT
+                      </p>
                     )}
                   </div>
                 )}
@@ -3162,7 +3166,7 @@ export function MaterialMaster() {
                     <p className="text-amber-700 font-medium">Values not set</p>
                   ) : (
                     <p className="font-medium">
-                      For 100 cum compacted: Weight {materialExample.compactedMt.toFixed(2)} MT · Loose {materialExample.looseCum.toFixed(2)} cum ({materialExample.looseCft.toFixed(0)} CFT) · With {materialProfile.wastagePct}% wastage: {materialExample.requiredMt.toFixed(2)} MT · {materialExample.requiredLooseCum.toFixed(2)} cum loose · 1 cum loose weighs {materialExample.looseWeightPerCum.toFixed(3)} MT — used to change truck CFT into MT
+                      For 100 cum compacted: Weight {formatCompactedLooseValue(materialExample.compactedMt)} MT · Loose {formatCompactedLooseValue(materialExample.looseCum)} cum ({formatCompactedLooseValue(materialExample.looseCft, 0)} CFT) · With {formatCompactedLooseValue(materialProfile.wastagePct!)}% wastage: {formatCompactedLooseValue(materialExample.requiredMt)} MT · {formatCompactedLooseValue(materialExample.requiredLooseCum)} cum loose · 1 cum loose weighs {materialExample.looseWeightPerCum.toFixed(2)} MT — used to change truck CFT into MT
                     </p>
                   )}
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-teal-700" data-testid="material-thickness-check">
@@ -3942,7 +3946,7 @@ export function MixTemplateMaster() {
                     <p className="text-amber-700 font-medium">Values not set</p>
                   ) : (
                     <p className="font-medium">
-                      For 100 cum compacted: Weight {templateExample.compactedMt.toFixed(2)} MT · Loose {templateExample.looseCum.toFixed(2)} cum ({templateExample.looseCft.toFixed(0)} CFT) · With {templateProfile.wastagePct}% wastage: {templateExample.requiredMt.toFixed(2)} MT · {templateExample.requiredLooseCum.toFixed(2)} cum loose · 1 cum loose weighs {templateExample.looseWeightPerCum.toFixed(3)} MT — used to change truck CFT into MT
+                      For 100 cum compacted: Weight {formatCompactedLooseValue(templateExample.compactedMt)} MT · Loose {formatCompactedLooseValue(templateExample.looseCum)} cum ({formatCompactedLooseValue(templateExample.looseCft, 0)} CFT) · With {formatCompactedLooseValue(templateProfile.wastagePct!)}% wastage: {formatCompactedLooseValue(templateExample.requiredMt)} MT · {formatCompactedLooseValue(templateExample.requiredLooseCum)} cum loose · 1 cum loose weighs {templateExample.looseWeightPerCum.toFixed(2)} MT — used to change truck CFT into MT
                     </p>
                   )}
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-teal-700" data-testid="template-thickness-check">
