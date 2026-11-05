@@ -1,4 +1,5 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
+import { effectiveMaterialBulkDensity, withEffectiveMaterialDensity } from "../shared/compactedLoose";
 import { buildPiTimeline } from "../shared/piTimeline";
 import { confirmTripHireLink, readTripHireLinks, guardTripHireOrdinaryItems, type NewTripHireLink } from "./tripHireLink";
 import { prepareTripMasterSelection, saveTripMasterSelection, type TripMasterSelection } from "./tripMasterSelection";
@@ -2877,7 +2878,8 @@ export class DatabaseStorage implements IStorage {
       await this._lockDieselRequirement(tx, receipt.linkedDieselRequirementId);
     }
 
-    const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+    const [storedMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+    const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
     if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
 
     // Same conversion the stock-IN used at creation (do not redesign).
@@ -6125,7 +6127,8 @@ export class DatabaseStorage implements IStorage {
       const targetPartyId = receipt.isPlantCommon ? null : (receipt.partyId ?? null);
       
       // Get material info for UOM conversion
-      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+      const [storedMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+      const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
       if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
       
       // Apply UOM conversion if receipt UOM differs from default/stock UOM
@@ -6247,7 +6250,8 @@ export class DatabaseStorage implements IStorage {
       if (receipt.receivedByName !== undefined) updates.receivedByName = formatPersonName(receipt.receivedByName) || null;
       
       // Calculate old stock quantity (what was originally added)
-      const [oldMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, existing.materialId)).limit(1);
+      const [storedOldMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, existing.materialId)).limit(1);
+      const oldMaterial = storedOldMaterial ? withEffectiveMaterialDensity(storedOldMaterial) : undefined;
       if (!oldMaterial) throw new Error(`Plant material #${existing.materialId} not found`);
       let oldStockQuantity = existing.quantity;
       let oldStockUom = existing.uom;
@@ -6265,7 +6269,8 @@ export class DatabaseStorage implements IStorage {
       const newIsPlantCommon = receipt.isPlantCommon ?? existing.isPlantCommon;
       const newPartyId = receipt.partyId ?? existing.partyId;
       
-      const [newMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      const [storedNewMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      const newMaterial = storedNewMaterial ? withEffectiveMaterialDensity(storedNewMaterial) : undefined;
       if (!newMaterial) throw new Error(`Plant material #${newMaterialId} not found`);
       let newStockQuantity = newQuantity;
       let newStockUom = newUom;
@@ -6399,7 +6404,8 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Get material for conversion factor
-    const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+    const [storedMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+    const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
     if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
 
     // Calculate the converted quantity that was added
@@ -9318,8 +9324,9 @@ export class DatabaseStorage implements IStorage {
           materialCategory: string | null;
         }> = [];
         for (const it of orderedItems) {
-          const [material] = await tx.select().from(plantMaterials)
+          const [storedMaterial] = await tx.select().from(plantMaterials)
             .where(eq(plantMaterials.id, it.materialId)).limit(1);
+          const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
           if (!material) throw new Error(`MATERIAL_NOT_FOUND: material ${it.materialId}`);
 
           // Lock the balance row (owner isolation: exact party match, NULL = plant-common).
@@ -9719,8 +9726,9 @@ export class DatabaseStorage implements IStorage {
         let deductQty = qty;
         let deductUom = uom;
         if (existing?.uom && existing.uom !== uom) {
-          const [mat] = await tx.select().from(plantMaterials)
+          const [storedMat] = await tx.select().from(plantMaterials)
             .where(eq(plantMaterials.id, matId)).limit(1);
+          const mat = storedMat ? withEffectiveMaterialDensity(storedMat) : undefined;
           if (mat?.conversionFactor && mat.conversionFromUom && mat.conversionToUom) {
             if (
               uom.toUpperCase() === mat.conversionToUom.toUpperCase() &&
@@ -9833,9 +9841,10 @@ export class DatabaseStorage implements IStorage {
       // Only when the party has at least one receipt does the owner-first /
       // borrow-from-HLC path apply.
       const matIdsForLookup = Array.from(new Set(plan.map(p => p.matId)));
-      const matRows = matIdsForLookup.length
+      const rawMatRows = matIdsForLookup.length
         ? await tx.select().from(plantMaterials).where(inArray(plantMaterials.id, matIdsForLookup))
         : [];
+      const matRows = rawMatRows.map(withEffectiveMaterialDensity);
       const matNameById = new Map(matRows.map(m => [m.id, m.name]));
 
       const ownerReceiptMatIds = new Set<number>();
@@ -11859,7 +11868,8 @@ export class DatabaseStorage implements IStorage {
       const stockPartyId = issue.isPlantCommon ? null : (issue.partyId ?? null);
       
       // Get material info for UOM conversion
-      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, issue.materialId)).limit(1);
+      const [storedMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, issue.materialId)).limit(1);
+      const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
       if (!material) throw new Error(`Plant material #${issue.materialId} not found`);
       
       // Apply UOM conversion if issue UOM differs from stock UOM
@@ -11968,7 +11978,8 @@ export class DatabaseStorage implements IStorage {
       if (issue.ldoTankNumber !== undefined) updates.ldoTankNumber = issue.ldoTankNumber;
       
       // Get material info for UOM conversion (original material)
-      const [origMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, original.materialId)).limit(1);
+      const [storedOrigMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, original.materialId)).limit(1);
+      const origMaterial = storedOrigMaterial ? withEffectiveMaterialDensity(storedOrigMaterial) : undefined;
       if (!origMaterial) throw new Error(`Plant material #${original.materialId} not found`);
       
       // Calculate original stock quantity with conversion
@@ -12004,7 +12015,8 @@ export class DatabaseStorage implements IStorage {
       const newStockPartyId = (updates.isPlantCommon ?? original.isPlantCommon) ? null : (updates.partyId ?? original.partyId);
       
       // Get material info for new material (may be different if material changed)
-      const [newMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      const [storedNewMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      const newMaterial = storedNewMaterial ? withEffectiveMaterialDensity(storedNewMaterial) : undefined;
       if (!newMaterial) throw new Error(`Plant material #${newMaterialId} not found`);
       
       let newStockQuantity = newQuantity;
@@ -12098,7 +12110,8 @@ export class DatabaseStorage implements IStorage {
       if (!issue) return false;
       
       // Get material info for UOM conversion
-      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, issue.materialId)).limit(1);
+      const [storedMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, issue.materialId)).limit(1);
+      const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
       if (!material) throw new Error(`Plant material #${issue.materialId} not found`);
       
       let stockQuantity = issue.quantity;
@@ -12188,7 +12201,8 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx.insert(materialReturns).values(uppercased).returning();
 
       // Get material info for UOM conversion
-      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, ret.materialId)).limit(1);
+      const [storedMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, ret.materialId)).limit(1);
+      const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
       if (!material) throw new Error(`Plant material #${ret.materialId} not found`);
       
       let stockQuantity = ret.quantity;
@@ -12229,7 +12243,8 @@ export class DatabaseStorage implements IStorage {
       if (!original) return undefined;
 
       // Get material info for UOM conversion (original)
-      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, original.materialId)).limit(1);
+      const [storedMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, original.materialId)).limit(1);
+      const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
       if (!material) throw new Error(`Plant material #${original.materialId} not found`);
 
       let origStockQuantity = original.quantity;
@@ -12277,7 +12292,8 @@ export class DatabaseStorage implements IStorage {
       const newUom = updates.uom ?? original.uom;
       const newPartyId = (updates.isPlantCommon ?? original.isPlantCommon) ? null : (updates.partyId ?? original.partyId);
 
-      const [newMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      const [storedNewMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      const newMaterial = storedNewMaterial ? withEffectiveMaterialDensity(storedNewMaterial) : undefined;
       if (!newMaterial) throw new Error(`Plant material #${newMaterialId} not found`);
       
       let newStockQuantity = newQuantity;
@@ -12337,7 +12353,8 @@ export class DatabaseStorage implements IStorage {
       if (!ret) return false;
 
       // Get material info for UOM conversion
-      const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, ret.materialId)).limit(1);
+      const [storedMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, ret.materialId)).limit(1);
+      const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
       if (!material) throw new Error(`Plant material #${ret.materialId} not found`);
       
       let stockQuantity = ret.quantity;
@@ -12402,8 +12419,9 @@ export class DatabaseStorage implements IStorage {
       // Apply UOM conversion if the material has a conversion factor and the entered
       // UOM matches the "from" side (e.g. CFT → Ton for aggregates like 6MM Down).
       // Mirrors the same logic used by createMaterialReceipt.
-      const [openingMaterial] = await tx.select().from(plantMaterials)
+      const [storedOpeningMaterial] = await tx.select().from(plantMaterials)
         .where(eq(plantMaterials.id, stock.materialId)).limit(1);
+      const openingMaterial = storedOpeningMaterial ? withEffectiveMaterialDensity(storedOpeningMaterial) : undefined;
       let stockQuantity = stock.quantity;
       let stockUom = stock.uom;
       if (
@@ -12449,8 +12467,9 @@ export class DatabaseStorage implements IStorage {
 
       // Compute the stock quantity that was originally applied (possibly converted).
       // Mirrors the reverse-step logic in updateMaterialReceipt.
-      const [oldMaterial] = await tx.select().from(plantMaterials)
+      const [storedOldMaterial] = await tx.select().from(plantMaterials)
         .where(eq(plantMaterials.id, original.materialId)).limit(1);
+      const oldMaterial = storedOldMaterial ? withEffectiveMaterialDensity(storedOldMaterial) : undefined;
       if (!oldMaterial) throw new Error(`Plant material #${original.materialId} not found`);
       let oldStockQuantity = original.quantity;
       if (
@@ -12470,8 +12489,9 @@ export class DatabaseStorage implements IStorage {
       const newQuantity = updates.quantity ?? original.quantity;
       const newUom = updates.uom ?? original.uom;
 
-      const [newMaterial] = await tx.select().from(plantMaterials)
+      const [storedNewMaterial] = await tx.select().from(plantMaterials)
         .where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      const newMaterial = storedNewMaterial ? withEffectiveMaterialDensity(storedNewMaterial) : undefined;
       if (!newMaterial) throw new Error(`Plant material #${newMaterialId} not found`);
       let newStockQuantity = newQuantity;
       let newStockUom = newUom;
@@ -12544,8 +12564,9 @@ export class DatabaseStorage implements IStorage {
 
       // Compute how much was originally credited to the balance (with UOM conversion).
       // Mirrors the same logic in createMaterialOpeningStock / updateMaterialOpeningStock.
-      const [mat] = await tx.select().from(plantMaterials)
+      const [storedMat] = await tx.select().from(plantMaterials)
         .where(eq(plantMaterials.id, stock.materialId)).limit(1);
+      const mat = storedMat ? withEffectiveMaterialDensity(storedMat) : undefined;
       let reverseQuantity = stock.quantity;
       let reverseUom = stock.uom;
       if (
@@ -12775,7 +12796,14 @@ export class DatabaseStorage implements IStorage {
     const names = Array.from(new Set(trips.map(t => t.material)));
     const [recipes, materials] = await Promise.all([
       db.select().from(boqItemMaterials).where(inArray(boqItemMaterials.boqItemId, ids)),
-      db.select({ name: plantMaterials.name, bulkDensity: plantMaterials.bulkDensity }).from(plantMaterials).where(inArray(plantMaterials.name, names)),
+      db.select({
+        name: plantMaterials.name,
+        bulkDensity: plantMaterials.bulkDensity,
+        rolledDensity: plantMaterials.rolledDensity,
+        rollingPct: plantMaterials.rollingPct,
+        looseFactor: plantMaterials.looseFactor,
+        wastagePct: plantMaterials.wastagePct,
+      }).from(plantMaterials).where(inArray(plantMaterials.name, names)),
     ]);
     return withVendorNames.map(t => ({ ...t, boqQuantity: lookupTripBoqQuantity(t, recipes, materials) }));
   }
@@ -13401,7 +13429,10 @@ export class DatabaseStorage implements IStorage {
     const materials = await db.select().from(plantMaterials);
     const matByCanon = new Map<string, { name: string; bulkDensity: number | null }>();
     for (const m of materials) {
-      matByCanon.set(canonMaterialName(m.name), { name: m.name, bulkDensity: (m as any).bulkDensity ?? null });
+      matByCanon.set(canonMaterialName(m.name), {
+        name: m.name,
+        bulkDensity: effectiveMaterialBulkDensity(m),
+      });
     }
     const resolve = (raw?: string | null) => (raw ? matByCanon.get(canonMaterialName(raw)) ?? null : null);
     const toMTsafe = (qty: number, uom: string | null | undefined, density: number | null) =>
@@ -15095,6 +15126,11 @@ export class DatabaseStorage implements IStorage {
         conversionFactor: plantMaterials.conversionFactor,
         conversionFromUom: plantMaterials.conversionFromUom,
         conversionToUom: plantMaterials.conversionToUom,
+        bulkDensity: plantMaterials.bulkDensity,
+        rolledDensity: plantMaterials.rolledDensity,
+        rollingPct: plantMaterials.rollingPct,
+        looseFactor: plantMaterials.looseFactor,
+        wastagePct: plantMaterials.wastagePct,
       })
       .from(stockBalances)
       .innerJoin(plantMaterials, eq(stockBalances.materialId, plantMaterials.id));
@@ -15108,12 +15144,13 @@ export class DatabaseStorage implements IStorage {
     const plantStockByMaterialId = new Map<number, PlantStockEntry>();
     for (const row of plantBalanceRows) {
       const key = row.materialId;
+      const effectiveMaterial = withEffectiveMaterialDensity(row);
       if (!plantStockByMaterialId.has(key)) {
         plantStockByMaterialId.set(key, {
           breakdowns: [],
-          conversionFactor: row.conversionFactor ?? null,
-          conversionFromUom: row.conversionFromUom ?? null,
-          conversionToUom: row.conversionToUom ?? null,
+          conversionFactor: effectiveMaterial.conversionFactor ?? null,
+          conversionFromUom: effectiveMaterial.conversionFromUom ?? null,
+          conversionToUom: effectiveMaterial.conversionToUom ?? null,
         });
       }
       plantStockByMaterialId.get(key)!.breakdowns.push({
@@ -21541,7 +21578,8 @@ export class DatabaseStorage implements IStorage {
           if (existingLedger) continue; // already has a ledger entry
 
           // Get material for UOM conversion
-          const [mat] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, rcpt.materialId)).limit(1);
+          const [storedMat] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, rcpt.materialId)).limit(1);
+          const mat = storedMat ? withEffectiveMaterialDensity(storedMat) : undefined;
           let stockQty = rcpt.quantity;
           let stockUom = rcpt.uom ?? "Liters";
           if (mat?.conversionFactor && mat?.conversionFromUom && mat?.conversionToUom) {
@@ -30196,8 +30234,9 @@ export class DatabaseStorage implements IStorage {
       for (const reqItem of nonZeroItems) {
         if (!reqItem.materialId) continue;
         const stockPartyId = reqItem.partyId ?? null;
-        const [material] = await tx.select().from(plantMaterials)
+        const [storedMaterial] = await tx.select().from(plantMaterials)
           .where(eq(plantMaterials.id, reqItem.materialId)).limit(1);
+        const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
         if (!material) continue;
 
         // UOM conversion (same logic as createMaterialIssue)

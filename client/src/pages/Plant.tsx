@@ -21,7 +21,9 @@ import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION, N
 import { useToast } from "@/hooks/use-toast";
 import {
   calculateCompactedLooseQuantity,
+  compactedLooseProfileFromInputs,
   extraLoosePercentFromFactor,
+  looseWeightPerCumFromProfile,
   looseFactorFromExtraLoosePercent,
 } from "@shared/compactedLoose";
 import { useAuth } from "@/lib/auth-context";
@@ -2682,6 +2684,7 @@ export function MaterialMaster() {
   const [rollingPct, setRollingPct] = useState("98");
   const [extraLoosePct, setExtraLoosePct] = useState("");
   const [wastagePct, setWastagePct] = useState("");
+  const [materialThicknessMm, setMaterialThicknessMm] = useState("");
   
   // Opening Stock dialog state
   const [openingStockDialogOpen, setOpeningStockDialogOpen] = useState(false);
@@ -2866,6 +2869,7 @@ export function MaterialMaster() {
     setRollingPct("98");
     setExtraLoosePct("");
     setWastagePct("");
+    setMaterialThicknessMm("");
     setShowAdvancedConversions(false);
     setShowConvForm(false);
   };
@@ -2888,12 +2892,16 @@ export function MaterialMaster() {
     setDefaultUom(material.defaultUom || "Ton");
     // Unconfigured stays visibly unselected — never masquerades as Stores.
     setProcurementRoute((material as any).procurementRoute || "");
-    setBulkDensity((material as any).bulkDensity != null ? String((material as any).bulkDensity) : "");
+    const savedBulkDensity = Object.prototype.hasOwnProperty.call(material, "savedBulkDensity")
+      ? (material as any).savedBulkDensity
+      : material.bulkDensity;
+    setBulkDensity(savedBulkDensity != null ? String(savedBulkDensity) : "");
     setVolumeUom((material as any).conversionFromUom || "CFT");
     setRolledDensity((material as any).rolledDensity != null ? String((material as any).rolledDensity) : "");
     setRollingPct((material as any).rollingPct != null ? String((material as any).rollingPct) : "");
     setExtraLoosePct(extraLoosePercentFromFactor((material as any).looseFactor)?.toString() ?? "");
     setWastagePct((material as any).wastagePct != null ? String((material as any).wastagePct) : "");
+    setMaterialThicknessMm("");
     setShowAdvancedConversions(false);
     setShowConvForm(false);
     setDialogOpen(true);
@@ -2911,21 +2919,22 @@ export function MaterialMaster() {
       return;
     }
     const bd = parseFloat(bulkDensity);
-    const looseFactor = extraLoosePct.trim() === ""
-      ? null
-      : looseFactorFromExtraLoosePercent(Number(extraLoosePct));
-    const numericOrNull = (value: string) => value.trim() === "" ? null : Number(value);
+    const formProfile = compactedLooseProfileFromInputs({ rolledDensity, rollingPct, extraLoosePct, wastagePct });
+    const derivedLooseDensity = looseWeightPerCumFromProfile(formProfile);
+    const validManualDensity = !isNaN(bd) && bd > 0 ? bd : null;
     const data = { 
       name, 
       category, 
       defaultUom,
       procurementRoute,
-      bulkDensity: !isNaN(bd) && bd > 0 ? bd : null,
-      conversionFromUom: !isNaN(bd) && bd > 0 ? volumeUom : undefined,
-      rolledDensity: numericOrNull(rolledDensity),
-      rollingPct: numericOrNull(rollingPct),
-      looseFactor,
-      wastagePct: numericOrNull(wastagePct),
+      // The calculated loose density is a live conversion value, not a write
+      // to the legacy bulk_density column.
+      bulkDensity: derivedLooseDensity == null ? validManualDensity : undefined,
+      conversionFromUom: derivedLooseDensity != null || validManualDensity != null ? volumeUom : undefined,
+      rolledDensity: formProfile.rolledDensity,
+      rollingPct: formProfile.rollingPct,
+      looseFactor: formProfile.looseFactor,
+      wastagePct: formProfile.wastagePct,
     };
     if (editingMaterial) {
       updateMutation.mutate({ id: editingMaterial.id, data });
@@ -2956,14 +2965,10 @@ export function MaterialMaster() {
   };
 
   const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || `Material #${id}`;
-  const materialProfile = {
-    rolledDensity: rolledDensity.trim() === "" ? null : Number(rolledDensity),
-    rollingPct: rollingPct.trim() === "" ? null : Number(rollingPct),
-    looseFactor: extraLoosePct.trim() === "" ? null : looseFactorFromExtraLoosePercent(Number(extraLoosePct)),
-    wastagePct: wastagePct.trim() === "" ? null : Number(wastagePct),
-  };
+  const materialProfile = compactedLooseProfileFromInputs({ rolledDensity, rollingPct, extraLoosePct, wastagePct });
   const materialExample = calculateCompactedLooseQuantity(100, materialProfile);
-  const materialThickness = 150;
+  const materialLooseDensity = looseWeightPerCumFromProfile(materialProfile);
+  const materialThickness = materialThicknessMm.trim() === "" ? null : Number(materialThicknessMm);
   const getPartyName = (id: number | null) => {
     if (id === null) return "HLC (Common)";
     return parties?.find(p => p.id === id)?.name || `Party #${id}`;
@@ -3090,26 +3095,27 @@ export function MaterialMaster() {
                       step="0.01"
                       min="0.1"
                       max="5"
-                      value={bulkDensity}
+                      value={materialLooseDensity != null ? materialLooseDensity.toFixed(3) : bulkDensity}
                       onChange={e => setBulkDensity(e.target.value)}
                       placeholder="e.g. 1.8"
                       className="h-8 text-sm"
+                      readOnly={materialLooseDensity != null}
                       data-testid="input-bulk-density"
                     />
                   </div>
                 </div>
-                {parseFloat(bulkDensity) > 0 && (
+                {(materialLooseDensity ?? parseFloat(bulkDensity)) > 0 && (
                   <div className="text-sm rounded bg-background border px-3 py-2 space-y-0.5">
                     <p className="font-medium text-foreground">Derived conversion factor:</p>
                     {volumeUom === "CFT" ? (
                       <>
-                        <p className="text-muted-foreground">1 CFT = {(parseFloat(bulkDensity) / 35.3147).toFixed(5)} Ton</p>
-                        <p className="text-muted-foreground">1530 CFT = {(1530 * parseFloat(bulkDensity) / 35.3147).toFixed(2)} Ton (example)</p>
+                        <p className="text-muted-foreground">1 CFT = {((materialLooseDensity ?? parseFloat(bulkDensity)) / 35.3147).toFixed(5)} Ton</p>
+                        <p className="text-muted-foreground">1530 CFT = {(1530 * (materialLooseDensity ?? parseFloat(bulkDensity)) / 35.3147).toFixed(2)} Ton (example)</p>
                       </>
                     ) : (
                       <>
-                        <p className="text-muted-foreground">1 m³ = {parseFloat(bulkDensity).toFixed(3)} Ton</p>
-                        <p className="text-muted-foreground">43.32 m³ = {(43.32 * parseFloat(bulkDensity)).toFixed(2)} Ton (example)</p>
+                        <p className="text-muted-foreground">1 m³ = {(materialLooseDensity ?? parseFloat(bulkDensity)).toFixed(3)} Ton</p>
+                        <p className="text-muted-foreground">43.32 m³ = {(43.32 * (materialLooseDensity ?? parseFloat(bulkDensity))).toFixed(2)} Ton (example)</p>
                       </>
                     )}
                   </div>
@@ -3119,7 +3125,7 @@ export function MaterialMaster() {
               <div className="rounded-md border border-teal-200 bg-teal-50/40 p-3 space-y-3" data-testid="compacted-loose-material-fields">
                 <div>
                   <p className="text-sm font-semibold text-foreground">Compacted and loose</p>
-                  <p className="text-xs text-muted-foreground">Leave unset until the Owner has the material values. These values do not replace the separate delivered bulk density.</p>
+                      <p className="text-xs text-muted-foreground">When set, the calculated loose weight above is used for volume-to-weight conversions.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -3155,18 +3161,19 @@ export function MaterialMaster() {
                   {!materialExample ? (
                     <p className="text-amber-700 font-medium">Values not set</p>
                   ) : (
-                    <>
-                      <p className="font-medium">
-                        For 100 cum compacted: Weight {materialExample.compactedMt.toFixed(2)} MT · Loose {materialExample.looseCum.toFixed(2)} cum ({materialExample.looseCft.toFixed(0)} CFT)
-                      </p>
-                      <p className="text-muted-foreground mt-0.5">
-                        With {materialProfile.wastagePct}% wastage: {materialExample.requiredMt.toFixed(2)} MT · {materialExample.requiredLooseCum.toFixed(2)} cum loose · 1 cum loose weighs {materialExample.looseWeightPerCum.toFixed(3)} MT — used to change truck CFT into MT
-                      </p>
-                      <p className="text-teal-700 mt-1">
-                        Quick check: {materialThickness} mm compacted → lay {(materialThickness * (materialProfile.looseFactor ?? 1)).toFixed(1)} mm loose
-                      </p>
-                    </>
+                    <p className="font-medium">
+                      For 100 cum compacted: Weight {materialExample.compactedMt.toFixed(2)} MT · Loose {materialExample.looseCum.toFixed(2)} cum ({materialExample.looseCft.toFixed(0)} CFT) · With {materialProfile.wastagePct}% wastage: {materialExample.requiredMt.toFixed(2)} MT · {materialExample.requiredLooseCum.toFixed(2)} cum loose · 1 cum loose weighs {materialExample.looseWeightPerCum.toFixed(3)} MT — used to change truck CFT into MT
+                    </p>
                   )}
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-teal-700" data-testid="material-thickness-check">
+                    <Label htmlFor="material-thickness-mm" className="text-xs">Compacted thickness</Label>
+                    <Input id="material-thickness-mm" type="number" min="0" step="1" value={materialThicknessMm}
+                      onChange={e => setMaterialThicknessMm(e.target.value)} className="h-7 w-24 text-xs" data-testid="input-material-thickness-mm" />
+                    <span>mm →</span>
+                    {materialThickness != null && Number.isFinite(materialThickness) && materialThickness > 0 && materialProfile.looseFactor != null
+                      ? <span>Lay loose {(materialThickness * materialProfile.looseFactor).toFixed(1)} mm to get {materialThickness} mm compacted</span>
+                      : <span>Enter a thickness and Extra loose value</span>}
+                  </div>
                 </div>
               </div>
 
@@ -3504,6 +3511,7 @@ export function MixTemplateMaster() {
   const [rollingPct, setRollingPct] = useState("98");
   const [extraLoosePct, setExtraLoosePct] = useState("");
   const [wastagePct, setWastagePct] = useState("");
+  const [templateThicknessMm, setTemplateThicknessMm] = useState("");
   const [binderGrade, setBinderGrade] = useState("VG-30");
   const [notes, setNotes] = useState("");
   const [aggregateProportions, setAggregateProportions] = useState<Record<number, string>>({});
@@ -3651,6 +3659,7 @@ export function MixTemplateMaster() {
     setRollingPct("98");
     setExtraLoosePct("");
     setWastagePct("");
+    setTemplateThicknessMm("");
     setBinderGrade("VG-30");
     setNotes("");
     setSelectedPartyId("");
@@ -3670,6 +3679,7 @@ export function MixTemplateMaster() {
     setRollingPct(template.rollingPct != null ? String(template.rollingPct) : "");
     setExtraLoosePct(extraLoosePercentFromFactor(template.looseFactor)?.toString() ?? "");
     setWastagePct(template.wastagePct != null ? String(template.wastagePct) : "");
+    setTemplateThicknessMm("");
     setBinderGrade((template as any).binderGrade || "VG-30");
     setNotes(template.notes || "");
     setSelectedPartyId(template.partyId != null ? String(template.partyId) : "");
@@ -3696,13 +3706,9 @@ export function MixTemplateMaster() {
     .reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
   const bitumenVal = parseFloat(bitumenPercent) || 0;
   const totalPercent = aggregateTotal + bitumenVal;
-  const templateProfile = {
-    rolledDensity: rolledDensity.trim() === "" ? null : Number(rolledDensity),
-    rollingPct: rollingPct.trim() === "" ? null : Number(rollingPct),
-    looseFactor: extraLoosePct.trim() === "" ? null : looseFactorFromExtraLoosePercent(Number(extraLoosePct)),
-    wastagePct: wastagePct.trim() === "" ? null : Number(wastagePct),
-  };
+  const templateProfile = compactedLooseProfileFromInputs({ rolledDensity, rollingPct, extraLoosePct, wastagePct });
   const templateExample = calculateCompactedLooseQuantity(100, templateProfile);
+  const templateThickness = templateThicknessMm.trim() === "" ? null : Number(templateThicknessMm);
 
   const handleSubmit = () => {
     // Validate MC and WF bounds before submit
@@ -3935,18 +3941,19 @@ export function MixTemplateMaster() {
                   {!templateExample ? (
                     <p className="text-amber-700 font-medium">Values not set</p>
                   ) : (
-                    <>
-                      <p className="font-medium">
-                        For 100 cum compacted: Weight {templateExample.compactedMt.toFixed(2)} MT · Loose {templateExample.looseCum.toFixed(2)} cum ({templateExample.looseCft.toFixed(0)} CFT)
-                      </p>
-                      <p className="text-muted-foreground mt-0.5">
-                        With {templateProfile.wastagePct}% wastage: {templateExample.requiredMt.toFixed(2)} MT · {templateExample.requiredLooseCum.toFixed(2)} cum loose · 1 cum loose weighs {templateExample.looseWeightPerCum.toFixed(3)} MT — used to change truck CFT into MT
-                      </p>
-                      <p className="text-teal-700 mt-1">
-                        Quick check: 150 mm compacted → lay {(150 * (templateProfile.looseFactor ?? 1)).toFixed(1)} mm loose
-                      </p>
-                    </>
+                    <p className="font-medium">
+                      For 100 cum compacted: Weight {templateExample.compactedMt.toFixed(2)} MT · Loose {templateExample.looseCum.toFixed(2)} cum ({templateExample.looseCft.toFixed(0)} CFT) · With {templateProfile.wastagePct}% wastage: {templateExample.requiredMt.toFixed(2)} MT · {templateExample.requiredLooseCum.toFixed(2)} cum loose · 1 cum loose weighs {templateExample.looseWeightPerCum.toFixed(3)} MT — used to change truck CFT into MT
+                    </p>
                   )}
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-teal-700" data-testid="template-thickness-check">
+                    <Label htmlFor="template-thickness-mm">Compacted thickness</Label>
+                    <Input id="template-thickness-mm" type="number" min="0" step="1" value={templateThicknessMm}
+                      onChange={e => setTemplateThicknessMm(e.target.value)} className="h-7 w-24 text-xs" data-testid="input-template-thickness-mm" />
+                    <span>mm →</span>
+                    {templateThickness != null && Number.isFinite(templateThickness) && templateThickness > 0 && templateProfile.looseFactor != null
+                      ? <span>Lay loose {(templateThickness * templateProfile.looseFactor).toFixed(1)} mm to get {templateThickness} mm compacted</span>
+                      : <span>Enter a thickness and Extra loose value</span>}
+                  </div>
                 </div>
               </div>
               

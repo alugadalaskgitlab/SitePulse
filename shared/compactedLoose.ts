@@ -25,6 +25,73 @@ export interface CompactedLooseQuantity {
 const finite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
+export function compactedLooseProfileFromInputs(inputs: {
+  rolledDensity: string;
+  rollingPct: string;
+  extraLoosePct: string;
+  wastagePct: string;
+}): CompactedLooseProfile {
+  const numberOrNull = (raw: string): number | null => {
+    if (raw.trim() === "") return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  };
+  const extraLoosePct = numberOrNull(inputs.extraLoosePct);
+  return {
+    rolledDensity: numberOrNull(inputs.rolledDensity),
+    rollingPct: numberOrNull(inputs.rollingPct),
+    looseFactor: extraLoosePct == null ? null : looseFactorFromExtraLoosePercent(extraLoosePct),
+    wastagePct: numberOrNull(inputs.wastagePct),
+  };
+}
+
+/** Loose delivered mass per cubic metre; wastage is intentionally irrelevant. */
+export function looseWeightPerCumFromProfile(
+  profile: Pick<CompactedLooseProfile, "rolledDensity" | "rollingPct" | "looseFactor"> | null | undefined,
+): number | null {
+  if (
+    !profile ||
+    !finite(profile.rolledDensity) || profile.rolledDensity <= 0 ||
+    !finite(profile.rollingPct) || profile.rollingPct <= 0 ||
+    !finite(profile.looseFactor) || profile.looseFactor < 1
+  ) return null;
+  const looseDensity = profile.rolledDensity * profile.rollingPct / 100 / profile.looseFactor;
+  return Number.isFinite(looseDensity) && looseDensity > 0 ? looseDensity : null;
+}
+
+export type MaterialDensityFields = Partial<CompactedLooseProfile> & {
+  bulkDensity?: number | null;
+  conversionFactor?: number | null;
+  conversionFromUom?: string | null;
+  conversionToUom?: string | null;
+};
+
+export function effectiveMaterialBulkDensity(material: MaterialDensityFields): number | null {
+  const derived = looseWeightPerCumFromProfile(material);
+  if (derived != null) return derived;
+  return finite(material.bulkDensity) && material.bulkDensity > 0 ? material.bulkDensity : null;
+}
+
+/** Add a read-only effective density view without changing the saved material values. */
+export function withEffectiveMaterialDensity<T extends MaterialDensityFields>(
+  material: T,
+): T & { savedBulkDensity: number | null } {
+  const savedBulkDensity = material.bulkDensity ?? null;
+  const derived = looseWeightPerCumFromProfile(material);
+  if (derived == null) return { ...material, savedBulkDensity };
+
+  const sourceUom = (material.conversionFromUom ?? "CFT").trim().toUpperCase();
+  const conversionFromUom = ["CUM", "M3", "M³"].includes(sourceUom) ? "Cum" : "CFT";
+  return {
+    ...material,
+    savedBulkDensity,
+    bulkDensity: derived,
+    conversionFactor: conversionFromUom === "CFT" ? derived / CUBIC_FEET_PER_CUBIC_METRE : derived,
+    conversionFromUom,
+    conversionToUom: "Ton",
+  };
+}
+
 export function hasCompleteCompactedLooseProfile(
   profile: CompactedLooseProfile | null | undefined,
 ): profile is CompactedLooseProfile & {

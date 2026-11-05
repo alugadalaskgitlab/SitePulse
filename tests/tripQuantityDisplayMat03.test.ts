@@ -13,6 +13,18 @@ describe("MAT-03 BOQ quantity display", () => {
   it("uses density for mass target", () => {
     expect(lookupTripBoqQuantity(trip, [{ ...recipes[0], uom: "MT" }], materials)?.quantity).toBeCloseTo(800 / 35.3147 * 1.6);
   });
+  it("prefers the material's calculated loose density over saved bulk density", () => {
+    const profiledMaterial = [{
+      name: "Soil",
+      bulkDensity: 1.6,
+      rolledDensity: 2.2,
+      rollingPct: 98,
+      looseFactor: 1.2,
+      wastagePct: 0,
+    }];
+    expect(lookupTripBoqQuantity(trip, [{ ...recipes[0], uom: "MT" }], profiledMaterial)?.quantity)
+      .toBeCloseTo((800 / 35.3147) * (2.2 * 0.98 / 1.2));
+  });
   it("does not guess links, material names, density, or ambiguous recipes", () => {
     expect(lookupTripBoqQuantity({ ...trip, boqItemId: null }, recipes, materials)).toBeNull();
     expect(lookupTripBoqQuantity(trip, recipes, [{ name: "Soil", bulkDensity: null }])).toBeNull();

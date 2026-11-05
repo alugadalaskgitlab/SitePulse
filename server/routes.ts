@@ -128,7 +128,10 @@ import {
 } from "@shared/executionArrangementCategories";
 import { normalizeMaterialLabel, checkMappingUomCompatibility } from "@shared/boqNormalise";
 import { buildMaterialBalanceRows, type MaterialBalanceQuantity, type MaterialBalanceRequirement } from "@shared/materialBalanceReport";
-import { resolveCompactedLooseProfile } from "@shared/compactedLoose";
+import {
+  resolveCompactedLooseProfile,
+  withEffectiveMaterialDensity,
+} from "@shared/compactedLoose";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
 import { classifyWorkType, STANDARD_CONCRETE_DESIGNS, isStructureOrLocationScheduledItem, isShoulderDesc } from "@shared/workTypeRecipes";
@@ -4537,7 +4540,7 @@ export async function registerRoutes(
   app.get("/api/plant-module/materials", async (req, res) => {
     try {
       const materials = await storage.getPlantMaterials();
-      res.json(materials);
+      res.json(materials.map(withEffectiveMaterialDensity));
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch materials" });
     }
@@ -4549,7 +4552,7 @@ export async function registerRoutes(
       const input = parseCreateBody(plantMaterialCreateBodySchema, req.body, res);
       if (input === null) return;
       const material = await storage.createPlantMaterial(input);
-      res.status(201).json(material);
+      res.status(201).json(withEffectiveMaterialDensity(material));
     } catch (err) {
       res.status(500).json({ message: "Failed to create material" });
     }
@@ -4562,7 +4565,7 @@ export async function registerRoutes(
       if (input === null) return;
       const material = await storage.updatePlantMaterial(Number(req.params.id), input);
       if (!material) return res.status(404).json({ message: "Material not found" });
-      res.json(material);
+      res.json(withEffectiveMaterialDensity(material));
     } catch (err) {
       res.status(500).json({ message: "Failed to update material" });
     }
@@ -10545,10 +10548,14 @@ export async function registerRoutes(
           conversionFromUom: plantMaterials.conversionFromUom,
           conversionToUom: plantMaterials.conversionToUom,
           bulkDensity: plantMaterials.bulkDensity,
+          rolledDensity: plantMaterials.rolledDensity,
+          rollingPct: plantMaterials.rollingPct,
+          looseFactor: plantMaterials.looseFactor,
+          wastagePct: plantMaterials.wastagePct,
         })
         .from(stockBalances)
         .innerJoin(plantMaterials, eq(stockBalances.materialId, plantMaterials.id));
-      res.json(rows);
+      res.json(rows.map(withEffectiveMaterialDensity));
     } catch (err) {
       console.error("Error fetching stock lookup:", err);
       res.status(500).json({ message: "Failed to fetch stock lookup" });
@@ -20892,7 +20899,7 @@ export async function registerRoutes(
           const candidateMat = allMaterials.find(m => m.id === rawAliasOrNameMatchId);
           if (candidateMat) {
             const matProfiles = convProfilesByMaterialId.get(rawAliasOrNameMatchId) ?? [];
-            const uomCheck = checkMappingUomCompatibility(matRow.uom, candidateMat, matProfiles);
+            const uomCheck = checkMappingUomCompatibility(matRow.uom, withEffectiveMaterialDensity(candidateMat), matProfiles);
             if (!uomCheck.compatible) {
               uomIncompatible = true;
               // 021: Do NOT suppress aliasOrNameMatchId — material identity still resolves.
@@ -23163,7 +23170,7 @@ export async function registerRoutes(
         if (!targetMat) return res.status(404).json({ message: "Material not found" });
         const matProfiles = await storage.getMaterialUomConversions(Number(materialId));
         const activeProfiles = matProfiles.filter(p => p.isActive === 1);
-        const check = checkMappingUomCompatibility(sourceUom, targetMat, activeProfiles);
+        const check = checkMappingUomCompatibility(sourceUom, withEffectiveMaterialDensity(targetMat), activeProfiles);
         if (!check.compatible) {
           return res.status(400).json({
             error: check.errorCode ?? "MATERIAL_UOM_MISMATCH",

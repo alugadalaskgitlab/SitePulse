@@ -1,4 +1,5 @@
 import { convertSolidQty, normalizeUom } from "./uomConvert";
+import { effectiveMaterialBulkDensity, type MaterialDensityFields } from "./compactedLoose";
 
 export interface TripQuantityInput {
   quantity: number | string;
@@ -15,7 +16,7 @@ export interface TripQuantityInput {
 export function lookupTripBoqQuantity(
   trip: TripQuantityInput,
   recipes: readonly { boqItemId: number; materialName: string; uom: string }[],
-  materials: readonly { name: string; bulkDensity: number | null }[],
+  materials: readonly ({ name: string } & MaterialDensityFields)[],
 ): TripQuantityInput["boqQuantity"] {
   if (trip.boqItemId == null) return null;
   const matches = recipes.filter(r => r.boqItemId === trip.boqItemId && r.materialName === trip.material);
@@ -23,8 +24,8 @@ export function lookupTripBoqQuantity(
   if (matches.length !== 1 || masters.length !== 1) return null;
   const solidUnits = ["CFT", "CUM", "MT"];
   if (!solidUnits.includes(normalizeUom(trip.uom)) || !solidUnits.includes(normalizeUom(matches[0].uom))) return null;
-  const density = masters[0].bulkDensity;
-  if (density == null || !Number.isFinite(density) || density <= 0) return null;
+  const density = effectiveMaterialBulkDensity(masters[0]);
+  if (density == null) return null;
   const quantity = convertSolidQty(Number(trip.quantity), trip.uom, matches[0].uom, density);
   return quantity != null && Number.isFinite(quantity) ? { quantity, uom: matches[0].uom } : null;
 }
