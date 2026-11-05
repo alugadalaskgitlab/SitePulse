@@ -5,6 +5,7 @@ import {
   getEffectiveOutputPerHrConverted,
   normaliseMixType,
   normaliseBomMaterial,
+  normaliseKeyMaterialName,
   deriveMaterialsFromLayerConfig,
 } from "@shared/planningEngine";
 
@@ -390,5 +391,32 @@ describe("normaliseBomMaterial", () => {
     const result = normaliseBomMaterial({ materialName: "Exotic Material XYZ", uom: "CUM" });
     expect(result.reviewNeeded).toBe(true);
     expect(result.displayMaterialName).toBe("Exotic Material XYZ");
+  });
+});
+
+describe("BOM compacted/loose work", () => {
+  it("keeps direct-supply granular demand in the BOQ unit", () => {
+    const [row] = deriveMaterialsFromLayerConfig({
+      layerType: "granular",
+      mixType: "WMM",
+      granularSource: "quarry",
+    } as any, "Cum");
+    expect(row.uom).toBe("CUM");
+    expect(row.qtyPerBoqUnit).toBe(1);
+  });
+
+  it("uses primer/tack-coat emulsion grades without renaming explicit emulsion", () => {
+    expect(normaliseKeyMaterialName(
+      { description: "Providing and applying primer coat with low-viscosity bituminous material", layerConfig: { layerType: "spray_coat" } } as any,
+      { materialName: "Bitumen", uom: "MT" } as any,
+    )).toBe("Bitumen Emulsion SS-1");
+    expect(normaliseKeyMaterialName(
+      { description: "Applying tack coat with bituminous material", layerConfig: { layerType: "spray_coat" } } as any,
+      { materialName: "Bitumen", uom: "MT" } as any,
+    )).toBe("Bitumen Emulsion RS-1");
+    expect(normaliseKeyMaterialName(
+      { description: "Bituminous concrete work", layerConfig: { layerType: "bituminous" } } as any,
+      { materialName: "Emulsion", uom: "MT" } as any,
+    )).toBe("Bitumen Emulsion");
   });
 });

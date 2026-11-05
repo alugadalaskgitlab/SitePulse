@@ -435,6 +435,35 @@ describe("06E comparison safety (spec §G/R/S)", () => {
     expect(c.comparisonReason).toMatch(/converted/i);
   });
 
+  it("uses configured compacted/loose values to compare mixed receipt units in MT", () => {
+    const c = buildReceiptComparison({
+      requiredQty: 10,
+      requiredUom: "CUM",
+      requiredSource: "arrangement_allocation",
+      received: aggregateReceived([
+        trip({ quantity: 1, uom: "CUM" }),
+        trip({ id: 2, quantity: 35.3147, uom: "CFT" }),
+      ]),
+      executedQty: 10,
+      executedUom: "CUM",
+      materialProfile: {
+        rolledDensity: 2,
+        rollingPct: 98,
+        looseFactor: 1.2,
+        wastagePct: 0,
+      },
+    });
+
+    expect(c.comparable).toBe(true);
+    expect(c.requiredUom).toBe("MT");
+    expect(c.receivedUom).toBe("MT");
+    expect(c.executedUom).toBe("MT");
+    expect(c.requiredQty).toBeCloseTo(19.6);
+    expect(c.receivedQty).toBeCloseTo((2 * 2 * 0.98 / 1.2));
+    expect(c.executedQty).toBeCloseTo(19.6);
+    expect(c.comparisonReason).toMatch(/compacted\/loose/i);
+  });
+
   it("ARR-02 G: 6,300 CFT stays visible as evidence and compares as 178.396 CUM", () => {
     const c = buildReceiptComparison({
       requiredQty: null,

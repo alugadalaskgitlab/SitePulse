@@ -44,12 +44,13 @@ export default function ReportsHub() {
   const canBills      = canReportSource("vendor_bills");
   const canPayables   = canReportSource("payables");
   const canEquipment  = canReportSource("equipment_usage");
+  const canMaterialBalance = canReports && featureCan("boq_programme", "view");
   const canManagementReport = canReports && (
     canReportSource("dpr") || canReportSource("hmp_rmc") || canReportSource("labour_attendance") ||
     canReportSource("site_materials") || canReportSource("purchase_indent") || canReportSource("payables")
   );
 
-  const hasSiteReports  = canSiteDprs || canProgress || canSiteMat || canSiteProcure || canManagementReport || canEquipment;
+  const hasSiteReports  = canSiteDprs || canProgress || canSiteMat || canSiteProcure || canManagementReport || canEquipment || canMaterialBalance;
   const hasHmpReports   = canDailyRep || canHeating || canProd || canDieselProc || canShift;
   const hasRmcReports   = rmcEnabled && canProd;
   const hasStockReports = canMaterials || canStock || canVariance || canAudit;
@@ -104,6 +105,15 @@ export default function ReportsHub() {
                 accent="green"
                 iconBg="bg-green-100"
                 enabled={canSiteMat}
+              />
+              <HubActionTile
+                href="/reports/material-balance"
+                icon={Package}
+                title="Material Balance"
+                description="Compare BOQ requirement with site receipts and recorded material use"
+                accent="teal"
+                iconBg="bg-teal-100"
+                enabled={canMaterialBalance}
               />
               <HubActionTile
                 href={`/site/purchases?returnTo=${HUB}`}

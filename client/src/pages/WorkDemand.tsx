@@ -32,10 +32,15 @@ import {
 } from "@shared/planningEngine";
 import { boqItemDisplayName } from "@/lib/itemName";
 import { canonicalizeUnit } from "@shared/boqNormalise";
+import {
+  calculateCompactedLooseQuantity,
+  type CompactedLooseProfile,
+} from "@shared/compactedLoose";
 import { resolveEquipmentBoqHours } from "@shared/equipmentActivityAllocations";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
+import { CompactedLooseReminder } from "@/components/CompactedLooseReminder";
 import type { BoqProject, PlanVsActualRow } from "@shared/schema";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -58,6 +63,96 @@ function EmptyState({ label }: { label: string }) {
   return (
     <div className="py-10 text-center text-muted-foreground text-sm">
       {label}
+    </div>
+  );
+}
+
+function CompactedLooseDemand({
+  items,
+  demand,
+}: {
+  items: Array<any>;
+  demand: BomDemand;
+}) {
+  const quantitiesByItem = new Map<number, number>();
+  for (const row of demand.materials) {
+    for (const part of row.breakdown) {
+      if (part.boqItemId == null || !Number.isFinite(part.workQty)) continue;
+      quantitiesByItem.set(
+        Number(part.boqItemId),
+        Math.max(quantitiesByItem.get(Number(part.boqItemId)) ?? 0, Number(part.workQty)),
+      );
+    }
+  }
+  const rows = items.filter(item =>
+    item.layerQuantityProfile ||
+    ["granular", "bituminous"].includes(item.layerConfig?.layerType),
+  );
+  if (!rows.length) return null;
+  const numberOrDash = (value: number | null | undefined, digits = 2) =>
+    value == null || !Number.isFinite(value) ? "—" : fmtQty(value, digits);
+
+  return (
+    <div className="mb-4 rounded-xl border bg-white overflow-hidden" data-testid="compacted-loose-demand">
+      <div className="px-3 py-2 border-b bg-slate-50">
+        <h3 className="text-sm font-semibold text-slate-700">Compacted and loose material demand</h3>
+        <p className="text-xs text-slate-500">Direct-supply granular quantities stay in the BOQ unit (Cum). Wastage is shown separately.</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-slate-100 text-slate-600">
+            <tr>
+              <th className="px-3 py-2 text-left">BOQ layer / mix</th>
+              <th className="px-2 py-2 text-right">Compacted Cum</th>
+              <th className="px-2 py-2 text-right">MT</th>
+              <th className="px-2 py-2 text-right">Loose Cum / CFT</th>
+              <th className="px-2 py-2 text-right">Wastage MT / Cum</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(item => {
+              const profile = item.layerQuantityProfile as CompactedLooseProfile | null | undefined;
+              const workQty = quantitiesByItem.get(Number(item.id)) ?? Number(item.currentQty ?? 0);
+              const unit = canonicalizeUnit(item.canonicalUnit ?? item.unit ?? "");
+              const thicknessMm = Number(item.layerConfig?.thicknessMm);
+              const compactedCum =
+                unit === "Cum" ? workQty
+                : unit === "Sqm" && thicknessMm > 0 ? workQty * thicknessMm / 1000
+                : null;
+              const result = compactedCum == null
+                ? null
+                : calculateCompactedLooseQuantity(compactedCum, profile);
+              const state = compactedCum == null
+                ? "Needs conversion"
+                : !result ? "Values not set" : null;
+              return (
+                <tr key={item.id} className="border-t" data-testid={`compacted-loose-demand-${item.id}`}>
+                  <td className="px-3 py-2">
+                    <span className="font-medium text-slate-700">{item.displayName || item.itemName || item.description}</span>
+                    {item.itemCode && <span className="ml-1 text-slate-400">[{item.itemCode}]</span>}
+                    <CompactedLooseReminder
+                      thicknessMm={item.layerConfig?.thicknessMm}
+                      profile={profile}
+                    />
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono">{state ?? numberOrDash(result?.compactedCum)}</td>
+                  <td className="px-2 py-2 text-right font-mono">
+                    {state ?? numberOrDash(result?.compactedMt)}
+                    {result && <div className="text-[10px] text-slate-400">+ {numberOrDash(result.wastageMt)} wastage</div>}
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono">
+                    {state ?? `${numberOrDash(result?.looseCum)} / ${numberOrDash(result?.looseCft, 0)} CFT`}
+                    {result && <div className="text-[10px] text-slate-400">+ {numberOrDash(result.wastageLooseCum)} Cum wastage</div>}
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono">
+                    {state ?? `${numberOrDash(result?.wastageMt)} MT / ${numberOrDash(result?.wastageLooseCum)} Cum`}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -2981,6 +3076,13 @@ export default function WorkDemand() {
 
             <TabsContent value="materials" className="mt-3">
               <SectionHeader icon={Package} title="Material Demand by Month" badge={demand.materials.length} />
+              <a
+                href={`/reports/material-balance?projectId=${projectId}`}
+                className="mb-3 inline-flex text-sm font-medium text-teal-700 hover:underline"
+                data-testid="link-material-balance-report"
+              >
+                Open Material Balance report
+              </a>
               {materialReadiness.total > 0 && (
                 <div className="mb-3 rounded-lg border border-slate-200 bg-white p-3" data-testid="material-readiness-panel">
                   <div className="flex items-center justify-between gap-3">
@@ -3037,6 +3139,7 @@ export default function WorkDemand() {
                   )}
                 </div>
               )}
+              <CompactedLooseDemand items={bomData?.items ?? []} demand={demand} />
               <MaterialsTable demand={demand} project={project} structureItemDescriptions={structureItemDescriptions} />
             </TabsContent>
 

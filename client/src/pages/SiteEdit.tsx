@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { CompactedLooseReminder } from "@/components/CompactedLooseReminder";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { InsufficientDieselDialog, parseInsufficientPlantStock, type InsufficientPlantStockPayload } from "@/components/InsufficientDieselDialog";
@@ -577,6 +578,14 @@ export default function SiteEdit() {
     allowEvidenceBasedRecovery: true,
     recoveryEvidence: dpr,
     cataloguePreviewEligible: boqCataloguePreviewEligible,
+  });
+  const { data: bomProfileData } = useQuery<{ items: Array<any>; bars: Array<any> }>({
+    queryKey: ["/api/boq/projects", siteBoqProjectId, "bom"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${siteBoqProjectId}/bom`, { credentials: "include" });
+      return res.ok ? res.json() : { items: [], bars: [] };
+    },
+    enabled: !!siteBoqProjectId,
   });
   const handleEditSiteChange = (nextSite: string) => {
     const hasSavedDpr = dpr != null;
@@ -2639,6 +2648,15 @@ export default function SiteEdit() {
                       }}
                       data-testid={`input-thickness-${idx}`}
                     />
+                    {entry.boqItemId != null && (() => {
+                      const linkedItem = bomProfileData?.items.find(item => item.id === entry.boqItemId);
+                      return (
+                        <CompactedLooseReminder
+                          thicknessMm={entry.thickness != null ? entry.thickness * 1000 : linkedItem?.layerConfig?.thicknessMm}
+                          profile={linkedItem?.layerQuantityProfile}
+                        />
+                      );
+                    })()}
                   </div>
                   <div>
                     {/* 06P: optional layer/lift number — blank = today's behaviour. */}

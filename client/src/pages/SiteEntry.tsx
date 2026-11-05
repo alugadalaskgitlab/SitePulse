@@ -47,6 +47,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { CompactedLooseReminder } from "@/components/CompactedLooseReminder";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { parseDprError } from "@/lib/dprErrors";
@@ -2976,6 +2977,15 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                             }}
                             data-testid={`input-progress-thickness-${idx}`}
                           />
+                          {entry.boqItemId != null && (() => {
+                            const linkedItem = bomData?.items.find(item => item.id === entry.boqItemId);
+                            return (
+                              <CompactedLooseReminder
+                                thicknessMm={entry.thickness != null ? entry.thickness * 1000 : linkedItem?.layerConfig?.thicknessMm}
+                                profile={linkedItem?.layerQuantityProfile}
+                              />
+                            );
+                          })()}
                         </div>
                       )}
                     </>);

@@ -140,6 +140,15 @@ export interface ActivityReceiptStripProps {
 
 export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
   const { siteName, date, boqProjectId, boqItemId, programmeBarId, readOnly, testIdPrefix } = props;
+  const { data: bomProfileData } = useQuery<{ items: Array<any> }>({
+    queryKey: ["/api/boq/projects", boqProjectId, "bom"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${boqProjectId}/bom`, { credentials: "include" });
+      return res.ok ? res.json() : { items: [] };
+    },
+    enabled: !!boqProjectId && boqItemId != null,
+  });
+  const materialProfile = bomProfileData?.items.find((item) => item.id === boqItemId)?.layerQuantityProfile ?? null;
   const { toast } = useToast();
   const { uploadFile } = useUpload();
   const [viewOpen, setViewOpen] = useState(false);
@@ -374,6 +383,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     received,
     executedQty: props.executedQty ?? null,
     executedUom: props.executedUom ?? null,
+    materialProfile,
   });
   const fmt = (q: number | null | undefined, u?: string | null) =>
     q == null ? "—" : `${Number(q.toFixed ? q.toFixed(2) : q)} ${u ?? ""}`.trim();

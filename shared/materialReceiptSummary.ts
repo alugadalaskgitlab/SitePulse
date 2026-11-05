@@ -17,6 +17,7 @@
 
 import { convertSolidQty, normalizeUom as normalizeConvertibleUom } from "./uomConvert";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "./arrangementStatusHistory";
+import { convertMaterialQuantityToMt, hasCompleteCompactedLooseProfile, type CompactedLooseProfile, type MaterialQuantityBasis } from "./compactedLoose";
 
 // ---------- Arrangement types ----------
 
@@ -433,6 +434,11 @@ export interface ReceiptComparisonInput extends RequiredTodayResult {
   /** Executed BOQ qty from the EXISTING DPR credit semantics (physical × factor). */
   executedQty: number | null;
   executedUom: string | null;
+  /** Optional material profile; absent/incomplete keeps the existing comparison behavior. */
+  materialProfile?: CompactedLooseProfile | null;
+  requiredBasis?: MaterialQuantityBasis;
+  receiptBasis?: MaterialQuantityBasis;
+  executedBasis?: MaterialQuantityBasis;
 }
 
 export interface ReceiptComparison {
@@ -489,6 +495,57 @@ export function buildReceiptComparison(input: ReceiptComparisonInput): ReceiptCo
     executedQty: input.executedQty,
     executedUom: input.executedUom,
   };
+  if (hasCompleteCompactedLooseProfile(input.materialProfile)) {
+    const requiredMt = input.requiredQty == null || !input.requiredUom
+      ? null
+      : convertMaterialQuantityToMt(
+        input.requiredQty,
+        input.requiredUom,
+        input.requiredBasis ?? "compacted",
+        input.materialProfile,
+      );
+    const receivedValues = received.byUom.map((line) => convertMaterialQuantityToMt(
+      line.qty,
+      line.uom,
+      input.receiptBasis ?? "loose",
+      input.materialProfile,
+    ));
+    const receivedMt = receivedValues.length === 0 || receivedValues.some((value) => value == null)
+      ? null
+      : receivedValues.reduce<number>((sum, value) => sum + (value ?? 0), 0);
+    const executedMt = input.executedQty == null || !input.executedUom
+      ? null
+      : convertMaterialQuantityToMt(
+        input.executedQty,
+        input.executedUom,
+        input.executedBasis ?? "compacted",
+        input.materialProfile,
+      );
+    const present = [requiredMt, receivedMt, executedMt].filter((value) => value != null);
+    if (present.length < 2) {
+      return { ...base, comparable: false, comparisonReason: "Not enough comparable quantities.", varianceToRequired: null, receivedLessExecuted: null };
+    }
+    if (
+      (input.requiredQty != null && requiredMt == null) ||
+      (received.byUom.length > 0 && receivedMt == null) ||
+      (input.executedQty != null && executedMt == null)
+    ) {
+      return { ...base, comparable: false, comparisonReason: "Compacted/loose values are not set for this material.", varianceToRequired: null, receivedLessExecuted: null };
+    }
+    return {
+      ...base,
+      requiredQty: requiredMt,
+      requiredUom: input.requiredQty != null ? "MT" : input.requiredUom,
+      receivedQty: receivedMt,
+      receivedUom: receivedMt != null ? "MT" : received.receivedUom,
+      executedQty: executedMt,
+      executedUom: input.executedQty != null ? "MT" : input.executedUom,
+      comparable: true,
+      comparisonReason: "Compacted/loose material profile converted to MT.",
+      varianceToRequired: receivedMt != null && requiredMt != null ? Number((receivedMt - requiredMt).toFixed(3)) : null,
+      receivedLessExecuted: receivedMt != null && executedMt != null ? Number((receivedMt - executedMt).toFixed(3)) : null,
+    };
+  }
   if (received.mixedUoms) {
     return { ...base, comparable: false, comparisonReason: "Receipts use mixed UoMs — quantities shown separately.", varianceToRequired: null, receivedLessExecuted: null };
   }

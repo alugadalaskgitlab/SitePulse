@@ -19,6 +19,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION, NO_CREATE_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import {
+  calculateCompactedLooseQuantity,
+  extraLoosePercentFromFactor,
+  looseFactorFromExtraLoosePercent,
+} from "@shared/compactedLoose";
 import { useAuth } from "@/lib/auth-context";
 import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock, Personnel, LdoFlowReading, PlantSettings, PlantSettingsWithSite, Site } from "@shared/schema";
 import { Switch } from "@/components/ui/switch";
@@ -2673,6 +2678,10 @@ export function MaterialMaster() {
   const [procurementRoute, setProcurementRoute] = useState("");
   const [bulkDensity, setBulkDensity] = useState("");
   const [volumeUom, setVolumeUom] = useState("CFT");
+  const [rolledDensity, setRolledDensity] = useState("");
+  const [rollingPct, setRollingPct] = useState("");
+  const [extraLoosePct, setExtraLoosePct] = useState("");
+  const [wastagePct, setWastagePct] = useState("");
   
   // Opening Stock dialog state
   const [openingStockDialogOpen, setOpeningStockDialogOpen] = useState(false);
@@ -2687,6 +2696,7 @@ export function MaterialMaster() {
 
   // ── Instruction 021: UOM Conversion Profile form state ───────────────────
   const [showConvForm, setShowConvForm] = useState(false);
+  const [showAdvancedConversions, setShowAdvancedConversions] = useState(false);
   const [convFromUom, setConvFromUom] = useState("");
   const [convToUom, setConvToUom] = useState("");
   const [convFactor, setConvFactor] = useState("");
@@ -2714,7 +2724,7 @@ export function MaterialMaster() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; category?: string; defaultUom: string; procurementRoute: string; bulkDensity?: number | null; conversionFromUom?: string }) =>
+    mutationFn: (data: { name: string; category?: string; defaultUom: string; procurementRoute: string; bulkDensity?: number | null; conversionFromUom?: string; rolledDensity?: number | null; rollingPct?: number | null; looseFactor?: number | null; wastagePct?: number | null }) =>
       apiRequest("POST", "/api/plant-module/materials", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
@@ -2731,7 +2741,7 @@ export function MaterialMaster() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; category?: string; defaultUom: string; procurementRoute: string; bulkDensity?: number | null; conversionFromUom?: string }> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; category?: string; defaultUom: string; procurementRoute: string; bulkDensity?: number | null; conversionFromUom?: string; rolledDensity?: number | null; rollingPct?: number | null; looseFactor?: number | null; wastagePct?: number | null }> }) =>
       apiRequest("PATCH", `/api/plant-module/materials/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
@@ -2852,6 +2862,12 @@ export function MaterialMaster() {
     setProcurementRoute("");
     setBulkDensity("");
     setVolumeUom("CFT");
+    setRolledDensity("");
+    setRollingPct("");
+    setExtraLoosePct("");
+    setWastagePct("");
+    setShowAdvancedConversions(false);
+    setShowConvForm(false);
   };
 
   const resetOpeningStockForm = () => {
@@ -2874,6 +2890,12 @@ export function MaterialMaster() {
     setProcurementRoute((material as any).procurementRoute || "");
     setBulkDensity((material as any).bulkDensity != null ? String((material as any).bulkDensity) : "");
     setVolumeUom((material as any).conversionFromUom || "CFT");
+    setRolledDensity((material as any).rolledDensity != null ? String((material as any).rolledDensity) : "");
+    setRollingPct((material as any).rollingPct != null ? String((material as any).rollingPct) : "");
+    setExtraLoosePct(extraLoosePercentFromFactor((material as any).looseFactor)?.toString() ?? "");
+    setWastagePct((material as any).wastagePct != null ? String((material as any).wastagePct) : "");
+    setShowAdvancedConversions(false);
+    setShowConvForm(false);
     setDialogOpen(true);
   };
 
@@ -2889,6 +2911,10 @@ export function MaterialMaster() {
       return;
     }
     const bd = parseFloat(bulkDensity);
+    const looseFactor = extraLoosePct.trim() === ""
+      ? null
+      : looseFactorFromExtraLoosePercent(Number(extraLoosePct));
+    const numericOrNull = (value: string) => value.trim() === "" ? null : Number(value);
     const data = { 
       name, 
       category, 
@@ -2896,6 +2922,10 @@ export function MaterialMaster() {
       procurementRoute,
       bulkDensity: !isNaN(bd) && bd > 0 ? bd : null,
       conversionFromUom: !isNaN(bd) && bd > 0 ? volumeUom : undefined,
+      rolledDensity: numericOrNull(rolledDensity),
+      rollingPct: numericOrNull(rollingPct),
+      looseFactor,
+      wastagePct: numericOrNull(wastagePct),
     };
     if (editingMaterial) {
       updateMutation.mutate({ id: editingMaterial.id, data });
@@ -2926,6 +2956,14 @@ export function MaterialMaster() {
   };
 
   const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || `Material #${id}`;
+  const materialProfile = {
+    rolledDensity: rolledDensity.trim() === "" ? null : Number(rolledDensity),
+    rollingPct: rollingPct.trim() === "" ? null : Number(rollingPct),
+    looseFactor: extraLoosePct.trim() === "" ? null : looseFactorFromExtraLoosePercent(Number(extraLoosePct)),
+    wastagePct: wastagePct.trim() === "" ? null : Number(wastagePct),
+  };
+  const materialExample = calculateCompactedLooseQuantity(100, materialProfile);
+  const materialThickness = 150;
   const getPartyName = (id: number | null) => {
     if (id === null) return "HLC (Common)";
     return parties?.find(p => p.id === id)?.name || `Party #${id}`;
@@ -3046,7 +3084,7 @@ export function MaterialMaster() {
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-sm">Bulk Density (MT/m³)</Label>
+                  <Label className="text-sm">Weight of 1 cum as delivered, MT</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -3054,7 +3092,7 @@ export function MaterialMaster() {
                       max="5"
                       value={bulkDensity}
                       onChange={e => setBulkDensity(e.target.value)}
-                      placeholder="e.g. 2.1"
+                      placeholder="e.g. 1.8"
                       className="h-8 text-sm"
                       data-testid="input-bulk-density"
                     />
@@ -3078,13 +3116,69 @@ export function MaterialMaster() {
                 )}
               </div>
 
-              {/* ── Instruction 021: UOM Conversion Profiles (edit mode only) ── */}
+              <div className="rounded-md border border-teal-200 bg-teal-50/40 p-3 space-y-3" data-testid="compacted-loose-material-fields">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Compacted and loose</p>
+                  <p className="text-xs text-muted-foreground">Leave unset until the Owner has the material values. These values do not replace the separate delivered bulk density.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="material-rolled-density">Compacted density (lab)</Label>
+                    <Input id="material-rolled-density" type="number" min="0" step="0.001" value={rolledDensity}
+                      onChange={e => setRolledDensity(e.target.value)} placeholder="MT per cum" data-testid="input-rolled-density" />
+                    <p className="text-xs text-muted-foreground mt-0.5">MT per cum</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="material-rolling-pct">Field compaction</Label>
+                    <Input id="material-rolling-pct" type="number" min="0" step="0.1" value={rollingPct}
+                      onChange={e => setRollingPct(e.target.value)} placeholder="98" data-testid="input-rolling-pct" />
+                    <p className="text-xs text-muted-foreground mt-0.5">% of lab density to be achieved on site</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="material-extra-loose">Extra loose</Label>
+                    <Input id="material-extra-loose" type="number" min="0" step="0.1" value={extraLoosePct}
+                      onChange={e => setExtraLoosePct(e.target.value)} placeholder="20" data-testid="input-extra-loose-pct" />
+                    <p className="text-xs text-muted-foreground mt-0.5">Enter %; factor 1.20</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="material-wastage-pct">Wastage</Label>
+                    <Input id="material-wastage-pct" type="number" min="0" step="0.1" value={wastagePct}
+                      onChange={e => setWastagePct(e.target.value)} placeholder="0" data-testid="input-wastage-pct" />
+                    <p className="text-xs text-muted-foreground mt-0.5">%</p>
+                  </div>
+                </div>
+                <div className="rounded border bg-background px-3 py-2 text-xs" data-testid="compacted-loose-preview">
+                  {!materialExample ? (
+                    <p className="text-amber-700 font-medium">Values not set</p>
+                  ) : (
+                    <>
+                      <p className="font-medium">
+                        For 100 cum compacted: Weight {materialExample.compactedMt.toFixed(2)} MT · Loose {materialExample.looseCum.toFixed(2)} cum ({materialExample.looseCft.toFixed(0)} CFT)
+                      </p>
+                      <p className="text-muted-foreground mt-0.5">
+                        With {materialProfile.wastagePct}% wastage: {materialExample.requiredMt.toFixed(2)} MT · {materialExample.requiredLooseCum.toFixed(2)} cum loose · 1 cum loose weighs {materialExample.looseWeightPerCum.toFixed(3)} MT — used to change truck CFT into MT
+                      </p>
+                      <p className="text-teal-700 mt-1">
+                        Quick check: {materialThickness} mm compacted → lay {(materialThickness * (materialProfile.looseFactor ?? 1)).toFixed(1)} mm loose
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Instruction 021: legacy UOM conversion profiles stay available under Advanced. ── */}
               {editingMaterial && (
+                <>
+                <Button type="button" variant="link" size="sm" className="h-6 px-0 text-xs"
+                  onClick={() => setShowAdvancedConversions(v => !v)} data-testid="button-advanced-uom-profiles">
+                  {showAdvancedConversions ? "Hide Advanced" : "Advanced"}
+                </Button>
+                {showAdvancedConversions && (
                 <div className="rounded-md border border-dashed border-border p-3 space-y-2.5 bg-muted/20">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">UOM Conversion Profiles</p>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Advanced UOM Conversion Profiles</p>
                     <Button type="button" size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowConvForm(v => !v)}>
-                      <Plus className="w-3 h-3" />{showConvForm ? "Cancel" : "Add Profile"}
+                      {!showConvForm && <Plus className="w-3 h-3" />}{showConvForm ? "Cancel" : "Add Profile"}
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
@@ -3165,6 +3259,8 @@ export function MaterialMaster() {
                     </div>
                   )}
                 </div>
+                )}
+                </>
               )}
 
             </div>
@@ -3400,6 +3496,10 @@ export function MixTemplateMaster() {
   const [bitumenPercent, setBitumenPercent] = useState("");
   const [ldoNorm, setLdoNorm] = useState("6");
   const [densityTPerCum, setDensityTPerCum] = useState("");
+  const [rolledDensity, setRolledDensity] = useState("");
+  const [rollingPct, setRollingPct] = useState("");
+  const [extraLoosePct, setExtraLoosePct] = useState("");
+  const [wastagePct, setWastagePct] = useState("");
   const [binderGrade, setBinderGrade] = useState("VG-30");
   const [notes, setNotes] = useState("");
   const [aggregateProportions, setAggregateProportions] = useState<Record<number, string>>({});
@@ -3461,6 +3561,10 @@ export function MixTemplateMaster() {
       bitumenPercent?: number; 
       binderGrade?: string;
       ldoNorm?: number;
+      rolledDensity?: number | null;
+      rollingPct?: number | null;
+      looseFactor?: number | null;
+      wastagePct?: number | null;
       notes?: string;
       components?: { materialId: number; percent: number; uom: string }[];
     }) => apiRequest("POST", "/api/plant-module/mix-templates", data),
@@ -3487,6 +3591,10 @@ export function MixTemplateMaster() {
       bitumenPercent?: number; 
       binderGrade?: string;
       ldoNorm?: number;
+      rolledDensity?: number | null;
+      rollingPct?: number | null;
+      looseFactor?: number | null;
+      wastagePct?: number | null;
       notes?: string;
       components?: { materialId: number; percent: number; uom: string }[];
     }}) => apiRequest("PATCH", `/api/plant-module/mix-templates/${id}`, data),
@@ -3535,6 +3643,10 @@ export function MixTemplateMaster() {
     setBitumenPercent("");
     setLdoNorm("6");
     setDensityTPerCum("");
+    setRolledDensity("");
+    setRollingPct("");
+    setExtraLoosePct("");
+    setWastagePct("");
     setBinderGrade("VG-30");
     setNotes("");
     setSelectedPartyId("");
@@ -3550,6 +3662,10 @@ export function MixTemplateMaster() {
     setBitumenPercent(template.bitumenPercent?.toString() || "");
     setLdoNorm(template.ldoNorm?.toString() || "6");
     setDensityTPerCum((template as any).densityTPerCum?.toString() || "");
+    setRolledDensity(template.rolledDensity != null ? String(template.rolledDensity) : "");
+    setRollingPct(template.rollingPct != null ? String(template.rollingPct) : "");
+    setExtraLoosePct(extraLoosePercentFromFactor(template.looseFactor)?.toString() ?? "");
+    setWastagePct(template.wastagePct != null ? String(template.wastagePct) : "");
     setBinderGrade((template as any).binderGrade || "VG-30");
     setNotes(template.notes || "");
     setSelectedPartyId(template.partyId != null ? String(template.partyId) : "");
@@ -3576,6 +3692,13 @@ export function MixTemplateMaster() {
     .reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
   const bitumenVal = parseFloat(bitumenPercent) || 0;
   const totalPercent = aggregateTotal + bitumenVal;
+  const templateProfile = {
+    rolledDensity: rolledDensity.trim() === "" ? null : Number(rolledDensity),
+    rollingPct: rollingPct.trim() === "" ? null : Number(rollingPct),
+    looseFactor: extraLoosePct.trim() === "" ? null : looseFactorFromExtraLoosePercent(Number(extraLoosePct)),
+    wastagePct: wastagePct.trim() === "" ? null : Number(wastagePct),
+  };
+  const templateExample = calculateCompactedLooseQuantity(100, templateProfile);
 
   const handleSubmit = () => {
     // Validate MC and WF bounds before submit
@@ -3610,6 +3733,10 @@ export function MixTemplateMaster() {
       binderGrade: binderGrade || undefined,
       ldoNorm: ldoNorm ? parseFloat(ldoNorm) : 6,
       densityTPerCum: densityTPerCum ? parseFloat(densityTPerCum) : undefined,
+      rolledDensity: templateProfile.rolledDensity,
+      rollingPct: templateProfile.rollingPct,
+      looseFactor: templateProfile.looseFactor,
+      wastagePct: templateProfile.wastagePct,
       notes,
       partyId: selectedPartyId ? parseInt(selectedPartyId) : null,
       components
@@ -3763,6 +3890,55 @@ export function MixTemplateMaster() {
                     placeholder="e.g., 6"
                     data-testid="input-ldo-norm"
                   />
+                </div>
+              </div>
+              <div className="rounded-md border border-teal-200 bg-teal-50/40 p-3 space-y-3" data-testid="compacted-loose-template-fields">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Compacted and loose</p>
+                  <p className="text-xs text-muted-foreground">These values belong to this mix template. Empty values remain unconfigured.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="template-rolled-density">Compacted density (lab)</Label>
+                    <Input id="template-rolled-density" type="number" min="0" step="0.001" value={rolledDensity}
+                      onChange={e => setRolledDensity(e.target.value)} placeholder="MT per cum" data-testid="input-template-rolled-density" />
+                    <p className="text-xs text-muted-foreground mt-0.5">MT per cum</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="template-rolling-pct">Field compaction</Label>
+                    <Input id="template-rolling-pct" type="number" min="0" step="0.1" value={rollingPct}
+                      onChange={e => setRollingPct(e.target.value)} placeholder="98" data-testid="input-template-rolling-pct" />
+                    <p className="text-xs text-muted-foreground mt-0.5">% of lab density to be achieved on site</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="template-extra-loose">Extra loose</Label>
+                    <Input id="template-extra-loose" type="number" min="0" step="0.1" value={extraLoosePct}
+                      onChange={e => setExtraLoosePct(e.target.value)} placeholder="20" data-testid="input-template-extra-loose-pct" />
+                    <p className="text-xs text-muted-foreground mt-0.5">Enter %; factor 1.20</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="template-wastage-pct">Wastage</Label>
+                    <Input id="template-wastage-pct" type="number" min="0" step="0.1" value={wastagePct}
+                      onChange={e => setWastagePct(e.target.value)} placeholder="0" data-testid="input-template-wastage-pct" />
+                    <p className="text-xs text-muted-foreground mt-0.5">%</p>
+                  </div>
+                </div>
+                <div className="rounded border bg-background px-3 py-2 text-xs" data-testid="template-compacted-loose-preview">
+                  {!templateExample ? (
+                    <p className="text-amber-700 font-medium">Values not set</p>
+                  ) : (
+                    <>
+                      <p className="font-medium">
+                        For 100 cum compacted: Weight {templateExample.compactedMt.toFixed(2)} MT · Loose {templateExample.looseCum.toFixed(2)} cum ({templateExample.looseCft.toFixed(0)} CFT)
+                      </p>
+                      <p className="text-muted-foreground mt-0.5">
+                        With {templateProfile.wastagePct}% wastage: {templateExample.requiredMt.toFixed(2)} MT · {templateExample.requiredLooseCum.toFixed(2)} cum loose · 1 cum loose weighs {templateExample.looseWeightPerCum.toFixed(3)} MT — used to change truck CFT into MT
+                      </p>
+                      <p className="text-teal-700 mt-1">
+                        Quick check: 150 mm compacted → lay {(150 * (templateProfile.looseFactor ?? 1)).toFixed(1)} mm loose
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
               

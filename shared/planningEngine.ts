@@ -934,6 +934,13 @@ export interface BomInputItem {
   canonicalUnit?: string | null;
   currentQty: number; // total BOQ qty
   layerConfig?: LayerConfig | null;
+  layerQuantityProfile?: {
+    rolledDensity: number | null;
+    rollingPct: number | null;
+    looseFactor: number | null;
+    wastagePct: number | null;
+    source?: "material" | "mix_template";
+  } | null;
   workCategory?: string | null;
   materials: Array<{
     materialName: string;
@@ -1268,9 +1275,11 @@ function earthworkMaterialName(item: BomInputItem): string {
   return "Earth / Borrow Soil";
 }
 
-function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow): string {
+export function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow): string {
   const raw = m.materialName || "";
   const desc = item.description;
+  const descIsBitMix = /bituminous\s*concrete|\bbc\b|\bdbm\b|dense\s*bituminous|sdbc|bituminous\s*macadam|\bbm\b/i.test(desc);
+  const isSprayCoat = item.layerConfig?.layerType === "spray_coat";
 
   if (/tmt|hysd|reinforcement|reinforcing\s*steel|steel\s*reinforcement|rebar/i.test(raw)) {
     return "TMT / Reinforcement Steel";
@@ -1278,6 +1287,22 @@ function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow)
 
   if (/hume\s*pipe|hdpe\s*pipe|rcc\s*pipe|\bnp[2-4]\b|spun\s*pipe/i.test(raw)) {
     return raw; // pipes keep their size/class label
+  }
+
+  // An explicitly named emulsion remains emulsion even when the BOQ description
+  // mentions a bituminous layer. For spray coats, identify primer/tack before the
+  // broader WMM/GSB description rules below.
+  if (/emulsion/i.test(raw)) {
+    const grade = raw.match(/\b(?:RS|SS)\s*-?\s*1\b/i)?.[0]?.replace(/\s+/g, "").toUpperCase();
+    return grade ? `Bitumen Emulsion ${grade}` : "Bitumen Emulsion";
+  }
+  if (
+    (isSprayCoat || !descIsBitMix) &&
+    (/prim(?:e|er)\s*coat|\bprimer\b|tack\s*coat/i.test(desc))
+  ) {
+    if (/prim/i.test(desc)) return "Bitumen Emulsion SS-1";
+    if (/tack/i.test(desc)) return "Bitumen Emulsion RS-1";
+    return "Bitumen Emulsion";
   }
 
   // Mirrors isGsbContext() / isWmmContext(): collapse into a single canonical line when
@@ -1296,15 +1321,6 @@ function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow)
     /\bwmm\b|wet\s*mix\s*macadam|wet\s*mix/i.test(desc) ||
     /\bwmm\b|wet\s*mix\s*macadam|wet\s*mix/i.test(raw)
   ) return "WMM Material";
-
-  // Emulsion naming must NEVER apply to a BC/DBM/SDBC/BM mix item that merely mentions
-  // "after applying prime coat" / "over tack coat" — those keep their VG-grade binder.
-  const descIsBitMix = /bituminous\s*concrete|\bbc\b|\bdbm\b|dense\s*bituminous|sdbc|bituminous\s*macadam|\bbm\b/i.test(desc);
-  if (!descIsBitMix && (/emulsion/i.test(raw) || /prim(?:e|er)\s*coat|\bprimer\b|tack\s*coat/i.test(desc))) {
-    if (/prim/i.test(desc)) return "Bitumen Emulsion SS-1";
-    if (/tack/i.test(desc)) return "Bitumen Emulsion RS-1";
-    return "Bitumen Emulsion";
-  }
 
   // Only fall back to the item description for VG-grade detection when the raw material
   // name is itself binder-like. Without this guard, aggregate names like "10/12MM" or
@@ -2443,7 +2459,7 @@ export function deriveMaterialsFromLayerConfig(
       granNorm === "WMM" ? "WMM Material" :
       granNorm === "WBM" ? "WBM Material" :
       "Granular Material";
-    return [{ materialName: directLabel, uom: "CUM", qtyPerBoqUnit: 1.0, isAuto: true }];
+    return [{ materialName: directLabel, uom: normaliseUnit(_boqUnit || "CUM"), qtyPerBoqUnit: 1.0, isAuto: true }];
   }
 
   if (layerConfig.layerType === "concrete") {

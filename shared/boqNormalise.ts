@@ -219,7 +219,7 @@ export interface MappingUomCheck {
    *   "bulk_density"       — mass↔volume via configured bulkDensity
    *   "incompatible"       — no compatible path found
    */
-  mode: "conversion_profile" | "direct" | "bulk_density" | "configured_factor" | "incompatible";
+  mode: "conversion_profile" | "direct" | "bulk_density" | "configured_factor" | "compacted_loose" | "incompatible";
   /** Conversion factor from sourceUom to the material's defaultUom (1 if direct). */
   conversionFactor: number | null;
   /** ID of the matched explicit conversion profile, if used. */
@@ -228,6 +228,25 @@ export interface MappingUomCheck {
   basis: string | null;
   /** Machine-readable error code returned to the client when incompatible. */
   errorCode: "MATERIAL_UOM_MISMATCH" | "MATERIAL_CONVERSION_REQUIRED" | "MATERIAL_CONVERSION_AMBIGUOUS" | null;
+}
+
+function newLooseToCompactedFactor(
+  fromUom: string,
+  toUom: string,
+  target: { rolledDensity?: number | null; rollingPct?: number | null; looseFactor?: number | null; wastagePct?: number | null },
+): number | null {
+  if (
+    !(target.rolledDensity != null && target.rolledDensity > 0) ||
+    !(target.rollingPct != null && target.rollingPct > 0) ||
+    !(target.looseFactor != null && target.looseFactor >= 1) ||
+    !(target.wastagePct != null && target.wastagePct >= 0)
+  ) return null;
+  const from = canonicalizeUnit(fromUom);
+  const to = canonicalizeUnit(toUom);
+  if (from === "Cum" && to === "Cum") return 1 / target.looseFactor!;
+  if (from === "CFT" && to === "Cum") return 1 / (35.3147 * target.looseFactor!);
+  if (from === "Cum" && to === "CFT") return 35.3147 * target.looseFactor!;
+  return null;
 }
 
 /**
@@ -246,6 +265,10 @@ export function checkMappingUomCompatibility(
     conversionFactor?: number | null;
     conversionFromUom?: string | null;
     conversionToUom?: string | null;
+    rolledDensity?: number | null;
+    rollingPct?: number | null;
+    looseFactor?: number | null;
+    wastagePct?: number | null;
   },
   /** Instruction 021: explicit conversion profiles (highest-precedence tier). */
   profiles?: UomConversionProfile[],
@@ -263,6 +286,21 @@ export function checkMappingUomCompatibility(
       canonicalizeUnit(p.fromUom) === srcCanonical &&
       (defaultCanonical == null || canonicalizeUnit(p.toUom) === defaultCanonical)
     );
+    const allApplicableAreLegacyLooseProfiles = applicable.length > 0 &&
+      applicable.every(p => p.conversionType === "loose_to_compacted");
+    const compactedLooseFactor = allApplicableAreLegacyLooseProfiles
+      ? newLooseToCompactedFactor(srcCanonical, applicable[0].toUom, target)
+      : null;
+    if (compactedLooseFactor != null) {
+      return {
+        compatible: true,
+        mode: "compacted_loose",
+        conversionFactor: compactedLooseFactor,
+        conversionProfileId: null,
+        basis: `Compacted and loose values: 1 ${applicable[0].fromUom} = ${compactedLooseFactor} ${applicable[0].toUom}`,
+        errorCode: null,
+      };
+    }
     if (applicable.length === 1) {
       const p = applicable[0];
       return {

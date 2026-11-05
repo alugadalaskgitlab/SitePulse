@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { DeleteGate } from "@/components/DeleteGate";
+import { CompactedLooseReminder } from "@/components/CompactedLooseReminder";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { ProgrammeLink as Link } from "@/components/ProgrammeLink";
@@ -525,6 +526,15 @@ function StretchRow({
   isEditing, onRequestEdit, onCloseEdit, registerEditorApi,
 }: StretchRowProps) {
   const { toast } = useToast();
+  const { data: bomProfileData } = useQuery<{ items: Array<any> }>({
+    queryKey: ["/api/boq/projects", projectId, "bom"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${projectId}/bom`, { credentials: "include" });
+      return res.ok ? res.json() : { items: [] };
+    },
+    enabled: projectId > 0,
+  });
+  const profileBoqItem = bomProfileData?.items.find(candidate => candidate.id === item.id);
   const dirty = useRef(false);
   // The action request is owned by the row, which survives the menu closing.
   const [scheduleRevisionAction, setScheduleRevisionAction] = useState<ScheduleRevisionAction | null>(null);
@@ -1307,18 +1317,24 @@ function StretchRow({
           </>
         )}
         {geomApp.thickness && (
-          <>
-            <span className="text-xs text-slate-400 flex-shrink-0" title="Planned executed thickness (mm) — planning value, independent of the BOQ design thickness">T</span>
-            <input
-              type="number" step="1" min="0"
-              value={thickStr}
-              onChange={e => { dirty.current = true; setThickStr(e.target.value); }}
-              className="w-[44px] text-xs font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
-              placeholder="mm"
-              title="Planned executed thickness in mm (optional — never auto-synced with BOQ design thickness)"
-              data-testid={`input-thickness-${bar.id}`}
+          <div className="flex flex-col items-start flex-shrink-0">
+            <div className="flex items-center">
+              <span className="text-xs text-slate-400 flex-shrink-0" title="Planned executed thickness (mm) — planning value, independent of the BOQ design thickness">T</span>
+              <input
+                type="number" step="1" min="0"
+                value={thickStr}
+                onChange={e => { dirty.current = true; setThickStr(e.target.value); }}
+                className="w-[44px] text-xs font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
+                placeholder="mm"
+                title="Planned executed thickness in mm (optional — never auto-synced with BOQ design thickness)"
+                data-testid={`input-thickness-${bar.id}`}
+              />
+            </div>
+            <CompactedLooseReminder
+              thicknessMm={Number(thickStr) > 0 ? Number(thickStr) : profileBoqItem?.layerConfig?.thicknessMm ?? item.layerConfig?.thicknessMm}
+              profile={profileBoqItem?.layerQuantityProfile ?? item.layerQuantityProfile}
             />
-          </>
+          </div>
         )}
 
         {/* Spacer */}

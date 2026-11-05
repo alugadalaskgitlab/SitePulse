@@ -37,7 +37,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, userPermissions, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, userPermissions, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, mixTemplateComponents, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, storeIssues as storeIssuesTable, storeIssueItems as storeIssueItemsTable, storeItems as storeItemsTable, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import {
   insertPartySchema,
   insertPlantMaterialSchema,
@@ -61,7 +61,7 @@ import { equipmentMaster as hireIdentityEquipment } from "@shared/schema";
 import { vendors as billingIdentityVendors } from "@shared/schema";
 import { siteMaterialTrips } from "@shared/schema";
 import { buildPurchaseOrderPdf } from "./purchase-order-pdf";
-import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
+import { isNull, isNotNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { siteMatchesPermitted, untrustedVendorBillAutoItems, vendorBillAutoSourceFromCandidate, vendorBillItemMatchesSite, vendorBillUpdateSiteId, vendorBillVisibleToSites } from "@shared/siteName";
 import { arrangementBillingTermsSchema, tripBillIdentity } from "@shared/vendorBillArrangement";
@@ -127,6 +127,7 @@ import {
   isValidBituminousItemType, getCategoryDescriptor,
 } from "@shared/executionArrangementCategories";
 import { normalizeMaterialLabel, checkMappingUomCompatibility } from "@shared/boqNormalise";
+import { buildMaterialBalanceRows, type MaterialBalanceQuantity, type MaterialBalanceRequirement } from "@shared/materialBalanceReport";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
 import { classifyWorkType, STANDARD_CONCRETE_DESIGNS, isStructureOrLocationScheduledItem, isShoulderDesc } from "@shared/workTypeRecipes";
@@ -275,9 +276,14 @@ const plantMaterialCreateBodySchema = insertPlantMaterialSchema
     defaultUom: true,
     conversionFromUom: true,
     bulkDensity: true,
+    rolledDensity: true,
+    rollingPct: true,
+    looseFactor: true,
+    wastagePct: true,
     procurementRoute: true,
   })
   .strict();
+const plantMaterialUpdateBodySchema = plantMaterialCreateBodySchema.partial();
 
 const mixTypeCreateBodySchema = insertMixTypeSchema
   .pick({ name: true })
@@ -4551,7 +4557,9 @@ export async function registerRoutes(
   app.patch("/api/plant-module/materials/:id", async (req, res) => {
     try {
       if (!assertEdit(req, res, "master_materials")) return;
-      const material = await storage.updatePlantMaterial(Number(req.params.id), req.body);
+      const input = parseCreateBody(plantMaterialUpdateBodySchema, req.body, res);
+      if (input === null) return;
+      const material = await storage.updatePlantMaterial(Number(req.params.id), input);
       if (!material) return res.status(404).json({ message: "Material not found" });
       res.json(material);
     } catch (err) {
@@ -4717,6 +4725,16 @@ export async function registerRoutes(
     moistureContent: z.number().min(0).max(30, { message: "Moisture content must be between 0 and 30%" }).optional().default(0),
     wastageFactor: z.number().min(0).max(20, { message: "Wastage factor must be between 0 and 20%" }).optional().default(0),
   });
+  const mixTemplateCompactedLooseSchema = z.object({
+    rolledDensity: z.number().finite().positive().nullable().optional(),
+    rollingPct: z.number().finite().positive().nullable().optional(),
+    looseFactor: z.number().finite().min(1).nullable().optional(),
+    wastagePct: z.number().finite().min(0).nullable().optional(),
+  }).passthrough();
+  const validateMixTemplateCompactedLoose = (template: unknown): string | null => {
+    const result = mixTemplateCompactedLooseSchema.safeParse(template);
+    return result.success ? null : result.error.errors[0]?.message ?? "Invalid compacted and loose values";
+  };
   const validateComponents = (components: unknown): string | null => {
     if (!Array.isArray(components)) return null;
     for (const c of components) {
@@ -4732,6 +4750,8 @@ export async function registerRoutes(
       const { components, ...template } = req.body;
       const validationError = validateComponents(components);
       if (validationError) return res.status(400).json({ message: validationError });
+      const profileError = validateMixTemplateCompactedLoose(template);
+      if (profileError) return res.status(400).json({ message: profileError });
       const result = await storage.createMixTemplate(template, components);
       res.status(201).json(result);
     } catch (err) {
@@ -4745,6 +4765,8 @@ export async function registerRoutes(
       const { components, ...template } = req.body;
       const validationError = validateComponents(components);
       if (validationError) return res.status(400).json({ message: validationError });
+      const profileError = validateMixTemplateCompactedLoose(template);
+      if (profileError) return res.status(400).json({ message: profileError });
       const result = await storage.updateMixTemplate(Number(req.params.id), template, components);
       if (!result) return res.status(404).json({ message: "Mix template not found" });
       res.json(result);
@@ -19343,6 +19365,10 @@ export async function registerRoutes(
         ldoNorm: number | null;
         binderGrade: string | null;
         densityTPerCum: number | null;
+        rolledDensity: number | null;
+        rollingPct: number | null;
+        looseFactor: number | null;
+        wastagePct: number | null;
         components: Array<{ materialName: string; percent: number | null }>;
       }>();
       await Promise.all([...mixTemplateIds].map(async (mtId) => {
@@ -19353,6 +19379,10 @@ export async function registerRoutes(
             ldoNorm: mt.template.ldoNorm ?? 6,
             binderGrade: (mt.template as any).binderGrade ?? null,
             densityTPerCum: (mt.template as any).densityTPerCum ?? null,
+            rolledDensity: mt.template.rolledDensity ?? null,
+            rollingPct: mt.template.rollingPct ?? null,
+            looseFactor: mt.template.looseFactor ?? null,
+            wastagePct: mt.template.wastagePct ?? null,
             components: mt.components.map(c => ({
               materialName: matNameById.get(c.materialId) ?? `Material #${c.materialId}`,
               percent: c.percent ?? null,
@@ -19557,6 +19587,33 @@ export async function registerRoutes(
             : lc.layerType === "spray_coat" ? "direct"
             : lc.layerType === "concrete" ? "plant"
             : undefined;
+          const profileFromMaterialName = (name: string) => {
+            const base = name.toUpperCase().replace(/\(PROCESSED\)|\bMATERIAL\b/g, "").replace(/[^A-Z0-9]/g, "");
+            const material = allMaterials.find((candidate: any) => {
+              const candidateName = String(candidate.name ?? "").toUpperCase()
+                .replace(/\(PROCESSED\)|\bMATERIAL\b/g, "").replace(/[^A-Z0-9]/g, "");
+              return candidateName === base;
+            });
+            return material ? {
+              rolledDensity: material.rolledDensity ?? null,
+              rollingPct: material.rollingPct ?? null,
+              looseFactor: material.looseFactor ?? null,
+              wastagePct: material.wastagePct ?? null,
+              source: "material" as const,
+            } : null;
+          };
+          const layerQuantityProfile =
+            (lc.layerType === "bituminous" || (lc.layerType === "granular" && lc.granularSource === "plant")) && mixTemplate
+              ? {
+                  rolledDensity: mixTemplate.rolledDensity,
+                  rollingPct: mixTemplate.rollingPct,
+                  looseFactor: mixTemplate.looseFactor,
+                  wastagePct: mixTemplate.wastagePct,
+                  source: "mix_template" as const,
+                }
+              : lc.layerType === "granular" && lc.granularSource !== "plant"
+                ? profileFromMaterialName(derived[0]?.materialName ?? "")
+                : null;
 
           if (derived.length > 0) {
             const derivedRows = derived.map(dm => ({
@@ -19611,6 +19668,8 @@ export async function registerRoutes(
 
             return {
               ...item,
+              layerConfig: lc,
+              layerQuantityProfile,
               equipment: correctedEquipment,
               materials: derivedRows.map(dm => ({
                 id: 0,
@@ -19707,6 +19766,249 @@ export async function registerRoutes(
     } catch (err) {
       console.error("GET /api/boq/projects/:id/bom:", err);
       res.status(500).json({ error: "Failed to fetch BOM data" });
+    }
+  });
+
+  app.get("/api/reports/material-balance", async (req, res) => {
+    try {
+      if (!assertView(req, res, "work_programme_review")) return;
+      const projectId = Number(req.query.projectId);
+      const from = String(req.query.from ?? "");
+      const to = String(req.query.to ?? "");
+      if (!Number.isInteger(projectId) || projectId <= 0) {
+        return res.status(400).json({ message: "A BOQ project is required." });
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
+        return res.status(400).json({ message: "Choose a valid date range." });
+      }
+      if (!(await assertOutcomeProjectScope(req, res, projectId))) return;
+      const project = await storage.getBoqProject(projectId);
+      if (!project) return res.status(404).json({ message: "BOQ project not found." });
+      const site = project.siteId == null
+        ? null
+        : (await storage.getSites()).find((candidate) => candidate.id === project.siteId) ?? null;
+      if (!site) return res.status(400).json({ message: "This BOQ project has no linked site." });
+
+      const [bom, materialMasters, trips, plantReceipts, dispatches, components, storeRows, dprRows] = await Promise.all([
+        computeProjectBom(projectId),
+        db.select({
+          id: plantMaterials.id,
+          name: plantMaterials.name,
+          rolledDensity: plantMaterials.rolledDensity,
+          rollingPct: plantMaterials.rollingPct,
+          looseFactor: plantMaterials.looseFactor,
+          wastagePct: plantMaterials.wastagePct,
+        }).from(plantMaterials),
+        db.select({
+          date: siteMaterialTrips.date,
+          material: siteMaterialTrips.material,
+          quantity: siteMaterialTrips.quantity,
+          uom: siteMaterialTrips.uom,
+          boqItemId: siteMaterialTrips.boqItemId,
+          boqProjectId: siteMaterialTrips.boqProjectId,
+        }).from(siteMaterialTrips).where(and(
+          gte(siteMaterialTrips.date, from),
+          lte(siteMaterialTrips.date, to),
+          eq(siteMaterialTrips.isDeleted, false),
+          eq(siteMaterialTrips.isCancelled, false),
+          or(
+            eq(siteMaterialTrips.boqProjectId, projectId),
+            and(isNull(siteMaterialTrips.boqProjectId), eq(siteMaterialTrips.site, site.name)),
+          ),
+        )),
+        db.select({
+          date: auditMaterialReceipts.date,
+          materialId: auditMaterialReceipts.materialId,
+          quantity: auditMaterialReceipts.quantity,
+          uom: auditMaterialReceipts.uom,
+        }).from(auditMaterialReceipts)
+          .innerJoin(purchaseIndentsTable, eq(purchaseIndentsTable.indentNo, auditMaterialReceipts.indentRef))
+          .where(and(
+            gte(auditMaterialReceipts.date, from),
+            lte(auditMaterialReceipts.date, to),
+            eq(auditMaterialReceipts.isDeleted, false),
+            eq(auditMaterialReceipts.isCancelled, false),
+            eq(purchaseIndentsTable.siteId, site.id),
+            eq(purchaseIndentsTable.piType, "material"),
+          )),
+        db.select({
+          date: truckDispatchesTable.date,
+          mixTemplateId: truckDispatchesTable.mixTemplateId,
+          loadWeight: truckDispatchesTable.loadWeight,
+        }).from(truckDispatchesTable).where(and(
+          gte(truckDispatchesTable.date, from),
+          lte(truckDispatchesTable.date, to),
+          sql`lower(trim(coalesce(${truckDispatchesTable.deliveryLocation}, ''))) = lower(trim(${site.name}))`,
+        )),
+        db.select({
+          templateId: mixTemplateComponents.templateId,
+          materialId: mixTemplateComponents.materialId,
+          percent: mixTemplateComponents.percent,
+        }).from(mixTemplateComponents),
+        db.select({
+          date: storeIssuesTable.date,
+          materialName: storeItemsTable.name,
+          materialText: storeIssueItemsTable.materialText,
+          quantity: storeIssueItemsTable.qty,
+          uom: storeIssueItemsTable.uom,
+        }).from(storeIssuesTable)
+          .innerJoin(storeIssueItemsTable, eq(storeIssueItemsTable.issueId, storeIssuesTable.id))
+          .leftJoin(storeItemsTable, eq(storeItemsTable.id, storeIssueItemsTable.itemId))
+          .where(and(
+            gte(storeIssuesTable.date, from),
+            lte(storeIssuesTable.date, to),
+            eq(storeIssuesTable.siteId, site.id),
+            eq(storeIssuesTable.isCancelled, false),
+          )),
+        db.select({
+          dprDate: dprsTable.date,
+          boqItemId: progressEntriesTable.boqItemId,
+          quantity: progressEntriesTable.quantity,
+          uom: progressEntriesTable.uom,
+          noSiteWork: progressEntriesTable.noSiteWork,
+        }).from(dprsTable)
+          .innerJoin(progressEntriesTable, eq(progressEntriesTable.dprId, dprsTable.id))
+          .where(and(
+            eq(dprsTable.boqProjectId, projectId),
+            gte(dprsTable.date, from),
+            lte(dprsTable.date, to),
+            eq(dprsTable.isDeleted, false),
+            eq(dprsTable.isCancelled, false),
+            or(eq(progressEntriesTable.noSiteWork, false), isNull(progressEntriesTable.noSiteWork)),
+            isNotNull(progressEntriesTable.boqItemId),
+          )),
+      ]);
+
+      const normalName = (name: string) => normalizeMaterialLabel(name).trim().toLocaleUpperCase();
+      const masterByName = new Map(materialMasters.map((material) => [normalName(material.name), material]));
+      const masterById = new Map(materialMasters.map((material) => [material.id, material]));
+      const profileFor = (name: string, fallback?: any) => {
+        const master = masterByName.get(normalName(name));
+        if (master) {
+          return {
+            rolledDensity: master.rolledDensity == null ? null : Number(master.rolledDensity),
+            rollingPct: master.rollingPct == null ? null : Number(master.rollingPct),
+            looseFactor: master.looseFactor == null ? null : Number(master.looseFactor),
+            wastagePct: master.wastagePct == null ? null : Number(master.wastagePct),
+          };
+        }
+        return fallback ?? null;
+      };
+      const requirements: MaterialBalanceRequirement[] = [];
+      const sources: MaterialBalanceQuantity[] = [];
+      const materialsByItem = new Map<number, Array<{ name: string; qtyPerBoqUnit: number; uom: string; profile: any }>>();
+      for (const item of bom.expandedItems ?? []) {
+        const itemId = Number(item.id);
+        const materials: Array<{ name: string; qtyPerBoqUnit: number; uom: string; profile: any }> = [];
+        for (const row of item.materials ?? []) {
+          const name = String(row.materialName ?? row.name ?? "").trim();
+          const perUnit = Number(row.qtyPerBoqUnit);
+          if (!name || !Number.isFinite(perUnit) || perUnit < 0) continue;
+          const profile = profileFor(name, item.layerQuantityProfile);
+          const materialUom = String(row.uom ?? item.unit ?? "MT");
+          materials.push({ name, qtyPerBoqUnit: perUnit, uom: materialUom, profile });
+          requirements.push({
+            materialName: name,
+            quantity: (Number(item.currentQty) || 0) * perUnit,
+            uom: materialUom,
+            profile,
+          });
+        }
+        if (Number.isInteger(itemId)) materialsByItem.set(itemId, materials);
+      }
+      for (const trip of trips) {
+        sources.push({
+          materialName: trip.material,
+          quantity: Number(trip.quantity),
+          uom: trip.uom,
+          basis: "loose",
+          kind: "received",
+          source: "Site material trip",
+          attribution: trip.boqItemId != null && trip.boqProjectId === projectId ? "by project/item" : "by site",
+        });
+      }
+      for (const receipt of plantReceipts) {
+        const material = masterById.get(receipt.materialId);
+        if (!material) continue;
+        sources.push({
+          materialName: material.name,
+          quantity: Number(receipt.quantity),
+          uom: receipt.uom,
+          basis: "loose",
+          kind: "received",
+          source: "Plant receipt via site-linked material PI",
+          attribution: "by site",
+        });
+      }
+      const componentsByTemplate = new Map<number, typeof components>();
+      for (const component of components) {
+        const rows = componentsByTemplate.get(component.templateId) ?? [];
+        rows.push(component);
+        componentsByTemplate.set(component.templateId, rows);
+      }
+      for (const dispatch of dispatches) {
+        for (const component of componentsByTemplate.get(dispatch.mixTemplateId) ?? []) {
+          const material = masterById.get(component.materialId);
+          const percent = Number(component.percent);
+          if (!material || !Number.isFinite(percent) || percent < 0) continue;
+          sources.push({
+            materialName: material.name,
+            quantity: Number(dispatch.loadWeight) * percent / 100,
+            uom: "MT",
+            basis: "loose",
+            kind: "used",
+            source: "Plant dispatch (by site; mix-template share)",
+            attribution: "by site",
+          });
+        }
+      }
+      for (const issue of storeRows) {
+        const name = String(issue.materialName ?? issue.materialText ?? "").trim();
+        if (!name) continue;
+        sources.push({
+          materialName: name,
+          quantity: Number(issue.quantity),
+          uom: issue.uom,
+          basis: "loose",
+          kind: "used",
+          source: "Store issue (by site)",
+          attribution: "by site",
+        });
+      }
+      const itemById = new Map((bom.expandedItems ?? []).map((item: any) => [Number(item.id), item]));
+      for (const entry of dprRows) {
+        if (entry.boqItemId == null) continue;
+        const item = itemById.get(entry.boqItemId) as any;
+        const itemMaterials = materialsByItem.get(entry.boqItemId) ?? [];
+        if (!item || !itemMaterials.length) continue;
+        const actualQty = Number(entry.quantity);
+        if (!Number.isFinite(actualQty) || actualQty < 0) continue;
+        const conversion = Number(item.dprConversionFactor ?? 1);
+        for (const material of itemMaterials) {
+          sources.push({
+            materialName: material.name,
+            quantity: actualQty * conversion * material.qtyPerBoqUnit,
+            uom: material.uom,
+            basis: "compacted",
+            kind: "used",
+            source: "DPR (by BOQ project/item link)",
+            attribution: "by project/item",
+          });
+        }
+      }
+      const rows = buildMaterialBalanceRows(requirements, sources);
+      res.json({
+        projectId,
+        projectName: project.name,
+        siteName: site.name,
+        from,
+        to,
+        differenceDefinition: "Received minus used",
+        rows,
+      });
+    } catch (err) {
+      console.error("GET /api/reports/material-balance:", err);
+      res.status(500).json({ message: "Failed to build material balance report." });
     }
   });
 
@@ -22848,6 +23150,10 @@ export async function registerRoutes(
           conversionFactor: plantMaterials.conversionFactor,
           conversionFromUom: plantMaterials.conversionFromUom,
           conversionToUom: plantMaterials.conversionToUom,
+          rolledDensity: plantMaterials.rolledDensity,
+          rollingPct: plantMaterials.rollingPct,
+          looseFactor: plantMaterials.looseFactor,
+          wastagePct: plantMaterials.wastagePct,
         }).from(plantMaterials)
           .where(eq(plantMaterials.id, Number(materialId)))
           .limit(1);

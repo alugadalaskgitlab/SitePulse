@@ -479,6 +479,10 @@ export const plantMaterials = pgTable("plant_materials", {
   conversionFromUom: text("conversion_from_uom"), // Volume UOM used at receipt (e.g., "CFT", "Cum")
   conversionToUom: text("conversion_to_uom"), // Always "Ton" when bulkDensity is set
   bulkDensity: real("bulk_density"), // MT/m³ (T/Cum); user-entered; drives conversionFactor
+  rolledDensity: real("rolled_density"),
+  rollingPct: real("rolling_pct"),
+  looseFactor: real("loose_factor"),
+  wastagePct: real("wastage_pct"),
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
   // 06S §1: NO implicit default — null means "not configured yet" and must
@@ -519,6 +523,10 @@ export const mixTemplates = pgTable("mix_templates", {
   binderGrade: text("binder_grade"), // VG-10 / VG-30 / VG-40 / CRMB / PMB / Emulsion
   ldoNorm: real("ldo_norm").default(6), // Liters per ton (default 6 L/ton)
   densityTPerCum: real("density_t_per_cum"), // Compacted mix density (T/m³); BC/SDBC≈2.40, DBM/BM≈2.35
+  rolledDensity: real("rolled_density"),
+  rollingPct: real("rolling_pct"),
+  looseFactor: real("loose_factor"),
+  wastagePct: real("wastage_pct"),
   isStandard: integer("is_standard").default(1), // 1 = Standard, 0 = Job-specific
   partyId: integer("party_id"), // Only for job-specific templates
   baseTemplateId: integer("base_template_id"), // For variants, reference to standard template

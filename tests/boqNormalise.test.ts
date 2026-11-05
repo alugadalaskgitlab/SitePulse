@@ -320,6 +320,50 @@ describe("checkMappingUomCompatibility — 021A: correct target profile selected
     expect(result.compatible).toBe(true);
     expect(result.conversionProfileId).toBe(7);
   });
+
+  it("new compacted/loose values replace the old loose_to_compacted factor", () => {
+    const profile: UomConversionProfile[] = [
+      { id: 20, fromUom: "CFT", toUom: "CUM", conversionFactor: 0.03, conversionType: "loose_to_compacted", isActive: 1 },
+    ];
+    const result = checkMappingUomCompatibility("CFT", {
+      defaultUom: "CUM",
+      rolledDensity: 2,
+      rollingPct: 98,
+      looseFactor: 1.2,
+      wastagePct: 5,
+    }, profile);
+    expect(result.compatible).toBe(true);
+    expect(result.mode).toBe("compacted_loose");
+    expect(result.conversionProfileId).toBeNull();
+    expect(result.conversionFactor).toBeCloseTo(1 / (35.3147 * 1.2), 8);
+  });
+
+  it("keeps old loose_to_compacted profiles as fallback when new values are unset", () => {
+    const profile: UomConversionProfile[] = [
+      { id: 21, fromUom: "CFT", toUom: "CUM", conversionFactor: 0.03, conversionType: "loose_to_compacted", isActive: 1 },
+    ];
+    const result = checkMappingUomCompatibility("CFT", { defaultUom: "CUM" }, profile);
+    expect(result.compatible).toBe(true);
+    expect(result.mode).toBe("conversion_profile");
+    expect(result.conversionProfileId).toBe(21);
+    expect(result.conversionFactor).toBe(0.03);
+  });
+
+  it("does not let duplicate old loose profiles block complete new values", () => {
+    const profile: UomConversionProfile[] = [
+      { id: 22, fromUom: "CFT", toUom: "CUM", conversionFactor: 0.03, conversionType: "loose_to_compacted", isActive: 1 },
+      { id: 23, fromUom: "CFT", toUom: "CUM", conversionFactor: 0.028, conversionType: "loose_to_compacted", isActive: 1 },
+    ];
+    const result = checkMappingUomCompatibility("CFT", {
+      defaultUom: "CUM",
+      rolledDensity: 2,
+      rollingPct: 98,
+      looseFactor: 1.2,
+      wastagePct: 5,
+    }, profile);
+    expect(result.compatible).toBe(true);
+    expect(result.mode).toBe("compacted_loose");
+  });
 });
 
 describe("checkMappingUomCompatibility — 021A: Test F arithmetic (UOM conversion arithmetic)", () => {
