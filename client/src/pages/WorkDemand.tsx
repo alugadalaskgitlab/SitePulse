@@ -6,7 +6,7 @@ import {
   ChevronRight, FileSpreadsheet, BookOpen, Loader2,
   Package, Wrench, Users, CalendarDays, ChevronDown, ChevronUp, Zap, PencilLine,
   LayoutList, ShoppingCart, AlertTriangle, CheckCircle2, Info, Settings2, GitCompareArrows,
-  MapPin, SplitSquareHorizontal, AlertCircle,
+  MapPin, SplitSquareHorizontal, AlertCircle, Link2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,7 +39,7 @@ import {
 } from "@shared/compactedLoose";
 import { resolveEquipmentBoqHours } from "@shared/equipmentActivityAllocations";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
-import { PlanVsActualTable } from "@/components/PlanVsActualTable";
+import { MaterialsBuyAndWorkDone } from "@/components/MaterialsBuyAndWorkDone";
 import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
 import { CompactedLooseReminder } from "@/components/CompactedLooseReminder";
 import type { BoqProject, PlanVsActualRow } from "@shared/schema";
@@ -162,14 +162,16 @@ function CompactedLooseDemand({
                   <td className="px-2 py-2 text-right font-mono">{numberOrDash(compactedCum)}</td>
                   <td className={`px-2 py-2 text-right font-mono ${item.layerConfig?.layerType === "earthwork" ? "text-[10px] text-slate-500" : ""}`}>
                     {numberOrDash(result?.compactedMt)}
-                    {result && <div className="text-[10px] text-slate-400">+ {numberOrDash(result.wastageMt)} wastage</div>}
+                    {result && result.wastageMt > 0 && <div className="text-[10px] text-slate-400">+ {numberOrDash(result.wastageMt)} wastage</div>}
                   </td>
                   <td className="px-2 py-2 text-right font-mono">
                     {result ? `${numberOrDash(result.looseCum)} / ${numberOrDash(result.looseCft, 0)} CFT` : "—"}
-                    {result && <div className="text-[10px] text-slate-400">+ {numberOrDash(result.wastageLooseCum)} loose Cum wastage</div>}
+                    {result && result.wastageLooseCum > 0 && <div className="text-[10px] text-slate-400">+ {numberOrDash(result.wastageLooseCum)} loose Cum wastage</div>}
                   </td>
                   <td className="px-2 py-2 text-right font-mono">
-                    {result ? `${numberOrDash(result.wastageMt)} MT / ${numberOrDash(result.wastageLooseCum)} Cum` : "—"}
+                    {result && (result.wastageMt > 0 || result.wastageLooseCum > 0)
+                      ? `${numberOrDash(result.wastageMt)} MT / ${numberOrDash(result.wastageLooseCum)} Cum`
+                      : "—"}
                   </td>
                 </tr>
               );
@@ -2201,12 +2203,22 @@ function SuggestionBadge({
     // Arrangement info below is READ-ONLY status only (no manage/nav links).
     return (
       <div className="flex flex-col gap-1">
-        <span className="inline-flex w-fit items-center gap-1 text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
-          <AlertTriangle className="w-3 h-3" /> Material mapping required
-        </span>
+        <button
+          className="inline-flex w-fit items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 hover:bg-amber-100 transition-colors"
+          onClick={() => setShowResolveMap(true)}
+        >
+          <Link2 className="w-3 h-3" /> Link to master
+        </button>
         <ArrangementRegisterLink
           arrangements={row.earthworkArrangements}
           totalDemand={row.totalDemand}
+        />
+        <ResolveMappingDialog
+          row={row}
+          projectId={projectId}
+          open={showResolveMap}
+          onClose={() => setShowResolveMap(false)}
+          onMapped={() => { onMappingResolved?.(); }}
         />
       </div>
     );
@@ -2236,7 +2248,8 @@ function SuggestionBadge({
 
   // §4A-C: resolution issues — must fix mapping before any stock/procurement check
   if (ps === "mapping_required" || ps === "uom_resolution_required" || ps === "multiple_matches") {
-    // Build context label for the resolve button
+    // Keep the unresolved state to one compact action; detailed diagnostics
+    // remain available for unit/ambiguous resolution cases.
     const contextNote: string | null =
       rr === "inactive_material" && rd?.inactiveMaterialName
         ? `"${rd.inactiveMaterialName}" is inactive — activate or remap`
@@ -2250,11 +2263,11 @@ function SuggestionBadge({
     return (
       <div className="flex flex-col gap-1">
         <button
-          className="inline-flex items-center gap-1 text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 hover:bg-amber-100 transition-colors"
+          className="inline-flex w-fit items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 hover:bg-amber-100 transition-colors"
           onClick={() => setShowResolveMap(true)}
         >
-          <Settings2 className="w-3 h-3" />
-          {ps === "uom_resolution_required" ? "Resolve Material Mapping" : ps === "multiple_matches" ? "Resolve Ambiguous Match" : "Resolve Material Mapping"}
+          {ps === "mapping_required" ? <Link2 className="w-3 h-3" /> : <Settings2 className="w-3 h-3" />}
+          {ps === "mapping_required" ? "Link to master" : ps === "multiple_matches" ? "Resolve Ambiguous Match" : "Resolve Material Mapping"}
         </button>
         {ps === "uom_resolution_required" && rd?.materialName && (
           <a
@@ -2265,7 +2278,7 @@ function SuggestionBadge({
             <Settings2 className="w-3 h-3" /> Configure UOM Conversion
           </a>
         )}
-        {contextNote && (
+        {contextNote && ps !== "mapping_required" && (
           <span className="text-[11px] text-amber-600">{contextNote}</span>
         )}
         <ResolveMappingDialog
@@ -2718,9 +2731,7 @@ function ProcurementTable({
           <span className="font-semibold">Planning intelligence only.</span>{" "}
           Stock shown is HLC/company custody only. Existing manual IRN and PI creation is unchanged.
           {unresolvedCount > 0 && (
-            <span className="block mt-1 text-amber-700">
-              ⚠ {unresolvedCount} material{unresolvedCount > 1 ? "s" : ""} without a canonical material mapping — resolve to enable requirement creation.
-            </span>
+            <span className="block mt-1 text-amber-700">{unresolvedCount} material{unresolvedCount > 1 ? "s" : ""} need a master link.</span>
           )}
         </div>
       </div>
@@ -2783,11 +2794,6 @@ function ProcurementTable({
                   <td className={`px-3 py-2 font-medium sticky left-0 z-10 ${hasShortfall ? "bg-red-50/50" : isUnresolved ? "bg-amber-50/50" : "bg-white"}`}>
                     <div className="flex items-center gap-1 flex-wrap">
                       <span className="text-slate-700">{row.materialName}</span>
-                      {isUnresolved && !row.materialMappingAmbiguous
-                        && row.procurementStatus !== "earthwork_arrangement_required"
-                        && row.procurementStatus !== "earthwork_classification_required" && (
-                        <span className="text-[10px] font-semibold text-amber-600 bg-amber-100 border border-amber-300 rounded px-1 py-0.5">Mapping Required</span>
-                      )}
                       {row.materialMappingAmbiguous && (
                         <span className="text-[10px] font-semibold text-orange-700 bg-orange-100 border border-orange-300 rounded px-1 py-0.5" title={`Ambiguous: ${(row.ambiguousCandidates ?? []).map(c => c.name).join(", ")}`}>Multiple Matches</span>
                       )}
@@ -2940,19 +2946,6 @@ export default function WorkDemand() {
     retry: 1,
   });
 
-  // Actuals for Plan vs Actual: reuse the existing (read-only) DPR listing
-  // endpoint, filtered client-side to this project's equipment/labour rows
-  // that were explicitly linked to a work item.
-  const { data: dprsWithDetails = [], isLoading: dprsLoading } = useQuery<DprLogsLite[]>({
-    queryKey: ["/api/dprs/with-details"],
-    queryFn: async () => {
-      const res = await fetch(`/api/dprs/with-details`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch DPRs");
-      return res.json();
-    },
-    enabled: !isNaN(projectId) && activeTab === "plan-vs-actual",
-  });
-
   // Structure/reach labels for the Plan vs Actual structure-level breakdown
   // (same programme-bar data used on the DPR entry screen's structure selector).
   const { data: programmeBars = [] } = useQuery<ProgrammeBarLite[]>({
@@ -2962,12 +2955,10 @@ export default function WorkDemand() {
       return res.ok ? res.json() : [];
     },
     // Also needed on "by-item" to derive the per-item planning-mode badge (Task #1240).
-    enabled: !isNaN(projectId) && (activeTab === "plan-vs-actual" || activeTab === "by-item"),
+    enabled: !isNaN(projectId) && activeTab === "by-item",
   });
 
-  // Actual progress qty completed per item — used for the productivity metric
-  // (qty completed per equipment hour / labour day).
-  const { data: planVsActualRows = [] } = useQuery<PlanVsActualRow[]>({
+  const { data: planVsActualRows = [], isLoading: planVsActualLoading } = useQuery<PlanVsActualRow[]>({
     queryKey: ["/api/boq/projects", projectId, "plan-vs-actual"],
     queryFn: async () => {
       const res = await fetch(`/api/boq/projects/${projectId}/plan-vs-actual`, { credentials: "include" });
@@ -2975,14 +2966,6 @@ export default function WorkDemand() {
     },
     enabled: !isNaN(projectId) && activeTab === "plan-vs-actual",
   });
-
-  const actualQtyByItem = useMemo(() => {
-    const m = new Map<number, number | null>();
-    for (const r of planVsActualRows) {
-      m.set(r.boqItemId, r.actualIncomplete === true ? null : r.totalActual);
-    }
-    return m;
-  }, [planVsActualRows]);
 
   const demand = useMemo((): BomDemand | null => {
     if (!bomData || !project) return null;
@@ -3324,27 +3307,16 @@ export default function WorkDemand() {
             </TabsContent>
 
             <TabsContent value="plan-vs-actual" className="mt-3">
-              <SectionHeader icon={GitCompareArrows} title="Plan vs Actual" />
-              <PlanVsActualTable projectId={projectId} />
-              {dprsLoading && (
-                <div className="flex justify-center py-10 text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading actuals…
-                </div>
-              )}
-              <div className="mt-6">
-                <SectionHeader icon={GitCompareArrows} title="Equipment &amp; Labour Productivity" />
-                {!dprsLoading && bomData && (
-                  <EquipLabourPlanVsActualTable
-                    items={bomData.items}
-                    bars={bomData.bars ?? []}
-                    totalMonths={project.totalMonths ?? 12}
-                    dprs={dprsWithDetails}
-                    projectId={projectId}
-                    programmeBars={programmeBars}
-                    actualQtyByItem={actualQtyByItem}
-                  />
-                )}
-              </div>
+              <MaterialsBuyAndWorkDone
+                projectId={projectId}
+                workRows={planVsActualRows}
+                workLoading={planVsActualLoading}
+                canEditDemandSource={canEditDemandSource}
+                onLinkMaster={(boqItemId) => {
+                  const item = bomData?.items.find((candidate) => candidate.id === boqItemId);
+                  if (item) setSourceLinkItem(item);
+                }}
+              />
             </TabsContent>
 
             <TabsContent value="procurement" className="mt-3">

@@ -37,7 +37,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, userPermissions, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, mixTemplateComponents, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, storeIssues as storeIssuesTable, storeIssueItems as storeIssueItemsTable, storeItems as storeItemsTable, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, userPermissions, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, mixTemplateComponents, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, materialRequirements, storeIssues as storeIssuesTable, storeIssueItems as storeIssueItemsTable, storeItems as storeItemsTable, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import {
   insertPartySchema,
   insertPlantMaterialSchema,
@@ -77,6 +77,18 @@ import { classifyArrangementEdit } from "@shared/executionState";
 import { arrangementTripRatesSchema } from "@shared/arrangementTripRates";
 import { appendArrangementStatusChange, arrangementStatusAsOf, hasRecordedArrangementStatusChange, isValidArrangementEffectiveDate } from "@shared/arrangementStatusHistory";
 import { computeDieselReceiptState } from "@shared/dieselReceiptStatus";
+import {
+  materialNeedsCftEquivalent,
+  materialPlanQuantity,
+  materialTonnesToCft,
+  normalisePlanMaterialName,
+  plantMixComponentQuantities,
+  remainingMaterialToBuy,
+  siteReceiptAttribution,
+  soilCompactedToLooseCum,
+  explicitlyLinkedStoreIssue,
+  useSourceForLayer,
+} from "@shared/bomPlanActual";
 import {
   equipmentActivityAllocations as equipmentActivityAllocationsTable,
   equipmentActivitySegments as equipmentActivitySegmentsTable,
@@ -20100,6 +20112,596 @@ export async function registerRoutes(
     }
   });
 
+  // Read-only project materials plan. Actual use is selected by BOQ layer:
+  // bituminous/plant-granular components come from site dispatches; soil,
+  // direct granular and concrete come from submitted DPR × recipe; unclassified
+  // items can use only store issues with an exact project/item requirement link.
+  app.get("/api/boq/projects/:id/material-buy-use", async (req, res) => {
+    const validDate = (value: unknown): value is string =>
+      typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+      !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+    try {
+      if (!assertView(req, res, "work_programme_review")) return;
+      const projectId = Number(req.params.id);
+      const from = String(req.query.from ?? "");
+      const to = String(req.query.to ?? "");
+      if (!Number.isSafeInteger(projectId) || projectId <= 0) {
+        return res.status(400).json({ message: "A BOQ project is required." });
+      }
+      if (!validDate(from) || !validDate(to) || from > to) {
+        return res.status(400).json({ message: "Choose a valid date range." });
+      }
+      if (!(await assertOutcomeProjectScope(req, res, projectId))) return;
+
+      const bom = await computeProjectBom(projectId);
+      const project = bom.project;
+      if (!project) return res.status(404).json({ message: "BOQ project not found." });
+      const projectItemIds = bom.expandedItems
+        .map((item: any) => Number(item.id))
+        .filter((id: number) => Number.isSafeInteger(id) && id > 0);
+      const site = project.siteId == null
+        ? null
+        : (await storage.getSites()).find((candidate) => candidate.id === project.siteId) ?? null;
+      if (!site) return res.status(400).json({ message: "This BOQ project has no linked site." });
+
+      const [arrangements, allocations, materialMasters, siteTrips, materialReceiptRows, dispatches, dprRows, storeIssueRows, templates, templateComponents] = await Promise.all([
+        storage.getEarthworkArrangements(projectId),
+        storage.getArrangementProgrammeAllocationsForProject(projectId),
+        storage.getPlantMaterials(),
+        db.select({
+          date: siteMaterialTrips.date,
+          site: siteMaterialTrips.site,
+          material: siteMaterialTrips.material,
+          quantity: siteMaterialTrips.quantity,
+          uom: siteMaterialTrips.uom,
+          boqProjectId: siteMaterialTrips.boqProjectId,
+          boqItemId: siteMaterialTrips.boqItemId,
+        }).from(siteMaterialTrips).where(and(
+          gte(siteMaterialTrips.date, from),
+          lte(siteMaterialTrips.date, to),
+          eq(siteMaterialTrips.isDeleted, false),
+          eq(siteMaterialTrips.isCancelled, false),
+          or(
+            eq(siteMaterialTrips.boqProjectId, projectId),
+            and(
+              isNull(siteMaterialTrips.boqProjectId),
+              sql`lower(trim(${siteMaterialTrips.site})) = lower(trim(${site.name}))`,
+            ),
+          ),
+        )),
+        db.select({
+          date: auditMaterialReceipts.date,
+          materialId: auditMaterialReceipts.materialId,
+          quantity: auditMaterialReceipts.quantity,
+          uom: auditMaterialReceipts.uom,
+          boqProjectId: materialRequirements.boqProjectId,
+        }).from(auditMaterialReceipts)
+          .innerJoin(purchaseIndentsTable, eq(purchaseIndentsTable.indentNo, auditMaterialReceipts.indentRef))
+          .leftJoin(materialRequirements, eq(materialRequirements.id, purchaseIndentsTable.requirementId))
+          .where(and(
+            gte(auditMaterialReceipts.date, from),
+            lte(auditMaterialReceipts.date, to),
+            eq(auditMaterialReceipts.isDeleted, false),
+            eq(auditMaterialReceipts.isCancelled, false),
+            eq(purchaseIndentsTable.piType, "material"),
+            or(
+              eq(materialRequirements.boqProjectId, projectId),
+              and(
+                isNull(materialRequirements.boqProjectId),
+                eq(purchaseIndentsTable.siteId, site.id),
+              ),
+            ),
+          )),
+        db.select({
+          date: truckDispatchesTable.date,
+          mixTemplateId: truckDispatchesTable.mixTemplateId,
+          loadWeight: truckDispatchesTable.loadWeight,
+        }).from(truckDispatchesTable).where(and(
+          gte(truckDispatchesTable.date, from),
+          lte(truckDispatchesTable.date, to),
+          sql`lower(trim(coalesce(${truckDispatchesTable.deliveryLocation}, ''))) = lower(trim(${site.name}))`,
+        )),
+        db.select({
+          boqItemId: progressEntriesTable.boqItemId,
+          quantity: progressEntriesTable.quantity,
+        }).from(dprsTable)
+          .innerJoin(progressEntriesTable, eq(progressEntriesTable.dprId, dprsTable.id))
+          .where(and(
+            eq(dprsTable.boqProjectId, projectId),
+            gte(dprsTable.date, from),
+            lte(dprsTable.date, to),
+            eq(dprsTable.isDeleted, false),
+            eq(dprsTable.isCancelled, false),
+            eq(dprsTable.isSuperseded, false),
+            eq(dprsTable.dprStatus, "submitted"),
+            or(eq(progressEntriesTable.noSiteWork, false), isNull(progressEntriesTable.noSiteWork)),
+            isNotNull(progressEntriesTable.boqItemId),
+          )),
+        projectItemIds.length
+          ? db.select({
+              date: storeIssuesTable.date,
+              boqItemId: materialRequirements.sourceBoqItemId,
+              materialName: sql<string>`COALESCE(${storeItemsTable.name}, ${storeIssueItemsTable.materialText}, '')`,
+              quantity: storeIssueItemsTable.qty,
+              uom: storeIssueItemsTable.uom,
+            }).from(storeIssuesTable)
+              .innerJoin(storeIssueItemsTable, eq(storeIssueItemsTable.issueId, storeIssuesTable.id))
+              .innerJoin(internalRequisitions, eq(internalRequisitions.id, storeIssuesTable.irnId))
+              .innerJoin(materialRequirements, eq(materialRequirements.id, internalRequisitions.requirementId))
+              .leftJoin(storeItemsTable, eq(storeItemsTable.id, storeIssueItemsTable.itemId))
+              .where(and(
+                gte(storeIssuesTable.date, from),
+                lte(storeIssuesTable.date, to),
+                eq(storeIssuesTable.isCancelled, false),
+                eq(materialRequirements.boqProjectId, projectId),
+                isNotNull(materialRequirements.sourceBoqItemId),
+                drizzleInArray(materialRequirements.sourceBoqItemId, projectItemIds),
+              ))
+          : Promise.resolve([] as any[]),
+        db.select({
+          id: mixTemplatesTable.id,
+          bitumenPercent: mixTemplatesTable.bitumenPercent,
+          binderGrade: mixTemplatesTable.binderGrade,
+        }).from(mixTemplatesTable),
+        db.select({
+          templateId: mixTemplateComponents.templateId,
+          materialId: mixTemplateComponents.materialId,
+          percent: mixTemplateComponents.percent,
+        }).from(mixTemplateComponents),
+      ]);
+
+      const allocationByArrangement = new Map<number, Array<{ programmeBarId: number; boqItemId: number; qty: number }>>();
+      for (const allocation of allocations) {
+        const rows = allocationByArrangement.get(allocation.arrangementId) ?? [];
+        rows.push({
+          programmeBarId: allocation.programmeBarId,
+          boqItemId: allocation.boqItemId,
+          qty: Number(allocation.allocatedQty) || 0,
+        });
+        allocationByArrangement.set(allocation.arrangementId, rows);
+      }
+      const demandArrangements = arrangements.map((arrangement: any) => ({
+        ...arrangement,
+        programmeAllocations: allocationByArrangement.get(arrangement.id) ?? [],
+      }));
+      const totalMonths = Math.max(1, Number(project.totalMonths) || 12);
+      const barsByItem = new Map<number, typeof bom.bars>();
+      for (const bar of bom.bars) {
+        const rows = barsByItem.get(bar.boqItemId) ?? [];
+        rows.push(bar);
+        barsByItem.set(bar.boqItemId, rows);
+      }
+
+      const mastersById = new Map(materialMasters.map((material: any) => [Number(material.id), material]));
+      const aliasesOf = (material: any): string[] => {
+        try {
+          const raw = typeof material?.aliases === "string" ? JSON.parse(material.aliases) : material?.aliases;
+          return Array.isArray(raw) ? raw.map(String) : [];
+        } catch {
+          return [];
+        }
+      };
+      const masterCandidatesFor = (label: string) => {
+        const key = normalisePlanMaterialName(label);
+        return materialMasters.filter((material: any) =>
+          normalisePlanMaterialName(material.name) === key ||
+          aliasesOf(material).some((alias) => normalisePlanMaterialName(alias) === key),
+        );
+      };
+      const uniqueMasterFor = (label: string) => {
+        const matches = masterCandidatesFor(label);
+        return matches.length === 1 ? matches[0] : null;
+      };
+      const profileForMaster = (material: any) => material ? ({
+        rolledDensity: material.rolledDensity == null ? null : Number(material.rolledDensity),
+        rollingPct: material.rollingPct == null ? null : Number(material.rollingPct),
+        looseFactor: material.looseFactor == null ? null : Number(material.looseFactor),
+        wastagePct: material.wastagePct == null ? null : Number(material.wastagePct),
+        bulkDensity: material.bulkDensity == null ? null : Number(material.bulkDensity),
+      }) : null;
+      const normaliseUomForMatch = (uom: string) =>
+        String(uom ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const legacyFactorsFor = (item: any) =>
+        (item.legacyLooseToCompactedProfiles ?? [])
+          .filter((profile: any) =>
+            normaliseUomForMatch(profile.fromUom) === "CUM" &&
+            normaliseUomForMatch(profile.toUom) === "CUM" &&
+            Number(profile.conversionFactor) > 0,
+          )
+          .map((profile: any) => Number(profile.conversionFactor));
+
+      type PlanRow = {
+        key: string;
+        materialName: string;
+        uom: string;
+        sourceType: "plant_mix" | "site";
+        master: any | null;
+        need: number;
+        needComplete: boolean;
+        monthlyNeed: Record<number, number>;
+        monthlyComplete: Record<number, boolean>;
+        bought: number;
+        boughtComplete: boolean;
+        used: number;
+        usedComplete: boolean;
+        atPlantNow: number;
+        stockComplete: boolean;
+        lines: Array<{
+          boqItemId: number;
+          itemCode: string | null;
+          description: string;
+          itemName: string | null;
+          boqQuantity: number;
+          boqUom: string;
+          materialNeed: number | null;
+          sourceNote: string | null;
+        }>;
+        matchNames: Set<string>;
+        forLabels: Set<string>;
+        sourceNotes: Set<string>;
+        attributions: Set<string>;
+        needsOwnValues: boolean;
+      };
+      const planRows = new Map<string, PlanRow>();
+      const itemById = new Map<number, any>(bom.expandedItems.map((item: any) => [Number(item.id), item]));
+      const itemMaterialsByGroup = new Map<string, Set<number>>();
+      const rowKeyFor = (name: string, sourceType: "plant_mix" | "site", uom: string) =>
+        `${normalisePlanMaterialName(name)}|${sourceType}|${uom}`;
+
+      const toPlanQuantity = (
+        item: any,
+        sourceRow: any,
+        quantity: number,
+        master: any | null,
+        targetUom: string,
+      ): number | null => {
+        const profile = profileForMaster(master);
+        const layerType = String(item?.layerConfig?.layerType ?? "");
+        if (layerType === "earthwork" || sourceRow?.isEarthworkBulkRequirement) {
+          const from = normaliseUomForMatch(sourceRow?.uom ?? item?.unit ?? "");
+          if (from === "CUM" || from === "M3" || from === "CBM") {
+            return soilCompactedToLooseCum(quantity, profile, legacyFactorsFor(item));
+          }
+          if (from === "CFT" || from === "CUFT") {
+            return materialPlanQuantity(quantity, "CFT", "CUM", profile, "loose");
+          }
+          return null;
+        }
+        const isDirectGranular = layerType === "granular" && item?.layerConfig?.granularSource !== "plant";
+        const basis = isDirectGranular ? "compacted" : "loose";
+        return materialPlanQuantity(quantity, sourceRow?.uom ?? item?.unit ?? targetUom, targetUom, profile, basis);
+      };
+
+      for (const item of bom.expandedItems as any[]) {
+        const itemBars = barsByItem.get(Number(item.id)) ?? [];
+        const itemDemand = calculateBomDemand([item], itemBars as any, totalMonths, { arrangements: demandArrangements });
+        for (const demandRow of itemDemand.materials) {
+          const breakdown = demandRow.breakdown?.[0];
+          const layerType = String(item.layerConfig?.layerType ?? "");
+          const usedSource = useSourceForLayer(layerType, item.layerConfig?.granularSource);
+          const plantMix = usedSource === "plant dispatch";
+          const earthwork = layerType === "earthwork" || !!demandRow.isEarthworkBulkRequirement;
+          const directGranular = layerType === "granular" && item.layerConfig?.granularSource !== "plant";
+          const targetUom = earthwork ? "CUM_LOOSE" : plantMix || directGranular ? "MT" : demandRow.uom;
+          const forcedMaster = item.materialMasterId ? mastersById.get(Number(item.materialMasterId)) : null;
+          const master = forcedMaster ?? uniqueMasterFor(demandRow.materialName);
+          const materialName = String(master?.name ?? demandRow.materialName).trim();
+          const sourceType = plantMix ? "plant_mix" : "site";
+          const key = rowKeyFor(materialName, sourceType, targetUom);
+          const row = planRows.get(key) ?? {
+            key,
+            materialName,
+            uom: targetUom === "CUM_LOOSE" ? "cum loose" : targetUom,
+            sourceType,
+            master,
+            need: 0,
+            needComplete: true,
+            monthlyNeed: {},
+            monthlyComplete: {},
+            bought: 0,
+            boughtComplete: true,
+            used: 0,
+            usedComplete: true,
+            atPlantNow: 0,
+            stockComplete: true,
+            lines: [],
+            matchNames: new Set<string>(),
+            forLabels: new Set<string>(),
+            sourceNotes: new Set<string>(),
+            attributions: new Set<string>(),
+            needsOwnValues: false,
+          } satisfies PlanRow;
+          row.master ??= master;
+          row.matchNames.add(normalisePlanMaterialName(demandRow.materialName));
+          row.matchNames.add(normalisePlanMaterialName(materialName));
+          for (const alias of aliasesOf(master)) row.matchNames.add(normalisePlanMaterialName(alias));
+
+          const need = toPlanQuantity(item, demandRow, Number(demandRow.totalQty), master, targetUom);
+          if (need == null) row.needComplete = false;
+          else row.need += need;
+          for (const [month, rawQuantity] of Object.entries(demandRow.monthlyQty ?? {})) {
+            const monthIndex = Number(month);
+            const monthly = toPlanQuantity(item, demandRow, Number(rawQuantity), master, targetUom);
+            if (monthly == null) row.monthlyComplete[monthIndex] = false;
+            else {
+              row.monthlyNeed[monthIndex] = (row.monthlyNeed[monthIndex] ?? 0) + monthly;
+              if (row.monthlyComplete[monthIndex] !== false) row.monthlyComplete[monthIndex] = true;
+            }
+          }
+
+          const lineSourceNote = breakdown?.sourceNote ?? demandRow.sourceNotes?.[0] ?? null;
+          row.lines.push({
+            boqItemId: Number(item.id),
+            itemCode: item.itemCode ?? null,
+            description: String(item.description ?? ""),
+            itemName: item.itemName ?? null,
+            boqQuantity: Number(breakdown?.workQty ?? item.currentQty) || 0,
+            boqUom: String(item.canonicalUnit ?? item.unit ?? ""),
+            materialNeed: need,
+            sourceNote: lineSourceNote,
+          });
+          const workLabel = String(item.layerConfig?.mixType ?? item.workCategory ?? item.itemName ?? item.description ?? "")
+            .replace(/\s+/g, " ").trim().slice(0, 48);
+          if (workLabel) row.forLabels.add(workLabel);
+          for (const note of demandRow.sourceNotes ?? []) if (note) row.sourceNotes.add(note);
+          if (lineSourceNote) row.sourceNotes.add(lineSourceNote);
+          row.sourceNotes.add(
+            usedSource === "plant dispatch"
+              ? "Used: plant dispatch × template"
+              : usedSource === "linked store issue"
+                ? "Used: linked store issue"
+                : "Used: DPR × recipe",
+          );
+          if (earthwork && !master) row.needsOwnValues = true;
+          if (directGranular && !master) row.needsOwnValues = true;
+          if (materialNeedsCftEquivalent(materialName) && !master) row.needsOwnValues = true;
+          if ((earthwork || directGranular || materialNeedsCftEquivalent(materialName)) && master) {
+            const profile = profileForMaster(master);
+            const hasCompactedLooseProfile = Number(profile?.rolledDensity) > 0 && Number(profile?.rollingPct) > 0 &&
+              Number(profile?.looseFactor) >= 1;
+            const hasDeliveredWeight = materialTonnesToCft(1, profile) != null;
+            if ((earthwork || directGranular) && !hasCompactedLooseProfile) {
+              row.needsOwnValues = true;
+            } else if (materialNeedsCftEquivalent(materialName) && !hasDeliveredWeight) {
+              row.needsOwnValues = true;
+            }
+          }
+          planRows.set(key, row);
+          const itemSet = itemMaterialsByGroup.get(key) ?? new Set<number>();
+          itemSet.add(Number(item.id));
+          itemMaterialsByGroup.set(key, itemSet);
+        }
+      }
+
+      const rowsBySourceName = (name: string, sourceType: "plant_mix" | "site") => {
+        const candidates = Array.from(planRows.values()).filter((row) => row.sourceType === sourceType);
+        const normalized = normalisePlanMaterialName(name);
+        let matched = candidates.filter((row) => row.matchNames.has(normalized));
+        if (!matched.length) {
+          const master = uniqueMasterFor(name);
+          if (master) {
+            const keys = new Set([normalisePlanMaterialName(master.name), ...aliasesOf(master).map(normalisePlanMaterialName)]);
+            matched = candidates.filter((row) => Array.from(keys).some((key) => row.matchNames.has(key)));
+          }
+        }
+        return matched;
+      };
+
+      // Site trips and site-linked material receipts are delivery evidence. A
+      // row linked to another project is never borrowed just because the site matches.
+      for (const trip of siteTrips) {
+        const attribution = siteReceiptAttribution(trip, projectId, site.name);
+        if (!attribution) continue;
+        const matches = rowsBySourceName(trip.material, "site");
+        for (const row of matches) {
+          const profile = profileForMaster(row.master);
+          const converted = row.uom === "cum loose"
+            ? materialPlanQuantity(Number(trip.quantity), trip.uom, "CUM", profile, "loose")
+            : materialPlanQuantity(Number(trip.quantity), trip.uom, row.uom, profile, "loose");
+          if (converted == null) row.boughtComplete = false;
+          else row.bought += converted;
+          row.attributions.add(attribution === "by site" ? "Bought by site" : "Bought by project");
+        }
+      }
+      for (const receipt of materialReceiptRows) {
+        const master = mastersById.get(Number(receipt.materialId));
+        if (!master) continue;
+        const attribution = receipt.boqProjectId === projectId ? "Bought by project" : "Bought by site";
+        for (const row of rowsBySourceName(String(master.name), "site")) {
+          const converted = materialPlanQuantity(
+            Number(receipt.quantity),
+            String(receipt.uom),
+            row.uom,
+            profileForMaster(row.master),
+            "loose",
+          );
+          if (converted == null) row.boughtComplete = false;
+          else row.bought += converted;
+          row.attributions.add(attribution);
+        }
+      }
+
+      const templateById = new Map(templates.map((template: any) => [Number(template.id), template]));
+      const componentsByTemplate = new Map<number, typeof templateComponents>();
+      for (const component of templateComponents) {
+        const list = componentsByTemplate.get(Number(component.templateId)) ?? [];
+        list.push(component);
+        componentsByTemplate.set(Number(component.templateId), list);
+      }
+      const masterNameById = new Map(materialMasters.map((material: any) => [Number(material.id), String(material.name)]));
+      for (const dispatch of dispatches) {
+        const template = templateById.get(Number(dispatch.mixTemplateId)) as any;
+        const components = componentsByTemplate.get(Number(dispatch.mixTemplateId)) ?? [];
+        if (!template || !components.length) continue;
+        const namedComponents = components.map((component: any) => ({
+          materialName: masterNameById.get(Number(component.materialId)) ?? "",
+          percent: component.percent,
+        }));
+        const grade = String(template.binderGrade ?? "").trim();
+        const binderName = grade ? `Bitumen ${grade}` : "Bitumen";
+        const split = plantMixComponentQuantities(
+          Number(dispatch.loadWeight),
+          namedComponents,
+          template.bitumenPercent,
+          binderName,
+        );
+        for (const component of split) {
+          for (const row of rowsBySourceName(component.materialName, "plant_mix")) {
+            const converted = materialPlanQuantity(component.quantityMt, "MT", row.uom, profileForMaster(row.master), "loose");
+            if (converted == null) row.usedComplete = false;
+            else row.used += converted;
+            row.attributions.add("Used by site");
+          }
+        }
+      }
+
+      const dprQuantityByItem = new Map<number, number>();
+      for (const entry of dprRows) {
+        if (entry.boqItemId == null) continue;
+        const itemId = Number(entry.boqItemId);
+        const quantity = Number(entry.quantity);
+        if (!Number.isFinite(quantity) || quantity < 0) continue;
+        dprQuantityByItem.set(itemId, (dprQuantityByItem.get(itemId) ?? 0) + quantity);
+      }
+      for (const [itemId, actualQuantity] of Array.from(dprQuantityByItem)) {
+        const item = itemById.get(itemId);
+        if (!item || useSourceForLayer(item.layerConfig?.layerType, item.layerConfig?.granularSource) !== "DPR × recipe") continue;
+        const convertedBoqQuantity = actualQuantity * (Number(item.dprConversionFactor) || 1);
+        for (const material of item.materials ?? []) {
+          if (material.isClientSupplied) continue;
+          const matches = rowsBySourceName(material.materialName, "site");
+          for (const row of matches) {
+            if (!itemMaterialsByGroup.get(row.key)?.has(itemId)) continue;
+            const rawUse = convertedBoqQuantity * Number(material.qtyPerBoqUnit) *
+              (1 + (Number(material.wastagePct) || 0) / 100);
+            const sourceRow = { uom: material.uom, isEarthworkBulkRequirement: item.layerConfig?.layerType === "earthwork" };
+            const converted = toPlanQuantity(item, sourceRow, rawUse, row.master, row.uom === "cum loose" ? "CUM" : row.uom);
+            if (converted == null) row.usedComplete = false;
+            else row.used += converted;
+          }
+        }
+      }
+      for (const issue of storeIssueRows as any[]) {
+        if (issue.boqItemId == null) continue;
+        const itemId = Number(issue.boqItemId);
+        if (!explicitlyLinkedStoreIssue(issue, projectId, itemId)) continue;
+        const item = itemById.get(itemId);
+        if (!item || useSourceForLayer(item.layerConfig?.layerType, item.layerConfig?.granularSource) !== "linked store issue") continue;
+        const matches = rowsBySourceName(String(issue.materialName ?? ""), "site");
+        for (const row of matches) {
+          if (!itemMaterialsByGroup.get(row.key)?.has(itemId)) continue;
+          const converted = toPlanQuantity(
+            item,
+            { uom: String(issue.uom ?? row.uom) },
+            Number(issue.quantity),
+            row.master,
+            row.uom === "cum loose" ? "CUM" : row.uom,
+          );
+          if (converted == null) row.usedComplete = false;
+          else row.used += converted;
+          row.attributions.add("Used by linked project/item");
+        }
+      }
+
+      // Plant-common balances (party_id IS NULL) are the shared HLC stock bucket
+      // used by Procurement Intelligence; never include another party's stock.
+      const allStockBalances = await storage.getStockBalances();
+      const hlcBalances = allStockBalances.filter((balance: any) => balance.partyId == null);
+      const stockByMaterial = new Map<number, typeof hlcBalances>();
+      for (const balance of hlcBalances) {
+        const id = Number(balance.materialId);
+        const list = stockByMaterial.get(id) ?? [];
+        list.push(balance);
+        stockByMaterial.set(id, list);
+      }
+      for (const row of Array.from(planRows.values())) {
+        if (row.sourceType !== "plant_mix") continue;
+        if (!row.master) {
+          row.stockComplete = false;
+          continue;
+        }
+        const stockRows = stockByMaterial.get(Number(row.master.id)) ?? [];
+        for (const balance of stockRows) {
+          const stockUom = String(balance.uom ?? row.master.defaultUom ?? "");
+          const converted = materialPlanQuantity(
+            Number(balance.balance),
+            stockUom,
+            row.uom,
+            profileForMaster(row.master),
+            "loose",
+          );
+          if (converted == null) row.stockComplete = false;
+          else row.atPlantNow += converted;
+        }
+      }
+
+      const outputRows = Array.from(planRows.values()).map((row) => {
+        const need = row.needComplete ? row.need : null;
+        const bought = row.sourceType === "site" && row.boughtComplete ? row.bought : row.sourceType === "site" ? null : null;
+        const used = row.usedComplete ? row.used : null;
+        const atPlantNow = row.sourceType === "plant_mix" && row.stockComplete ? row.atPlantNow : null;
+        const remaining = row.sourceType === "plant_mix"
+          ? remainingMaterialToBuy(need, atPlantNow, used, true)
+          : remainingMaterialToBuy(need, bought, used, false);
+        const profile = profileForMaster(row.master);
+        const cft = (quantity: number | null) => {
+          if (quantity == null) return null;
+          if (row.uom === "cum loose") return materialPlanQuantity(quantity, "CUM", "CFT", profile, "loose");
+          return materialNeedsCftEquivalent(row.materialName) && row.uom === "MT"
+            ? materialTonnesToCft(quantity, profile)
+            : null;
+        };
+        const setupAction = !row.master && (row.sourceType === "plant_mix" || row.needsOwnValues)
+          ? "link_master"
+          : row.needsOwnValues
+            ? "set_values"
+            : null;
+        return {
+          materialName: row.materialName,
+          forLabels: Array.from(row.forLabels),
+          uom: row.uom === "CUM_LOOSE" ? "cum loose" : row.uom,
+          sourceType: row.sourceType,
+          needToBuy: need,
+          needToBuyCft: cft(need),
+          boughtSoFar: row.sourceType === "site" ? bought : null,
+          boughtSoFarCft: row.sourceType === "site" ? cft(bought) : null,
+          used,
+          usedCft: cft(used),
+          atPlantNow,
+          atPlantNowCft: cft(atPlantNow),
+          stillToBuy: remaining.remaining,
+          stillToBuyCft: cft(remaining.remaining),
+          excess: remaining.excess,
+          excessCft: cft(remaining.excess),
+          monthlyNeed: Object.fromEntries(Object.entries(row.monthlyNeed).map(([month, value]) => [
+            month,
+            row.monthlyComplete[Number(month)] === false ? null : value,
+          ])),
+          lines: row.lines,
+          sourceNotes: Array.from(row.sourceNotes),
+          attributions: Array.from(row.attributions),
+          setupAction,
+          setupItemId: row.lines[0]?.boqItemId ?? null,
+          materialMasterId: row.master?.id ?? null,
+        };
+      }).sort((a, b) => a.materialName.localeCompare(b.materialName) || a.sourceType.localeCompare(b.sourceType));
+
+      res.json({
+        projectId,
+        projectName: project.name,
+        siteName: site.name,
+        from,
+        to,
+        plantStockShared: true,
+        storeIssuePolicy: "Store issues count only through an exact project/item requirement link; site-only issues are excluded.",
+        rows: outputRows,
+      });
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/material-buy-use:", err);
+      res.status(500).json({ message: "Could not load project material buy/use report." });
+    }
+  });
+
   app.get("/api/reports/material-balance", async (req, res) => {
     try {
       if (!assertView(req, res, "work_programme_review")) return;
@@ -20145,7 +20747,10 @@ export async function registerRoutes(
           eq(siteMaterialTrips.isCancelled, false),
           or(
             eq(siteMaterialTrips.boqProjectId, projectId),
-            and(isNull(siteMaterialTrips.boqProjectId), eq(siteMaterialTrips.site, site.name)),
+            and(
+              isNull(siteMaterialTrips.boqProjectId),
+              sql`lower(trim(coalesce(${siteMaterialTrips.site}, ''))) = lower(trim(${site.name}))`,
+            ),
           ),
         )),
         db.select({
