@@ -278,6 +278,27 @@ describe("deriveMaterialsFromLayerConfig — bituminous from mix template", () =
     expect(rows.find(r => r.materialName === "LDO / Process Fuel")).toBeDefined();
   });
 
+  it("uses a BC template's saved density when new compacted/loose values are absent", () => {
+    const rows = deriveMaterialsFromLayerConfig(
+      { ...baseLayerConfig, mixType: "BC" },
+      "CUM",
+      {
+        ...bcTemplate,
+        densityTPerCum: 2.35,
+        rolledDensity: null,
+        rollingPct: null,
+        looseFactor: null,
+        wastagePct: null,
+      },
+    );
+    const materialRows = rows.filter(row => row.materialName !== "LDO / Process Fuel");
+    const mtPerCum = materialRows.reduce((sum, row) => sum + row.qtyPerBoqUnit, 0);
+    expect(mtPerCum).toBeCloseTo(2.35, 8);
+    expect(mtPerCum * 1064).toBeCloseTo(2500.4, 6);
+    expect(materialRows.every(row => row.sourceNote === "using template density")).toBe(true);
+    expect(materialRows.every(row => row.wastagePct === 0)).toBe(true);
+  });
+
   it("returns IRC default rows for a known mix type when no template is provided", () => {
     const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "BC" }, "SQM", undefined);
     expect(rows.length).toBeGreaterThan(1);
@@ -304,24 +325,49 @@ describe("deriveMaterialsFromLayerConfig — concrete from RMC mix design", () =
   const design = {
     grade: "M30",
     cementContent: 360,
+    waterCementRatio: 0.45,
     admixtureName: "PCE",
     admixtureDosage: 0.8,
     componentProportions: { cement: 360, fineAgg: 720, coarseAgg20: 700, coarseAgg10: 480 },
   };
 
-  it("derives cement, sand, aggregates and admixture per CUM", () => {
+  it("derives cement, water in KL, sand and aggregates in MT per CUM", () => {
     const rows = deriveMaterialsFromLayerConfig(lc, "CUM", undefined, design);
     const cement = rows.find(r => r.materialName === "Cement");
     expect(cement?.uom).toBe("MT");
     expect(cement?.qtyPerBoqUnit).toBeCloseTo(0.36, 3);
-    expect(rows.find(r => r.materialName === "Sand")?.qtyPerBoqUnit).toBeCloseTo(720 / 1600, 3);
-    expect(rows.find(r => r.materialName === "20mm Aggregate")?.qtyPerBoqUnit).toBeCloseTo(700 / 1450, 3);
-    expect(rows.find(r => r.materialName === "10mm Aggregate")?.qtyPerBoqUnit).toBeCloseTo(480 / 1450, 3);
+    expect(rows.find(r => r.materialName === "Sand")?.qtyPerBoqUnit).toBeCloseTo(0.72, 3);
+    expect(rows.find(r => r.materialName === "20mm Aggregate")?.qtyPerBoqUnit).toBeCloseTo(0.7, 3);
+    expect(rows.find(r => r.materialName === "10mm Aggregate")?.qtyPerBoqUnit).toBeCloseTo(0.48, 3);
+    expect(rows.find(r => r.materialName === "Water")?.uom).toBe("KL");
+    expect(rows.find(r => r.materialName === "Water")?.qtyPerBoqUnit).toBeCloseTo(0.162, 3);
     expect(rows.find(r => r.materialName.startsWith("Admixture"))?.qtyPerBoqUnit).toBeCloseTo((360 * 0.8) / 100, 3);
   });
 
   it("returns [] when no mix design is provided", () => {
     expect(deriveMaterialsFromLayerConfig(lc, "CUM", undefined, null).length).toBe(0);
+  });
+});
+
+describe("deriveMaterialsFromLayerConfig — granular template fallback density", () => {
+  it("uses existing template density and labels it when new profile values are absent", () => {
+    const rows = deriveMaterialsFromLayerConfig(
+      { layerType: "granular", granularSource: "plant", mixType: "GSB" },
+      "CUM",
+      {
+        bitumenPercent: null,
+        densityTPerCum: 2.35,
+        components: [
+          { materialName: "20mm Aggregate", percent: 60 },
+          { materialName: "Stone Dust", percent: 40 },
+        ],
+      },
+    );
+    expect(rows[0].qtyPerBoqUnit).toBeCloseTo(1.41, 8);
+    expect(rows[1].qtyPerBoqUnit).toBeCloseTo(0.94, 8);
+    expect(rows.every(row => row.uom === "MT")).toBe(true);
+    expect(rows.every(row => row.sourceNote === "using template density")).toBe(true);
+    expect(rows.every(row => row.wastagePct === 0)).toBe(true);
   });
 });
 

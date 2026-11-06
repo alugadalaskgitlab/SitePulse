@@ -87,7 +87,7 @@ function CompactedLooseDemand({
   }
   const rows = items.filter(item =>
     item.layerQuantityProfile ||
-    ["granular", "bituminous"].includes(item.layerConfig?.layerType),
+    ["earthwork", "granular", "bituminous"].includes(item.layerConfig?.layerType),
   );
   if (!rows.length) return null;
   const numberOrDash = (value: number | null | undefined, digits = 2) =>
@@ -105,7 +105,7 @@ function CompactedLooseDemand({
             <tr>
               <th className="px-3 py-2 text-left">BOQ layer / mix</th>
               <th className="px-2 py-2 text-right">Compacted Cum</th>
-              <th className="px-2 py-2 text-right">MT</th>
+              <th className="px-2 py-2 text-right">MT (if set)</th>
               <th className="px-2 py-2 text-right">Loose Cum / CFT</th>
               <th className="px-2 py-2 text-right">Wastage MT / loose Cum</th>
             </tr>
@@ -125,29 +125,51 @@ function CompactedLooseDemand({
                 ? null
                 : calculateCompactedLooseQuantity(compactedCum, profile);
               const state = compactedCum == null
-                ? "needs conversion"
-                : !result ? "values not set" : null;
+                ? "Needs conversion"
+                : !result
+                  ? "Values not set —"
+                  : null;
+              const openMasterLabel = item.layerConfig?.layerType === "earthwork"
+                ? "Soil"
+                : item.materialMasterName || item.layerConfig?.mixType || "Material";
               return (
                 <tr key={item.id} className="border-t" data-testid={`compacted-loose-demand-${item.id}`}>
                   <td className="px-3 py-2">
                     <span className="font-medium text-slate-700">{item.displayName || item.itemName || item.description}</span>
                     {item.itemCode && <span className="ml-1 text-slate-400">[{item.itemCode}]</span>}
+                    {state && (
+                      <div className="mt-0.5 text-[10px] text-amber-700">
+                        {state}
+                        {state === "Values not set —" && (
+                          <a
+                            className="ml-1 underline"
+                            href="/plant/dashboard#material-master"
+                            onClick={event => event.stopPropagation()}
+                          >
+                            Open {openMasterLabel}
+                          </a>
+                        )}
+                      </div>
+                    )}
+                    {item.layerQuantityProfile?.note && (
+                      <div className="mt-0.5 text-[10px] text-slate-500">{item.layerQuantityProfile.note}</div>
+                    )}
                     <CompactedLooseReminder
                       thicknessMm={item.layerConfig?.thicknessMm}
                       profile={profile}
                     />
                   </td>
-                  <td className="px-2 py-2 text-right font-mono">{state ?? numberOrDash(result?.compactedCum)}</td>
-                  <td className="px-2 py-2 text-right font-mono">
-                    {state ?? numberOrDash(result?.compactedMt)}
+                  <td className="px-2 py-2 text-right font-mono">{numberOrDash(compactedCum)}</td>
+                  <td className={`px-2 py-2 text-right font-mono ${item.layerConfig?.layerType === "earthwork" ? "text-[10px] text-slate-500" : ""}`}>
+                    {numberOrDash(result?.compactedMt)}
                     {result && <div className="text-[10px] text-slate-400">+ {numberOrDash(result.wastageMt)} wastage</div>}
                   </td>
                   <td className="px-2 py-2 text-right font-mono">
-                    {state ?? `${numberOrDash(result?.looseCum)} / ${numberOrDash(result?.looseCft, 0)} CFT`}
+                    {result ? `${numberOrDash(result.looseCum)} / ${numberOrDash(result.looseCft, 0)} CFT` : "—"}
                     {result && <div className="text-[10px] text-slate-400">+ {numberOrDash(result.wastageLooseCum)} loose Cum wastage</div>}
                   </td>
                   <td className="px-2 py-2 text-right font-mono">
-                    {state ?? `${numberOrDash(result?.wastageMt)} MT / ${numberOrDash(result?.wastageLooseCum)} Cum`}
+                    {result ? `${numberOrDash(result.wastageMt)} MT / ${numberOrDash(result.wastageLooseCum)} Cum` : "—"}
                   </td>
                 </tr>
               );
@@ -156,6 +178,106 @@ function CompactedLooseDemand({
         </table>
       </div>
     </div>
+  );
+}
+
+function DemandSourceLinkDialog({
+  item,
+  onClose,
+  onSaved,
+}: {
+  item: any;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const layer = item.layerConfig ?? {};
+  const sourceKind: "material" | "template" | "design" =
+    layer.layerType === "concrete" ? "design"
+      : layer.layerType === "earthwork" ||
+        (layer.layerType === "granular" && layer.granularSource !== "plant")
+        ? "material"
+        : "template";
+  const [selectedId, setSelectedId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const endpoint = sourceKind === "material"
+    ? "/api/plant-module/materials"
+    : sourceKind === "template"
+      ? "/api/plant-module/mix-templates"
+      : "/api/rmc/mix-designs";
+  const { data: choices = [], isLoading, isError } = useQuery<any[]>({
+    queryKey: [endpoint, "demand-source-link"],
+    queryFn: async () => {
+      const response = await fetch(endpoint, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load options.");
+      return response.json();
+    },
+  });
+  const choiceLabel = (choice: any) => sourceKind === "design"
+    ? `${choice.grade}${choice.plantName ? ` · ${choice.plantName}` : ""}`
+    : sourceKind === "template"
+      ? `${choice.name} · ${choice.mixType}`
+      : `${choice.name}${choice.defaultUom ? ` · ${choice.defaultUom}` : ""}`;
+  const save = async () => {
+    if (!selectedId) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/boq/items/${item.id}/demand-source`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceKind, sourceId: Number(selectedId) }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message ?? body.error ?? "Could not save this link.");
+      toast({ title: "Link saved", description: "Material demand will use the selected master." });
+      onSaved();
+      onClose();
+    } catch (error) {
+      toast({
+        title: "Could not save link",
+        description: error instanceof Error ? error.message : "Try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Link material demand</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground">
+          {item.itemCode ? `[${item.itemCode}] ` : ""}{boqItemDisplayName(item)}
+        </p>
+        <div className="space-y-2">
+          <Label>{sourceKind === "design" ? "Concrete mix design" : sourceKind === "template" ? "Mix template" : "Material master"}</Label>
+          <Select value={selectedId} onValueChange={setSelectedId}>
+            <SelectTrigger data-testid="select-demand-source">
+              <SelectValue placeholder="Choose a source" />
+            </SelectTrigger>
+            <SelectContent>
+              {choices.map(choice => (
+                <SelectItem key={choice.id} value={String(choice.id)}>{choiceLabel(choice)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {isLoading && <p className="text-xs text-muted-foreground">Loading options…</p>}
+          {isError && <p className="text-xs text-destructive">Couldn't load options.</p>}
+          {!isLoading && !choices.length && !isError && (
+            <p className="text-xs text-muted-foreground">No active options are available.</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={save} disabled={!selectedId || saving || isLoading}>
+            {saving ? "Saving…" : "Save link"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -219,6 +341,11 @@ function MaterialsTable({
                         : <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />
                       }
                       <span className="font-medium text-slate-700">{row.materialName}</span>
+                      {(row.sourceNotes?.length ?? 0) > 0 && (
+                        <span className="text-[10px] text-slate-500">
+                          {row.sourceNotes!.join(" · ")}
+                        </span>
+                      )}
                       {structureItemDescriptions.size > 0 && row.breakdown.length > 0 && row.breakdown.every(b => structureItemDescriptions.has(b.itemDescription)) && (
                         <span className="inline-flex items-center rounded px-1 py-0.5 text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200 flex-shrink-0" title="All demand from structure/point-location items — not linearly distributed along the road">
                           Structure
@@ -275,6 +402,11 @@ function MaterialsTable({
                                   {b.compositeLabel}
                                 </span>
                               )}
+                              {(b.sourceNote || b.applicationNote) && (
+                                <span className="ml-1 text-[10px] text-slate-500">
+                                  {[b.sourceNote, b.applicationNote].filter(Boolean).join(" · ")}
+                                </span>
+                              )}
                             </span>
                             <span className="font-mono whitespace-nowrap text-[11px] flex-shrink-0">
                               <span className="text-slate-500">{fmtQty(b.qtyPerUnit, 4)}</span>
@@ -310,6 +442,14 @@ function MaterialsTable({
 }
 
 // ─── Equipment Demand Table ─────────────────────────────────────────────────────
+
+function formatPositiveRate(value: number, total: number): string {
+  if (!Number.isFinite(value)) return "—";
+  const decimals = Math.min(12, Math.max(4, value > 0 ? Math.ceil(-Math.log10(value)) + 1 : 4));
+  const formatted = fmtQty(value, decimals);
+  const displayed = Number(formatted.replace(/,/g, ""));
+  return value > 0 && total > 0 && displayed === 0 ? value.toExponential(2) : formatted;
+}
 
 function EquipmentTable({
   demand,
@@ -420,7 +560,7 @@ function EquipmentTable({
                                   {boqItemDisplayName({ description: b.fullDescription ?? b.itemDescription, displayName: b.displayName, canonicalDisplayName: b.canonicalDisplayName })}
                                 </td>
                                 <td className="px-3 py-1.5 text-right font-mono whitespace-nowrap">
-                                  <span className="text-slate-500">{fmtQty(b.hrsPerUnit, 4)}</span>
+                                  <span className="text-slate-500">{formatPositiveRate(b.hrsPerUnit, b.lineHours)}</span>
                                   <span className="text-slate-400 mx-1">×</span>
                                   <span className="text-slate-600">{fmtQty(b.workQty, 2)}</span>
                                   <span className="text-slate-400 mx-1">=</span>
@@ -1279,7 +1419,7 @@ function ItemWiseTable({
                   <tbody>{row.equipment.map(e => (
                     <tr key={e.name} className="border-b border-slate-50">
                       <td className="py-1 text-slate-700">{e.name}</td>
-                      <td className="py-1 text-right font-mono text-slate-500 text-[12px]">{fmtQty(e.hrsPerUnit, 4)}</td>
+                      <td className="py-1 text-right font-mono text-slate-500 text-[12px]">{formatPositiveRate(e.hrsPerUnit, e.hours)}</td>
                       <td className="py-1 text-right font-mono text-slate-500 text-[12px]">{fmtQty(row.workQty, 2)}</td>
                       <td className="py-1 text-right font-mono font-semibold text-blue-700">{fmtQty(e.hours, 1)} hr</td>
                     </tr>
@@ -2724,6 +2864,9 @@ export default function WorkDemand() {
   const projectId = parseInt(params.id);
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
+  const { featureCan } = useAuth();
+  const canEditDemandSource = featureCan("boq_programme", "edit");
+  const [sourceLinkItem, setSourceLinkItem] = useState<any | null>(null);
   // Task #1240: honour ?tab= so the proactive shortage badge on the Work
   // Programme page can deep-link straight into the procurement sub-tab.
   const initialTab = (() => {
@@ -2743,7 +2886,11 @@ export default function WorkDemand() {
   });
 
   const { data: bomData, isLoading, isError: bomError } = useQuery<{
-    items: (BomInputItem & { materialSetupWarning?: string | null })[];
+    items: (BomInputItem & {
+      materialSetupWarning?: string | null;
+      materialMasterId?: number | null;
+      materialMasterName?: string | null;
+    })[];
     bars: BomInputBar[];
     roadLengthKm: number;
     unprogrammedItemIds?: number[];
@@ -2874,7 +3021,7 @@ export default function WorkDemand() {
     const driving = items.filter(it => (it.materials?.length ?? 0) > 0 || !!it.materialSetupWarning);
     const readyCount = driving.filter(it => (it.materials?.length ?? 0) > 0 && !it.materialSetupWarning).length;
     const blocked = driving.filter(it => !!it.materialSetupWarning);
-    const groups = new Map<string, { reason: string; items: { id: number; itemCode?: string | null; description: string; displayName?: string | null; canonicalDisplayName?: string | null }[] }>();
+    const groups = new Map<string, { reason: string; items: any[] }>();
     for (const it of blocked) {
       const reason = it.materialSetupWarning as string;
       if (!groups.has(reason)) groups.set(reason, { reason, items: [] });
@@ -2884,6 +3031,9 @@ export default function WorkDemand() {
         description: it.description,
         displayName: (it as any).displayName ?? null,
         canonicalDisplayName: (it as any).canonicalDisplayName ?? null,
+        layerConfig: (it as any).layerConfig ?? null,
+        materialMasterId: (it as any).materialMasterId ?? null,
+        materialMasterName: (it as any).materialMasterName ?? null,
       });
     }
     return {
@@ -3121,14 +3271,27 @@ export default function WorkDemand() {
                                 <span className="truncate flex-1 min-w-0" title={it.description}>
                                   {it.itemCode ? <span className="font-mono text-slate-500">{it.itemCode} </span> : null}{boqItemDisplayName(it)}
                                 </span>
-                                <button
-                                  type="button"
-                                  onClick={() => navigate(`/work-program/${projectId}?recipeItem=${it.id}`)}
-                                  className="flex-shrink-0 inline-flex items-center gap-1 rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
-                                  data-testid={`button-configure-item-${it.id}`}
-                                >
-                                  <Settings2 className="w-3 h-3" /> Configure
-                                </button>
+                                {g.reason === "Not linked — Link" ? (
+                                  canEditDemandSource && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setSourceLinkItem(it)}
+                                      className="flex-shrink-0 inline-flex items-center gap-1 rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+                                      data-testid={`button-link-demand-source-${it.id}`}
+                                    >
+                                      <Settings2 className="w-3 h-3" /> Link
+                                    </button>
+                                  )
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => navigate(`/work-program/${projectId}?recipeItem=${it.id}`)}
+                                    className="flex-shrink-0 inline-flex items-center gap-1 rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+                                    data-testid={`button-configure-item-${it.id}`}
+                                  >
+                                    <Settings2 className="w-3 h-3" /> Configure
+                                  </button>
+                                )}
                               </li>
                             ))}
                             {g.items.length > 6 && (
@@ -3234,6 +3397,17 @@ export default function WorkDemand() {
           <SectionHeader icon={ShoppingCart} title="Material Procurement Intelligence" />
           <EmptyState label="Add Work Programme bars and material recipes to enable shortage analysis." />
         </div>
+      )}
+      {sourceLinkItem && (
+        <DemandSourceLinkDialog
+          key={sourceLinkItem.id}
+          item={sourceLinkItem}
+          onClose={() => setSourceLinkItem(null)}
+          onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "bom"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "shortage-check"] });
+          }}
+        />
       )}
     </div>
   );

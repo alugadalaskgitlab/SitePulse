@@ -148,7 +148,9 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     },
     enabled: !!boqProjectId && boqItemId != null,
   });
-  const materialProfile = bomProfileData?.items.find((item) => item.id === boqItemId)?.layerQuantityProfile ?? null;
+  const profileItem = bomProfileData?.items.find((item) => item.id === boqItemId);
+  const materialProfile = profileItem?.layerQuantityProfile ?? null;
+  const legacyLooseToCompactedProfiles = profileItem?.legacyLooseToCompactedProfiles ?? [];
   const { toast } = useToast();
   const { uploadFile } = useUpload();
   const [viewOpen, setViewOpen] = useState(false);
@@ -384,6 +386,8 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
     executedQty: props.executedQty ?? null,
     executedUom: props.executedUom ?? null,
     materialProfile,
+    earthwork: profileItem?.layerConfig?.layerType === "earthwork",
+    legacyLooseToCompactedProfiles,
   });
   const fmt = (q: number | null | undefined, u?: string | null) =>
     q == null ? "—" : `${Number(q.toFixed ? q.toFixed(2) : q)} ${u ?? ""}`.trim();

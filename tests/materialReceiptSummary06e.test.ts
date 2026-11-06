@@ -496,6 +496,48 @@ describe("06E comparison safety (spec §G/R/S)", () => {
     });
     expect(c.comparable).toBe(false);
   });
+
+  it("uses the new compacted/loose profile before a saved legacy conversion", () => {
+    const c = buildReceiptComparison({
+      requiredQty: 10, requiredUom: "CUM", requiredSource: "arrangement_allocation",
+      received: received(441.434, "CFT"), executedQty: 10, executedUom: "CUM",
+      materialProfile: { rolledDensity: 2, rollingPct: 100, looseFactor: 1.25, wastagePct: 0 },
+      legacyLooseToCompactedProfiles: [{ fromUom: "CUM", toUom: "CUM", conversionFactor: 0.5 }],
+    });
+    expect(c.comparable).toBe(true);
+    expect(c.requiredUom).toBe("MT");
+    expect(c.receivedUom).toBe("MT");
+    expect(c.requiredQty).toBeCloseTo(20);
+    expect(c.receivedQty).toBeCloseTo(20);
+  });
+
+  it("uses a legacy loose-to-compacted profile only when no new profile is complete", () => {
+    const c = buildReceiptComparison({
+      requiredQty: 10, requiredUom: "CUM", requiredSource: "arrangement_allocation",
+      received: received(441.434, "CFT"), executedQty: 10, executedUom: "CUM",
+      legacyLooseToCompactedProfiles: [{ fromUom: "CUM", toUom: "CUM", conversionFactor: 0.8 }],
+    });
+    expect(c.comparable).toBe(true);
+    expect(c.requiredUom).toBe("CUM");
+    expect(c.receivedUom).toBe("CUM");
+    expect(c.requiredQty).toBeCloseTo(10);
+    expect(c.receivedQty).toBeCloseTo(10);
+  });
+
+  it("compares earthwork in compacted Cum even when new values are available", () => {
+    const c = buildReceiptComparison({
+      requiredQty: 10, requiredUom: "CUM", requiredSource: "arrangement_allocation",
+      received: received(12, "CUM"), executedQty: 10, executedUom: "CUM",
+      materialProfile: { rolledDensity: 2, rollingPct: 100, looseFactor: 1.2, wastagePct: 0 },
+      earthwork: true,
+    });
+    expect(c.comparable).toBe(true);
+    expect(c.requiredUom).toBe("CUM");
+    expect(c.receivedUom).toBe("CUM");
+    expect(c.requiredQty).toBeCloseTo(10);
+    expect(c.receivedQty).toBeCloseTo(10);
+    expect(c.varianceToRequired).toBeCloseTo(0);
+  });
 });
 
 describe("06E existing-receipt matching (spec §12/13/D/G/H)", () => {

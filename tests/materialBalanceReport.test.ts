@@ -56,4 +56,73 @@ describe("material balance report calculations", () => {
     expect(row.usedMt).toBeNull();
     expect(row.differenceMt).toBeNull();
   });
+
+  it("keeps earthwork BOQ Cum visible and does not convert loose trips without Soil values", () => {
+    const [row] = buildMaterialBalanceRows([
+      { materialName: "Soil", quantity: 100, uom: "Cum", profile: null, earthwork: true },
+    ], [
+      { materialName: "Soil", quantity: 35.3147, uom: "CFT", basis: "loose", kind: "received", source: "Trip", attribution: "by site" },
+    ]);
+
+    expect(row.earthwork).toBe(true);
+    expect(row.valuesConfigured).toBe(false);
+    expect(row.rolledQuantity).toBe(100);
+    expect(row.compactedCum).toBe(100);
+    expect(row.requiredMt).toBeNull();
+    expect(row.receivedCum).toBeNull();
+  });
+
+  it("compares earthwork receipts and DPR use in compacted Cum", () => {
+    const [row] = buildMaterialBalanceRows([
+      { materialName: "Soil", quantity: 10, uom: "Cum", profile, earthwork: true },
+    ], [
+      { materialName: "Soil", quantity: 12 * 35.3147, uom: "CFT", basis: "loose", kind: "received", source: "Trip", attribution: "by site" },
+      { materialName: "Soil", quantity: 10, uom: "Cum", basis: "compacted", kind: "used", source: "DPR", attribution: "by project/item" },
+    ]);
+
+    expect(row.valuesConfigured).toBe(true);
+    expect(row.requiredLooseCum).toBeCloseTo(12);
+    expect(row.receivedCum).toBeCloseTo(10);
+    expect(row.usedCum).toBeCloseTo(10);
+    expect(row.differenceCum).toBeCloseTo(0);
+  });
+
+  it("keeps concrete water demand and actuals in native KL", () => {
+    const [row] = buildMaterialBalanceRows([
+      { materialName: "Water", quantity: 0.162, uom: "KL", profile: null },
+    ], [
+      { materialName: "Water", quantity: 0.1, uom: "KL", basis: "loose", kind: "received", source: "Receipt", attribution: "by site" },
+      { materialName: "Water", quantity: 0.15, uom: "KL", basis: "compacted", kind: "used", source: "DPR", attribution: "by project/item" },
+    ]);
+
+    expect(row.valuesConfigured).toBe(true);
+    expect(row.nativeQuantity).toBeCloseTo(0.162);
+    expect(row.nativeUom).toBe("KL");
+    expect(row.receivedNative).toBeCloseTo(0.1);
+    expect(row.usedNative).toBeCloseTo(0.15);
+    expect(row.differenceNative).toBeCloseTo(-0.05);
+    expect(row.requiredMt).toBeNull();
+  });
+
+  it("uses a saved legacy conversion for receipt comparison only when new values are absent", () => {
+    const [row] = buildMaterialBalanceRows([
+      {
+        materialName: "Soil",
+        quantity: 10,
+        uom: "Cum",
+        profile: null,
+        earthwork: true,
+        legacyLooseToCompactedProfiles: [{ fromUom: "Cum", toUom: "Cum", conversionFactor: 0.8 }],
+      },
+    ], [
+      { materialName: "Soil", quantity: 12.5 * 35.3147, uom: "CFT", basis: "loose", kind: "received", source: "Trip", attribution: "by site" },
+      { materialName: "Soil", quantity: 10, uom: "Cum", basis: "compacted", kind: "used", source: "DPR", attribution: "by project/item" },
+    ]);
+
+    expect(row.valuesConfigured).toBe(false);
+    expect(row.compactedCum).toBe(10);
+    expect(row.receivedCum).toBeCloseTo(10);
+    expect(row.usedCum).toBeCloseTo(10);
+    expect(row.differenceCum).toBeCloseTo(0);
+  });
 });

@@ -464,6 +464,7 @@ export interface BomMaterialRow {
   materialGroup?: string;
   reviewNeeded?: boolean;
   normalisationReason?: string;
+  sourceNotes?: string[];
   breakdown: Array<{
     /** Canonical BOQ item ID that generated this contribution. */
     boqItemId?: number | null;
@@ -480,6 +481,8 @@ export interface BomMaterialRow {
     workQty: number;
     lineQty: number;
     isAuto?: boolean;
+    sourceNote?: string;
+    applicationNote?: string;
   }>;
   /** Three-state programming status derived from all contributing BOQ items. */
   programmingStatus?: "fully_programmed" | "partly_programmed" | "not_programmed";
@@ -925,6 +928,8 @@ export function materialSliceExcluded(sl: ArrangementSlice, materialName?: strin
 
 export interface BomInputItem {
   id: number;
+  materialMasterId?: number | null;
+  materialMasterName?: string | null;
   description: string;
   itemCode?: string | null;
   itemName?: string | null;
@@ -940,7 +945,14 @@ export interface BomInputItem {
     looseFactor: number | null;
     wastagePct: number | null;
     source?: "material" | "mix_template";
+    note?: string | null;
   } | null;
+  legacyLooseToCompactedProfiles?: Array<{
+    fromUom: string;
+    toUom: string;
+    conversionFactor: number;
+  }>;
+  demandSourceNote?: string | null;
   workCategory?: string | null;
   materials: Array<{
     materialName: string;
@@ -950,6 +962,8 @@ export interface BomInputItem {
     isClientSupplied: boolean;
     isAuto?: boolean | null;
     supplyType?: "direct" | "plant";
+    sourceNote?: string;
+    applicationNote?: string;
   }>;
   equipment: Array<{
     equipmentName: string;
@@ -976,6 +990,8 @@ export interface BomInputItem {
     supplyType?: "direct" | "plant";
     /** Cut-to-fill routing: earthwork layer-config rows carry this into the arrangement flow. */
     isEarthworkBulkRequirement?: boolean;
+    sourceNote?: string;
+    applicationNote?: string;
   }>;
   /**
    * Instruction 024: DB column bulk_material_classification.
@@ -1056,6 +1072,8 @@ type KeyBomMaterialInputRow = {
   isClientSupplied: boolean;
   isAuto?: boolean | null;
   supplyType?: "direct" | "plant";
+  sourceNote?: string;
+  applicationNote?: string;
   /** Instruction 023: true for earthwork/bulk-fill BOQ items (Earth, Subgrade, Shoulder, etc.) */
   isEarthworkBulkRequirement?: boolean;
   /** Instruction 024: true for gravel/moorum items with no saved bulkMaterialClassification. */
@@ -1448,6 +1466,8 @@ function buildKeyMaterialRows(item: BomInputItem): KeyBomMaterialInputRow[] {
       isClientSupplied: m.isClientSupplied ?? false,
       isAuto: m.isAuto ?? true,
       supplyType: m.supplyType,
+      sourceNote: m.sourceNote,
+      applicationNote: m.applicationNote,
       // Cut-to-fill routing: derived earthwork soil rows keep their arrangement flag
       // even when the BOQ item itself failed isEarthworkBoqItem (e.g. "trench cutting"
       // phrasing in MoRT&H 301 roadway-excavation descriptions trips the exclusion).
@@ -1467,6 +1487,8 @@ function buildKeyMaterialRows(item: BomInputItem): KeyBomMaterialInputRow[] {
       isClientSupplied: m.isClientSupplied,
       isAuto: m.isAuto,
       supplyType: m.supplyType,
+      sourceNote: m.sourceNote,
+      applicationNote: m.applicationNote,
     };
 
     if (isDirectGranularSupplyMaterial(row)) {
@@ -1593,6 +1615,7 @@ export function calculateBomDemand(
           materialGroup: finalName,
           reviewNeeded: false,
           normalisationReason: "Material BOM V1 key-material allowlist",
+          sourceNotes: [],
           supplyType: m.supplyType,
           isEarthworkBulkRequirement: m.isEarthworkBulkRequirement ?? false, // Instruction 023
           requiresClassification: m.requiresClassification ?? false,       // Instruction 024
@@ -1604,6 +1627,7 @@ export function calculateBomDemand(
       row.totalQty += lineQty;
       row.uom = m.uom;
       if (m.isAuto) row.hasAutoSource = true;
+      if (m.sourceNote && !row.sourceNotes!.includes(m.sourceNote)) row.sourceNotes!.push(m.sourceNote);
       // OR-merge earthwork/classification flags: if ANY contributing item marks the
       // row as an earthwork bulk requirement, the merged row routes to the arrangement flow.
       if (m.isEarthworkBulkRequirement) row.isEarthworkBulkRequirement = true;
@@ -1639,6 +1663,8 @@ export function calculateBomDemand(
           workQty,
           lineQty,
           isAuto: m.isAuto ?? true,
+          sourceNote: m.sourceNote,
+          applicationNote: m.applicationNote,
         });
       }
       for (const [month, mwq] of monthlyWork) {
@@ -1943,6 +1969,8 @@ export interface LayerConfig {
   mixType?: string | null;
   // Bituminous
   mixTemplateId?: number | null;
+  materialMasterId?: number | null;
+  mixDesignId?: number | null;
   thicknessMm?: number | null;
   densityTPerCum?: number | null;
   // Granular
@@ -2135,6 +2163,8 @@ export interface DerivedMaterialRow {
   qtyPerBoqUnit: number;
   isAuto: true;
   applicationNote?: string;
+  sourceNote?: string;
+  wastagePct?: number;
   /**
    * Cut-to-fill routing: layer-config-derived soil/earth rows (layerType "earthwork")
    * must route into the execution-arrangement flow, not Plant Material mapping.
@@ -2152,6 +2182,7 @@ export interface ConcreteMixDesignInput {
   cementContent?: number | null;        // kg/m³
   admixtureName?: string | null;
   admixtureDosage?: number | null;       // % of cement weight
+  waterCementRatio?: number | null;
   componentProportions?: {
     cement?: number | null;
     fineAgg?: number | null;
@@ -2418,10 +2449,14 @@ export function deriveMaterialsFromLayerConfig(
     ldoNorm?: number | null;
     binderGrade?: string | null;
     densityTPerCum?: number | null;
+    rolledDensity?: number | null;
+    rollingPct?: number | null;
+    looseFactor?: number | null;
+    wastagePct?: number | null;
     components: Array<{ materialName: string; percent: number | null }>;
   } | null,
   concreteDesign?: ConcreteMixDesignInput | null,
-  opts?: { descBinderGrade?: string | null },
+  opts?: { descBinderGrade?: string | null; sourceNote?: string | null },
 ): DerivedMaterialRow[] {
   if (layerConfig.layerType === "earthwork") {
     // Earthwork soil demand is never a procurement/mapping problem — it is resolved
@@ -2444,14 +2479,31 @@ export function deriveMaterialsFromLayerConfig(
   if (layerConfig.layerType === "granular") {
     const granNorm = normaliseMixType(layerConfig.mixType ?? "");
     if (layerConfig.granularSource === "plant") {
-      // Plant-processed: expand into mix fractions if a template is linked; else generic label.
-      if (mixTemplate?.components?.length) {
-        return mixTemplate.components
+      const profileIsComplete = !!mixTemplate &&
+        mixTemplate.rolledDensity != null && Number(mixTemplate.rolledDensity) > 0 &&
+        mixTemplate.rollingPct != null && Number(mixTemplate.rollingPct) > 0 &&
+        mixTemplate.looseFactor != null && Number(mixTemplate.looseFactor) >= 1;
+      const density = profileIsComplete
+        ? Number(mixTemplate!.rolledDensity) * Number(mixTemplate!.rollingPct) / 100
+        : mixTemplate?.densityTPerCum ?? null;
+      const hasUsableTemplate =
+        !!mixTemplate?.components?.some(c => (c.percent ?? 0) > 0) &&
+        density != null && density > 0;
+      if (hasUsableTemplate) {
+        const mixMtPerUnit = normaliseUnit(_boqUnit || "") === "CUM" ? density : 1;
+        const sourceNote = opts?.sourceNote ?? (!profileIsComplete ? "using template density" : undefined);
+        return mixTemplate!.components
           .filter((c) => (c.percent ?? 0) > 0)
-          .map((c) => ({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: (c.percent ?? 0) / 100, isAuto: true as const }));
+          .map((c) => ({
+            materialName: c.materialName,
+            uom: "MT",
+            qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mixMtPerUnit,
+            isAuto: true as const,
+            sourceNote,
+            wastagePct: profileIsComplete ? Number(mixTemplate?.wastagePct ?? 0) : 0,
+          }));
       }
-      const plantLabel = granNorm === "GSB" ? "GSB (Processed)" : granNorm === "WBM" ? "WBM (Processed)" : "WMM (Processed)";
-      return [{ materialName: plantLabel, uom: "MT", qtyPerBoqUnit: 1.0, isAuto: true }];
+      return [];
     }
     // Direct supply (quarry/crusher): one practical procurement line — no grading fractions.
     const directLabel =
@@ -2469,7 +2521,7 @@ export function deriveMaterialsFromLayerConfig(
     const cp = concreteDesign.componentProportions;
     const cementKg = (cp?.cement ?? concreteDesign.cementContent ?? 0); // kg/m³
     if (cementKg > 0) {
-      rows.push({ materialName: "Cement", uom: "MT", qtyPerBoqUnit: cementKg / 1000, isAuto: true, applicationNote: `${concreteDesign.grade} @ ${cementKg} kg/m³` });
+      rows.push({ materialName: "Cement", uom: "MT", qtyPerBoqUnit: cementKg / 1000, isAuto: true, applicationNote: `${concreteDesign.grade} @ ${cementKg} kg/m³`, sourceNote: opts?.sourceNote ?? undefined });
       const dosage = concreteDesign.admixtureDosage ?? 0;
       if (dosage > 0) {
         rows.push({
@@ -2477,15 +2529,27 @@ export function deriveMaterialsFromLayerConfig(
           uom: "kg",
           qtyPerBoqUnit: (cementKg * dosage) / 100,
           isAuto: true,
+          sourceNote: opts?.sourceNote ?? undefined,
+        });
+      }
+      const waterCementRatio = Number(concreteDesign.waterCementRatio);
+      if (Number.isFinite(waterCementRatio) && waterCementRatio > 0) {
+        rows.push({
+          materialName: "Water",
+          uom: "KL",
+          qtyPerBoqUnit: (cementKg * waterCementRatio) / 1000,
+          isAuto: true,
+          sourceNote: opts?.sourceNote ?? undefined,
+          applicationNote: `Water-cement ratio ${waterCementRatio}`,
         });
       }
     }
     const sandKg = cp?.fineAgg ?? 0;
-    if (sandKg > 0) rows.push({ materialName: "Sand", uom: "CUM", qtyPerBoqUnit: sandKg / (SAND_BULK_DENSITY_T_PER_CUM * 1000), isAuto: true });
+    if (sandKg > 0) rows.push({ materialName: "Sand", uom: "MT", qtyPerBoqUnit: sandKg / 1000, isAuto: true, sourceNote: opts?.sourceNote ?? undefined });
     const agg20 = cp?.coarseAgg20 ?? 0;
-    if (agg20 > 0) rows.push({ materialName: "20mm Aggregate", uom: "CUM", qtyPerBoqUnit: agg20 / (COARSE_AGG_BULK_DENSITY_T_PER_CUM * 1000), isAuto: true });
+    if (agg20 > 0) rows.push({ materialName: "20mm Aggregate", uom: "MT", qtyPerBoqUnit: agg20 / 1000, isAuto: true, sourceNote: opts?.sourceNote ?? undefined });
     const agg10 = cp?.coarseAgg10 ?? 0;
-    if (agg10 > 0) rows.push({ materialName: "10mm Aggregate", uom: "CUM", qtyPerBoqUnit: agg10 / (COARSE_AGG_BULK_DENSITY_T_PER_CUM * 1000), isAuto: true });
+    if (agg10 > 0) rows.push({ materialName: "10mm Aggregate", uom: "MT", qtyPerBoqUnit: agg10 / 1000, isAuto: true, sourceNote: opts?.sourceNote ?? undefined });
     return rows;
   }
 
@@ -2493,10 +2557,17 @@ export function deriveMaterialsFromLayerConfig(
     // Density priority: template → saved layerConfig → IRC mix-type default → absolute fallback
     const IRC_DENSITY: Record<string, number> = { BC: 2.40, SDBC: 2.40, DBM: 2.40, BM: 2.35 };
     const mixKeyDens = normaliseMixType(layerConfig.mixType ?? "");
-    const density = mixTemplate?.densityTPerCum
-      ?? layerConfig.densityTPerCum
-      ?? IRC_DENSITY[mixKeyDens]
-      ?? 2.35;
+    const profileIsComplete = !!mixTemplate &&
+      mixTemplate.rolledDensity != null && Number(mixTemplate.rolledDensity) > 0 &&
+      mixTemplate.rollingPct != null && Number(mixTemplate.rollingPct) > 0 &&
+      mixTemplate.looseFactor != null && Number(mixTemplate.looseFactor) >= 1;
+    const templateDensity = mixTemplate?.densityTPerCum ?? null;
+    const density = profileIsComplete
+      ? Number(mixTemplate!.rolledDensity) * Number(mixTemplate!.rollingPct) / 100
+      : templateDensity ?? layerConfig.densityTPerCum ?? IRC_DENSITY[mixKeyDens] ?? 2.35;
+    const densitySourceNote = opts?.sourceNote ??
+      (mixTemplate && !profileIsComplete && templateDensity != null ? "using template density" : undefined);
+    const wastagePct = profileIsComplete ? Number(mixTemplate?.wastagePct ?? 0) : 0;
     const thickness = layerConfig.thicknessMm ?? 0;
 
     // MT of mix per 1 BOQ unit — depends on how the BOQ measures the item:
@@ -2539,9 +2610,9 @@ export function deriveMaterialsFromLayerConfig(
       const binderName = grade
         ? (/bitumen|emulsion/i.test(grade) ? grade : `Bitumen ${grade}`)
         : (tmplBinderComp?.materialName?.trim() || "Bitumen VG-30");
-      if (bitPct > 0) rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerUnit, isAuto: true });
+      if (bitPct > 0) rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerUnit, isAuto: true, sourceNote: densitySourceNote, wastagePct });
       for (const c of tmplAggs) {
-        rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerUnit, isAuto: true });
+        rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerUnit, isAuto: true, sourceNote: densitySourceNote, wastagePct });
       }
     } else {
       // ── IRC standard fallback for THIS exact mix type (keeps template grade if given) ──
@@ -2549,9 +2620,9 @@ export function deriveMaterialsFromLayerConfig(
       // (e.g. MA → VG-40 per IRC:SP:93); then generic VG-30.
       const grade = (opts?.descBinderGrade ?? mixTemplate?.binderGrade ?? ircDefault.grade ?? "VG-30").trim();
       const binderName = /bitumen|emulsion/i.test(grade) ? grade : `Bitumen ${grade}`;
-      rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (ircDefault.bitumenPct / 100) * mtPerUnit, isAuto: true, applicationNote: `IRC default ${mixKey} JMF (no complete template)` });
+      rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (ircDefault.bitumenPct / 100) * mtPerUnit, isAuto: true, sourceNote: opts?.sourceNote ?? "Default estimate", applicationNote: `IRC default ${mixKey} JMF (no complete template)` });
       for (const a of ircDefault.aggregates) {
-        rows.push({ materialName: a.name, uom: "MT", qtyPerBoqUnit: (a.pct / 100) * mtPerUnit, isAuto: true });
+        rows.push({ materialName: a.name, uom: "MT", qtyPerBoqUnit: (a.pct / 100) * mtPerUnit, isAuto: true, sourceNote: opts?.sourceNote ?? "Default estimate" });
       }
     }
 
@@ -2563,6 +2634,7 @@ export function deriveMaterialsFromLayerConfig(
         uom: "L",
         qtyPerBoqUnit: ldoNorm * mtPerUnit,
         isAuto: true,
+        sourceNote: densitySourceNote,
         applicationNote: `HMP plant fuel at ${ldoNorm} L/MT`,
       });
     }

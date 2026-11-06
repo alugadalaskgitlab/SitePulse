@@ -13,8 +13,10 @@ import { Label } from "@/components/ui/label";
 type ProjectOption = { id: number; name: string; siteName?: string | null };
 type BalanceRow = {
   materialName: string;
-  rolledQuantity: number;
+  rolledQuantity: number | null;
   rolledUom: string;
+  nativeQuantity: number | null;
+  nativeUom: string | null;
   compactedCum: number | null;
   requiredMt: number | null;
   requiredLooseCum: number | null;
@@ -24,6 +26,13 @@ type BalanceRow = {
   receivedMt: number | null;
   usedMt: number | null;
   differenceMt: number | null;
+  receivedCum: number | null;
+  usedCum: number | null;
+  differenceCum: number | null;
+  receivedNative: number | null;
+  usedNative: number | null;
+  differenceNative: number | null;
+  earthwork: boolean;
   valuesConfigured: boolean;
   receivedSources: string[];
   usedSources: string[];
@@ -51,6 +60,13 @@ function number(value: number | null, digits = 2) {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
+}
+
+function quantityWithNative(value: number | null, nativeValue: number | null, nativeUom: string | null) {
+  if (nativeUom === "Mixed") return "Mixed units";
+  return nativeUom
+    ? nativeValue == null ? "—" : `${number(nativeValue)} ${nativeUom}`
+    : number(value);
 }
 
 export default function MaterialBalanceReport() {
@@ -81,16 +97,20 @@ export default function MaterialBalanceReport() {
 
   const exportRows = useMemo(() => (reportQuery.data?.rows ?? []).map((row) => ({
     Material: row.materialName,
-    "BOQ rolled quantity": row.valuesConfigured ? `${number(row.rolledQuantity)} ${row.rolledUom}` : "Values not set",
-    "Required compacted (Cum)": row.valuesConfigured ? number(row.compactedCum) : "Values not set",
-    "Required (MT)": row.valuesConfigured ? number(row.requiredMt) : "Values not set",
-    "Required loose (Cum)": row.valuesConfigured ? number(row.requiredLooseCum) : "Values not set",
-    "Required loose (CFT)": row.valuesConfigured ? number(row.requiredLooseCft) : "Values not set",
-    "Wastage (MT)": row.valuesConfigured ? number(row.wastageMt) : "Values not set",
-    "Wastage (loose Cum)": row.valuesConfigured ? number(row.wastageCum) : "Values not set",
-    "Received (MT)": row.valuesConfigured ? number(row.receivedMt) : "Values not set",
-    "Used (MT)": row.valuesConfigured ? number(row.usedMt) : "Values not set",
-    "Difference (MT)": row.valuesConfigured ? number(row.differenceMt) : "Values not set",
+    "BOQ quantity / unit": row.rolledQuantity == null ? "—" : `${number(row.rolledQuantity)} ${row.rolledUom}`,
+    "Required compacted (Cum)": number(row.compactedCum),
+    "Required (MT)": number(row.requiredMt),
+    "Required loose (Cum)": number(row.requiredLooseCum),
+    "Required loose (CFT)": number(row.requiredLooseCft),
+    "Wastage (MT)": number(row.wastageMt),
+    "Wastage (loose Cum)": number(row.wastageCum),
+    "Received quantity": quantityWithNative(row.receivedMt, row.receivedNative, row.nativeUom),
+    "Used quantity": quantityWithNative(row.usedMt, row.usedNative, row.nativeUom),
+    "Difference": quantityWithNative(row.differenceMt, row.differenceNative, row.nativeUom),
+    "Received (Cum)": row.earthwork ? number(row.receivedCum) : "—",
+    "Used (Cum)": row.earthwork ? number(row.usedCum) : "—",
+    "Difference (Cum)": row.earthwork ? number(row.differenceCum) : "—",
+    "Value status": !row.valuesConfigured ? (row.earthwork ? "Values not set — Open Soil" : "Values not set") : "Configured",
     Sources: [...row.receivedSources, ...row.usedSources].join("; "),
     Attribution: row.attributions.join(", "),
   })), [reportQuery.data]);
@@ -115,17 +135,20 @@ export default function MaterialBalanceReport() {
     doc.text("Difference = Received minus Used. BOQ requirement is the full current project quantity.", 14, 27);
     autoTable(doc, {
       startY: 32,
-      head: [["Material", "BOQ rolled", "Required comp. Cum", "Required MT", "Loose Cum / CFT", "Wastage MT / loose Cum", "Received MT", "Used MT", "Difference MT", "Source / attribution"]],
+      head: [["Material", "BOQ quantity / unit", "Required comp. Cum", "Required MT", "Loose Cum / CFT", "Wastage MT / loose Cum", "Received qty", "Used qty", "Difference", "Received Cum", "Used Cum", "Difference Cum", "Source / attribution"]],
       body: report.rows.map((row) => [
         row.materialName,
-        row.valuesConfigured ? `${number(row.rolledQuantity)} ${row.rolledUom}` : "Values not set",
-        row.valuesConfigured ? number(row.compactedCum) : "Values not set",
-        row.valuesConfigured ? number(row.requiredMt) : "Values not set",
-        row.valuesConfigured ? `${number(row.requiredLooseCum)} / ${number(row.requiredLooseCft, 0)}` : "Values not set",
-        row.valuesConfigured ? `${number(row.wastageMt)} / ${number(row.wastageCum)}` : "Values not set",
-        row.valuesConfigured ? number(row.receivedMt) : "Values not set",
-        row.valuesConfigured ? number(row.usedMt) : "Values not set",
-        row.valuesConfigured ? number(row.differenceMt) : "Values not set",
+        row.rolledQuantity == null ? "—" : `${number(row.rolledQuantity)} ${row.rolledUom}`,
+        number(row.compactedCum),
+        number(row.requiredMt),
+        `${number(row.requiredLooseCum)} / ${number(row.requiredLooseCft, 0)}`,
+        `${number(row.wastageMt)} / ${number(row.wastageCum)}`,
+        quantityWithNative(row.receivedMt, row.receivedNative, row.nativeUom),
+        quantityWithNative(row.usedMt, row.usedNative, row.nativeUom),
+        quantityWithNative(row.differenceMt, row.differenceNative, row.nativeUom),
+        row.earthwork ? number(row.receivedCum) : "—",
+        row.earthwork ? number(row.usedCum) : "—",
+        row.earthwork ? number(row.differenceCum) : "—",
         [...row.attributions, ...row.receivedSources, ...row.usedSources].join("; "),
       ]),
       styles: { fontSize: 6.5, textColor: [45, 45, 45], lineColor: [175, 175, 175] },
@@ -190,7 +213,7 @@ export default function MaterialBalanceReport() {
               <table className="min-w-[1320px] w-full text-sm">
                 <thead className="bg-muted/60 text-left">
                   <tr>
-                    {["Material", "BOQ rolled quantity", "Required compacted Cum", "Required MT", "Loose Cum", "Loose CFT", "Wastage MT", "Wastage loose Cum", "Received MT", "Used MT", "Difference MT", "Sources / attribution"].map((heading) => (
+                    {["Material", "BOQ quantity / unit", "Required compacted Cum", "Required MT", "Loose Cum", "Loose CFT", "Wastage MT", "Wastage loose Cum", "Received qty", "Used qty", "Difference", "Received Cum", "Used Cum", "Difference Cum", "Sources / attribution"].map((heading) => (
                       <th key={heading} className="whitespace-nowrap px-3 py-2 font-semibold">{heading}</th>
                     ))}
                   </tr>
@@ -198,17 +221,23 @@ export default function MaterialBalanceReport() {
                 <tbody>
                   {reportQuery.data.rows.map((row) => (
                     <tr key={row.materialName} className="border-t align-top">
-                      <td className="px-3 py-2 font-medium">{row.materialName}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{row.valuesConfigured ? `${number(row.rolledQuantity)} ${row.rolledUom}` : "Values not set"}</td>
-                      <td className="px-3 py-2">{row.valuesConfigured ? number(row.compactedCum) : "Values not set"}</td>
-                      <td className="px-3 py-2">{row.valuesConfigured ? number(row.requiredMt) : "Values not set"}</td>
-                      <td className="px-3 py-2">{row.valuesConfigured ? number(row.requiredLooseCum) : "Values not set"}</td>
-                      <td className="px-3 py-2">{row.valuesConfigured ? number(row.requiredLooseCft, 0) : "Values not set"}</td>
-                      <td className="px-3 py-2">{row.valuesConfigured ? number(row.wastageMt) : "Values not set"}</td>
-                      <td className="px-3 py-2">{row.valuesConfigured ? number(row.wastageCum) : "Values not set"}</td>
-                      <td className="px-3 py-2">{row.valuesConfigured ? number(row.receivedMt) : "Values not set"}</td>
-                      <td className="px-3 py-2">{row.valuesConfigured ? number(row.usedMt) : "Values not set"}</td>
-                      <td className="px-3 py-2">{row.valuesConfigured ? number(row.differenceMt) : "Values not set"}</td>
+                      <td className="px-3 py-2 font-medium">
+                        {row.materialName}
+                        {!row.valuesConfigured && <div className="text-[10px] font-normal text-amber-700">{row.earthwork ? "Values not set — Open Soil" : "Values not set"}</div>}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">{row.rolledQuantity == null ? "—" : `${number(row.rolledQuantity)} ${row.rolledUom}`}</td>
+                      <td className="px-3 py-2">{number(row.compactedCum)}</td>
+                      <td className="px-3 py-2">{number(row.requiredMt)}</td>
+                      <td className="px-3 py-2">{number(row.requiredLooseCum)}</td>
+                      <td className="px-3 py-2">{number(row.requiredLooseCft, 0)}</td>
+                      <td className="px-3 py-2">{number(row.wastageMt)}</td>
+                      <td className="px-3 py-2">{number(row.wastageCum)}</td>
+                      <td className="px-3 py-2">{quantityWithNative(row.receivedMt, row.receivedNative, row.nativeUom)}</td>
+                      <td className="px-3 py-2">{quantityWithNative(row.usedMt, row.usedNative, row.nativeUom)}</td>
+                      <td className="px-3 py-2">{quantityWithNative(row.differenceMt, row.differenceNative, row.nativeUom)}</td>
+                      <td className="px-3 py-2">{row.earthwork ? number(row.receivedCum) : "—"}</td>
+                      <td className="px-3 py-2">{row.earthwork ? number(row.usedCum) : "—"}</td>
+                      <td className="px-3 py-2">{row.earthwork ? number(row.differenceCum) : "—"}</td>
                       <td className="px-3 py-2 text-xs">
                         {[...row.attributions, ...row.receivedSources, ...row.usedSources].join(" · ") || "No linked actuals"}
                       </td>

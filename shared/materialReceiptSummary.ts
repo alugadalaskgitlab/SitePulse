@@ -17,7 +17,13 @@
 
 import { convertSolidQty, normalizeUom as normalizeConvertibleUom } from "./uomConvert";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "./arrangementStatusHistory";
-import { convertMaterialQuantityToMt, hasCompleteCompactedLooseProfile, type CompactedLooseProfile, type MaterialQuantityBasis } from "./compactedLoose";
+import {
+  CUBIC_FEET_PER_CUBIC_METRE,
+  convertMaterialQuantityToMt,
+  hasCompleteCompactedLooseProfile,
+  type CompactedLooseProfile,
+  type MaterialQuantityBasis,
+} from "./compactedLoose";
 
 // ---------- Arrangement types ----------
 
@@ -436,6 +442,12 @@ export interface ReceiptComparisonInput extends RequiredTodayResult {
   executedUom: string | null;
   /** Optional material profile; absent/incomplete keeps the existing comparison behavior. */
   materialProfile?: CompactedLooseProfile | null;
+  earthwork?: boolean;
+  legacyLooseToCompactedProfiles?: Array<{
+    fromUom: string;
+    toUom: string;
+    conversionFactor: number;
+  }>;
   requiredBasis?: MaterialQuantityBasis;
   receiptBasis?: MaterialQuantityBasis;
   executedBasis?: MaterialQuantityBasis;
@@ -495,6 +507,64 @@ export function buildReceiptComparison(input: ReceiptComparisonInput): ReceiptCo
     executedQty: input.executedQty,
     executedUom: input.executedUom,
   };
+  if (input.earthwork) {
+    const toCompactedCum = (quantity: number | null, uom: string | null, basis: MaterialQuantityBasis): number | null => {
+      if (quantity == null || !Number.isFinite(quantity) || !uom) return null;
+      const sourceUom = normalizeConvertibleUom(uom);
+      const looseOrCompactedCum = sourceUom === "CUM"
+        ? quantity
+        : sourceUom === "CFT"
+          ? quantity / CUBIC_FEET_PER_CUBIC_METRE
+          : null;
+      if (looseOrCompactedCum == null) return null;
+      if (basis === "compacted") return looseOrCompactedCum;
+      if (hasCompleteCompactedLooseProfile(input.materialProfile)) {
+        return looseOrCompactedCum / input.materialProfile.looseFactor;
+      }
+      const exactProfiles = legacyProfilesForComparison(input.legacyLooseToCompactedProfiles, sourceUom);
+      if (exactProfiles.length === 1) return quantity * Number(exactProfiles[0].conversionFactor);
+      if (exactProfiles.length > 1) return null;
+      if (sourceUom === "CFT") {
+        const cumProfiles = legacyProfilesForComparison(input.legacyLooseToCompactedProfiles, "CUM");
+        if (cumProfiles.length === 1) return looseOrCompactedCum * Number(cumProfiles[0].conversionFactor);
+      }
+      return null;
+    };
+    const requiredCum = toCompactedCum(input.requiredQty, input.requiredUom, input.requiredBasis ?? "compacted");
+    const receivedValues = received.byUom.map(line =>
+      toCompactedCum(line.qty, line.uom, input.receiptBasis ?? "loose"),
+    );
+    const receivedCum = receivedValues.length === 0 || receivedValues.some(value => value == null)
+      ? null
+      : receivedValues.reduce<number>((sum, value) => sum + (value ?? 0), 0);
+    const executedCum = toCompactedCum(input.executedQty, input.executedUom, input.executedBasis ?? "compacted");
+    const present = [requiredCum, receivedCum, executedCum].filter(value => value != null);
+    if (
+      present.length >= 2 &&
+      !(input.requiredQty != null && requiredCum == null) &&
+      !(received.byUom.length > 0 && receivedCum == null) &&
+      !(input.executedQty != null && executedCum == null)
+    ) {
+      return {
+        ...base,
+        requiredQty: requiredCum,
+        requiredUom: input.requiredQty != null ? "CUM" : input.requiredUom,
+        receivedQty: receivedCum,
+        receivedUom: receivedCum != null ? "CUM" : received.receivedUom,
+        executedQty: executedCum,
+        executedUom: input.executedQty != null ? "CUM" : input.executedUom,
+        comparable: true,
+        comparisonReason: "Earthwork compared in compacted Cum.",
+        varianceToRequired: receivedCum != null && requiredCum != null
+          ? Number((receivedCum - requiredCum).toFixed(3))
+          : null,
+        receivedLessExecuted: receivedCum != null && executedCum != null
+          ? Number((receivedCum - executedCum).toFixed(3))
+          : null,
+      };
+    }
+    return { ...base, comparable: false, comparisonReason: COMPARISON_BASES_DIFFER, varianceToRequired: null, receivedLessExecuted: null };
+  }
   if (hasCompleteCompactedLooseProfile(input.materialProfile)) {
     const requiredMt = input.requiredQty == null || !input.requiredUom
       ? null
@@ -546,6 +616,81 @@ export function buildReceiptComparison(input: ReceiptComparisonInput): ReceiptCo
       receivedLessExecuted: receivedMt != null && executedMt != null ? Number((receivedMt - executedMt).toFixed(3)) : null,
     };
   }
+  const legacyProfiles = input.legacyLooseToCompactedProfiles ?? [];
+  if (legacyProfiles.length > 0) {
+    const toCompactedCum = (
+      quantity: number | null,
+      uom: string | null,
+      basis: MaterialQuantityBasis,
+    ): number | null => {
+      if (quantity == null || !Number.isFinite(quantity) || !uom) return null;
+      const sourceUom = normalizeConvertibleUom(uom);
+      const volumeInCum = sourceUom === "CUM"
+        ? quantity
+        : sourceUom === "CFT"
+          ? quantity / CUBIC_FEET_PER_CUBIC_METRE
+          : null;
+      if (volumeInCum == null) return null;
+      if (basis === "compacted") return volumeInCum;
+      const exactSourceProfiles = legacyProfiles.filter(profile =>
+        normalizeConvertibleUom(profile.fromUom) === sourceUom &&
+        normalizeConvertibleUom(profile.toUom) === "CUM" &&
+        Number.isFinite(Number(profile.conversionFactor)) &&
+        Number(profile.conversionFactor) > 0,
+      );
+      if (exactSourceProfiles.length === 1) {
+        return quantity * Number(exactSourceProfiles[0].conversionFactor);
+      }
+      if (exactSourceProfiles.length > 1) return null;
+      // A legacy CUM→CUM factor may be used for CFT receipts only after the
+      // standard volume conversion. Ambiguous or different target UoMs fail closed.
+      if (sourceUom === "CFT") {
+        const cumProfiles = legacyProfiles.filter(profile =>
+          normalizeConvertibleUom(profile.fromUom) === "CUM" &&
+          normalizeConvertibleUom(profile.toUom) === "CUM" &&
+          Number.isFinite(Number(profile.conversionFactor)) &&
+          Number(profile.conversionFactor) > 0,
+        );
+        if (cumProfiles.length === 1) return volumeInCum * Number(cumProfiles[0].conversionFactor);
+      }
+      return null;
+    };
+    const requiredCum = toCompactedCum(input.requiredQty, input.requiredUom, input.requiredBasis ?? "compacted");
+    const receivedValues = received.byUom.map(line => toCompactedCum(
+      line.qty,
+      line.uom,
+      input.receiptBasis ?? "loose",
+    ));
+    const receivedCum = receivedValues.length === 0 || receivedValues.some(value => value == null)
+      ? null
+      : receivedValues.reduce<number>((sum, value) => sum + (value ?? 0), 0);
+    const executedCum = toCompactedCum(input.executedQty, input.executedUom, input.executedBasis ?? "compacted");
+    const present = [requiredCum, receivedCum, executedCum].filter(value => value != null);
+    if (
+      present.length >= 2 &&
+      !(input.requiredQty != null && requiredCum == null) &&
+      !(received.byUom.length > 0 && receivedCum == null) &&
+      !(input.executedQty != null && executedCum == null)
+    ) {
+      return {
+        ...base,
+        requiredQty: requiredCum,
+        requiredUom: input.requiredQty != null ? "CUM" : input.requiredUom,
+        receivedQty: receivedCum,
+        receivedUom: receivedCum != null ? "CUM" : received.receivedUom,
+        executedQty: executedCum,
+        executedUom: input.executedQty != null ? "CUM" : input.executedUom,
+        comparable: true,
+        comparisonReason: "Legacy loose-to-compacted profile converted to compacted Cum.",
+        varianceToRequired: receivedCum != null && requiredCum != null
+          ? Number((receivedCum - requiredCum).toFixed(3))
+          : null,
+        receivedLessExecuted: receivedCum != null && executedCum != null
+          ? Number((receivedCum - executedCum).toFixed(3))
+          : null,
+      };
+    }
+  }
   if (received.mixedUoms) {
     return { ...base, comparable: false, comparisonReason: "Receipts use mixed UoMs — quantities shown separately.", varianceToRequired: null, receivedLessExecuted: null };
   }
@@ -596,6 +741,18 @@ export function buildReceiptComparison(input: ReceiptComparisonInput): ReceiptCo
     varianceToRequired,
     receivedLessExecuted,
   };
+}
+
+function legacyProfilesForComparison(
+  profiles: ReceiptComparisonInput["legacyLooseToCompactedProfiles"],
+  fromUom: string,
+) {
+  return (profiles ?? []).filter(profile =>
+    normalizeConvertibleUom(profile.fromUom) === fromUom &&
+    normalizeConvertibleUom(profile.toUom) === "CUM" &&
+    Number.isFinite(Number(profile.conversionFactor)) &&
+    Number(profile.conversionFactor) > 0,
+  );
 }
 
 // ---------- Existing-receipt suggestion ----------

@@ -131,6 +131,7 @@ import { buildMaterialBalanceRows, type MaterialBalanceQuantity, type MaterialBa
 import {
   resolveCompactedLooseProfile,
   withEffectiveMaterialDensity,
+  hasCompleteCompactedLooseProfile,
 } from "@shared/compactedLoose";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
@@ -17555,6 +17556,51 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/boq/items/:id/demand-source", async (req, res) => {
+    try {
+      if (!assertEditEither(req, res, "qto_boq", "work_programme")) return;
+      const id = Number(req.params.id);
+      const existing = await storage.getBoqItem(id);
+      if (!existing || Array.isArray(existing)) return res.status(404).json({ error: "BOQ item not found" });
+      const sourceId = Number(req.body?.sourceId);
+      const sourceKind = String(req.body?.sourceKind ?? "");
+      if (!Number.isInteger(sourceId) || sourceId <= 0) {
+        return res.status(400).json({ error: "Choose a valid demand source." });
+      }
+      const currentConfig = (existing as any).layerConfig && typeof (existing as any).layerConfig === "object"
+        ? (existing as any).layerConfig as LayerConfig
+        : synthLayerConfigFromWorkType(existing as any);
+      if (!currentConfig) return res.status(400).json({ error: "This item has no supported material-demand type." });
+      let nextConfig: LayerConfig;
+      if (sourceKind === "material") {
+        const material = (await storage.getPlantMaterials()).find((row: any) => Number(row.id) === sourceId && row.isActive !== false);
+        if (!material) return res.status(404).json({ error: "Material master not found." });
+        nextConfig = { ...currentConfig, materialMasterId: sourceId };
+      } else if (sourceKind === "template") {
+        const result = await storage.getMixTemplateWithComponents(sourceId);
+        if (!result) return res.status(404).json({ error: "Mix template not found." });
+        nextConfig = {
+          ...currentConfig,
+          mixTemplateId: sourceId,
+          mixType: result.template.mixType || currentConfig.mixType,
+          ...(currentConfig.layerType === "granular" ? { granularSource: "plant" as const } : {}),
+        };
+      } else if (sourceKind === "design") {
+        const design = (await storage.getRmcMixDesigns()).find((row: any) => Number(row.id) === sourceId);
+        if (!design) return res.status(404).json({ error: "Concrete mix design not found." });
+        nextConfig = { ...currentConfig, mixDesignId: sourceId, mixType: design.grade || currentConfig.mixType };
+      } else {
+        return res.status(400).json({ error: "Unsupported demand source type." });
+      }
+      const updated = await storage.updateBoqItem(id, { layerConfig: nextConfig });
+      if (!updated) return res.status(404).json({ error: "BOQ item not found." });
+      res.json(updated);
+    } catch (err) {
+      console.error("POST /api/boq/items/:id/demand-source:", err);
+      res.status(500).json({ error: "Failed to save material-demand link." });
+    }
+  });
+
   app.post("/api/boq/projects/:id/auto-map-all", async (req, res) => {
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
@@ -19312,13 +19358,18 @@ export async function registerRoutes(
   // can never drift apart. (Previously /shortage-check referenced an `expandedItems`
   // that only existed inside /bom → ReferenceError → empty Procurement Intelligence.)
   async function computeProjectBom(projectId: number) {
-      const [allBoqItems, bars, project, allMaterials, rmcDesigns, allMixTemplates] = await Promise.all([
+      const [allBoqItems, bars, project, allMaterials, rmcDesigns, allMixTemplates, projectMaterialMappings, legacyLooseProfiles] = await Promise.all([
         storage.getBoqItemsWithRecipes(projectId),
         storage.getWorkProgramBars(projectId),
         storage.getBoqProject(projectId),
         storage.getPlantMaterials(), // for mix template component name resolution
         storage.getRmcMixDesigns(), // concrete materials source (RMC module)
         storage.getMixTemplates(),  // bituminous standard templates (Masters/HMP)
+        storage.getMaterialMappings(projectId),
+        db.select().from(materialUomConversionsTable).where(and(
+          eq(materialUomConversionsTable.conversionType, "loose_to_compacted"),
+          eq(materialUomConversionsTable.isActive, 1),
+        )),
       ]);
 
       // Filter to items included in planning (excluded items stay in BOQ for billing only)
@@ -19326,6 +19377,47 @@ export async function registerRoutes(
 
       // Build materialId → name map for resolving mix template component names
       const matNameById = new Map(allMaterials.map(m => [m.id, m.name]));
+      const materialById = new Map(allMaterials.map(m => [m.id, m]));
+      const legacyProfilesByMaterialId = new Map<number, Array<{ fromUom: string; toUom: string; conversionFactor: number }>>();
+      for (const profile of legacyLooseProfiles) {
+        const rows = legacyProfilesByMaterialId.get(profile.materialId) ?? [];
+        rows.push({
+          fromUom: profile.fromUom,
+          toUom: profile.toUom,
+          conversionFactor: Number(profile.conversionFactor),
+        });
+        legacyProfilesByMaterialId.set(profile.materialId, rows);
+      }
+      const mappedMaterialByLabel = new Map(
+        projectMaterialMappings.map(mapping => [normalizeMaterialLabel(mapping.materialLabel), Number(mapping.materialId)]),
+      );
+      const aliasesOf = (material: any): string[] => {
+        try {
+          const value = typeof material.aliases === "string" ? JSON.parse(material.aliases) : material.aliases;
+          return Array.isArray(value) ? value.map(String) : [];
+        } catch { return []; }
+      };
+      const findMaterialMaster = (label: string, layerConfig?: any) => {
+        const explicitId = Number(layerConfig?.materialMasterId);
+        if (Number.isInteger(explicitId) && materialById.has(explicitId)) return materialById.get(explicitId)!;
+        const mappedId = mappedMaterialByLabel.get(normalizeMaterialLabel(label));
+        if (mappedId && materialById.has(mappedId)) return materialById.get(mappedId)!;
+        const key = normalizeMaterialLabel(label);
+        const exact = allMaterials.filter((material: any) => normalizeMaterialLabel(material.name) === key);
+        if (exact.length === 1) return exact[0];
+        const aliasMatches = allMaterials.filter((material: any) =>
+          aliasesOf(material).some(alias => normalizeMaterialLabel(alias) === key),
+        );
+        if (aliasMatches.length === 1) return aliasMatches[0];
+        if (/soil|earth|borrow/i.test(label)) {
+          const soilCandidates = allMaterials.filter((material: any) => {
+            const candidates = [material.name, ...aliasesOf(material)].map(normalizeMaterialLabel);
+            return candidates.some((value: string) => /(^|\s)(soil|earth|borrow)(\s|$)/i.test(value));
+          });
+          if (soilCandidates.length === 1) return soilCandidates[0];
+        }
+        return null;
+      };
 
       // Collect unique mix template IDs referenced by layerConfigs
       const mixTemplateIds = new Set<number>();
@@ -19348,7 +19440,7 @@ export async function registerRoutes(
         }
       }
       // Also add link template IDs to the fetch set
-      for (const tmplId of mixTypeToTemplateId.values()) mixTemplateIds.add(tmplId);
+      for (const tmplId of Array.from(mixTypeToTemplateId.values())) mixTemplateIds.add(tmplId);
 
       // Concrete: index RMC mix designs by grade (active only) for concrete material derivation.
       const gradeToDesign = new Map<string, typeof rmcDesigns[number]>();
@@ -19379,7 +19471,7 @@ export async function registerRoutes(
         wastagePct: number | null;
         components: Array<{ materialName: string; percent: number | null }>;
       }>();
-      await Promise.all([...mixTemplateIds].map(async (mtId) => {
+      await Promise.all(Array.from(mixTemplateIds).map(async (mtId) => {
         const mt = await storage.getMixTemplateWithComponents(mtId);
         if (mt) {
           mixTemplateMap.set(mtId, {
@@ -19421,6 +19513,74 @@ export async function registerRoutes(
       }
 
       const barItemIds = new Set(bars.map(b => b.boqItemId));
+      const sdbRowsFor = (item: any, layerType: string) => {
+        const eligible = item.materials.filter((row: any) => {
+          const name = String(row.materialName ?? "");
+          if (layerType === "bituminous") {
+            return /bitumen|binder|aggregate|stone|dust|filler|sand|emulsion|vg[\s-]?\d+/i.test(name);
+          }
+          if (layerType === "concrete") {
+            return /cement|sand|fine\s*agg|coarse\s*agg|aggregate|stone|water|admixture|plasticizer/i.test(name);
+          }
+          if (layerType === "granular") {
+            return /gsb|wmm|aggregate|stone|dust|filler|sand|mm/i.test(name);
+          }
+          if (layerType === "spray_coat") return /bitumen|emulsion/i.test(name);
+          return false;
+        });
+        return eligible.map((row: any) => {
+          const name = String(row.materialName);
+          const qty = Number(row.qtyPerBoqUnit) || 0;
+          const uomKey = String(row.uom ?? item.unit ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+          const isWater = /water/i.test(name);
+          const isAdmixture = /admixture|plasticizer/i.test(name);
+          const solidTarget = layerType === "concrete" || layerType === "bituminous" || layerType === "granular";
+          let targetUom = String(row.uom ?? item.unit);
+          let normalizedQty = qty;
+          if (layerType === "concrete" && isWater) {
+             if (["L", "LITRE", "LITER", "LITRES", "LITERS", "KG", "KGS", "MT", "TON", "TONNE", "TONNES", "T", "CUM", "M3", "KL"].includes(uomKey)) {
+               targetUom = "KL";
+               if (["L", "LITRE", "LITER", "LITRES", "LITERS", "KG", "KGS"].includes(uomKey)) normalizedQty = qty / 1000;
+             }
+          } else if (solidTarget && !isAdmixture && !isWater) {
+             if (["MT", "TON", "TONNE", "TONNES", "T"].includes(uomKey)) {
+               targetUom = "MT";
+             } else if (["KG", "KGS"].includes(uomKey)) {
+               targetUom = "MT";
+               normalizedQty = qty / 1000;
+             } else if (["G", "GM", "GRAM", "GRAMS"].includes(uomKey)) {
+               targetUom = "MT";
+               normalizedQty = qty / 1_000_000;
+             } else if (["CUM", "M3", "CBM", "CFT", "CUFT"].includes(uomKey)) {
+              const master = findMaterialMaster(name);
+              const profileDensity = master &&
+                Number(master.rolledDensity) > 0 &&
+                Number(master.rollingPct) > 0 &&
+                Number(master.looseFactor) >= 1
+                ? Number(master.rolledDensity) * Number(master.rollingPct) / 100 / Number(master.looseFactor)
+                : Number(master?.bulkDensity) > 0
+                  ? Number(master?.bulkDensity)
+                  : /sand/i.test(name) ? 1.6 : /aggregate|stone|dust|filler/i.test(name) ? 1.45 : null;
+              const cubicMetres = ["CFT", "CUFT"].includes(uomKey) ? qty / 35.3147 : qty;
+               if (profileDensity != null) {
+                 targetUom = "MT";
+                 normalizedQty = cubicMetres * profileDensity;
+               }
+            }
+          }
+          return {
+            materialName: name,
+            uom: targetUom,
+            qtyPerBoqUnit: normalizedQty,
+            wastagePct: Number(row.wastagePct) || 0,
+            isClientSupplied: !!row.isClientSupplied,
+            isAuto: true as const,
+            supplyType: layerType === "spray_coat" ? "direct" as const : "plant" as const,
+            sourceNote: "SDB estimate",
+            applicationNote: row.applicationNote ?? undefined,
+          };
+        }).filter((row: any) => row.qtyPerBoqUnit > 0);
+      };
 
       // For each item resolve the best possible material list using source priority:
       //   P1 — manual (non-auto) rows for non-layer items
@@ -19448,13 +19608,17 @@ export async function registerRoutes(
         if (lc && lc.layerType && lc.layerType !== "none") {
           let resolvedMixTemplateId: number | null = lc.mixTemplateId ?? null;
 
-          if (!resolvedMixTemplateId && lc.layerType === "bituminous" && lc.mixType) {
+          if (!resolvedMixTemplateId &&
+              (lc.layerType === "bituminous" || (lc.layerType === "granular" && lc.granularSource === "plant")) &&
+              lc.mixType) {
             resolvedMixTemplateId =
               mixTypeToTemplateId.get(lc.mixType.toUpperCase()) ??
               mixTypeToTemplateId.get(normaliseMixType(lc.mixType)) ??
               null;
           }
-          if (!resolvedMixTemplateId && lc.layerType === "bituminous" && (item as any).workCategory) {
+          if (!resolvedMixTemplateId &&
+              (lc.layerType === "bituminous" || (lc.layerType === "granular" && lc.granularSource === "plant")) &&
+              (item as any).workCategory) {
             const cat = (item as any).workCategory as string;
             resolvedMixTemplateId =
               mixTypeToTemplateId.get(cat.toUpperCase()) ??
@@ -19470,17 +19634,31 @@ export async function registerRoutes(
           // silently blanks out. lc.mixType carries DLC/PQC when the description has
           // no explicit M-grade.
           const concreteKey = String(concreteGrade ?? (lc as any).mixType ?? "").toUpperCase().replace(/[\s-]/g, "");
+          const explicitConcreteDesign = Number((lc as any).mixDesignId) > 0
+            ? rmcDesigns.find((design: any) => Number(design.id) === Number((lc as any).mixDesignId)) ?? null
+            : null;
           const concreteDesign =
             lc.layerType === "concrete" && concreteKey
-              ? (gradeToDesign.get(concreteKey) ?? STANDARD_CONCRETE_DESIGNS[concreteKey] ?? null)
+              ? (explicitConcreteDesign ?? gradeToDesign.get(concreteKey) ?? null)
               : null;
 
-          // Emulsion — derive the spraying rate from the BOQ description when the layer
-          // config has no explicit coverage rate (emulsion demand = rate kg/sqm × area).
+          // A rate stated on the BOQ item is authoritative for spray coats. Keep the saved
+          // SDB rate visible as an application note when it differs.
           let effLc = lc;
-          if (lc.layerType === "spray_coat" && !(lc.coverageRateKgPerSqm && lc.coverageRateKgPerSqm > 0)) {
+          let sprayRateNote: string | undefined;
+          if (lc.layerType === "spray_coat") {
             const rm = String((item as any).description ?? "").match(/([0-9]+(?:\.[0-9]+)?)\s*kg\s*(?:per|\/)?\s*(?:sqm|sq\.?\s*m|m2|m²|square\s*met)/i);
-            if (rm) effLc = { ...lc, coverageRateKgPerSqm: parseFloat(rm[1]) };
+            if (rm) {
+              const descriptionRate = parseFloat(rm[1]);
+              effLc = { ...lc, coverageRateKgPerSqm: descriptionRate };
+              const sdbRate = item.materials
+                .filter((row: any) => /bitumen|emulsion/i.test(String(row.materialName ?? "")))
+                .map((row: any) => Number(row.qtyPerBoqUnit) * 1000)
+                .find((rate: number) => Number.isFinite(rate) && rate > 0);
+              if (sdbRate != null && Math.abs(sdbRate - descriptionRate) > 0.0001) {
+                sprayRateNote = `SDB rate ${sdbRate.toFixed(2)} kg/sqm`;
+              }
+            }
           }
 
           const mixTemplate = resolvedMixTemplateId ? mixTemplateMap.get(resolvedMixTemplateId) : null;
@@ -19548,7 +19726,7 @@ export async function registerRoutes(
                 else combinedMap.set(normName, { ...dr, materialName: normName });
               }
             }
-            derived = [...combinedMap.values()] as ReturnType<typeof deriveMaterialsFromLayerConfig>;
+            derived = Array.from(combinedMap.values()) as ReturnType<typeof deriveMaterialsFromLayerConfig>;
             // Build composite label e.g. "BC+MA" from sub-layer mix types (sorted to keep canonical order)
             (item as any).__compositeLabel = compositeLayers.map(cl => cl.mixType).join("+");
           } else {
@@ -19560,6 +19738,7 @@ export async function registerRoutes(
                 ? {
                     grade: concreteDesign.grade,
                     cementContent: concreteDesign.cementContent,
+                    waterCementRatio: Number((concreteDesign as any).wcr ?? (concreteDesign as any).waterCementRatio) || null,
                     admixtureName: concreteDesign.admixtureName,
                     admixtureDosage: concreteDesign.admixtureDosage,
                     componentProportions: concreteDesign.componentProportions as any,
@@ -19567,6 +19746,115 @@ export async function registerRoutes(
                 : null,
               { descBinderGrade },
             );
+          }
+
+          const templateProfileReady = !!mixTemplate &&
+            mixTemplate.rolledDensity != null && Number(mixTemplate.rolledDensity) > 0 &&
+            mixTemplate.rollingPct != null && Number(mixTemplate.rollingPct) > 0 &&
+            mixTemplate.looseFactor != null && Number(mixTemplate.looseFactor) >= 1;
+          const templateDensityForDemand = templateProfileReady
+            ? Number(mixTemplate!.rolledDensity) * Number(mixTemplate!.rollingPct) / 100
+            : Number(mixTemplate?.densityTPerCum ?? 0);
+          const bituminousTemplateReady = !!mixTemplate &&
+            templateDensityForDemand > 0 &&
+            mixTemplate.components.some((component: any) =>
+              (Number(component.percent) || 0) > 0 && !/bitumen|binder|vg[\s-]?\d+|emulsion/i.test(component.materialName),
+            ) &&
+            ((Number(mixTemplate.bitumenPercent) || 0) > 0 ||
+              mixTemplate.components.some((component: any) =>
+                (Number(component.percent) || 0) > 0 && /bitumen|binder|vg[\s-]?\d+|emulsion/i.test(component.materialName),
+              ) ||
+              !!mixTemplate.binderGrade?.trim());
+          const granularTemplateReady = !!mixTemplate &&
+            templateDensityForDemand > 0 &&
+            mixTemplate.components.some((component: any) => (Number(component.percent) || 0) > 0);
+          const directGranularLabel = normaliseMixType(lc.mixType ?? "") === "GSB"
+            ? "GSB Material"
+            : normaliseMixType(lc.mixType ?? "") === "WBM"
+              ? "WBM Material"
+              : "WMM Material";
+          const directGranularMaster = lc.layerType === "granular" && lc.granularSource !== "plant"
+            ? findMaterialMaster(directGranularLabel, lc)
+            : null;
+          const compositeTemplateReady = !!compositeLayers?.length && compositeLayers.every(layer => {
+            const templateId =
+              mixTypeToTemplateId.get(layer.mixType) ??
+              mixTypeToTemplateId.get(normaliseMixType(layer.mixType));
+            const template = templateId ? mixTemplateMap.get(templateId) : null;
+            if (!template) return false;
+            const hasAgg = template.components.some(component =>
+              (Number(component.percent) || 0) > 0 && !/bitumen|binder|vg[\s-]?\d+|emulsion/i.test(component.materialName),
+            );
+            const hasBinder = (Number(template.bitumenPercent) || 0) > 0 ||
+              template.components.some(component =>
+                (Number(component.percent) || 0) > 0 && /bitumen|binder|vg[\s-]?\d+|emulsion/i.test(component.materialName),
+              ) ||
+              !!template.binderGrade?.trim();
+            const hasDensity = (Number(template.densityTPerCum) || 0) > 0 ||
+              (Number(template.rolledDensity) || 0) > 0 && (Number(template.rollingPct) || 0) > 0;
+            return hasAgg && hasBinder && hasDensity;
+          });
+          const sdbFallbackRows = sdbRowsFor(item, lc.layerType);
+          const layerSourceReady =
+            lc.layerType === "concrete" ? !!concreteDesign
+              : lc.layerType === "bituminous" ? (compositeLayers?.length ? compositeTemplateReady : bituminousTemplateReady)
+              : lc.layerType === "granular" && lc.granularSource === "plant" ? granularTemplateReady
+              : lc.layerType === "granular" ? !!directGranularMaster
+              : true;
+
+          // Resolve in the agreed order: configured master/template/design, saved SDB
+          // recipe, then the built-in estimate. A template density without the newer
+          // compacted/loose profile remains authoritative and is labelled below.
+          if (!layerSourceReady && ["bituminous", "concrete", "granular"].includes(lc.layerType)) {
+            if (sdbFallbackRows.length) {
+              derived = sdbFallbackRows;
+            } else if (lc.layerType === "bituminous") {
+              derived = deriveMaterialsFromLayerConfig(
+                effLc, item.canonicalUnit ?? item.unit, null, null,
+                { descBinderGrade, sourceNote: "Default estimate" },
+              );
+            } else if (lc.layerType === "concrete") {
+              const defaultDesign = concreteKey
+                ? STANDARD_CONCRETE_DESIGNS[concreteKey]
+                : null;
+              derived = defaultDesign
+                ? deriveMaterialsFromLayerConfig(
+                    effLc, item.canonicalUnit ?? item.unit, null,
+                    {
+                      grade: defaultDesign.grade,
+                      cementContent: defaultDesign.cementContent,
+                      waterCementRatio: (defaultDesign as any).wcr ?? null,
+                      admixtureName: defaultDesign.admixtureName,
+                      admixtureDosage: defaultDesign.admixtureDosage,
+                      componentProportions: defaultDesign.componentProportions as any,
+                    },
+                    { sourceNote: "Default estimate" },
+                  )
+                : [];
+            } else {
+              const defaultDensity: Record<string, number> = { WMM: 2.2, GSB: 2.0 };
+              const density = defaultDensity[normaliseMixType(lc.mixType ?? "")];
+              const label = lc.granularSource === "plant"
+                ? (normaliseMixType(lc.mixType ?? "") === "GSB" ? "GSB (Processed)" : "WMM (Processed)")
+                : directGranularLabel;
+              derived = density
+                ? [{
+                    materialName: label,
+                    uom: lc.granularSource === "plant" ? "MT" : canonicalizeUnit(item.canonicalUnit ?? item.unit),
+                    qtyPerBoqUnit: lc.granularSource === "plant"
+                      ? (canonicalizeUnit(item.canonicalUnit ?? item.unit) === "CUM" ? density : 1)
+                      : 1,
+                    isAuto: true,
+                    sourceNote: "Default estimate",
+                  }]
+                : [];
+            }
+          }
+          if (lc.layerType === "spray_coat" && sprayRateNote) {
+            derived = derived.map((row: any) => ({
+              ...row,
+              applicationNote: [row.applicationNote, sprayRateNote].filter(Boolean).join(" · "),
+            }));
           }
 
           // --- BITUMEN BOM DIAGNOSTIC (Patch 34) ---
@@ -19595,46 +19883,83 @@ export async function registerRoutes(
             : lc.layerType === "spray_coat" ? "direct"
             : lc.layerType === "concrete" ? "plant"
             : undefined;
-          const profileFromMaterialName = (name: string) => {
-            const base = name.toUpperCase().replace(/\(PROCESSED\)|\bMATERIAL\b/g, "").replace(/[^A-Z0-9]/g, "");
-            const material = allMaterials.find((candidate: any) => {
-              const candidateName = String(candidate.name ?? "").toUpperCase()
-                .replace(/\(PROCESSED\)|\bMATERIAL\b/g, "").replace(/[^A-Z0-9]/g, "");
-              return candidateName === base;
-            });
-            return material ? {
-              rolledDensity: material.rolledDensity ?? null,
-              rollingPct: material.rollingPct ?? null,
-              looseFactor: material.looseFactor ?? null,
-              wastagePct: material.wastagePct ?? null,
-              source: "material" as const,
-            } : null;
-          };
+          const profileFromMaterial = (material: any) => material ? ({
+            rolledDensity: material.rolledDensity ?? null,
+            rollingPct: material.rollingPct ?? null,
+            looseFactor: material.looseFactor ?? null,
+            wastagePct: material.wastagePct ?? null,
+            source: "material" as const,
+          }) : null;
+          const earthworkMaster = lc.layerType === "earthwork"
+            ? findMaterialMaster("Soil / Earth", lc)
+            : null;
+          const resolvedLayerMaterialMaster = lc.layerType === "earthwork"
+            ? earthworkMaster
+            : lc.layerType === "granular" && lc.granularSource !== "plant"
+              ? (directGranularMaster ?? findMaterialMaster(derived[0]?.materialName ?? directGranularLabel, lc))
+              : null;
+          const resolvedMasterProfile = profileFromMaterial(resolvedLayerMaterialMaster);
+          const legacyReceiptProfiles = resolvedLayerMaterialMaster && !hasCompleteCompactedLooseProfile(resolvedMasterProfile)
+            ? legacyProfilesByMaterialId.get(resolvedLayerMaterialMaster.id) ?? []
+            : [];
+          if (resolvedLayerMaterialMaster &&
+              (lc.layerType === "earthwork" || (lc.layerType === "granular" && lc.granularSource !== "plant"))) {
+            derived = derived.map(row => ({
+              ...row,
+              materialName: resolvedLayerMaterialMaster.name,
+            }));
+          }
+          const profileFromMaterialName = (name: string) =>
+            profileFromMaterial(findMaterialMaster(name, lc) ?? resolvedLayerMaterialMaster);
+          const templateLayerProfile = (() => {
+            if (!mixTemplate) return null;
+            if (templateProfileReady) return {
+              rolledDensity: mixTemplate.rolledDensity,
+              rollingPct: mixTemplate.rollingPct,
+              looseFactor: mixTemplate.looseFactor,
+              wastagePct: mixTemplate.wastagePct ?? 0,
+              source: "mix_template" as const,
+            };
+            const density = Number(mixTemplate.densityTPerCum);
+            if (density > 0) return {
+              rolledDensity: density,
+              rollingPct: 100,
+              looseFactor: 1,
+              wastagePct: 0,
+              source: "mix_template" as const,
+              note: "using template density",
+            };
+            return null;
+          })();
           const layerQuantityProfile =
             (lc.layerType === "bituminous" || (lc.layerType === "granular" && lc.granularSource === "plant")) && mixTemplate
-              ? {
-                  rolledDensity: mixTemplate.rolledDensity,
-                  rollingPct: mixTemplate.rollingPct,
-                  looseFactor: mixTemplate.looseFactor,
-                  wastagePct: mixTemplate.wastagePct,
-                  source: "mix_template" as const,
-                }
+              ? templateLayerProfile
               : lc.layerType === "granular" && lc.granularSource !== "plant"
-                ? profileFromMaterialName(derived[0]?.materialName ?? "")
-                : null;
+                ? profileFromMaterialName(derived[0]?.materialName ?? directGranularLabel)
+                : lc.layerType === "earthwork"
+                  ? profileFromMaterialName(earthworkMaster?.name ?? "Soil / Earth")
+                  : null;
 
           if (derived.length > 0) {
             const derivedRows = derived.map(dm => ({
               materialName: dm.materialName,
               uom: dm.uom,
               qtyPerBoqUnit: dm.qtyPerBoqUnit,
-              wastagePct: 0,
+              wastagePct: dm.wastagePct ?? 0,
               isClientSupplied: false,
               isAuto: true as const,
               supplyType: derivedSupplyType,
+              sourceNote: dm.sourceNote,
+              applicationNote: dm.applicationNote,
               // Cut-to-fill: earthwork layer-config rows route to the arrangement flow
               isEarthworkBulkRequirement: dm.isEarthworkBulkRequirement ?? false,
             }));
+            const sourceNeedsLink =
+              (lc.layerType === "earthwork" && !earthworkMaster) ||
+              (lc.layerType === "granular" && lc.granularSource !== "plant" && !resolvedLayerMaterialMaster) ||
+              (lc.layerType === "granular" && lc.granularSource === "plant" && !granularTemplateReady) ||
+              (lc.layerType === "bituminous" && !(compositeLayers?.length ? compositeTemplateReady : bituminousTemplateReady)) ||
+              (lc.layerType === "concrete" && !concreteDesign);
 
             // HMP hours correction for CUM/SQM bituminous items.
             // The HMP outputs in MT, so when the BOQ unit is SQM or CUM the saved
@@ -19678,6 +20003,9 @@ export async function registerRoutes(
               ...item,
               layerConfig: lc,
               layerQuantityProfile,
+              materialMasterId: resolvedLayerMaterialMaster?.id ?? null,
+              materialMasterName: resolvedLayerMaterialMaster?.name ?? null,
+              legacyLooseToCompactedProfiles: legacyReceiptProfiles,
               equipment: correctedEquipment,
               materials: derivedRows.map(dm => ({
                 id: 0,
@@ -19687,23 +20015,18 @@ export async function registerRoutes(
                 createdAt: null,
               })),
               derivedKeyMaterials: derivedRows,
-              materialSetupWarning: null,
+              materialSetupWarning: sourceNeedsLink ? "Not linked — Link" : null,
               isProgrammed: barItemIds.has(item.id),
               compositeLabel: (item as any).__compositeLabel ?? undefined,
             };
           }
 
-          // P3: layer exists but no usable template — emit warning, no raw SDB fractions
+          // Source setup remains actionable even when an SDB or standard estimate is shown.
           if (materialDriving) {
             return {
               ...item,
               materials: [],
-              materialSetupWarning:
-                lc.layerType === "bituminous"
-                  ? "Mix template/JMF required for bituminous material demand"
-                  : lc.layerType === "concrete"
-                  ? `Concrete/RMC mix design required${concreteGrade ? ` for ${concreteGrade}` : ""}`
-                  : "Material setup required for this layer item",
+              materialSetupWarning: "Not linked — Link",
               isProgrammed: barItemIds.has(item.id),
             };
           }
@@ -19802,6 +20125,7 @@ export async function registerRoutes(
         db.select({
           id: plantMaterials.id,
           name: plantMaterials.name,
+          aliases: plantMaterials.aliases,
           rolledDensity: plantMaterials.rolledDensity,
           rollingPct: plantMaterials.rollingPct,
           looseFactor: plantMaterials.looseFactor,
@@ -19890,7 +20214,18 @@ export async function registerRoutes(
       ]);
 
       const normalName = (name: string) => normalizeMaterialLabel(name).trim().toLocaleUpperCase();
-      const masterByName = new Map(materialMasters.map((material) => [normalName(material.name), material]));
+      const masterByName = new Map<string, any>();
+      for (const material of materialMasters) {
+        masterByName.set(normalName(material.name), material);
+        let aliases: string[] = [];
+        try {
+          const raw = typeof (material as any).aliases === "string"
+            ? JSON.parse((material as any).aliases)
+            : (material as any).aliases;
+          if (Array.isArray(raw)) aliases = raw.map(String);
+        } catch { /* ignore invalid legacy alias JSON */ }
+        for (const alias of aliases) masterByName.set(normalName(alias), material);
+      }
       const masterById = new Map(materialMasters.map((material) => [material.id, material]));
       const profileFor = (name: string, fallback?: any) => {
         const master = masterByName.get(normalName(name));
@@ -19906,22 +20241,28 @@ export async function registerRoutes(
       };
       const requirements: MaterialBalanceRequirement[] = [];
       const sources: MaterialBalanceQuantity[] = [];
-      const materialsByItem = new Map<number, Array<{ name: string; qtyPerBoqUnit: number; uom: string; profile: any }>>();
+      const materialsByItem = new Map<number, Array<{ name: string; qtyPerBoqUnit: number; uom: string; profile: any; wastagePct: number }>>();
       for (const item of bom.expandedItems ?? []) {
         const itemId = Number(item.id);
-        const materials: Array<{ name: string; qtyPerBoqUnit: number; uom: string; profile: any }> = [];
-        for (const row of item.materials ?? []) {
+        const materials: Array<{ name: string; qtyPerBoqUnit: number; uom: string; profile: any; wastagePct: number }> = [];
+        for (const rawRow of item.materials ?? []) {
+          const row = rawRow as any;
           const name = String(row.materialName ?? row.name ?? "").trim();
           const perUnit = Number(row.qtyPerBoqUnit);
           if (!name || !Number.isFinite(perUnit) || perUnit < 0) continue;
-          const profile = profileFor(name, item.layerQuantityProfile);
+          const itemData = item as any;
+          const baseProfile = profileFor(name, itemData.layerQuantityProfile);
           const materialUom = String(row.uom ?? item.unit ?? "MT");
-          materials.push({ name, qtyPerBoqUnit: perUnit, uom: materialUom, profile });
+          const wastagePct = Number(row.wastagePct) || 0;
+          const profile = baseProfile ? { ...baseProfile, wastagePct } : null;
+          materials.push({ name, qtyPerBoqUnit: perUnit, uom: materialUom, profile, wastagePct });
           requirements.push({
             materialName: name,
             quantity: (Number(item.currentQty) || 0) * perUnit,
             uom: materialUom,
             profile,
+            legacyLooseToCompactedProfiles: itemData.legacyLooseToCompactedProfiles ?? [],
+            earthwork: itemData.layerConfig?.layerType === "earthwork",
           });
         }
         if (Number.isInteger(itemId)) materialsByItem.set(itemId, materials);
@@ -19997,7 +20338,7 @@ export async function registerRoutes(
         for (const material of itemMaterials) {
           sources.push({
             materialName: material.name,
-            quantity: actualQty * conversion * material.qtyPerBoqUnit,
+            quantity: actualQty * conversion * material.qtyPerBoqUnit * (1 + material.wastagePct / 100),
             uom: material.uom,
             basis: "compacted",
             kind: "used",

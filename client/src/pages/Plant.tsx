@@ -2284,7 +2284,7 @@ export function SitesMasterSection() {
   };
 
   return (
-    <Card>
+    <Card id="material-master">
       <CardHeader>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
