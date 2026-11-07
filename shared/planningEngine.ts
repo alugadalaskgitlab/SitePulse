@@ -521,14 +521,24 @@ export interface BomEquipmentRow {
   count: number;
   totalHours: number;
   monthlyHours: Record<number, number>;
-  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; displayName?: string | null; canonicalDisplayName?: string | null; unit?: string; hrsPerUnit: number; workQty: number; lineHours: number }>;
+  breakdown: Array<{ boqItemId?: number; itemDescription: string; fullDescription?: string; itemCode?: string | null; displayName?: string | null; canonicalDisplayName?: string | null; unit?: string; hrsPerUnit: number; workQty: number; lineHours: number }>;
 }
 
 export interface BomLabourRow {
   designation: string;
   totalDays: number;
   monthlyDays: Record<number, number>;
-  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; displayName?: string | null; canonicalDisplayName?: string | null; unit?: string; daysPerUnit: number; workQty: number; lineDays: number }>;
+  breakdown: Array<{ boqItemId?: number; itemDescription: string; fullDescription?: string; itemCode?: string | null; displayName?: string | null; canonicalDisplayName?: string | null; unit?: string; daysPerUnit: number; workQty: number; lineDays: number }>;
+}
+
+export interface ProgrammeQuantityCheck {
+  boqItemId: number;
+  itemCode?: string | null;
+  description: string;
+  boqQty: number;
+  programmeQty: number;
+  cappedDemandQty: number;
+  unit: string;
 }
 
 export interface BomDemand {
@@ -541,6 +551,11 @@ export interface BomDemand {
   arrangementOverlaps?: ArrangementOverlapWarning[];
   /** Instruction 028 §22/§33: responsibility components with no matching recipe resource. */
   mappingWarnings?: DemandComponentMappingWarning[];
+  programmeQuantityChecks?: ProgrammeQuantityCheck[];
+}
+
+export function programmeQuantityDiffers(boqQty: number, programmeQty: number): boolean {
+  return Math.abs(Number(boqQty) - Number(programmeQty)) > 0.01;
 }
 
 // ─── Instruction 025: Approved execution arrangements reduce HLC demand ──────
@@ -1525,6 +1540,7 @@ export function calculateBomDemand(
   const arrangementEffects = buildArrangementEffects(items, options?.arrangements);
   const demandAdjustments: DemandAdjustment[] = [];
   const arrangementOverlaps: ArrangementOverlapWarning[] = [];
+  const programmeQuantityChecks: ProgrammeQuantityCheck[] = [];
   for (const eff of arrangementEffects.values()) {
     if (eff.overlap) arrangementOverlaps.push(eff.overlap);
   }
@@ -1556,7 +1572,20 @@ export function calculateBomDemand(
     const monthlyWork = new Map<number, number>(); // month → qty
 
     if (itemBars.length > 0) {
-      workQty = itemBars.reduce((sum, b) => sum + b.plannedQty, 0);
+      const programmeQty = itemBars.reduce((sum, b) => sum + Math.max(0, Number(b.plannedQty) || 0), 0);
+      const boqQty = Math.max(0, Number(item.currentQty) || 0);
+      workQty = Math.min(programmeQty, boqQty);
+      if (programmeQuantityDiffers(boqQty, programmeQty)) {
+        programmeQuantityChecks.push({
+          boqItemId: item.id,
+          itemCode: item.itemCode,
+          description: item.description,
+          boqQty,
+          programmeQty,
+          cappedDemandQty: workQty,
+          unit: item.canonicalUnit ?? item.unit ?? "",
+        });
+      }
       for (const bar of itemBars) {
         if (bar.startMonth != null && bar.endMonth != null && bar.plannedQty > 0) {
           const slices = calculateMonthlyDistribution(bar.plannedQty, bar.startMonth, bar.endMonth, totalMonths);
@@ -1564,6 +1593,10 @@ export function calculateBomDemand(
             monthlyWork.set(slice.month, (monthlyWork.get(slice.month) ?? 0) + slice.qty);
           }
         }
+      }
+      if (programmeQty > 0 && workQty !== programmeQty) {
+        const scale = workQty / programmeQty;
+        for (const [month, qty] of monthlyWork) monthlyWork.set(month, qty * scale);
       }
     } else {
       workQty = item.currentQty;
@@ -1641,7 +1674,9 @@ export function calculateBomDemand(
         // share a parent itemCode (steel Foundation/Sub/Super) or repeat across bills
         // (GSB in Bill 3 vs Bill 10) still show separately.
         const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
-        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk);
+        const exB = row.breakdown.find((b: any) =>
+          b.boqItemId != null ? b.boqItemId === item.id : ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk
+        );
         if (exB) {
           // Same item, different component normalising to the same material (e.g. composite
           // items where "10/12MM" and "10mm Aggregate" both → "10mm Aggregate").
@@ -1719,9 +1754,24 @@ export function calculateBomDemand(
         // share a parent itemCode (steel Foundation/Sub/Super) or repeat across bills
         // (GSB in Bill 3 vs Bill 10) still show separately.
         const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
-        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk);
-        if (exB) { exB.lineHours += lineHours; exB.workQty += workQty; }
-        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, displayName: item.displayName, canonicalDisplayName: item.canonicalDisplayName, unit: item.canonicalUnit ?? item.unit, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
+        const exB = row.breakdown.find((b: any) =>
+          b.boqItemId != null ? b.boqItemId === item.id : ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk
+        );
+        if (exB) {
+          exB.lineHours += lineHours;
+          exB.hrsPerUnit = exB.workQty > 0 ? exB.lineHours / exB.workQty : 0;
+        } else row.breakdown.push({
+          boqItemId: item.id,
+          itemDescription: item.itemName || item.description,
+          fullDescription: item.description,
+          itemCode: item.itemCode,
+          displayName: item.displayName,
+          canonicalDisplayName: item.canonicalDisplayName,
+          unit: item.canonicalUnit ?? item.unit,
+          hrsPerUnit: workQty > 0 ? lineHours / workQty : 0,
+          workQty,
+          lineHours,
+        });
       }
       for (const [month, mwq] of monthlyWork) {
         row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt * eqEff.monthFraction(month);
@@ -1828,9 +1878,24 @@ export function calculateBomDemand(
         // share a parent itemCode (steel Foundation/Sub/Super) or repeat across bills
         // (GSB in Bill 3 vs Bill 10) still show separately.
         const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
-        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk);
-        if (exB) { exB.lineDays += lineDays; exB.workQty += workQty; }
-        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, displayName: item.displayName, canonicalDisplayName: item.canonicalDisplayName, unit: item.canonicalUnit ?? item.unit, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
+        const exB = row.breakdown.find((b: any) =>
+          b.boqItemId != null ? b.boqItemId === item.id : ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk
+        );
+        if (exB) {
+          exB.lineDays += lineDays;
+          exB.daysPerUnit = exB.workQty > 0 ? exB.lineDays / exB.workQty : 0;
+        } else row.breakdown.push({
+          boqItemId: item.id,
+          itemDescription: item.itemName || item.description,
+          fullDescription: item.description,
+          itemCode: item.itemCode,
+          displayName: item.displayName,
+          canonicalDisplayName: item.canonicalDisplayName,
+          unit: item.canonicalUnit ?? item.unit,
+          daysPerUnit: workQty > 0 ? lineDays / workQty : 0,
+          workQty,
+          lineDays,
+        });
       }
       for (const [month, mwq] of monthlyWork) {
         row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq * labEff.monthFraction(month);
@@ -1946,7 +2011,7 @@ export function calculateBomDemand(
     }
   }
 
-  return { materials, equipment, labour, demandAdjustments, arrangementOverlaps, mappingWarnings };
+  return { materials, equipment, labour, demandAdjustments, arrangementOverlaps, mappingWarnings, programmeQuantityChecks };
 }
 
 // ─── Layer Config & Material Derivation ──────────────────────────────────────

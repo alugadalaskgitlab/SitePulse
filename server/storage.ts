@@ -14,6 +14,7 @@ import { bulkTripConditions } from "./siteMaterialTripFilters";
 import { currentVendorNamesByIds, resolveVendorNameMatch, resolveVendorNameMatchById, vendorNameIdentityCondition } from "./vendorNameResolution";
 import { validatedTransportRateFields } from "../shared/transportRate";
 import { db } from "./db";
+import { getNormBookState } from "./normBook";
 import { insertLabourWithWorkers, readWorkerNames } from "./labourWorkers";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, lockDprIdentity, readSectionAggregate, readDraftStoppages, stageDraftStoppages, reconcileRows, reconcileDraftEquipmentAssignments, sameContext, sectionSnapshot } from "./dprSections";
 import { normalizeDprSectionContext } from "../shared/dprSections";
@@ -31452,6 +31453,7 @@ export class DatabaseStorage implements IStorage {
 
     const snlItem = await this.getSnlItem(mapping.snlItemId);
     if (!snlItem) return [];
+    if (snlItem.source?.code !== (await getNormBookState()).code) return [];
 
     // Only trust the suggestion when the SDB norm's own unit matches the BOQ item's unit —
     // never fabricate a cross-unit conversion here.
@@ -33998,6 +34000,9 @@ export class DatabaseStorage implements IStorage {
   async applySnlMappingToRecipes(boqItemId: number, snlItemId: number, projectCategory: string, gradingVariant: string | null, appliedBy: string): Promise<void> {
     const itemFull = await this.getSnlItem(snlItemId);
     if (!itemFull) throw new Error("SNL item not found");
+    if (itemFull.source?.code !== (await getNormBookState()).code) {
+      throw new Error("Only the selected norm book can be applied to BOQ recipes.");
+    }
 
     const catPri = (cat: string) => cat === projectCategory ? 0 : cat === "ALL" ? 1 : 2;
 

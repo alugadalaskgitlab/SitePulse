@@ -19,7 +19,10 @@ import { EquipmentActivityAllocationError } from "@shared/equipmentActivityAlloc
 import * as xlsx from 'xlsx';
 import multer from 'multer';
 import { importSdbXlsx, buildImportTemplate } from './snlImporter';
-import { importMorthSdbXlsx, isMorthFormat } from './snlMorthParser';
+import { isMorthFormat } from './snlMorthParser';
+import { applyMorthReload, previewMorthReload } from "./snlMorthReload";
+import { getNormBookState, isSnlItemInNormBook } from "./normBook";
+import { MORTH_SDB_DISPLAY_NAME, MORTH_SDB_SOURCE_CODE, NORM_BOOK_SETTING_KEY } from "@shared/normBook";
 import PDFDocument from 'pdfkit';
 import { projectBillHireReviews, hireReviewTable, MONTHLY_BILL_HEADERS } from "../shared/vendorBillLayout";
 import { getBillFinancialTotals } from "../shared/vendorBillFinancialReport";
@@ -37,7 +40,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, userPermissions, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, mixTemplateComponents, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, materialRequirements, storeIssues as storeIssuesTable, storeIssueItems as storeIssueItemsTable, storeItems as storeItemsTable, boqItems, snlBoqMappings, snlItems, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, userPermissions, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, mixTemplateComponents, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, materialRequirements, storeIssues as storeIssuesTable, storeIssueItems as storeIssueItemsTable, storeItems as storeItemsTable, boqItems, snlBoqMappings, snlItems, snlSources, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import {
   insertPartySchema,
   insertPlantMaterialSchema,
@@ -26291,10 +26294,43 @@ export async function registerRoutes(
 
   // ─── STANDARD NORMS LIBRARY (SNL) ──────────────────────────────────────
 
+  app.get("/api/snl/norm-book", async (req, res) => {
+    try {
+      if (!assertViewEither(req, res, "norms_library", "qto_boq", "work_programme_review")) return;
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json(await getNormBookState());
+    } catch {
+      res.status(503).json({ error: "Unable to load the norm book setting" });
+    }
+  });
+
+  app.patch("/api/snl/norm-book", async (req, res) => {
+    if (req.authUser?.isOwner !== true) return res.status(403).json({ error: "Owner access required" });
+    const code = String(req.body?.code ?? "");
+    if (code !== MORTH_SDB_SOURCE_CODE) return res.status(400).json({ error: "Select the MoRTH Standard Data Book (2003)." });
+    try {
+      const [source] = await db.select({ id: snlSources.id })
+        .from(snlSources)
+        .where(and(eq(snlSources.code, code), eq(snlSources.isActive, true)))
+        .limit(1);
+      if (!source) return res.status(409).json({ error: "The MoRTH book is not loaded yet." });
+      await db.insert(appSettings)
+        .values({ key: NORM_BOOK_SETTING_KEY, value: code })
+        .onConflictDoUpdate({ target: appSettings.key, set: { value: code } });
+      res.json({ code, name: MORTH_SDB_DISPLAY_NAME });
+    } catch {
+      res.status(503).json({ error: "Unable to save the norm book setting" });
+    }
+  });
+
   app.get("/api/snl/sources", async (req, res) => {
     try {
       if (!assertViewEither(req, res, "norms_library", "qto_boq", "work_programme_review")) return;
-      res.json(await storage.getSnlSources());
+      const sources = await storage.getSnlSources();
+      const includeOtherBooks = req.query.includeOtherBooks === "true";
+      if (includeOtherBooks) return res.json(sources);
+      const selected = await getNormBookState();
+      res.json(sources.filter(source => source.code === selected.code));
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch SNL sources" });
     }
@@ -26305,6 +26341,9 @@ export async function registerRoutes(
       if (!assertViewEither(req, res, "norms_library", "qto_boq", "work_programme_review")) return;
       const src = await storage.getSnlSource(parseInt(req.params.id));
       if (!src) return res.status(404).json({ error: "Not found" });
+      if (req.query.includeOtherBooks !== "true" && src.code !== (await getNormBookState()).code) {
+        return res.status(404).json({ error: "Not found" });
+      }
       res.json(src);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch source" });
@@ -26314,9 +26353,15 @@ export async function registerRoutes(
   app.get("/api/snl/sources/:id/items", async (req, res) => {
     try {
       if (!assertViewEither(req, res, "norms_library", "qto_boq", "work_programme_review")) return;
+      const sourceId = parseInt(req.params.id);
+      const includeOtherBooks = req.query.includeOtherBooks === "true";
+      if (!includeOtherBooks) {
+        const source = await storage.getSnlSource(sourceId);
+        if (!source || source.code !== (await getNormBookState()).code) return res.status(404).json({ error: "Not found" });
+      }
       const category = req.query.category as string | undefined;
       const sector = req.query.sector as string | undefined;
-      res.json(await storage.getSnlItems(parseInt(req.params.id), category, sector));
+      res.json(await storage.getSnlItems(sourceId, category, sector));
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch SNL items" });
     }
@@ -26342,6 +26387,9 @@ export async function registerRoutes(
       if (!assertViewEither(req, res, "norms_library", "qto_boq", "work_programme_review")) return;
       const item = await storage.getSnlItem(parseInt(req.params.id));
       if (!item) return res.status(404).json({ error: "Not found" });
+      if (req.query.includeOtherBooks !== "true" && item.source?.code !== (await getNormBookState()).code) {
+        return res.status(404).json({ error: "Not found" });
+      }
       res.json(item);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch SNL item" });
@@ -26353,9 +26401,11 @@ export async function registerRoutes(
       if (!assertViewEither(req, res, "norms_library", "qto_boq", "work_programme_review")) return;
       const q = (req.query.q as string) || "";
       const category = req.query.category as string | undefined;
-      const sourceId = req.query.sourceId ? parseInt(req.query.sourceId as string) : undefined;
+      const requestedSourceId = req.query.sourceId ? parseInt(req.query.sourceId as string) : undefined;
       const sector = req.query.sector as string | undefined;
       const boqDesc = req.query.boqDesc as string | undefined;
+      const includeOtherBooks = req.query.includeOtherBooks === "true";
+      const sourceId = includeOtherBooks ? requestedSourceId : (await getNormBookState()).sourceId ?? -1;
       const items = await storage.searchSnlItems(q, category, sourceId, sector);
       if (boqDesc) {
         const boqCategory = classifyBoqItem(boqDesc);
@@ -26391,6 +26441,7 @@ export async function registerRoutes(
       if (!assertEdit(req, res, "norms_library")) return;
       const { boqItemId, snlItemId, projectCategory, gradingVariant, notes } = req.body;
       if (!boqItemId || !snlItemId) return res.status(400).json({ error: "boqItemId and snlItemId required" });
+      if (!(await isSnlItemInNormBook(Number(snlItemId)))) return res.status(409).json({ error: "Only the selected MoRTH norm book can be mapped." });
       const mapping = await storage.setSnlMapping(boqItemId, {
         boqItemId, snlItemId,
         projectCategory: projectCategory ?? "MEDIUM",
@@ -26414,6 +26465,7 @@ export async function registerRoutes(
       if (!snlItemId) return res.status(400).json({ error: "snlItemId required" });
       const item = await storage.getBoqItem(boqItemId);
       if (!item) return res.status(404).json({ error: "BOQ item not found" });
+      if (!(await isSnlItemInNormBook(Number(snlItemId)))) return res.status(409).json({ error: "Only the selected MoRTH norm book can be applied." });
       if (item.recipeManualOverride === true) {
         return res.status(409).json({
           error: "This recipe is protected by a manual edit. Reset the recipe override before applying SNL norms.",
@@ -26584,6 +26636,7 @@ export async function registerRoutes(
       if (!snlItemId || typeof snlItemId !== "number") return res.status(400).json({ error: "snlItemId required" });
       const item = await storage.getBoqItem(boqItemId);
       if (!item) return res.status(404).json({ error: "BOQ item not found" });
+      if (!(await isSnlItemInNormBook(Number(snlItemId)))) return res.status(409).json({ error: "Only the selected MoRTH norm book can be applied." });
       if (item.recipeManualOverride === true) {
         return res.status(409).json({
           error: "This recipe is protected by a manual edit. Reset the recipe override before applying SNL norms.",
@@ -26601,18 +26654,37 @@ export async function registerRoutes(
   });
 
   app.post("/api/snl/seed", async (req, res) => {
-    try {
-      if (!assertFeatureAction(req, res, "boq_programme", "edit")) return;
-      const result = await storage.seedSnlMorthSdb();
-      res.json({ success: true, source: result.source.code, items: result.items });
-    } catch (err) {
-      console.error("POST /api/snl/seed:", err);
-      res.status(500).json({ error: "Seed failed" });
-    }
+    if (req.authUser?.isOwner !== true) return res.status(403).json({ error: "Owner access required" });
+    return res.status(409).json({ error: "MoRTH norm rows can only be changed through the review-before-apply reload." });
   });
 
   // ─── SNL Import (admin) ──────────────────────────────────────────────────
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+  app.post("/api/snl/morth/reload-preview", upload.single("file"), async (req, res) => {
+    if (req.authUser?.isOwner !== true) return res.status(403).json({ error: "Owner access required" });
+    if (!req.file) return res.status(400).json({ error: "Select the MoRTH workbook first." });
+    try {
+      const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+      if (!isMorthFormat(workbook)) return res.status(400).json({ error: "The selected file is not a MoRTH chapter-per-sheet workbook." });
+      res.json(await previewMorthReload(req.file.buffer));
+    } catch (error: any) {
+      res.status(400).json({ error: error?.message ?? "Unable to preview the MoRTH workbook." });
+    }
+  });
+
+  app.post("/api/snl/morth/reload-apply", upload.single("file"), async (req, res) => {
+    if (req.authUser?.isOwner !== true) return res.status(403).json({ error: "Owner access required" });
+    if (!req.file) return res.status(400).json({ error: "Select the same MoRTH workbook used for preview." });
+    try {
+      const fingerprint = String(req.body?.fingerprint ?? "");
+      res.json(await applyMorthReload(req.file.buffer, fingerprint));
+    } catch (error: any) {
+      const message = error?.message ?? "Unable to apply the MoRTH reload.";
+      const status = /changed after preview/i.test(message) ? 409 : 400;
+      res.status(status).json({ error: message });
+    }
+  });
 
   app.post("/api/snl/import", upload.single("file"), async (req, res) => {
     try {
@@ -26622,8 +26694,7 @@ export async function registerRoutes(
       // Auto-detect MoRTH official chapter-per-sheet format
       const wb = xlsx.read(req.file.buffer, { type: 'buffer' });
       if (isMorthFormat(wb)) {
-        const result = await importMorthSdbXlsx(req.file.buffer);
-        return res.json(result);
+        return res.status(409).json({ error: "Use the MoRTH review-before-apply reload in Norms Library." });
       }
 
       const { sourceName, sourceCode, year } = req.body;

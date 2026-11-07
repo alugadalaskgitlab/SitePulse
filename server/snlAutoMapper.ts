@@ -24,6 +24,7 @@ import { boqCategories, boqItems, snlItems, snlSources, snlBoqMappings, snlCompo
 import { eq, and, inArray, notInArray } from "drizzle-orm";
 import { storage } from "./storage";
 import { isSnlWorkFamilyCompatible } from "@shared/snlMappingPolicy";
+import { getNormBookSourceId } from "./normBook";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -781,6 +782,7 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       unit: boqItems.unit,
       workCategory: boqItems.workCategory,
       recipeManualOverride: boqItems.recipeManualOverride,
+      isComposite: boqItems.isComposite,
       categoryName: boqCategories.name,
     })
     .from(boqItems)
@@ -792,6 +794,8 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
   // Fetch all active SNL items (small enough to fit in memory).
   // sector is used to apply a near-veto penalty for cross-sector matches
   // (e.g. IRRIGATION items should not be suggested for road/structure BOQ).
+  const normBookSourceId = await getNormBookSourceId();
+  if (normBookSourceId == null) return;
   const snlRows = await db
     .select({
       id: snlItems.id,
@@ -805,7 +809,7 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
     })
     .from(snlItems)
     .innerJoin(snlSources, eq(snlItems.sourceId, snlSources.id))
-    .where(eq(snlItems.isActive, true));
+    .where(and(eq(snlItems.isActive, true), eq(snlItems.sourceId, normBookSourceId)));
 
   if (snlRows.length === 0) {
     // No SNL data loaded — leave status as unmapped
@@ -841,7 +845,7 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       // ── Composite detection (highest priority, before any single-SNL matching) ──
       // When ≥2 distinct material layers are detected in the description, break the
       // item into component rows and skip the normal single-SNL mapping path entirely.
-      const compositeDrafts = detectCompositeComponents(boqRow.description);
+      const compositeDrafts = boqRow.isComposite === true ? detectCompositeComponents(boqRow.description) : null;
       if (compositeDrafts && compositeDrafts.length >= 2) {
         // Attempt to rule-match each component to an SNL item individually.
         const roadCompatibleRows = snlRows.filter(s => isRoadOrStructureSector(s.sector));
@@ -1371,7 +1375,7 @@ export async function backfillCompositeDetection(): Promise<{ promoted: number }
   const candidates = await db
     .select({ id: boqItems.id, description: boqItems.description, recipeManualOverride: boqItems.recipeManualOverride })
     .from(boqItems)
-    .where(and(eq(boqItems.mappingStatus, "mapped"), eq(boqItems.isComposite, false)));
+    .where(and(eq(boqItems.mappingStatus, "mapped"), eq(boqItems.isComposite, true)));
 
   const eligibleCandidates = candidates.filter((c) => c.recipeManualOverride !== true);
   if (eligibleCandidates.length === 0) return { promoted: 0 };

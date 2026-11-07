@@ -717,6 +717,7 @@ function LabourTable({
 // ─── Item-Wise Table ────────────────────────────────────────────────────────────
 
 interface ItemDemandRow {
+  boqItemId?: number;
   description: string;
   itemCode?: string | null;
   displayName?: string | null;
@@ -725,6 +726,7 @@ interface ItemDemandRow {
   workQty: number;
   isProgrammed: boolean;
   compositeLabel?: string;
+  programmeQuantityCheck?: NonNullable<BomDemand["programmeQuantityChecks"]>[number];
   materials: Array<{ name: string; uom: string; qty: number; qtyPerUnit: number }>;
   equipment: Array<{ name: string; hours: number; hrsPerUnit: number }>;
   labour: Array<{ name: string; days: number; daysPerUnit: number }>;
@@ -732,22 +734,23 @@ interface ItemDemandRow {
 
 function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<string>): ItemDemandRow[] {
   const map = new Map<string, ItemDemandRow>();
-  // Key by itemCode + description so items from different bills with the same short name
-  // stay as separate rows (e.g. Bill-4 DBM "4.03" vs Bill-10 DBM "10.09").
-  const rowKey = (bd: { itemCode?: string | null; itemDescription: string; fullDescription?: string }) =>
-    (bd.itemCode ?? "") + "|" + (bd.fullDescription ?? bd.itemDescription);
-  const get = (bd: { itemCode?: string | null; itemDescription: string; fullDescription?: string; displayName?: string | null; canonicalDisplayName?: string | null; unit?: string; compositeLabel?: string }): ItemDemandRow => {
+  const quantityChecks = new Map((demand.programmeQuantityChecks ?? []).map(check => [check.boqItemId, check]));
+  const rowKey = (bd: { boqItemId?: number; itemCode?: string | null; itemDescription: string; fullDescription?: string }) =>
+    bd.boqItemId != null ? `boq:${bd.boqItemId}` : (bd.itemCode ?? "") + "|" + (bd.fullDescription ?? bd.itemDescription);
+  const get = (bd: { boqItemId?: number; itemCode?: string | null; itemDescription: string; fullDescription?: string; displayName?: string | null; canonicalDisplayName?: string | null; unit?: string; compositeLabel?: string; isProgrammed?: boolean }): ItemDemandRow => {
     const key = rowKey(bd);
     if (!map.has(key)) {
       map.set(key, {
+        boqItemId: bd.boqItemId,
         description: bd.fullDescription ?? bd.itemDescription,
         itemCode: bd.itemCode ?? null,
         displayName: bd.displayName ?? null,
         canonicalDisplayName: bd.canonicalDisplayName ?? null,
         unit: bd.unit ?? "",
         workQty: 0,
-        isProgrammed: !unprogrammedDescriptions.has(bd.fullDescription ?? bd.itemDescription),
+        isProgrammed: bd.isProgrammed ?? !unprogrammedDescriptions.has(bd.fullDescription ?? bd.itemDescription),
         compositeLabel: bd.compositeLabel,
+        programmeQuantityCheck: bd.boqItemId != null ? quantityChecks.get(bd.boqItemId) : undefined,
         materials: [],
         equipment: [],
         labour: [],
@@ -761,7 +764,7 @@ function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<stri
       row.workQty = Math.max(row.workQty, bd.workQty);
       if (bd.unit && !row.unit) row.unit = bd.unit;
       if (bd.compositeLabel && !row.compositeLabel) row.compositeLabel = bd.compositeLabel;
-      const ex = row.materials.find(m => m.name === mat.materialName);
+      const ex = row.materials.find(m => m.name === mat.materialName && m.uom === mat.uom);
       if (ex) { ex.qty += bd.lineQty; }
       else row.materials.push({ name: mat.materialName, uom: mat.uom, qty: bd.lineQty, qtyPerUnit: bd.qtyPerUnit });
     }
@@ -1300,7 +1303,7 @@ function ItemWiseTable({
   const planningModeByKey = useMemo(() => {
     const map = new Map<string, EffectivePlanningMode>();
     for (const it of items) {
-      const key = (it.itemCode ?? "") + "|" + it.description;
+      const key = `boq:${it.id}`;
       const itemBars = programmeBars.filter((b) => b.boqItemId === it.id);
       map.set(key, derivePlanningMode(itemBars));
     }
@@ -1309,7 +1312,7 @@ function ItemWiseTable({
 
   if (!rows.length) return <EmptyState label="No item demand. Add recipes and work programme bars first." />;
 
-  const rowId = (row: ItemDemandRow) => (row.itemCode ?? "") + "|" + row.description;
+  const rowId = (row: ItemDemandRow) => row.boqItemId != null ? `boq:${row.boqItemId}` : (row.itemCode ?? "") + "|" + row.description;
 
   const toggle = (id: string) => {
     setExpanded(prev => {
@@ -1341,6 +1344,11 @@ function ItemWiseTable({
             {row.compositeLabel && (
               <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 flex-shrink-0" title="Composite bituminous item — BOM split across sub-layers">
                 {row.compositeLabel}
+              </span>
+            )}
+            {row.programmeQuantityCheck && (
+              <span className="text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 flex-shrink-0" data-testid={`programme-quantity-warning-${row.boqItemId}`}>
+                Programme {fmtQty(row.programmeQuantityCheck.programmeQty, 2)} {row.programmeQuantityCheck.unit} vs BOQ {fmtQty(row.programmeQuantityCheck.boqQty, 2)} {row.programmeQuantityCheck.unit}; demand capped at {fmtQty(row.programmeQuantityCheck.cappedDemandQty, 2)} {row.programmeQuantityCheck.unit}
               </span>
             )}
             {(() => {

@@ -40,6 +40,7 @@ import {
   isEarthworkBoqItem,
   executionArrangementCategoryForItem,
   bituminousItemTypeOf,
+  programmeQuantityDiffers,
 } from "@shared/planningEngine";
 // 027A: true calendar axis — single source of truth for date↔index↔pixel on the Gantt.
 // Aliased to the legacy names so every existing call site uses calendar-true conversion.
@@ -2761,6 +2762,11 @@ function InlineGanttTable({
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap min-w-0">
                             <span className="text-[12px] text-muted-foreground flex-shrink-0 whitespace-nowrap">{fmt(item.currentQty)} {(item as any).canonicalUnit ?? item.unit}</span>
                             <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={(item as any).canonicalUnit ?? item.unit} isStructureItem={isStructureOrLocationScheduledItem(item as any, { hasStructureImportBar: structureImportItemIds.has(item.id) })} />
+                            {itemBars.length > 0 && programmeQuantityDiffers(Number(item.currentQty), totalPlanned) && (
+                              <span className="text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5" data-testid={`programme-quantity-warning-${item.id}`}>
+                                Programme {fmt(totalPlanned)} {(item as any).canonicalUnit ?? item.unit} vs BOQ {fmt(item.currentQty)} {(item as any).canonicalUnit ?? item.unit}; BOM demand capped at {fmt(Math.min(totalPlanned, item.currentQty))} {(item as any).canonicalUnit ?? item.unit}
+                              </span>
+                            )}
                             {!hasEquipment && (
                               <span className="text-xs text-amber-500 flex items-center gap-0.5 flex-shrink-0 whitespace-nowrap">
                                 <Info className="w-2.5 h-2.5" /> no equipment

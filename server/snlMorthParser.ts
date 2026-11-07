@@ -74,7 +74,7 @@ interface SubRow {
   ref: string;
 }
 
-interface ParsedItem {
+export interface ParsedMorthItem {
   code: string;
   chapterNo: string;
   workCategory: string;
@@ -87,6 +87,7 @@ interface ParsedItem {
   equipment: SubRow[];
   materials: SubRow[];
 }
+type ParsedItem = ParsedMorthItem;
 
 // ─── Row-level helpers ────────────────────────────────────────────────────────
 
@@ -108,12 +109,17 @@ function parseQty(v: unknown): number | null {
 type Section = 'desc' | 'labour' | 'equipment' | 'materials' | 'skip';
 
 function detectSection(d: string): Section | null {
-  const lower = d.toLowerCase();
-  if (/^\s*a[\s)]/.test(lower) && /labour/i.test(lower)) return 'labour';
-  if (/^\s*b[\s)]/.test(lower) && /machin/i.test(lower)) return 'equipment';
-  if (/^\s*c[\s)]/.test(lower) && /material/i.test(lower)) return 'materials';
-  if (/^\s*[de][\s)]/.test(lower)) return 'skip';     // overhead / profit
+  const heading = d.trim().replace(/^\s*[a-z]\s*[).:-]\s*/i, "").toLowerCase();
+  if (/^labou?r\b/.test(heading)) return 'labour';
+  if (/^machinery\b/.test(heading)) return 'equipment';
+  if (/^materials?\b/.test(heading)) return 'materials';
+  if (/^\s*[de][\s)]/i.test(d)) return 'skip';     // overhead / profit
   return null;
+}
+
+function extractCase(colC: string): "I" | "II" | null {
+  const match = colC.trim().match(/^Case\s*[-– ]\s*(I|II)$/i);
+  return match ? match[1].toUpperCase() as "I" | "II" : null;
 }
 
 /** True when a column-D value is noise we should skip (not a real data row) */
@@ -182,9 +188,10 @@ function extractVariant(colC: string): string {
     return s;
   }
 
-  // "Case-II" / "Case - II"
-  if (/^Case\s*[-–]\s*[IVXLC]+$/i.test(s)) {
-    return s.replace(/\s+/g, '').replace(/[-–]/g, '-');
+  // "Case I", "Case-II" / "Case - II"
+  const caseMatch = s.match(/^Case\s*[-–]\s*(I|II)$/i);
+  if (caseMatch) {
+    return `Case-${caseMatch[1].toUpperCase()}`;
   }
 
   // "New" keyword used in ch-11
@@ -228,6 +235,9 @@ function parseChapterSheet(
   let lastBaseCode = '';
   let lastBaseTitle = '';
   let lastBaseUnit = '';
+  const titleByCode = new Map<string, string>();
+  let lastCaseBaseCode = '';
+  let lastCaseBaseTitle = '';
   // Track if the current item saw any sub-row data (has real content)
   let currentHasData = false;
 
@@ -276,15 +286,39 @@ function parseChapterSheet(
 
     // ── Detect item / sub-variant boundaries ──────────────────────────────
 
+    const spacedCode = colA.match(/^(\d+(?:\.\d+)?)[ \t]+([A-H])$/i);
     const isCode = /^\d+\.?\d*[a-z]?$/.test(colA);
+    const current128Case = current?.code.match(/^12\.8-([C-H])$/i);
+    const caseLetter = spacedCode?.[1] === "12.8"
+      ? spacedCode[2].toUpperCase()
+      : current128Case?.[1]?.toUpperCase();
+    const caseLabel = caseLetter && /^[C-H]$/.test(caseLetter) ? extractCase(colC) : null;
     const variantLabel = extractVariant(colC);
     const isVariant = !!variantLabel;
+
+    // Case I/II rows are independent norm variants. In this workbook the
+    // "Case II" rows for 12.8 C–H put the spaced child code in column A, while
+    // the section headings (Labour/Machinery/Material) can appear in any order.
+    if (caseLabel) {
+      const caseBaseCode = `12.8-${caseLetter}`;
+      const caseBaseTitle = titleByCode.get(caseBaseCode) || lastBaseTitle;
+      const inheritedUnit = current?.unit || lastBaseUnit;
+      const detail = colD && !/^\s*[a-z]\s*[).:-]/i.test(colD) ? colD : `Case ${caseLabel}`;
+      const caseTitle = `${caseBaseTitle} — Case ${caseLabel}${detail === `Case ${caseLabel}` ? "" : `: ${detail}`}`;
+      const caseCode = caseLabel === "I" ? caseBaseCode : `${caseBaseCode}-Case-II`;
+      startItem(caseCode, caseTitle);
+      if (current && inheritedUnit) current.unit = inheritedUnit;
+      continue;
+    }
 
     if (isCode && !isVariant) {
       // New base item
       lastBaseCode = colA;
       lastBaseTitle = colD || lastBaseTitle;
       lastBaseUnit = '';
+      lastCaseBaseCode = colA;
+      lastCaseBaseTitle = lastBaseTitle;
+      titleByCode.set(colA, lastBaseTitle);
       startItem(colA, colD);
       continue;
     }
@@ -298,6 +332,9 @@ function parseChapterSheet(
       const varTitle = colD
         ? `${lastBaseTitle}: ${colD}`
         : `${lastBaseTitle} (${variantLabel})`;
+      titleByCode.set(varCode, varTitle);
+      lastCaseBaseCode = varCode;
+      lastCaseBaseTitle = varTitle;
       startItem(varCode, varTitle);
       // Inherit parent's unit for all sub-variants
       if (lastBaseUnit && current) current.unit = lastBaseUnit;
@@ -504,16 +541,29 @@ export function isMorthFormat(wb: XLSX.WorkBook): boolean {
   return count >= 12;
 }
 
+export function parseMorthSdbWorkbook(buffer: Buffer): ParsedMorthItem[] {
+  const wb = XLSX.read(buffer, { type: "buffer" });
+  if (!isMorthFormat(wb)) throw new Error("This is not a MoRTH chapter-per-sheet workbook.");
+  const parsed: ParsedMorthItem[] = [];
+  for (let chapterNo = 1; chapterNo <= 16; chapterNo++) {
+    const worksheet = wb.Sheets[String(chapterNo)];
+    if (!worksheet) continue;
+    const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as unknown[][];
+    parsed.push(...parseChapterSheet(rows, chapterNo));
+  }
+  return parsed;
+}
+
 /**
  * Parse and import the official MoRTH SDB workbook into the SNL catalog.
  * All items land in source MORTH_SDB_2019, appending to the 18 hand-coded
  * seed items already present.
  */
 export async function importMorthSdbXlsx(buffer: Buffer): Promise<ImportResult> {
-  const wb = XLSX.read(buffer, { type: 'buffer' });
+  const parsedItems = parseMorthSdbWorkbook(buffer);
 
   const SOURCE_CODE = 'MORTH_SDB_2019';
-  const SOURCE_NAME = 'Standard Data Book for Analysis of Rates — 2nd Revision 2019';
+  const SOURCE_NAME = 'MoRTH Standard Data Book (2003)';
 
   const [source] = await db
     .insert(snlSources)
@@ -521,10 +571,10 @@ export async function importMorthSdbXlsx(buffer: Buffer): Promise<ImportResult> 
       code: SOURCE_CODE,
       name: SOURCE_NAME,
       authority: 'MoRTH',
-      year: 2019,
+      year: 2003,
       isActive: true,
     })
-    .onConflictDoUpdate({ target: snlSources.code, set: { name: SOURCE_NAME, year: 2019 } })
+    .onConflictDoUpdate({ target: snlSources.code, set: { name: SOURCE_NAME, year: 2003 } })
     .returning();
 
   const result: ImportResult = {
@@ -538,14 +588,7 @@ export async function importMorthSdbXlsx(buffer: Buffer): Promise<ImportResult> 
     errors: [],
   };
 
-  // Parse all 16 chapter sheets
-  for (let ch = 1; ch <= 16; ch++) {
-    const ws = wb.Sheets[String(ch)];
-    if (!ws) continue;
-    const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
-    const parsed = parseChapterSheet(rows, ch);
-    await upsertParsedItems(source.id, parsed, result);
-  }
+  await upsertParsedItems(source.id, parsedItems, result);
 
   return result;
 }

@@ -100,6 +100,21 @@ interface SnlItemFull {
   }>;
 }
 
+interface MorthReloadPreview {
+  sourceCode: string;
+  sourceName: string;
+  fingerprint: string;
+  parsedCount: number;
+  counts: { added: number; changed: number; unchanged: number; preservedOutsideWorkbook: number };
+  changes: Array<{
+    code: string;
+    status: "added" | "changed" | "unchanged";
+    old: null | { description: string; unit: string; norms: { equipment: unknown[]; labour: unknown[]; materials: unknown[] } };
+    new: { description: string; unit: string; norms: { equipment: unknown[]; labour: unknown[]; materials: unknown[] } };
+    reasons: string[];
+  }>;
+}
+
 interface ImportResult {
   sourceName: string;
   sourceCode: string;
@@ -153,14 +168,14 @@ function fmtNum(n: number | null | undefined, d = 3) {
 
 // ─── Item Detail Panel ───────────────────────────────────────────────────────
 
-function ItemDetailPanel({ itemId }: { itemId: number }) {
+function ItemDetailPanel({ itemId, includeOtherBooks = false }: { itemId: number; includeOtherBooks?: boolean }) {
   const [catFilter, setCatFilter] = useState<string>("MEDIUM");
   const [gradingFilter, setGradingFilter] = useState<string>("");
 
   const { data: item, isLoading } = useQuery<SnlItemFull>({
-    queryKey: ["/api/snl/items", itemId],
+    queryKey: ["/api/snl/items", itemId, includeOtherBooks],
     queryFn: async () => {
-      const res = await fetch(`/api/snl/items/${itemId}`, { credentials: "include" });
+      const res = await fetch(`/api/snl/items/${itemId}${includeOtherBooks ? "?includeOtherBooks=true" : ""}`, { credentials: "include" });
       return res.ok ? res.json() : Promise.reject("Not found");
     },
   });
@@ -323,16 +338,17 @@ function ItemDetailPanel({ itemId }: { itemId: number }) {
 
 // ─── Items List ──────────────────────────────────────────────────────────────
 
-function SourceItemsList({ sourceId, sectorFilter }: { sourceId: number; sectorFilter?: string }) {
+function SourceItemsList({ sourceId, sectorFilter, includeOtherBooks = false }: { sourceId: number; sectorFilter?: string; includeOtherBooks?: boolean }) {
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [catFilter, setCatFilter] = useState<string>("");
 
   const { data: items = [], isLoading } = useQuery<SnlSearchResult[]>({
-    queryKey: ["/api/snl/sources", sourceId, "items", catFilter, sectorFilter],
+    queryKey: ["/api/snl/sources", sourceId, "items", catFilter, sectorFilter, includeOtherBooks],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (catFilter) params.set("category", catFilter);
       if (sectorFilter) params.set("sector", sectorFilter);
+      if (includeOtherBooks) params.set("includeOtherBooks", "true");
       const url = `/api/snl/sources/${sourceId}/items${params.size ? "?" + params.toString() : ""}`;
       const res = await fetch(url, { credentials: "include" });
       return res.ok ? res.json() : [];
@@ -372,7 +388,7 @@ function SourceItemsList({ sourceId, sectorFilter }: { sourceId: number; sectorF
 
       <div className="flex-1 min-w-0 overflow-y-auto">
         {selectedItemId ? (
-          <ItemDetailPanel itemId={selectedItemId} />
+          <ItemDetailPanel itemId={selectedItemId} includeOtherBooks={includeOtherBooks} />
         ) : (
           <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-2">
             <ChevronRight className="w-6 h-6 opacity-30" />
@@ -386,15 +402,16 @@ function SourceItemsList({ sourceId, sectorFilter }: { sourceId: number; sectorF
 
 // ─── Search Panel ────────────────────────────────────────────────────────────
 
-function SearchPanel({ sectorFilter }: { sectorFilter?: string }) {
+function SearchPanel({ sectorFilter, includeOtherBooks = false }: { sectorFilter?: string; includeOtherBooks?: boolean }) {
   const [q, setQ] = useState("");
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
 
   const { data: results = [], isLoading, isFetching } = useQuery<SnlSearchResult[]>({
-    queryKey: ["/api/snl/search", q, sectorFilter],
+    queryKey: ["/api/snl/search", q, sectorFilter, includeOtherBooks],
     queryFn: async () => {
       const params = new URLSearchParams({ q });
       if (sectorFilter) params.set("sector", sectorFilter);
+      if (includeOtherBooks) params.set("includeOtherBooks", "true");
       const res = await fetch(`/api/snl/search?${params.toString()}`, { credentials: "include" });
       return res.ok ? res.json() : [];
     },
@@ -436,7 +453,7 @@ function SearchPanel({ sectorFilter }: { sectorFilter?: string }) {
       </div>
       <div className="flex-1 min-w-0 overflow-y-auto">
         {selectedItemId ? (
-          <ItemDetailPanel itemId={selectedItemId} />
+          <ItemDetailPanel itemId={selectedItemId} includeOtherBooks={includeOtherBooks} />
         ) : (
           <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-2">
             <Search className="w-6 h-6 opacity-30" />
@@ -452,15 +469,29 @@ function SearchPanel({ sectorFilter }: { sectorFilter?: string }) {
 
 export default function NormsLibrary() {
   const { toast } = useToast();
-  const { featureCan } = useAuth();
+  const { featureCan, isOwner } = useAuth();
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [tab, setTab] = useState<"browse" | "search">("browse");
   const [sectorFilter, setSectorFilter] = useState<string>("");
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [showOtherBooks, setShowOtherBooks] = useState(false);
+  const [reloadFile, setReloadFile] = useState<File | null>(null);
+  const [reloadPreview, setReloadPreview] = useState<MorthReloadPreview | null>(null);
+  const [reloadResult, setReloadResult] = useState<{ affectedBoqItems: Array<{ boqItemId: number; itemCode: string | null; description: string; projectName: string | null }> } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const reloadFileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: sources = [], isLoading, refetch } = useQuery<SnlSource[]>({
-    queryKey: ["/api/snl/sources"],
+    queryKey: ["/api/snl/sources", showOtherBooks],
+    queryFn: async () => {
+      const res = await fetch(`/api/snl/sources${showOtherBooks ? "?includeOtherBooks=true" : ""}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load norm sources");
+      return res.json();
+    },
+  });
+
+  const { data: normBook } = useQuery<{ code: string; sourceId: number | null; name: string }>({
+    queryKey: ["/api/snl/norm-book"],
   });
 
   const importMutation = useMutation({
@@ -487,6 +518,57 @@ export default function NormsLibrary() {
       });
     },
     onError: (err: Error) => toast({ title: "Import failed", description: err.message, variant: "destructive" }),
+  });
+
+  const reloadPreviewMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const body = new FormData();
+      body.append("file", file);
+      const response = await fetch("/api/snl/morth/reload-preview", { method: "POST", body, credentials: "include" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Unable to preview the MoRTH workbook");
+      return payload as MorthReloadPreview;
+    },
+    onSuccess: preview => {
+      setReloadPreview(preview);
+      setReloadResult(null);
+      toast({ title: "Review the MoRTH change list before applying." });
+    },
+    onError: (error: Error) => toast({ title: "MoRTH preview failed", description: error.message, variant: "destructive" }),
+  });
+
+  const reloadApplyMutation = useMutation({
+    mutationFn: async () => {
+      if (!reloadFile || !reloadPreview) throw new Error("Preview the workbook before applying.");
+      const body = new FormData();
+      body.append("file", reloadFile);
+      body.append("fingerprint", reloadPreview.fingerprint);
+      const response = await fetch("/api/snl/morth/reload-apply", { method: "POST", body, credentials: "include" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Unable to apply the MoRTH reload");
+      return payload as { affectedBoqItems: Array<{ boqItemId: number; itemCode: string | null; description: string; projectName: string | null }> };
+    },
+    onSuccess: async result => {
+      setReloadResult(result);
+      await queryClient.invalidateQueries({ queryKey: ["/api/snl/sources"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/snl/norm-book"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/snl/search"] });
+      toast({ title: "MoRTH book reloaded", description: `${result.affectedBoqItems.length} mapped BOQ item(s) need review and re-linking.` });
+    },
+    onError: (error: Error) => toast({ title: "MoRTH reload not applied", description: error.message, variant: "destructive" }),
+  });
+
+  const normBookMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("PATCH", "/api/snl/norm-book", { code: "MORTH_SDB_2019" });
+      return response.json();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/snl/norm-book"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/snl/sources"] });
+      toast({ title: "Norm book in use set to MoRTH Standard Data Book (2003)." });
+    },
+    onError: () => toast({ title: "Unable to set the norm book in use.", variant: "destructive" }),
   });
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -562,7 +644,7 @@ export default function NormsLibrary() {
                   Import SDB
                 </Button>
                 <span className="text-[10px] text-muted-foreground pr-0.5">
-                  MoRTH official or 4-sheet format
+                  Other SDB formats; MoRTH uses review before apply
                 </span>
               </div>
               <input
@@ -575,9 +657,123 @@ export default function NormsLibrary() {
               />
             </>
           )}
+          <Button variant="outline" size="sm" onClick={() => setShowOtherBooks(value => !value)} data-testid="button-toggle-other-books">
+            {showOtherBooks ? "Hide other books" : "Show other books"}
+          </Button>
+          {isOwner && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => reloadFileInputRef.current?.click()}
+                disabled={reloadPreviewMutation.isPending || reloadApplyMutation.isPending}
+                data-testid="button-morth-reload"
+              >
+                {reloadPreviewMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+                Reload MoRTH book
+              </Button>
+              <input
+                ref={reloadFileInputRef}
+                type="file"
+                accept=".xlsx"
+                className="hidden"
+                onChange={event => {
+                  const file = event.target.files?.[0] ?? null;
+                  event.target.value = "";
+                  if (!file) return;
+                  setReloadFile(file);
+                  setReloadPreview(null);
+                  reloadPreviewMutation.mutate(file);
+                }}
+                data-testid="input-morth-reload-file"
+              />
+            </>
+          )}
 
         </div>
       </div>
+
+      <div className="rounded-lg border bg-slate-50/70 p-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-sm">
+          <span className="font-semibold">Norm book in use:</span>{" "}
+          {normBook?.name ?? "MoRTH Standard Data Book (2003)"}
+          <p className="text-xs text-muted-foreground mt-0.5">Auto-mapping, recipe application and default library views use this book only.</p>
+        </div>
+        {isOwner && normBook?.code !== "MORTH_SDB_2019" && (
+          <Button size="sm" variant="outline" disabled={normBookMutation.isPending} onClick={() => normBookMutation.mutate()}>
+            Use MoRTH Standard Data Book (2003)
+          </Button>
+        )}
+      </div>
+
+      {reloadPreview && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-3" data-testid="morth-reload-preview">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="font-semibold text-amber-950">Review MoRTH changes — {reloadPreview.sourceName}</h2>
+              <p className="text-xs text-amber-900 mt-1">
+                No data is written until you select Apply. Items outside the workbook are preserved; saved BOQ recipes are not changed.
+              </p>
+            </div>
+            <div className="flex gap-3 text-xs font-medium text-slate-700">
+              <span>{reloadPreview.counts.added} added</span>
+              <span>{reloadPreview.counts.changed} changed</span>
+              <span>{reloadPreview.counts.unchanged} unchanged</span>
+              <span>{reloadPreview.counts.preservedOutsideWorkbook} outside workbook, preserved</span>
+            </div>
+          </div>
+          <div className="max-h-80 overflow-auto rounded border bg-white divide-y">
+            {reloadPreview.changes.filter(change => change.status !== "unchanged").map(change => (
+              <div key={change.code} className="p-3 text-xs space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-semibold">{change.code}</span>
+                  <Badge variant="outline" className={change.status === "added" ? "border-emerald-300 text-emerald-700" : "border-amber-300 text-amber-700"}>{change.status}</Badge>
+                  <span className="text-slate-500">{change.reasons.join(" · ")}</span>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1">
+                  <p><span className="font-semibold">Old:</span> {change.old ? `${change.old.description} · ${change.old.unit} · ${change.old.norms.equipment.length} machine, ${change.old.norms.labour.length} labour, ${change.old.norms.materials.length} material row(s)` : "Not in current MoRTH source"}</p>
+                  <p><span className="font-semibold">New:</span> {change.new.description} · {change.new.unit} · {change.new.norms.equipment.length} machine, {change.new.norms.labour.length} labour, {change.new.norms.materials.length} material row(s)</p>
+                </div>
+              </div>
+            ))}
+            {reloadPreview.changes.filter(change => change.status !== "unchanged").length === 0 && (
+              <p className="p-3 text-sm text-slate-600">No additions or changes detected.</p>
+            )}
+          </div>
+          <details className="text-xs">
+            <summary className="cursor-pointer font-semibold">Unchanged items ({reloadPreview.counts.unchanged})</summary>
+            <div className="mt-2 max-h-40 overflow-auto grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 text-slate-600">
+              {reloadPreview.changes.filter(change => change.status === "unchanged").map(change => (
+                <span key={change.code}>{change.code} · {change.new.description} · {change.new.unit}</span>
+              ))}
+            </div>
+          </details>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              disabled={!reloadFile || reloadApplyMutation.isPending}
+              onClick={() => reloadApplyMutation.mutate()}
+              data-testid="button-apply-morth-reload"
+            >
+              {reloadApplyMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}Apply reviewed MoRTH changes
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => { setReloadPreview(null); setReloadFile(null); }}>Cancel</Button>
+          </div>
+        </section>
+      )}
+
+      {reloadResult && (
+        <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm" data-testid="morth-reload-result">
+          <p className="font-semibold text-emerald-900">Reload complete. {reloadResult.affectedBoqItems.length} mapped BOQ item(s) need review and re-linking.</p>
+          {reloadResult.affectedBoqItems.length > 0 && (
+            <ul className="mt-2 max-h-48 overflow-auto text-xs space-y-1">
+              {reloadResult.affectedBoqItems.map(item => (
+                <li key={item.boqItemId}>{item.projectName ?? "Project"} · {item.itemCode ?? "BOQ item"} · {item.description}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {/* Import result summary */}
       {importResult && (
@@ -611,7 +807,7 @@ export default function NormsLibrary() {
           <AlertCircle className="w-10 h-10 opacity-30" />
           <p className="text-sm font-medium">No norm sources loaded yet.</p>
           <p className="text-xs text-center max-w-xs">
-            Use the <span className="font-semibold text-slate-700">Import SDB</span> button above to load the MoRTH Standard Data Book 2019 (official Excel) or any other SDB in the supported format.
+            Use the Owner-only <span className="font-semibold text-slate-700">Reload MoRTH book</span> control to review and apply MoRTH updates. Other books stay separate.
           </p>
         </div>
       ) : (
@@ -651,7 +847,7 @@ export default function NormsLibrary() {
                   <p className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
                     {activeSource.name} — {activeSource.itemCount} items{sectorFilter ? ` · filtered: ${sectorFilter}` : ""}
                   </p>
-                  <SourceItemsList sourceId={selectedSourceId} sectorFilter={sectorFilter || undefined} />
+                  <SourceItemsList sourceId={selectedSourceId} sectorFilter={sectorFilter || undefined} includeOtherBooks={showOtherBooks} />
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2 rounded-xl border border-dashed">
@@ -663,7 +859,7 @@ export default function NormsLibrary() {
 
             <TabsContent value="search" className="mt-3">
               <div className="rounded-xl border p-4 min-h-[400px]">
-                <SearchPanel sectorFilter={sectorFilter || undefined} />
+                <SearchPanel sectorFilter={sectorFilter || undefined} includeOtherBooks={showOtherBooks} />
               </div>
             </TabsContent>
           </Tabs>
