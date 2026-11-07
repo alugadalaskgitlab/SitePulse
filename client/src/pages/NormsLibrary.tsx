@@ -106,6 +106,7 @@ interface MorthReloadPreview {
   fingerprint: string;
   parsedCount: number;
   counts: { added: number; changed: number; unchanged: number; preservedOutsideWorkbook: number };
+  preservedOutsideWorkbookItems: Array<{ code: string; description: string; unit: string }>;
   changes: Array<{
     code: string;
     status: "added" | "changed" | "unchanged";
@@ -790,6 +791,17 @@ export default function NormsLibrary() {
               {reloadPreview.changes.filter(change => change.status === "unchanged").map(change => (
                 <span key={change.code}>{change.code} · {change.new.description} · {change.new.unit}</span>
               ))}
+            </div>
+          </details>
+          <details className="text-xs">
+            <summary className="cursor-pointer font-semibold">
+              Outside workbook items preserved ({reloadPreview.counts.preservedOutsideWorkbook})
+            </summary>
+            <div className="mt-2 max-h-40 overflow-auto grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 text-slate-600">
+              {reloadPreview.preservedOutsideWorkbookItems.map(item => (
+                <span key={item.code}><span className="font-mono">{item.code}</span> · {item.description} · {item.unit}</span>
+              ))}
+              {reloadPreview.preservedOutsideWorkbookItems.length === 0 && <span>None</span>}
             </div>
           </details>
           <div className="flex items-center gap-2">

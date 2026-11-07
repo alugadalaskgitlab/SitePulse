@@ -25,6 +25,14 @@ import { eq, and, inArray, notInArray } from "drizzle-orm";
 import { storage } from "./storage";
 import { isSnlWorkFamilyCompatible } from "@shared/snlMappingPolicy";
 import { getNormBookSourceId } from "./normBook";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parseMorthSdbWorkbook, type ParsedMorthItem } from "./snlMorthParser";
+import {
+  explainMorthRelinkNoMatch,
+  matchMorthRelinkCandidate,
+  type MorthRelinkCandidate,
+} from "./snlMorthRelinkMatcher";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1113,6 +1121,29 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
   }
 }
 
+let morthRelinkWorkbookCache: ParsedMorthItem[] | null = null;
+function getMorthRelinkWorkbookItems() {
+  if (!morthRelinkWorkbookCache) {
+    const workbookPath = resolve(
+      process.cwd(),
+      "attached_assets/MoRTH_Standard-Data-Book-Road-Bridge_1782816790434.xlsx",
+    );
+    morthRelinkWorkbookCache = parseMorthSdbWorkbook(readFileSync(workbookPath));
+  }
+  return morthRelinkWorkbookCache;
+}
+
+function inferRelinkProjectSector(descriptions: string[]) {
+  const text = cleanRelinkText(descriptions.join(" "));
+  const roadSignals = (text.match(/\b(?:road|wmm|gsb|dbm|dgbm|bituminous|macadam|pavement|tack|prime|shoulder)\b/g) ?? []).length;
+  const structureSignals = (text.match(/\b(?:bridge|abutment|pier|girder|culvert|structure)\b/g) ?? []).length;
+  return roadSignals > structureSignals ? "ROAD" : structureSignals > roadSignals ? "STRUCTURES" : null;
+}
+
+function cleanRelinkText(text: string) {
+  return String(text ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 export async function previewBoqProjectNormRelinks(boqProjectId: number) {
   const sourceId = await getNormBookSourceId();
   const items = await db.select({
@@ -1134,6 +1165,15 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
     .leftJoin(snlSources, eq(snlSources.id, snlItems.sourceId))
     .where(eq(boqItems.boqProjectId, boqProjectId));
 
+  const workbookItems = getMorthRelinkWorkbookItems();
+  const workbookCandidates: MorthRelinkCandidate[] = workbookItems.map(item => ({
+    code: item.code,
+    title: item.title,
+    description: item.description,
+    unit: item.unit,
+    sector: item.sector,
+  }));
+  const projectSector = inferRelinkProjectSector(items.map(item => item.description ?? ""));
   const snlRows = sourceId == null ? [] : await db.select({
     id: snlItems.id,
     itemCode: snlItems.itemCode,
@@ -1146,60 +1186,29 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
   }).from(snlItems)
     .innerJoin(snlSources, eq(snlSources.id, snlItems.sourceId))
     .where(and(eq(snlItems.sourceId, sourceId), eq(snlItems.isActive, true)));
-  const tokenMap = new Map(snlRows.map(row => [row.id, richTokens(`${row.description ?? ""} ${row.shortLabel ?? ""}`)]));
-  const idf = buildIdf([...tokenMap.values()]);
+  const loadedByCode = new Map(snlRows.map(row => [row.itemCode.trim().toLowerCase(), row]));
 
   return items.map(item => {
     const description = item.description ?? "";
-    const boqCategory = classifyBoqItem(description);
-    let proposed = null as null | { id: number; code: string; description: string; unit: string; score: number };
-    const explicitCode = (item as any).snlCode?.trim().toLowerCase();
-    const direct = explicitCode
-      ? snlRows.filter(row => row.itemCode.trim().toLowerCase() === explicitCode && unitsCompatible(item.unit ?? "", row.unit))
-      : [];
-    if (direct.length === 1) {
-      const row = direct[0];
-      proposed = { id: row.id, code: row.itemCode, description: row.shortLabel ?? row.description, unit: row.unit, score: 1 };
-    }
-
-    if (!proposed) {
-      const ruleTag = classifyBoqItemForSnl(description);
-      const primaryRows = ruleTag ? snlRows.filter(row => isPrimaryRuleCandidate(boqCategory, row)) : [];
-      const ruleMatch = ruleTag ? ruleMatchSnl(ruleTag, primaryRows, description) : null;
-      const ruleRow = ruleMatch ? snlRows.find(row => row.id === ruleMatch.snlItemId) : null;
-      if (ruleRow && unitsCompatible(item.unit ?? "", ruleRow.unit)) {
-        proposed = {
-          id: ruleRow.id,
-          code: ruleRow.itemCode,
-          description: ruleRow.shortLabel ?? ruleRow.description,
-          unit: ruleRow.unit,
-          score: ruleMatch!.confidence,
-        };
-      }
-    }
-
-    if (!proposed) {
-      const ruleTag = classifyBoqItemForSnl(description);
-      const family = snlRows.filter(row => isSnlWorkFamilyCompatible(
-        item.workCategory ?? inferWorkCategory(description),
-        ruleTag,
-        row.workCategory,
-      ));
-      const candidates = family.filter(row =>
-        unitsCompatible(item.unit ?? "", row.unit) && getEffectiveSectorMultiplier(boqCategory, row) > 0,
-      );
-      const scoringPool = candidates.length >= 5 ? candidates : family.filter(row => unitsCompatible(item.unit ?? "", row.unit));
-      const boqTokens = richTokens(`${description} ${item.workCategory ?? ""}`);
-      const ranked = scoringPool.map(row => ({
-        row,
-        score: weightedCosine(boqTokens, tokenMap.get(row.id) ?? [], idf) *
-          getEffectiveSectorMultiplier(boqCategory, row),
-      })).sort((a, b) => b.score - a.score);
-      if (ranked[0] && ranked[0].score >= SUGGEST_FLOOR) {
-        const row = ranked[0].row;
-        proposed = { id: row.id, code: row.itemCode, description: row.shortLabel ?? row.description, unit: row.unit, score: ranked[0].score };
-      }
-    }
+    const match = matchMorthRelinkCandidate(description, item.unit ?? "", workbookCandidates, projectSector);
+    const loaded = match
+      ? loadedByCode.get(match.candidate.code.trim().toLowerCase())
+      : null;
+    const proposed = match && loaded ? {
+      id: loaded.id,
+      code: match.candidate.code,
+      description: match.candidate.title.slice(0, 60),
+      unit: match.candidate.unit,
+      score: 1,
+      reason: match.reason,
+      canApply: match.canApply,
+      blockedReason: match.blockedReason,
+    } : null;
+    const proposalReason = !match
+      ? explainMorthRelinkNoMatch(description, workbookCandidates)
+      : !loaded
+        ? `The MoRTH title “${match.candidate.title.slice(0, 60)}” matches, but its workbook item is not loaded in the selected book.`
+        : match.reason;
 
     return {
       ...item,
@@ -1213,6 +1222,7 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
           : item.currentSourceName,
       } : null,
       proposed,
+      proposalReason,
       protected: item.recipeManualOverride === true,
       needsChange: !!proposed && proposed.id !== item.currentNormId,
     };

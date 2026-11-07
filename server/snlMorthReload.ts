@@ -147,6 +147,11 @@ export async function previewMorthReload(buffer: Buffer) {
     sourceId: source?.id ?? null,
     changes,
   })).digest("hex");
+  const parsedCodes = new Set(parsed.map(item => item.code));
+  const preservedOutsideWorkbookItems = [...current.entries()]
+    .filter(([code]) => !parsedCodes.has(code))
+    .map(([code, row]) => ({ code, description: row.item.description, unit: row.item.unit }))
+    .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
   return {
     sourceCode: MORTH_SDB_SOURCE_CODE,
     sourceName: MORTH_SDB_DISPLAY_NAME,
@@ -156,8 +161,9 @@ export async function previewMorthReload(buffer: Buffer) {
       added: changes.filter(row => row.status === "added").length,
       changed: changes.filter(row => row.status === "changed").length,
       unchanged: changes.filter(row => row.status === "unchanged").length,
-      preservedOutsideWorkbook: Math.max(0, current.size - parsed.length),
+      preservedOutsideWorkbook: preservedOutsideWorkbookItems.length,
     },
+    preservedOutsideWorkbookItems,
     changes,
   };
 }

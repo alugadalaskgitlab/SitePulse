@@ -9,6 +9,7 @@ import { updatePurchaseIndentRequestSchema } from "@shared/schema";
 import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock, isRecipeManualOverrideError } from "./storage";
 import { buildEquipmentComparison, buildDailyDieselEquipmentReport } from "./dieselComparisonEquipment";
 import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, classifyBoqItem, getSectorMultiplier, previewBoqProjectNormRelinks } from "./snlAutoMapper";
+import { sameNormUnit } from "./snlMorthRelinkMatcher";
 import { isConfirmedSnlMapping } from "@shared/snlMappingPolicy";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -40,7 +41,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, userPermissions, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, mixTemplateComponents, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, materialRequirements, storeIssues as storeIssuesTable, storeIssueItems as storeIssueItemsTable, storeItems as storeItemsTable, boqItems, snlBoqMappings, snlItems, snlSources, snlCompositeComponents, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, userPermissions, vendors, vendorAliases, sites as sitesTable, boqProjects as boqProjectsTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, mixTemplateComponents, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, materialRequirements, storeIssues as storeIssuesTable, storeIssueItems as storeIssueItemsTable, storeItems as storeItemsTable, boqItems, snlBoqMappings, snlItems, snlSources, snlCompositeComponents, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import {
   insertPartySchema,
   insertPlantMaterialSchema,
@@ -26509,10 +26510,10 @@ export async function registerRoutes(
   });
 
   async function assertBoqProjectSiteScope(req: any, res: any, projectId: number): Promise<boolean> {
-    const [project] = await db.select({ siteName: sites.name })
-      .from(boqProjects)
-      .leftJoin(sites, eq(boqProjects.siteId, sites.id))
-      .where(eq(boqProjects.id, projectId))
+    const [project] = await db.select({ siteName: sitesTable.name })
+      .from(boqProjectsTable)
+      .leftJoin(sitesTable, eq(boqProjectsTable.siteId, sitesTable.id))
+      .where(eq(boqProjectsTable.id, projectId))
       .limit(1);
     if (!project) {
       res.status(404).json({ error: "BOQ project not found" });
@@ -26558,6 +26559,7 @@ export async function registerRoutes(
         id: boqItems.id,
         itemCode: boqItems.itemCode,
         description: boqItems.description,
+        unit: boqItems.unit,
         recipeManualOverride: boqItems.recipeManualOverride,
         isComposite: boqItems.isComposite,
         currentNormId: snlBoqMappings.snlItemId,
@@ -26578,8 +26580,13 @@ export async function registerRoutes(
       }
       const nextNorms = await Promise.all(selections.map(row => storage.getSnlItem(row.snlItemId)));
       if (nextNorms.some(norm => !norm)) return res.status(409).json({ error: "A selected MoRTH item is no longer available." });
-
       const itemById = new Map(currentItems.map(item => [item.id, item]));
+      if (selections.some((selection, index) =>
+        !sameNormUnit(itemById.get(selection.boqItemId)?.unit, nextNorms[index]?.unit),
+      )) {
+        return res.status(409).json({ error: "The BOQ and MoRTH units differ. This proposal cannot be applied safely." });
+      }
+
       const actor = currentUserName(req) || "Unknown";
       for (const [selectionIndex, selection] of selections.entries()) {
         const item = itemById.get(selection.boqItemId)!;

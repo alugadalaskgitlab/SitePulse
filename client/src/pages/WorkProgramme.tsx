@@ -3267,7 +3267,17 @@ type SnlRelinkRow = {
   description: string | null;
   unit: string | null;
   currentNorm: null | { id: number; code: string | null; description: string | null; sourceCode: string | null; sourceName: string | null };
-  proposed: null | { id: number; code: string; description: string; unit: string; score: number };
+  proposed: null | {
+    id: number;
+    code: string;
+    description: string;
+    unit: string;
+    score: number;
+    reason: string;
+    canApply: boolean;
+    blockedReason: string | null;
+  };
+  proposalReason: string;
   protected: boolean;
   needsChange: boolean;
 };
@@ -3287,12 +3297,16 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
   });
   useEffect(() => {
     if (!data) return;
-    setSelected(new Set(data.items.filter(row => row.needsChange && !row.protected && row.proposed).map(row => row.boqItemId)));
+    setSelected(new Set(data.items.filter(row =>
+      row.needsChange && !row.protected && row.proposed?.canApply,
+    ).map(row => row.boqItemId)));
   }, [data]);
 
   const applyMutation = useMutation({
     mutationFn: async () => {
-      const rows = data?.items.filter(row => selected.has(row.boqItemId) && row.proposed) ?? [];
+      const rows = data?.items.filter(row =>
+        selected.has(row.boqItemId) && row.proposed?.canApply,
+      ) ?? [];
       const response = await apiRequest("POST", `/api/boq/projects/${projectId}/snl/relink-apply`, {
         items: rows.map(row => ({ boqItemId: row.boqItemId, snlItemId: row.proposed!.id })),
       });
@@ -3316,7 +3330,7 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
   });
 
   const rows = data?.items ?? [];
-  const applicable = rows.filter(row => row.needsChange && !row.protected && row.proposed);
+  const applicable = rows.filter(row => row.needsChange && !row.protected && row.proposed?.canApply);
 
   return (
     <>
@@ -3347,7 +3361,7 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
                       <div className="pt-0.5">
                         <Checkbox
                           checked={selected.has(row.boqItemId)}
-                          disabled={!row.needsChange || row.protected || !row.proposed}
+                          disabled={!row.needsChange || row.protected || !row.proposed?.canApply}
                           onCheckedChange={checked => setSelected(prev => {
                             const next = new Set(prev);
                             if (checked === true) next.add(row.boqItemId); else next.delete(row.boqItemId);
@@ -3368,9 +3382,15 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-muted-foreground">Proposed MoRTH item</p>
                         {row.proposed ? (
-                          <p className="mt-1 break-words"><span className="font-mono">{row.proposed.code}</span> · {row.proposed.description}</p>
+                          <>
+                            <p className="mt-1 break-words"><span className="font-mono">{row.proposed.code}</span> · {row.proposed.description}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">{row.proposed.reason}</p>
+                          </>
                         ) : (
-                          <Badge variant="outline" className="mt-1">No MoRTH item</Badge>
+                          <>
+                            <Badge variant="outline" className="mt-1">No MoRTH item</Badge>
+                            <p className="mt-1 text-xs text-muted-foreground">{row.proposalReason}</p>
+                          </>
                         )}
                       </div>
                     </div>
