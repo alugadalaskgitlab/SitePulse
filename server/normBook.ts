@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { appSettings, snlItems, snlSources } from "@shared/schema";
 import {
   DEFAULT_NORM_BOOK_CODE,
+  MORTH_SDB_DISPLAY_NAME,
   MORTH_SDB_SOURCE_CODE,
   NORM_BOOK_SETTING_KEY,
 } from "@shared/normBook";
@@ -21,7 +22,7 @@ export async function getNormBookState() {
   return {
     code,
     sourceId: source?.id ?? null,
-    name: source?.name ?? (code === MORTH_SDB_SOURCE_CODE ? "MoRTH Standard Data Book (2003)" : code),
+    name: code === MORTH_SDB_SOURCE_CODE ? MORTH_SDB_DISPLAY_NAME : source?.name ?? code,
   };
 }
 
@@ -33,7 +34,12 @@ export async function isSnlItemInNormBook(snlItemId: number): Promise<boolean> {
   const [row] = await db.select({ id: snlItems.id })
     .from(snlItems)
     .innerJoin(snlSources, eq(snlSources.id, snlItems.sourceId))
-    .where(and(eq(snlItems.id, snlItemId), eq(snlSources.code, (await getNormBookState()).code)))
+    .where(and(
+      eq(snlItems.id, snlItemId),
+      eq(snlItems.isActive, true),
+      eq(snlSources.isActive, true),
+      eq(snlSources.code, (await getNormBookState()).code),
+    ))
     .limit(1);
   return !!row;
 }

@@ -8,7 +8,7 @@ import type { Server } from "http";
 import { updatePurchaseIndentRequestSchema } from "@shared/schema";
 import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock, isRecipeManualOverrideError } from "./storage";
 import { buildEquipmentComparison, buildDailyDieselEquipmentReport } from "./dieselComparisonEquipment";
-import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
+import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, classifyBoqItem, getSectorMultiplier, previewBoqProjectNormRelinks } from "./snlAutoMapper";
 import { isConfirmedSnlMapping } from "@shared/snlMappingPolicy";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -40,7 +40,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, userPermissions, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, mixTemplateComponents, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, materialRequirements, storeIssues as storeIssuesTable, storeIssueItems as storeIssueItemsTable, storeItems as storeItemsTable, boqItems, snlBoqMappings, snlItems, snlSources, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, userPermissions, vendors, vendorAliases, sites as sitesTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, mixTemplateComponents, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, materialRequirements, storeIssues as storeIssuesTable, storeIssueItems as storeIssueItemsTable, storeItems as storeItemsTable, boqItems, snlBoqMappings, snlItems, snlSources, snlCompositeComponents, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import {
   insertPartySchema,
   insertPlantMaterialSchema,
@@ -26048,7 +26048,8 @@ export async function registerRoutes(
         // materials, productivity) — only a confirmed mapping is authoritative.
         // Low-confidence auto-suggestions retain an ID for review, not application.
         if (snlItemId != null &&
-          isConfirmedSnlMapping({ snlItemId, snlMappingStatus, snlMappingIsAuto })) {
+          isConfirmedSnlMapping({ snlItemId, snlMappingStatus, snlMappingIsAuto }) &&
+          await isSnlItemInNormBook(snlItemId)) {
           try {
             await storage.applySnlMappingToRecipes(item.id, snlItemId, "MEDIUM", null, user);
             const planning = classifyPlanningItem({
@@ -26330,7 +26331,10 @@ export async function registerRoutes(
       const includeOtherBooks = req.query.includeOtherBooks === "true";
       if (includeOtherBooks) return res.json(sources);
       const selected = await getNormBookState();
-      res.json(sources.filter(source => source.code === selected.code));
+      res.json(sources.filter(source => source.code === selected.code).map(source => ({
+        ...source,
+        name: source.code === MORTH_SDB_SOURCE_CODE ? MORTH_SDB_DISPLAY_NAME : source.name,
+      })));
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch SNL sources" });
     }
@@ -26344,7 +26348,7 @@ export async function registerRoutes(
       if (req.query.includeOtherBooks !== "true" && src.code !== (await getNormBookState()).code) {
         return res.status(404).json({ error: "Not found" });
       }
-      res.json(src);
+      res.json(src.code === MORTH_SDB_SOURCE_CODE ? { ...src, name: MORTH_SDB_DISPLAY_NAME } : src);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch source" });
     }
@@ -26390,7 +26394,9 @@ export async function registerRoutes(
       if (req.query.includeOtherBooks !== "true" && item.source?.code !== (await getNormBookState()).code) {
         return res.status(404).json({ error: "Not found" });
       }
-      res.json(item);
+      res.json(item.source?.code === MORTH_SDB_SOURCE_CODE
+        ? { ...item, source: { ...item.source, name: MORTH_SDB_DISPLAY_NAME } }
+        : item);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch SNL item" });
     }
@@ -26502,6 +26508,122 @@ export async function registerRoutes(
     }
   });
 
+  async function assertBoqProjectSiteScope(req: any, res: any, projectId: number): Promise<boolean> {
+    const [project] = await db.select({ siteName: sites.name })
+      .from(boqProjects)
+      .leftJoin(sites, eq(boqProjects.siteId, sites.id))
+      .where(eq(boqProjects.id, projectId))
+      .limit(1);
+    if (!project) {
+      res.status(404).json({ error: "BOQ project not found" });
+      return false;
+    }
+    return project.siteName ? assertTripSiteAccess(req, res, project.siteName) : true;
+  }
+
+  app.get("/api/boq/projects/:id/snl/relink-preview", async (req, res) => {
+    try {
+      if (!assertFeatureAction(req, res, "boq_programme", "edit")) return;
+      const projectId = Number(req.params.id);
+      if (!Number.isInteger(projectId) || projectId <= 0) return res.status(400).json({ error: "Invalid project id" });
+      if (!await assertBoqProjectSiteScope(req, res, projectId)) return;
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({ projectId, items: await previewBoqProjectNormRelinks(projectId) });
+    } catch (error: any) {
+      console.error("GET BOQ MoRTH re-link preview:", error);
+      res.status(500).json({ error: "Unable to prepare the MoRTH re-link preview." });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/snl/relink-apply", async (req, res) => {
+    try {
+      if (!assertFeatureAction(req, res, "boq_programme", "edit")) return;
+      const projectId = Number(req.params.id);
+      const requested = req.body?.items;
+      if (!Number.isInteger(projectId) || projectId <= 0) return res.status(400).json({ error: "Invalid project id" });
+      if (!await assertBoqProjectSiteScope(req, res, projectId)) return;
+      if (!Array.isArray(requested) || requested.length === 0) return res.status(400).json({ error: "Select at least one BOQ item to re-link." });
+      const selections = requested.map((row: any) => ({
+        boqItemId: Number(row?.boqItemId),
+        snlItemId: Number(row?.snlItemId),
+      }));
+      if (selections.some((row: any) => !Number.isInteger(row.boqItemId) || row.boqItemId <= 0 || !Number.isInteger(row.snlItemId) || row.snlItemId <= 0)) {
+        return res.status(400).json({ error: "Each selected row needs a BOQ item and MoRTH item." });
+      }
+      if (new Set(selections.map((row: any) => row.boqItemId)).size !== selections.length) {
+        return res.status(400).json({ error: "A BOQ item can be selected only once." });
+      }
+      const itemIds = selections.map((row: any) => row.boqItemId);
+      const currentItems = await db.select({
+        id: boqItems.id,
+        itemCode: boqItems.itemCode,
+        description: boqItems.description,
+        recipeManualOverride: boqItems.recipeManualOverride,
+        isComposite: boqItems.isComposite,
+        currentNormId: snlBoqMappings.snlItemId,
+        currentNormCode: snlItems.itemCode,
+        currentNormDescription: snlItems.description,
+      }).from(boqItems)
+        .leftJoin(snlBoqMappings, eq(snlBoqMappings.boqItemId, boqItems.id))
+        .leftJoin(snlItems, eq(snlItems.id, snlBoqMappings.snlItemId))
+        .where(and(eq(boqItems.boqProjectId, projectId), drizzleInArray(boqItems.id, itemIds)));
+      if (currentItems.length !== itemIds.length) return res.status(404).json({ error: "One or more BOQ items do not belong to this project." });
+      if (currentItems.some(item => item.recipeManualOverride === true)) {
+        return res.status(409).json({ error: "Manual recipe protected items cannot be re-linked here." });
+      }
+      for (const row of selections) {
+        if (!(await isSnlItemInNormBook(row.snlItemId))) {
+          return res.status(409).json({ error: "Only items from the selected MoRTH norm book can be applied." });
+        }
+      }
+      const nextNorms = await Promise.all(selections.map(row => storage.getSnlItem(row.snlItemId)));
+      if (nextNorms.some(norm => !norm)) return res.status(409).json({ error: "A selected MoRTH item is no longer available." });
+
+      const itemById = new Map(currentItems.map(item => [item.id, item]));
+      const actor = currentUserName(req) || "Unknown";
+      for (const [selectionIndex, selection] of selections.entries()) {
+        const item = itemById.get(selection.boqItemId)!;
+        const nextNorm = nextNorms[selectionIndex]!;
+        await storage.applySnlMappingToRecipes(item.id, selection.snlItemId, "MEDIUM", null, actor);
+        await storage.setSnlMapping(item.id, {
+          boqItemId: item.id,
+          snlItemId: selection.snlItemId,
+          projectCategory: "MEDIUM",
+          gradingVariant: null,
+          mappedBy: actor,
+          isAutoMapped: false,
+          confidenceScore: null,
+          notes: "Re-linked to MoRTH after review",
+        });
+        await db.delete(snlCompositeComponents).where(eq(snlCompositeComponents.boqItemId, item.id));
+        await db.update(boqItems).set({ isComposite: false }).where(eq(boqItems.id, item.id));
+        await storage.updateBoqItemMappingStatus(item.id, "mapped");
+        await storage.logAudit({
+          module: "boq_norm_relink",
+          transactionId: item.id,
+          action: "relinked_to_morth",
+          userId: req.authUser?.id ?? null,
+          userName: actor,
+          oldValues: {
+            code: item.currentNormCode ?? null,
+            description: item.currentNormDescription ?? null,
+            snlItemId: item.currentNormId ?? null,
+          },
+          newValues: {
+            code: nextNorm.itemCode,
+            description: nextNorm.description,
+            snlItemId: selection.snlItemId,
+          },
+        });
+      }
+      res.json({ applied: selections.length });
+    } catch (error: any) {
+      console.error("POST BOQ MoRTH re-link apply:", error);
+      if (isRecipeManualOverrideError(error)) return res.status(409).json({ error: error.message });
+      res.status(500).json({ error: "Unable to apply the selected MoRTH re-links." });
+    }
+  });
+
   app.post("/api/boq/projects/:id/remap", async (req, res) => {
     try {
       const boqProjectId = parseInt(req.params.id);
@@ -26578,6 +26700,10 @@ export async function registerRoutes(
           skipped++;
           continue;
         }
+        if (!(await isSnlItemInNormBook(mapping.snlItemId))) {
+          skipped++;
+          continue;
+        }
         // Skip cross-sector suggestions (primary sector required for bulk-confirm)
         const boqCategory = classifyBoqItem(item.description ?? "");
         const sectorMul = getSectorMultiplier(boqCategory, mapping.snlSector);
@@ -26615,6 +26741,8 @@ export async function registerRoutes(
 
   // ─── Composite BOQ component endpoints ───────────────────────────────────────
 
+  const compositeSplitConfirmationMarker = "[owner-confirmed-separate-works]";
+
   app.get("/api/boq/items/:id/components", async (req, res) => {
     try {
       const boqItemId = parseInt(req.params.id);
@@ -26627,8 +26755,67 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/boq/items/:id/components/confirm-split", async (req, res) => {
+    try {
+      if (req.authUser?.isOwner !== true) return res.status(403).json({ error: "Owner access required" });
+      const boqItemId = Number(req.params.id);
+      if (!Number.isInteger(boqItemId)) return res.status(400).json({ error: "Invalid item id" });
+      const item = await storage.getBoqItem(boqItemId);
+      if (!item) return res.status(404).json({ error: "BOQ item not found" });
+      if (!await assertBoqProjectSiteScope(req, res, item.boqProjectId)) return;
+      if (item.isComposite !== true) return res.status(409).json({ error: "This BOQ item is not marked for a composite review." });
+      if (item.recipeManualOverride === true) return res.status(409).json({ error: "Manual recipe protected items cannot be split." });
+      const components = await storage.getCompositeComponents(boqItemId);
+      if (components.length < 2) return res.status(409).json({ error: "At least two detected work components are required." });
+      const [currentMapping] = await db.select({
+        snlItemId: snlBoqMappings.snlItemId,
+        itemCode: snlItems.itemCode,
+        description: snlItems.description,
+      }).from(snlBoqMappings)
+        .leftJoin(snlItems, eq(snlItems.id, snlBoqMappings.snlItemId))
+        .where(eq(snlBoqMappings.boqItemId, boqItemId))
+        .limit(1);
+      await db.transaction(async tx => {
+        for (const component of components) {
+          const notes = component.notes ?? "";
+          if (notes.includes(compositeSplitConfirmationMarker)) continue;
+          await tx.update(snlCompositeComponents)
+            .set({ notes: [notes.trim(), compositeSplitConfirmationMarker].filter(Boolean).join("\n") })
+            .where(eq(snlCompositeComponents.id, component.id));
+        }
+        // Remove the old one-norm link only after the Owner confirms the split.
+        await tx.delete(snlBoqMappings).where(eq(snlBoqMappings.boqItemId, boqItemId));
+        await tx.update(boqItems)
+          .set({ mappingStatus: "needs_review" })
+          .where(eq(boqItems.id, boqItemId));
+      });
+      await storage.logAudit({
+        module: "boq_composite_split",
+        transactionId: boqItemId,
+        action: "owner_confirmed_separate_works",
+        userId: req.authUser.id,
+        userName: currentUserName(req),
+        userRole: "owner",
+        oldValues: currentMapping ? {
+          snlItemId: currentMapping.snlItemId,
+          code: currentMapping.itemCode,
+          description: currentMapping.description,
+        } : null,
+        newValues: {
+          componentIds: components.map(component => component.id),
+          componentTags: components.map(component => component.componentTag),
+        },
+      });
+      res.json({ confirmed: true });
+    } catch (err) {
+      console.error("POST /api/boq/items/:id/components/confirm-split:", err);
+      res.status(500).json({ error: "Failed to confirm separate works" });
+    }
+  });
+
   app.post("/api/boq/items/:id/components/:compId/map", async (req, res) => {
     try {
+      if (!assertFeatureAction(req, res, "boq_programme", "edit")) return;
       const boqItemId = parseInt(req.params.id);
       const componentId = parseInt(req.params.compId);
       if (isNaN(boqItemId) || isNaN(componentId)) return res.status(400).json({ error: "Invalid ids" });
@@ -26636,6 +26823,12 @@ export async function registerRoutes(
       if (!snlItemId || typeof snlItemId !== "number") return res.status(400).json({ error: "snlItemId required" });
       const item = await storage.getBoqItem(boqItemId);
       if (!item) return res.status(404).json({ error: "BOQ item not found" });
+      if (!await assertBoqProjectSiteScope(req, res, item.boqProjectId)) return;
+      const components = await storage.getCompositeComponents(boqItemId);
+      if (!components.length || !components.every(component => component.notes?.includes(compositeSplitConfirmationMarker))) {
+        return res.status(409).json({ error: "The Owner must confirm that these are separate works before mapping components." });
+      }
+      if (!components.some(component => component.id === componentId)) return res.status(404).json({ error: "Component not found for this BOQ item" });
       if (!(await isSnlItemInNormBook(Number(snlItemId)))) return res.status(409).json({ error: "Only the selected MoRTH norm book can be applied." });
       if (item.recipeManualOverride === true) {
         return res.status(409).json({
@@ -26644,6 +26837,9 @@ export async function registerRoutes(
       }
       const user = (req as any).user?.username ?? "user";
       await storage.applyCompositeComponentMap(componentId, snlItemId, user);
+      await db.update(snlCompositeComponents)
+        .set({ notes: `Confirmed by ${user}\n${compositeSplitConfirmationMarker}` })
+        .where(eq(snlCompositeComponents.id, componentId));
       const allDone = await storage.applyCompositeRecipesIfComplete(boqItemId, user);
       res.json({ allDone });
     } catch (err) {
@@ -27041,10 +27237,6 @@ async function seedSnlItems() {
     autoMapAllUnmappedItems()
       .then(r => { if (r.remapped > 0) console.log(`SNL global remap: ${r.remapped} items processed`); })
       .catch(err => console.error("SNL global remap failed:", err));
-    // Backfill: promote any auto-mapped items that composite detection now recognises
-    backfillCompositeDetection()
-      .then(r => { if (r.promoted > 0) console.log(`SNL composite backfill: ${r.promoted} items promoted`); })
-      .catch(err => console.error("SNL composite backfill failed:", err));
   } catch (err) {
     console.error("seedSnlItems failed:", err);
   }

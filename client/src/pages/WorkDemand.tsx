@@ -716,7 +716,7 @@ function LabourTable({
 
 // ─── Item-Wise Table ────────────────────────────────────────────────────────────
 
-interface ItemDemandRow {
+export interface ItemDemandRow {
   boqItemId?: number;
   description: string;
   itemCode?: string | null;
@@ -732,16 +732,16 @@ interface ItemDemandRow {
   labour: Array<{ name: string; days: number; daysPerUnit: number }>;
 }
 
-function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<string>): ItemDemandRow[] {
+export function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<string>): ItemDemandRow[] {
   const map = new Map<string, ItemDemandRow>();
   const quantityChecks = new Map((demand.programmeQuantityChecks ?? []).map(check => [check.boqItemId, check]));
-  const rowKey = (bd: { boqItemId?: number; itemCode?: string | null; itemDescription: string; fullDescription?: string }) =>
+  const rowKey = (bd: { boqItemId?: number | null; itemCode?: string | null; itemDescription: string; fullDescription?: string }) =>
     bd.boqItemId != null ? `boq:${bd.boqItemId}` : (bd.itemCode ?? "") + "|" + (bd.fullDescription ?? bd.itemDescription);
-  const get = (bd: { boqItemId?: number; itemCode?: string | null; itemDescription: string; fullDescription?: string; displayName?: string | null; canonicalDisplayName?: string | null; unit?: string; compositeLabel?: string; isProgrammed?: boolean }): ItemDemandRow => {
+  const get = (bd: { boqItemId?: number | null; itemCode?: string | null; itemDescription: string; fullDescription?: string; displayName?: string | null; canonicalDisplayName?: string | null; unit?: string; compositeLabel?: string; isProgrammed?: boolean }): ItemDemandRow => {
     const key = rowKey(bd);
     if (!map.has(key)) {
       map.set(key, {
-        boqItemId: bd.boqItemId,
+        boqItemId: bd.boqItemId ?? undefined,
         description: bd.fullDescription ?? bd.itemDescription,
         itemCode: bd.itemCode ?? null,
         displayName: bd.displayName ?? null,
@@ -765,7 +765,7 @@ function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<stri
       if (bd.unit && !row.unit) row.unit = bd.unit;
       if (bd.compositeLabel && !row.compositeLabel) row.compositeLabel = bd.compositeLabel;
       const ex = row.materials.find(m => m.name === mat.materialName && m.uom === mat.uom);
-      if (ex) { ex.qty += bd.lineQty; }
+      if (ex) { ex.qty += bd.lineQty; ex.qtyPerUnit += bd.qtyPerUnit; }
       else row.materials.push({ name: mat.materialName, uom: mat.uom, qty: bd.lineQty, qtyPerUnit: bd.qtyPerUnit });
     }
   }
@@ -774,7 +774,7 @@ function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<stri
       const row = get(bd);
       if (bd.unit && !row.unit) row.unit = bd.unit;
       const ex = row.equipment.find(e => e.name === eq.equipmentName);
-      if (ex) { ex.hours += bd.lineHours; }
+      if (ex) { ex.hours += bd.lineHours; ex.hrsPerUnit += bd.hrsPerUnit; }
       else row.equipment.push({ name: eq.equipmentName, hours: bd.lineHours, hrsPerUnit: bd.hrsPerUnit });
     }
   }
@@ -783,9 +783,21 @@ function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<stri
       const row = get(bd);
       if (bd.unit && !row.unit) row.unit = bd.unit;
       const ex = row.labour.find(l => l.name === lb.designation);
-      if (ex) { ex.days += bd.lineDays; }
+      if (ex) { ex.days += bd.lineDays; ex.daysPerUnit += bd.daysPerUnit; }
       else row.labour.push({ name: lb.designation, days: bd.lineDays, daysPerUnit: bd.daysPerUnit });
     }
+  }
+  for (const check of demand.programmeQuantityChecks ?? []) {
+    const row = get({
+      boqItemId: check.boqItemId,
+      itemCode: check.itemCode,
+      itemDescription: check.description,
+      fullDescription: check.description,
+      unit: check.unit,
+      isProgrammed: true,
+    });
+    row.programmeQuantityCheck = check;
+    row.workQty = Math.max(row.workQty, check.cappedDemandQty);
   }
   // Sort rows: programmed first, then by item code (numeric bill.item order)
   return [...map.values()].sort((a, b) => {

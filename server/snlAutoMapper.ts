@@ -20,7 +20,7 @@
  */
 
 import { db } from "./db";
-import { boqCategories, boqItems, snlItems, snlSources, snlBoqMappings, snlCompositeComponents } from "@shared/schema";
+import { boqCategories, boqItems, snlItems, snlSources, snlBoqMappings } from "@shared/schema";
 import { eq, and, inArray, notInArray } from "drizzle-orm";
 import { storage } from "./storage";
 import { isSnlWorkFamilyCompatible } from "@shared/snlMappingPolicy";
@@ -842,38 +842,34 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       continue;
     }
     try {
-      // ── Composite detection (highest priority, before any single-SNL matching) ──
-      // When ≥2 distinct material layers are detected in the description, break the
-      // item into component rows and skip the normal single-SNL mapping path entirely.
-      const compositeDrafts = boqRow.isComposite === true ? detectCompositeComponents(boqRow.description) : null;
+      // ── Composite suggestion (before single-SNL matching) ─────────────────
+      // Persist only a review suggestion. The single recipe stays untouched;
+      // recipes are replaced by component norms only after Owner confirmation
+      // and explicit component mapping.
+      if (boqRow.isComposite === true) continue;
+      const compositeDrafts = detectCompositeComponents(boqRow.description);
       if (compositeDrafts && compositeDrafts.length >= 2) {
-        // Attempt to rule-match each component to an SNL item individually.
-        const roadCompatibleRows = snlRows.filter(s => isRoadOrStructureSector(s.sector));
+        const existingComponents = await storage.getCompositeComponents(boqRow.id);
+        if (existingComponents.length > 0) continue;
+        const roadCompatibleRows = snlRows.filter(row => isRoadOrStructureSector(row.sector));
         const rulePool = roadCompatibleRows.length > 0 ? roadCompatibleRows : snlRows;
-
-        const componentRows = compositeDrafts.map((draft, idx) => {
+        const componentRows = compositeDrafts.map((draft, componentIndex) => {
           const ruleResult = ruleMatchSnl(draft.tag, rulePool, draft.description);
           return {
-            componentIndex: idx,
+            componentIndex,
             componentTag: draft.tag,
             componentDescription: draft.description,
-            snlItemId: ruleResult ? ruleResult.snlItemId : null,
-            confidenceScore: ruleResult ? ruleResult.confidence : null,
+            snlItemId: ruleResult?.snlItemId ?? null,
+            confidenceScore: ruleResult?.confidence ?? null,
             status: ruleResult ? "needs_review" : "unmapped",
-            notes: ruleResult ? `Auto-suggested via rule: ${draft.tag}` : null,
+            notes: ruleResult ? `MoRTH suggestion for ${draft.tag}; pending Owner split confirmation` : null,
           };
         });
-
-        // Remove any stale single-SNL auto-mapping so the composite takes over cleanly.
-        await db.delete(snlBoqMappings).where(
-          and(eq(snlBoqMappings.boqItemId, boqRow.id), eq(snlBoqMappings.isAutoMapped, true)),
-        );
         await storage.upsertCompositeComponents(boqRow.id, componentRows);
-        await db
-          .update(boqItems)
+        await db.update(boqItems)
           .set({ mappingStatus: "needs_review", isComposite: true })
           .where(eq(boqItems.id, boqRow.id));
-        continue; // skip single-SNL mapping for this row
+        continue;
       }
 
       // ── Rule classification (used by both scope guard and rule-match) ─────
@@ -1117,6 +1113,112 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
   }
 }
 
+export async function previewBoqProjectNormRelinks(boqProjectId: number) {
+  const sourceId = await getNormBookSourceId();
+  const items = await db.select({
+    boqItemId: boqItems.id,
+    itemCode: boqItems.itemCode,
+    snlCode: boqItems.snlCode,
+    description: boqItems.description,
+    unit: boqItems.unit,
+    workCategory: boqItems.workCategory,
+    recipeManualOverride: boqItems.recipeManualOverride,
+    currentNormId: snlBoqMappings.snlItemId,
+    currentNormCode: snlItems.itemCode,
+    currentNormDescription: snlItems.description,
+    currentSourceCode: snlSources.code,
+    currentSourceName: snlSources.name,
+  }).from(boqItems)
+    .leftJoin(snlBoqMappings, eq(snlBoqMappings.boqItemId, boqItems.id))
+    .leftJoin(snlItems, eq(snlItems.id, snlBoqMappings.snlItemId))
+    .leftJoin(snlSources, eq(snlSources.id, snlItems.sourceId))
+    .where(eq(boqItems.boqProjectId, boqProjectId));
+
+  const snlRows = sourceId == null ? [] : await db.select({
+    id: snlItems.id,
+    itemCode: snlItems.itemCode,
+    description: snlItems.description,
+    shortLabel: snlItems.shortLabel,
+    unit: snlItems.unit,
+    workCategory: snlItems.workCategory,
+    sector: snlItems.sector,
+    sourceCode: snlSources.code,
+  }).from(snlItems)
+    .innerJoin(snlSources, eq(snlSources.id, snlItems.sourceId))
+    .where(and(eq(snlItems.sourceId, sourceId), eq(snlItems.isActive, true)));
+  const tokenMap = new Map(snlRows.map(row => [row.id, richTokens(`${row.description ?? ""} ${row.shortLabel ?? ""}`)]));
+  const idf = buildIdf([...tokenMap.values()]);
+
+  return items.map(item => {
+    const description = item.description ?? "";
+    const boqCategory = classifyBoqItem(description);
+    let proposed = null as null | { id: number; code: string; description: string; unit: string; score: number };
+    const explicitCode = (item as any).snlCode?.trim().toLowerCase();
+    const direct = explicitCode
+      ? snlRows.filter(row => row.itemCode.trim().toLowerCase() === explicitCode && unitsCompatible(item.unit ?? "", row.unit))
+      : [];
+    if (direct.length === 1) {
+      const row = direct[0];
+      proposed = { id: row.id, code: row.itemCode, description: row.shortLabel ?? row.description, unit: row.unit, score: 1 };
+    }
+
+    if (!proposed) {
+      const ruleTag = classifyBoqItemForSnl(description);
+      const primaryRows = ruleTag ? snlRows.filter(row => isPrimaryRuleCandidate(boqCategory, row)) : [];
+      const ruleMatch = ruleTag ? ruleMatchSnl(ruleTag, primaryRows, description) : null;
+      const ruleRow = ruleMatch ? snlRows.find(row => row.id === ruleMatch.snlItemId) : null;
+      if (ruleRow && unitsCompatible(item.unit ?? "", ruleRow.unit)) {
+        proposed = {
+          id: ruleRow.id,
+          code: ruleRow.itemCode,
+          description: ruleRow.shortLabel ?? ruleRow.description,
+          unit: ruleRow.unit,
+          score: ruleMatch!.confidence,
+        };
+      }
+    }
+
+    if (!proposed) {
+      const ruleTag = classifyBoqItemForSnl(description);
+      const family = snlRows.filter(row => isSnlWorkFamilyCompatible(
+        item.workCategory ?? inferWorkCategory(description),
+        ruleTag,
+        row.workCategory,
+      ));
+      const candidates = family.filter(row =>
+        unitsCompatible(item.unit ?? "", row.unit) && getEffectiveSectorMultiplier(boqCategory, row) > 0,
+      );
+      const scoringPool = candidates.length >= 5 ? candidates : family.filter(row => unitsCompatible(item.unit ?? "", row.unit));
+      const boqTokens = richTokens(`${description} ${item.workCategory ?? ""}`);
+      const ranked = scoringPool.map(row => ({
+        row,
+        score: weightedCosine(boqTokens, tokenMap.get(row.id) ?? [], idf) *
+          getEffectiveSectorMultiplier(boqCategory, row),
+      })).sort((a, b) => b.score - a.score);
+      if (ranked[0] && ranked[0].score >= SUGGEST_FLOOR) {
+        const row = ranked[0].row;
+        proposed = { id: row.id, code: row.itemCode, description: row.shortLabel ?? row.description, unit: row.unit, score: ranked[0].score };
+      }
+    }
+
+    return {
+      ...item,
+      currentNorm: item.currentNormId ? {
+        id: item.currentNormId,
+        code: item.currentNormCode,
+        description: item.currentNormDescription,
+        sourceCode: item.currentSourceCode,
+        sourceName: item.currentSourceCode === "MORTH_SDB_2019"
+          ? "MoRTH Standard Data Book (2003)"
+          : item.currentSourceName,
+      } : null,
+      proposed,
+      protected: item.recipeManualOverride === true,
+      needsChange: !!proposed && proposed.id !== item.currentNormId,
+    };
+  });
+}
+
 /**
  * Re-map ALL unmapped / needs_review BOQ items across every project.
  * Called at startup after SNL seeding so existing items benefit from updated
@@ -1166,6 +1268,8 @@ export async function remapBoqProject(boqProjectId: number): Promise<{ remapped:
  * identity-ambiguous rows remain review work.
  */
 async function propagateDuplicateMappings(boqProjectId: number): Promise<{ propagated: number }> {
+  const selectedSourceId = await getNormBookSourceId();
+  if (selectedSourceId == null) return { propagated: 0 };
   const allItems = await db
     .select({
       id: boqItems.id,
@@ -1188,7 +1292,12 @@ async function propagateDuplicateMappings(boqProjectId: number): Promise<{ propa
       isAutoMapped: snlBoqMappings.isAutoMapped,
     })
     .from(snlBoqMappings)
-    .where(inArray(snlBoqMappings.boqItemId, allItems.map(i => i.id)));
+    .innerJoin(snlItems, eq(snlItems.id, snlBoqMappings.snlItemId))
+    .where(and(
+      inArray(snlBoqMappings.boqItemId, allItems.map(i => i.id)),
+      eq(snlItems.sourceId, selectedSourceId),
+      eq(snlItems.isActive, true),
+    ));
 
   const mappingByItemId = new Map(allMappings.map(m => [m.boqItemId, m]));
 
@@ -1359,87 +1468,13 @@ export async function autoMapProjectWithSummary(boqProjectId: number): Promise<{
   };
 }
 
-// ─── One-time composite backfill ──────────────────────────────────────────────
+// ─── Composite split confirmation compatibility ─────────────────────────────
 
 /**
- * Scan all BOQ items that are currently in `mapped` status with `is_composite=false`
- * and whose mapping was auto-applied (not manually confirmed).  Re-run composite
- * detection with the current (fixed) patterns and promote any that now qualify.
- *
- * Safe to call at every startup — it is a no-op once all items are up to date.
- * This fixes items that were mapped before composite detection existed, and items
- * that were left in a mapped/orphaned state from prior incomplete remaps.
+ * Deprecated compatibility entry point; automatic split backfills are disabled.
  */
 export async function backfillCompositeDetection(): Promise<{ promoted: number }> {
-  // All mapped + non-composite candidates
-  const candidates = await db
-    .select({ id: boqItems.id, description: boqItems.description, recipeManualOverride: boqItems.recipeManualOverride })
-    .from(boqItems)
-    .where(and(eq(boqItems.mappingStatus, "mapped"), eq(boqItems.isComposite, true)));
-
-  const eligibleCandidates = candidates.filter((c) => c.recipeManualOverride !== true);
-  if (eligibleCandidates.length === 0) return { promoted: 0 };
-  const allIds = eligibleCandidates.map(r => r.id);
-
-  // Exclude items the user confirmed manually — never touch those.
-  const manualRows = await db
-    .select({ boqItemId: snlBoqMappings.boqItemId })
-    .from(snlBoqMappings)
-    .where(and(inArray(snlBoqMappings.boqItemId, allIds), eq(snlBoqMappings.isAutoMapped, false)));
-  const manualIds = new Set(manualRows.map(r => r.boqItemId));
-
-  const eligible = eligibleCandidates.filter(c => !manualIds.has(c.id));
-  if (eligible.length === 0) return { promoted: 0 };
-
-  // Load SNL items once for rule-matching
-  const snlRows = await db
-    .select({
-      id: snlItems.id,
-      itemCode: snlItems.itemCode,
-      description: snlItems.description,
-      shortLabel: snlItems.shortLabel,
-      unit: snlItems.unit,
-      workCategory: snlItems.workCategory,
-      sector: snlItems.sector,
-      sourceCode: snlSources.code,
-    })
-    .from(snlItems)
-    .innerJoin(snlSources, eq(snlItems.sourceId, snlSources.id))
-    .where(eq(snlItems.isActive, true));
-
-  const roadCompatibleRows = snlRows.filter(s => isRoadOrStructureSector(s.sector));
-  const rulePool = roadCompatibleRows.length > 0 ? roadCompatibleRows : snlRows;
-
-  let promoted = 0;
-  for (const item of eligible) {
-    const drafts = detectCompositeComponents(item.description);
-    if (!drafts || drafts.length < 2) continue;
-
-    // Delete any stale auto single-SNL mapping for this item.
-    await db.delete(snlBoqMappings).where(
-      and(eq(snlBoqMappings.boqItemId, item.id), eq(snlBoqMappings.isAutoMapped, true)),
-    );
-
-    const componentRows = drafts.map((draft, idx) => {
-      const ruleResult = ruleMatchSnl(draft.tag, rulePool, draft.description);
-      return {
-        componentIndex: idx,
-        componentTag: draft.tag,
-        componentDescription: draft.description,
-        snlItemId: ruleResult ? ruleResult.snlItemId : null,
-        confidenceScore: ruleResult ? ruleResult.confidence : null,
-        status: ruleResult ? ("needs_review" as const) : ("unmapped" as const),
-        notes: ruleResult ? `Auto-suggested via rule: ${draft.tag}` : null,
-      };
-    });
-
-    await storage.upsertCompositeComponents(item.id, componentRows);
-    await db
-      .update(boqItems)
-      .set({ mappingStatus: "needs_review", isComposite: true })
-      .where(eq(boqItems.id, item.id));
-    promoted++;
-  }
-
-  return { promoted };
+  // Splitting a BOQ row into separate works requires explicit Owner confirmation.
+  // Retain the exported helper for compatibility, but never mutate at startup.
+  return { promoted: 0 };
 }

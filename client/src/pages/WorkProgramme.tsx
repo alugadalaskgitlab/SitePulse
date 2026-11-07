@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { ProgrammeLink as Link } from "@/components/ProgrammeLink";
 import {
-  ChevronRight, FileSpreadsheet, Plus, Trash2,
+  ChevronRight, FileSpreadsheet, Plus, Trash2, RefreshCw,
   AlertTriangle, CheckCircle2, Loader2, CalendarDays,
   Scissors, BookOpen, ChevronDown, ChevronUp, Info,
   GanttChartSquare, TableProperties, ArrowLeftRight, Settings2, Sparkles,
@@ -17,13 +17,16 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   calculateStretchQty,
@@ -3258,10 +3261,148 @@ function StartDateBanner({ projectId }: { projectId: number }) {
   );
 }
 
+type SnlRelinkRow = {
+  boqItemId: number;
+  itemCode: string | null;
+  description: string | null;
+  unit: string | null;
+  currentNorm: null | { id: number; code: string | null; description: string | null; sourceCode: string | null; sourceName: string | null };
+  proposed: null | { id: number; code: string; description: string; unit: string; score: number };
+  protected: boolean;
+  needsChange: boolean;
+};
+
+function SnlRelinkButton({ projectId }: { projectId: number }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const { data, isLoading, error } = useQuery<{ items: SnlRelinkRow[] }>({
+    queryKey: ["/api/boq/projects", projectId, "snl", "relink-preview"],
+    queryFn: async () => {
+      const response = await fetch(`/api/boq/projects/${projectId}/snl/relink-preview`, { credentials: "include" });
+      if (!response.ok) throw new Error("Unable to load the MoRTH re-link preview.");
+      return response.json();
+    },
+    enabled: open,
+  });
+  useEffect(() => {
+    if (!data) return;
+    setSelected(new Set(data.items.filter(row => row.needsChange && !row.protected && row.proposed).map(row => row.boqItemId)));
+  }, [data]);
+
+  const applyMutation = useMutation({
+    mutationFn: async () => {
+      const rows = data?.items.filter(row => selected.has(row.boqItemId) && row.proposed) ?? [];
+      const response = await apiRequest("POST", `/api/boq/projects/${projectId}/snl/relink-apply`, {
+        items: rows.map(row => ({ boqItemId: row.boqItemId, snlItemId: row.proposed!.id })),
+      });
+      return response.json();
+    },
+    onSuccess: async result => {
+      toast({ title: `${result.applied} item(s) re-linked to MoRTH` });
+      setOpen(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "items"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "bom"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "snl", "relink-preview"] }),
+      ]);
+    },
+    onError: (error: any) => toast({
+      title: "Could not re-link items",
+      description: error instanceof Error ? error.message : String(error),
+      variant: "destructive",
+    }),
+  });
+
+  const rows = data?.items ?? [];
+  const applicable = rows.filter(row => row.needsChange && !row.protected && row.proposed);
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)} data-testid="button-relink-morth">
+        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />Re-link to MoRTH
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-5xl max-h-[88vh] flex flex-col" data-testid="dialog-relink-morth">
+          <DialogHeader>
+            <DialogTitle>Re-link to MoRTH</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Review each proposed item. Nothing changes until you select Apply.</p>
+          <div className="flex-1 min-h-0 overflow-auto rounded-md border">
+            {isLoading ? (
+              <div className="p-8 text-center text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Preparing preview…</div>
+            ) : error ? (
+              <div className="p-4 text-sm text-destructive">Unable to load the re-link preview.</div>
+            ) : rows.length === 0 ? (
+              <div className="p-4 text-sm text-muted-foreground">No BOQ items in this project.</div>
+            ) : (
+              <div className="divide-y">
+                {rows.map(row => {
+                  const oldNorm = row.currentNorm
+                    ? `${row.currentNorm.code ?? ""} ${row.currentNorm.description ?? ""}${row.currentNorm.sourceCode && row.currentNorm.sourceCode !== "MORTH_SDB_2019" ? ` · ${row.currentNorm.sourceName ?? ""}` : ""}`.trim()
+                    : "Not linked";
+                  return (
+                    <div key={row.boqItemId} className="grid grid-cols-[32px_minmax(180px,1.4fr)_minmax(150px,1fr)_minmax(150px,1fr)] gap-3 p-3 text-sm items-start">
+                      <div className="pt-0.5">
+                        <Checkbox
+                          checked={selected.has(row.boqItemId)}
+                          disabled={!row.needsChange || row.protected || !row.proposed}
+                          onCheckedChange={checked => setSelected(prev => {
+                            const next = new Set(prev);
+                            if (checked === true) next.add(row.boqItemId); else next.delete(row.boqItemId);
+                            return next;
+                          })}
+                          aria-label={`Apply MoRTH link for ${row.description ?? "BOQ item"}`}
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium">{row.description ?? "BOQ item"}</p>
+                        <p className="text-xs text-muted-foreground">{row.itemCode ? `${row.itemCode} · ` : ""}{row.unit ?? ""}</p>
+                        {row.protected && <Badge variant="outline" className="mt-1">Manual recipe protected</Badge>}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-muted-foreground">Current norm</p>
+                        <p className="mt-1 break-words">{oldNorm}</p>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-muted-foreground">Proposed MoRTH item</p>
+                        {row.proposed ? (
+                          <p className="mt-1 break-words"><span className="font-mono">{row.proposed.code}</span> · {row.proposed.description}</p>
+                        ) : (
+                          <Badge variant="outline" className="mt-1">No MoRTH item</Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <span className="text-xs text-muted-foreground">{selected.size} selected · {applicable.length} proposed changes</span>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button
+                disabled={selected.size === 0 || applyMutation.isPending}
+                onClick={() => applyMutation.mutate()}
+                data-testid="button-apply-morth-relinks"
+              >
+                {applyMutation.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Apply selected
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function WorkProgramme() {
   const { toast } = useToast();
+  const { featureCan } = useAuth();
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id);
   const deepLinkItemId = typeof window !== "undefined"
@@ -4157,6 +4298,7 @@ export default function WorkProgramme() {
             project conditions; conditional state only affects enabled/disabled,
             counts and attention indicators inside the menus. ── */}
         <div className="flex gap-2 flex-wrap items-center">
+          {featureCan("boq_programme", "edit") && <SnlRelinkButton projectId={projectId} />}
           {effectiveProject && (
             (effectiveProject as any).programmeBaselinePublishedAt ? (
               <span

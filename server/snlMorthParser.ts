@@ -228,6 +228,7 @@ function parseChapterSheet(
   const items: ParsedItem[] = [];
 
   let current: ParsedItem | null = null;
+  const getCurrent = (): ParsedItem | null => current;
   let section: Section = 'desc';
 
   // Track last seen base code so we can handle "(i)" variant rows that have
@@ -238,6 +239,8 @@ function parseChapterSheet(
   const titleByCode = new Map<string, string>();
   let lastCaseBaseCode = '';
   let lastCaseBaseTitle = '';
+  let lastWbmMethodCode = "";
+  let lastWbmShiftOutput = 0;
   // Track if the current item saw any sub-row data (has real content)
   let currentHasData = false;
 
@@ -287,8 +290,9 @@ function parseChapterSheet(
     // ── Detect item / sub-variant boundaries ──────────────────────────────
 
     const spacedCode = colA.match(/^(\d+(?:\.\d+)?)[ \t]+([A-H])$/i);
-    const isCode = /^\d+\.?\d*[a-z]?$/.test(colA);
-    const current128Case = current?.code.match(/^12\.8-([C-H])$/i);
+    const isCode = /^\d+\.?\d*[a-z]?$/i.test(colA);
+    const activeBeforeBoundary = getCurrent();
+    const current128Case = activeBeforeBoundary?.code.match(/^12\.8-([C-H])$/i);
     const caseLetter = spacedCode?.[1] === "12.8"
       ? spacedCode[2].toUpperCase()
       : current128Case?.[1]?.toUpperCase();
@@ -302,12 +306,20 @@ function parseChapterSheet(
     if (caseLabel) {
       const caseBaseCode = `12.8-${caseLetter}`;
       const caseBaseTitle = titleByCode.get(caseBaseCode) || lastBaseTitle;
-      const inheritedUnit = current?.unit || lastBaseUnit;
+      const inheritedUnit = activeBeforeBoundary?.unit || lastBaseUnit;
       const detail = colD && !/^\s*[a-z]\s*[).:-]/i.test(colD) ? colD : `Case ${caseLabel}`;
       const caseTitle = `${caseBaseTitle} — Case ${caseLabel}${detail === `Case ${caseLabel}` ? "" : `: ${detail}`}`;
       const caseCode = caseLabel === "I" ? caseBaseCode : `${caseBaseCode}-Case-II`;
+      // The letter row (C–H) is a structural heading immediately before Case I.
+      // It may inherit the previous variant's unit, but it has no resource rows;
+      // discard that empty placeholder so Case I keeps the canonical code.
+      if (caseLabel === "I" && activeBeforeBoundary?.code === caseBaseCode && !currentHasData) {
+        current = null;
+        currentHasData = false;
+      }
       startItem(caseCode, caseTitle);
-      if (current && inheritedUnit) current.unit = inheritedUnit;
+      const caseItem = getCurrent();
+      if (caseItem && inheritedUnit) caseItem.unit = inheritedUnit;
       continue;
     }
 
@@ -324,10 +336,23 @@ function parseChapterSheet(
     }
 
     if (isVariant) {
+      const wbmMethodStart = chapterNo === 4 &&
+        (colA === "4.9" || lastBaseCode === "4.9") &&
+        /^[AB]$/.test(variantLabel);
+      const wbmMaterialGrade = chapterNo === 4 &&
+        /^4\.9[AB]$/i.test(colA) &&
+        /^\((i|ii|iii)\)$/i.test(colC) &&
+        !!lastWbmMethodCode;
       // Capture the unit from the base item before starting sub-variant
-      if (current && current.unit) lastBaseUnit = current.unit;
+      const activeBeforeVariant = getCurrent();
+      if (activeBeforeVariant && activeBeforeVariant.unit) lastBaseUnit = activeBeforeVariant.unit;
       // Sub-variant: col A may repeat the base code or be empty
-      if (isCode) lastBaseCode = colA;
+      if (isCode) {
+        // The workbook writes the WBM grading code as "4.9A" under the
+        // already active 4.9-A / 4.9-B work item. Keep that parent identity so
+        // the material rows stay distinguishable by work method.
+        lastBaseCode = wbmMaterialGrade ? lastWbmMethodCode : colA;
+      }
       const varCode = `${lastBaseCode}-${variantLabel}`;
       const varTitle = colD
         ? `${lastBaseTitle}: ${colD}`
@@ -336,13 +361,23 @@ function parseChapterSheet(
       lastCaseBaseCode = varCode;
       lastCaseBaseTitle = varTitle;
       startItem(varCode, varTitle);
+      if (wbmMethodStart) {
+        lastWbmMethodCode = varCode;
+        lastWbmShiftOutput = 0;
+      }
+      const startedVariant = getCurrent();
+      if (wbmMaterialGrade && startedVariant) {
+        section = "materials";
+        startedVariant.shiftOutput = lastWbmShiftOutput;
+      }
       // Inherit parent's unit for all sub-variants
-      if (lastBaseUnit && current) current.unit = lastBaseUnit;
+      if (lastBaseUnit && startedVariant) startedVariant.unit = lastBaseUnit;
       continue;
     }
 
     // ── Process within current item ────────────────────────────────────────
-    if (!current) continue;
+    const activeItem = getCurrent();
+    if (!activeItem) continue;
 
     // Detect section changes
     const sec = detectSection(colD);
@@ -353,16 +388,17 @@ function parseChapterSheet(
     // Description section: pick up unit and output lines
     if (section === 'desc') {
       const u = parseUnitLine(colD);
-      if (u) { current.unit = u; continue; }
+      if (u) { activeItem.unit = u; continue; }
       const o = parseOutput(colD);
       if (o) {
-        current.shiftOutput = o.qty;
-        if (!current.unit) current.unit = o.unit;
+        activeItem.shiftOutput = o.qty;
+        if (activeItem.code === lastWbmMethodCode) lastWbmShiftOutput = o.qty;
+        if (!activeItem.unit) activeItem.unit = o.unit;
         continue;
       }
       // Accumulate description text (skip explanatory prose that's too long)
-      if (colD && !isNoiseRow(colD) && colD.length > 5 && !current.description) {
-        current.description = colD;
+      if (colD && !isNoiseRow(colD) && colD.length > 5 && !activeItem.description) {
+        activeItem.description = colD;
       }
       continue;
     }
@@ -374,13 +410,13 @@ function parseChapterSheet(
 
     const qty = parseQty(colF);
     if (qty === null || qty <= 0) continue;
-    const unit = colE || (section === 'labour' ? 'day' : section === 'equipment' ? 'hour' : current.unit);
+    const unit = colE || (section === 'labour' ? 'day' : section === 'equipment' ? 'hour' : activeItem.unit);
 
     const subRow: SubRow = { label: colD, unit, qty, ref: colI };
 
-    if (section === 'labour')    { current.labour.push(subRow);    currentHasData = true; }
-    if (section === 'equipment') { current.equipment.push(subRow); currentHasData = true; }
-    if (section === 'materials') { current.materials.push(subRow); currentHasData = true; }
+    if (section === 'labour')    { activeItem.labour.push(subRow);    currentHasData = true; }
+    if (section === 'equipment') { activeItem.equipment.push(subRow); currentHasData = true; }
+    if (section === 'materials') { activeItem.materials.push(subRow); currentHasData = true; }
   }
 
   finalise();

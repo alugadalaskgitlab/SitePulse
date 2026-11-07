@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import {
   boqItems,
   boqProjects,
   snlBoqMappings,
+  snlCompositeComponents,
   snlItemEquipment,
   snlItemLabour,
   snlItemMaterials,
@@ -37,6 +38,7 @@ const materialCategory = (name: string) =>
 
 const skillTier = (name: string) =>
   /mason|operator|fitter|blacksmith|carpenter|sinker|skilled/i.test(name) ? "SKILLED" : "UNSKILLED";
+const storedPrecision = (value: number) => Number(value.toFixed(8));
 
 function parsedNorms(item: ParsedMorthItem): NormRows {
   const shiftOutput = item.shiftOutput > 0 ? item.shiftOutput : 1;
@@ -46,20 +48,20 @@ function parsedNorms(item: ParsedMorthItem): NormRows {
       shiftOutput,
       shiftHours: 8,
       outputUnit: item.unit || "CUM",
-      derivedPerHour: shiftOutput / 8,
+      derivedPerHour: storedPrecision(shiftOutput / 8),
     }],
     equipment: item.equipment.map((row, sortOrder) => ({
       projectCategory: "ALL", sortOrder, equipmentType: row.label, unit: "hrs",
-      quantityPerShift: row.qty, shiftOutputRef: shiftOutput, derivedPerUnit: row.qty / shiftOutput,
+      quantityPerShift: row.qty, shiftOutputRef: shiftOutput, derivedPerUnit: storedPrecision(row.qty / shiftOutput),
     })),
     labour: item.labour.map((row, sortOrder) => ({
       projectCategory: "ALL", sortOrder, designation: row.label, skillTier: skillTier(row.label), unit: "day",
-      quantityPerShift: row.qty, shiftOutputRef: shiftOutput, derivedPerUnit: row.qty / shiftOutput,
+      quantityPerShift: row.qty, shiftOutputRef: shiftOutput, derivedPerUnit: storedPrecision(row.qty / shiftOutput),
     })),
     materials: item.materials.map((row, sortOrder) => ({
       projectCategory: "ALL", sortOrder, materialName: row.label, materialCategory: materialCategory(row.label),
       unit: row.unit || item.unit || "CUM", quantityPerShift: row.qty, shiftOutputRef: shiftOutput,
-      derivedPerUnit: row.qty / shiftOutput,
+      derivedPerUnit: storedPrecision(row.qty / shiftOutput),
     })),
   };
 }
@@ -89,6 +91,11 @@ async function loadCurrentRows(sourceId: number) {
     for (const row of rows) map.set(row.itemId, [...(map.get(row.itemId) ?? []), row]);
     return map;
   };
+  const ordered = <T extends { sortOrder?: number; projectCategory?: string }>(rows: T[]) =>
+    [...rows].sort((a, b) =>
+      (a.projectCategory ?? "").localeCompare(b.projectCategory ?? "") ||
+      (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
+    );
   const productivityById = group(productivity);
   const equipmentById = group(equipment);
   const labourById = group(labour);
@@ -96,13 +103,15 @@ async function loadCurrentRows(sourceId: number) {
   return new Map(items.map(item => [item.itemCode, {
     item,
     norms: {
-      productivity: (productivityById.get(item.id) ?? []).map(({ projectCategory, shiftOutput, shiftHours, outputUnit, derivedPerHour }) =>
+      productivity: [...(productivityById.get(item.id) ?? [])]
+        .sort((a, b) => a.projectCategory.localeCompare(b.projectCategory) || a.shiftOutput - b.shiftOutput)
+        .map(({ projectCategory, shiftOutput, shiftHours, outputUnit, derivedPerHour }) =>
         ({ projectCategory, shiftOutput, shiftHours, outputUnit, derivedPerHour })),
-      equipment: (equipmentById.get(item.id) ?? []).map(({ projectCategory, sortOrder, equipmentType, unit, quantityPerShift, shiftOutputRef, derivedPerUnit }) =>
+      equipment: ordered(equipmentById.get(item.id) ?? []).map(({ projectCategory, sortOrder, equipmentType, unit, quantityPerShift, shiftOutputRef, derivedPerUnit }) =>
         ({ projectCategory, sortOrder, equipmentType, unit, quantityPerShift, shiftOutputRef, derivedPerUnit })),
-      labour: (labourById.get(item.id) ?? []).map(({ projectCategory, sortOrder, designation, skillTier, unit, quantityPerShift, shiftOutputRef, derivedPerUnit }) =>
+      labour: ordered(labourById.get(item.id) ?? []).map(({ projectCategory, sortOrder, designation, skillTier, unit, quantityPerShift, shiftOutputRef, derivedPerUnit }) =>
         ({ projectCategory, sortOrder, designation, skillTier, unit, quantityPerShift, shiftOutputRef, derivedPerUnit })),
-      materials: (materialsById.get(item.id) ?? []).map(({ projectCategory, sortOrder, materialName, materialCategory, unit, quantityPerShift, shiftOutputRef, derivedPerUnit }) =>
+      materials: ordered(materialsById.get(item.id) ?? []).map(({ projectCategory, sortOrder, materialName, materialCategory, unit, quantityPerShift, shiftOutputRef, derivedPerUnit }) =>
         ({ projectCategory, sortOrder, materialName, materialCategory, unit, quantityPerShift, shiftOutputRef, derivedPerUnit })),
     } as NormRows,
   }]));
@@ -127,7 +136,10 @@ export async function previewMorthReload(buffer: Buffer) {
     const reasons = [
       old.description !== next.description ? "Description changed" : "",
       old.unit !== next.unit ? "Unit changed" : "",
-      !compareNorms(old.norms, next.norms) ? "Productivity or resource rows changed" : "",
+      !compareNorms({ productivity: old.norms.productivity, equipment: [], labour: [], materials: [] }, { productivity: next.norms.productivity, equipment: [], labour: [], materials: [] }) ? "Productivity changed" : "",
+      !compareNorms({ productivity: [], equipment: old.norms.equipment, labour: [], materials: [] }, { productivity: [], equipment: next.norms.equipment, labour: [], materials: [] }) ? "Machine rows changed" : "",
+      !compareNorms({ productivity: [], equipment: [], labour: old.norms.labour, materials: [] }, { productivity: [], equipment: [], labour: next.norms.labour, materials: [] }) ? "Labour rows changed" : "",
+      !compareNorms({ productivity: [], equipment: [], labour: [], materials: old.norms.materials }, { productivity: [], equipment: [], labour: [], materials: next.norms.materials }) ? "Material rows changed" : "",
     ].filter(Boolean);
     return { code: item.code, status: reasons.length ? "changed" : "unchanged", old, new: next, reasons };
   });
@@ -171,6 +183,7 @@ export async function applyMorthReload(buffer: Buffer, expectedFingerprint: stri
     }).returning();
     const changedIds: number[] = [];
     for (const item of parsed) {
+      if (!changedCodes.includes(item.code)) continue;
       const shiftOutput = item.shiftOutput > 0 ? item.shiftOutput : 1;
       const [saved] = await tx.insert(snlItems).values({
         sourceId: source.id,
@@ -209,26 +222,57 @@ export async function applyMorthReload(buffer: Buffer, expectedFingerprint: stri
     return { sourceId: source.id, changedIds };
   });
 
-  const affected = applied.changedIds.length
-    ? await db.select({
+  const affectedBoqItems: Array<{
+    boqItemId: number;
+    itemCode: string | null;
+    description: string;
+    projectId: number | null;
+    projectName: string | null;
+    recipeManualOverride: boolean | null;
+    linkedAs: string[];
+  }> = [];
+  if (applied.changedIds.length) {
+    const [singleLinks, componentLinks] = await Promise.all([
+      db.select({
         boqItemId: boqItems.id,
         itemCode: boqItems.itemCode,
         description: boqItems.description,
         projectId: boqProjects.id,
         projectName: boqProjects.name,
+        recipeManualOverride: boqItems.recipeManualOverride,
       }).from(snlBoqMappings)
         .innerJoin(boqItems, eq(boqItems.id, snlBoqMappings.boqItemId))
         .leftJoin(boqProjects, eq(boqProjects.id, boqItems.boqProjectId))
-        .where(and(
-          inArray(snlBoqMappings.snlItemId, applied.changedIds),
-          eq(boqItems.recipeManualOverride, false),
-        ))
-    : [];
+        .where(inArray(snlBoqMappings.snlItemId, applied.changedIds)),
+      db.select({
+        boqItemId: boqItems.id,
+        itemCode: boqItems.itemCode,
+        description: boqItems.description,
+        projectId: boqProjects.id,
+        projectName: boqProjects.name,
+        recipeManualOverride: boqItems.recipeManualOverride,
+        componentTag: snlCompositeComponents.componentTag,
+      }).from(snlCompositeComponents)
+        .innerJoin(boqItems, eq(boqItems.id, snlCompositeComponents.boqItemId))
+        .leftJoin(boqProjects, eq(boqProjects.id, boqItems.boqProjectId))
+        .where(inArray(snlCompositeComponents.snlItemId, applied.changedIds)),
+    ]);
+    const byBoqItem = new Map<number, typeof affectedBoqItems[number]>();
+    for (const row of singleLinks) {
+      byBoqItem.set(row.boqItemId, { ...row, linkedAs: ["norm"] });
+    }
+    for (const row of componentLinks) {
+      const existing = byBoqItem.get(row.boqItemId);
+      if (existing) existing.linkedAs.push(`component ${row.componentTag}`);
+      else byBoqItem.set(row.boqItemId, { ...row, linkedAs: [`component ${row.componentTag}`] });
+    }
+    affectedBoqItems.push(...byBoqItem.values());
+  }
   return {
     sourceCode: MORTH_SDB_SOURCE_CODE,
     sourceName: MORTH_SDB_DISPLAY_NAME,
-    appliedCount: parsed.length,
+    appliedCount: changedCodes.length,
     changedCount: preview.counts.added + preview.counts.changed,
-    affectedBoqItems: affected,
+    affectedBoqItems,
   };
 }

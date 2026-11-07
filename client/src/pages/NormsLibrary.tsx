@@ -109,10 +109,38 @@ interface MorthReloadPreview {
   changes: Array<{
     code: string;
     status: "added" | "changed" | "unchanged";
-    old: null | { description: string; unit: string; norms: { equipment: unknown[]; labour: unknown[]; materials: unknown[] } };
-    new: { description: string; unit: string; norms: { equipment: unknown[]; labour: unknown[]; materials: unknown[] } };
+    old: null | { description: string; unit: string; norms: MorthNormRows };
+    new: { description: string; unit: string; norms: MorthNormRows };
     reasons: string[];
   }>;
+}
+
+interface MorthNormRows {
+  productivity: Array<{ projectCategory: string; shiftOutput: number; shiftHours: number; outputUnit: string; derivedPerHour: number | null }>;
+  equipment: Array<{ projectCategory: string; sortOrder: number; equipmentType: string; unit: string; quantityPerShift: number | null; shiftOutputRef: number; derivedPerUnit: number | null }>;
+  labour: Array<{ projectCategory: string; sortOrder: number; designation: string; skillTier: string; unit: string; quantityPerShift: number; shiftOutputRef: number; derivedPerUnit: number | null }>;
+  materials: Array<{ projectCategory: string; sortOrder: number; materialName: string; materialCategory: string; unit: string; quantityPerShift: number; shiftOutputRef: number; derivedPerUnit: number | null }>;
+}
+
+function formatReloadRows(norms: MorthNormRows | null, key: "equipment" | "labour" | "materials") {
+  if (!norms) return "—";
+  const rows = norms[key];
+  if (!rows.length) return "none";
+  return rows.map(row => {
+    const name = "equipmentType" in row ? row.equipmentType : "designation" in row ? row.designation : row.materialName;
+    const qty = row.quantityPerShift == null
+      ? "variable"
+      : `${row.quantityPerShift.toLocaleString("en-IN")} ${row.unit} per ${row.shiftOutputRef.toLocaleString("en-IN")} ${norms.productivity[0]?.outputUnit ?? ""}`.trim();
+    return `${row.projectCategory} · ${name}: ${qty}`;
+  }).join("; ");
+}
+
+function formatReloadProductivity(norms: MorthNormRows | null) {
+  if (!norms) return "—";
+  if (!norms.productivity.length) return "none";
+  return norms.productivity.map(row =>
+    `${row.projectCategory}: ${row.shiftOutput.toLocaleString("en-IN")} ${row.outputUnit} per ${row.shiftHours} hr`,
+  ).join("; ");
 }
 
 interface ImportResult {
@@ -477,7 +505,7 @@ export default function NormsLibrary() {
   const [showOtherBooks, setShowOtherBooks] = useState(false);
   const [reloadFile, setReloadFile] = useState<File | null>(null);
   const [reloadPreview, setReloadPreview] = useState<MorthReloadPreview | null>(null);
-  const [reloadResult, setReloadResult] = useState<{ affectedBoqItems: Array<{ boqItemId: number; itemCode: string | null; description: string; projectName: string | null }> } | null>(null);
+  const [reloadResult, setReloadResult] = useState<{ affectedBoqItems: Array<{ boqItemId: number; itemCode: string | null; description: string; projectName: string | null; recipeManualOverride: boolean | null; linkedAs: string[] }> } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reloadFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -546,7 +574,7 @@ export default function NormsLibrary() {
       const response = await fetch("/api/snl/morth/reload-apply", { method: "POST", body, credentials: "include" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "Unable to apply the MoRTH reload");
-      return payload as { affectedBoqItems: Array<{ boqItemId: number; itemCode: string | null; description: string; projectName: string | null }> };
+      return payload as { affectedBoqItems: Array<{ boqItemId: number; itemCode: string | null; description: string; projectName: string | null; recipeManualOverride: boolean | null; linkedAs: string[] }> };
     },
     onSuccess: async result => {
       setReloadResult(result);
@@ -731,8 +759,24 @@ export default function NormsLibrary() {
                   <span className="text-slate-500">{change.reasons.join(" · ")}</span>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1">
-                  <p><span className="font-semibold">Old:</span> {change.old ? `${change.old.description} · ${change.old.unit} · ${change.old.norms.equipment.length} machine, ${change.old.norms.labour.length} labour, ${change.old.norms.materials.length} material row(s)` : "Not in current MoRTH source"}</p>
-                  <p><span className="font-semibold">New:</span> {change.new.description} · {change.new.unit} · {change.new.norms.equipment.length} machine, {change.new.norms.labour.length} labour, {change.new.norms.materials.length} material row(s)</p>
+                  <div><span className="font-semibold">Old:</span> {change.old ? `${change.old.description} · ${change.old.unit}` : "Not in current MoRTH source"}
+                    {change.old && (
+                      <ul className="mt-1 text-slate-600 space-y-0.5">
+                      <li><span className="font-medium">Productivity:</span> {formatReloadProductivity(change.old.norms)}</li>
+                        <li><span className="font-medium">Machines:</span> {formatReloadRows(change.old.norms, "equipment")}</li>
+                        <li><span className="font-medium">Labour:</span> {formatReloadRows(change.old.norms, "labour")}</li>
+                        <li><span className="font-medium">Materials:</span> {formatReloadRows(change.old.norms, "materials")}</li>
+                      </ul>
+                    )}
+                  </div>
+                  <div><span className="font-semibold">New:</span> {change.new.description} · {change.new.unit}
+                    <ul className="mt-1 text-slate-600 space-y-0.5">
+                      <li><span className="font-medium">Productivity:</span> {formatReloadProductivity(change.new.norms)}</li>
+                      <li><span className="font-medium">Machines:</span> {formatReloadRows(change.new.norms, "equipment")}</li>
+                      <li><span className="font-medium">Labour:</span> {formatReloadRows(change.new.norms, "labour")}</li>
+                      <li><span className="font-medium">Materials:</span> {formatReloadRows(change.new.norms, "materials")}</li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             ))}
@@ -768,7 +812,7 @@ export default function NormsLibrary() {
           {reloadResult.affectedBoqItems.length > 0 && (
             <ul className="mt-2 max-h-48 overflow-auto text-xs space-y-1">
               {reloadResult.affectedBoqItems.map(item => (
-                <li key={item.boqItemId}>{item.projectName ?? "Project"} · {item.itemCode ?? "BOQ item"} · {item.description}</li>
+                <li key={item.boqItemId}>{item.projectName ?? "Project"} · {item.itemCode ?? "BOQ item"} · {item.description} · {item.linkedAs.join(", ")}{item.recipeManualOverride === true ? " · manual recipe protected (recipes unchanged)" : ""}</li>
               ))}
             </ul>
           )}

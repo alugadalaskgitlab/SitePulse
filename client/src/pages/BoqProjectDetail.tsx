@@ -833,6 +833,7 @@ function CompositeReviewCard({
   onMapped: () => void;
 }) {
   const { toast } = useToast();
+  const { isOwner } = useAuth();
   const [expanded, setExpanded] = useState(true);
   const [searchCompId, setSearchCompId] = useState<number | null>(null);
   const [searchQ, setSearchQ] = useState("");
@@ -883,7 +884,17 @@ function CompositeReviewCard({
     onError: () => toast({ title: "Failed to confirm component", variant: "destructive" }),
   });
 
+  const confirmSplitMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/boq/items/${item.id}/components/confirm-split`, {}),
+    onSuccess: async () => {
+      toast({ title: "Separate works confirmed" });
+      await refetchComponents();
+    },
+    onError: () => toast({ title: "Could not confirm separate works", variant: "destructive" }),
+  });
+
   const allMapped = components.length > 0 && components.every(c => c.status === "mapped");
+  const splitConfirmed = allMapped || (components.length > 0 && components.every(c => c.notes?.includes("[owner-confirmed-separate-works]")));
   const mappedCount = components.filter(c => c.status === "mapped").length;
 
   return (
@@ -900,11 +911,11 @@ function CompositeReviewCard({
           <p className="text-[12px] text-slate-700 leading-snug line-clamp-2 mt-0.5" title={item.description}>{boqItemDisplayName(item)}</p>
           <div className="flex items-center gap-1.5 mt-1">
             <span className="text-[11px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-semibold">
-              COMPOSITE
+              {splitConfirmed ? "SPLIT CONFIRMED" : "SPLIT SUGGESTION"}
             </span>
             {components.length > 0 && (
               <span className="text-[11px] text-slate-500">
-                {mappedCount}/{components.length} components confirmed
+                {mappedCount}/{components.length} components mapped
               </span>
             )}
           </div>
@@ -918,7 +929,24 @@ function CompositeReviewCard({
           {components.length === 0 && (
             <p className="text-[12px] text-slate-400 text-center py-2">Loading components…</p>
           )}
-          {components.map((comp, idx) => {
+          {components.length > 0 && !splitConfirmed && (
+            <div className="rounded border border-amber-200 bg-amber-50 p-2 text-[12px] text-amber-900">
+              <p>This is only a suggested split. No component recipe is applied until the Owner confirms this BOQ item represents separate works.</p>
+              {isOwner && (
+                <Button
+                  size="sm"
+                  className="mt-2 h-7"
+                  onClick={() => confirmSplitMutation.mutate()}
+                  disabled={confirmSplitMutation.isPending}
+                  data-testid={`button-confirm-split-${item.id}`}
+                >
+                  {confirmSplitMutation.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Check className="mr-1 h-3 w-3" />}
+                  Confirm separate works
+                </Button>
+              )}
+            </div>
+          )}
+          {splitConfirmed && components.map((comp, idx) => {
             const conf = comp.confidenceScore ?? 0;
             const noConfirm = conf < 0.40 || !comp.snlItemId; // <40%: hide Confirm button
             const lowConf = conf < 0.50; // 40–49%: show Confirm with warning style
