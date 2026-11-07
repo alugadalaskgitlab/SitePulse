@@ -6303,3 +6303,59 @@ mtime_ms = 1793791519325
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/9066d0c1-42d8-4672-bb7b-376167077d3d/3c7b7ef5-8c74-40eb-b4c1-0495b336b660"
 storage_version_token = "1793791842883380"
 content_type = "image/png"
+
+[[outputs]]
+id = "cgUqNre16Z0E9m517Ihtf"
+uri = "file://generated-artifacts/norm01-followup/norm01-followup-report.html"
+type = "html"
+title = "NORM-01 development report"
+description = "Read-only MoRTH proposals, reload preview, full requested code/resource comparisons, 107 preserved rows, screenshots, and verification results."
+logical_id = "6620a590-f1cd-4972-a13d-f9b476caa0ea"
+content_hash = "sha256:15b586ad92427adc81b4afea5c3f891d41288fcf39d9743b390bab7540328c15"
+size = 583937
+mtime_ms = 1794048164792
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6620a590-f1cd-4972-a13d-f9b476caa0ea/2568df11-6259-440c-83ca-7e7551de0d10"
+storage_version_token = "1794048200739798"
+content_type = "text/html"
+
+[[outputs]]
+id = "zOujkh_R0k-sosHXijc8a"
+uri = "file://generated-artifacts/norm01-followup/screenshots/by-item.jpg"
+type = "image"
+title = "NORM-01 — By Item"
+description = "Signed-in development screenshot of the fixture project's BOM & Demand By Item view."
+logical_id = "6791897e-d723-4ee0-8e03-7937e393db24"
+content_hash = "sha256:38674623372f9e3d54509ee48ace6e539e7d743dd2ee23a10dd0b82030f47309"
+size = 148236
+mtime_ms = 1794047899984
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6791897e-d723-4ee0-8e03-7937e393db24/4154325c-e4e0-4897-b5d0-1f280870473c"
+storage_version_token = "1794048202781659"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "KM5F8m1gxu9vsT4XUmRSq"
+uri = "file://generated-artifacts/norm01-followup/screenshots/equipment.jpg"
+type = "image"
+title = "NORM-01 — Equipment"
+description = "Signed-in development screenshot of the fixture project's Equipment demand tab."
+logical_id = "54efa8d8-b61f-4972-b94e-b839fa140339"
+content_hash = "sha256:98b727f4cb33a82bc486b4f7e2ec218a4fa69f6cd7e789547810c960202085c3"
+size = 77495
+mtime_ms = 1794047900828
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/54efa8d8-b61f-4972-b94e-b839fa140339/f6cceec1-119e-4174-ac36-46e61b5a0815"
+storage_version_token = "1794048204376206"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "Vrc7VFjvr7PDdmFjUJ9LY"
+uri = "file://generated-artifacts/norm01-followup/screenshots/relink.jpg"
+type = "image"
+title = "NORM-01 — Re-link to MoRTH"
+description = "Signed-in development screenshot of the read-only re-link proposals; nothing was applied."
+logical_id = "a2a39c67-bc88-4bf7-abc6-d82db2c377cb"
+content_hash = "sha256:455ee5183dd7d0af1cf7fe8ad755daf44d5f61e92ac92566fd9a4bdfd9cdd63f"
+size = 148206
+mtime_ms = 1794047907512
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a2a39c67-bc88-4bf7-abc6-d82db2c377cb/876f6c89-cc8a-4b98-912a-9ca25586e6e5"
+storage_version_token = "1794048206272974"
+content_type = "image/jpeg"
