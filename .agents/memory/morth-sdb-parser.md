@@ -14,3 +14,9 @@ description: Context-sensitive resource sections and review safeguards for the M
 **Why:** The same visible Roman numeral can represent different levels in the workbook. Case-folding it flattens the path, loses the leaf's identity, and can prevent reliable validation or matching.
 
 **How to apply:** Preserve the original case of chapter markers when normalizing codes; regression-test multi-level paths, inherited unit/output, and nonzero resource rows before reload.
+
+**Rule:** Compare parsed norm quantities at PostgreSQL `REAL` precision; otherwise a successful reload can keep appearing changed due to float32 storage rounding.
+
+**Why:** Workbook calculations are JavaScript doubles, while SNL norm columns use `REAL`. Tiny representation differences are not meaningful workbook changes, but cause repeated reload diffs if compared exactly.
+
+**How to apply:** Normalize numeric values to stored `REAL` precision in preview comparison only; preserve the source values for display and save.

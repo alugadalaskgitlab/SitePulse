@@ -5,7 +5,11 @@ import { parseMorthSdbWorkbook } from "../server/snlMorthParser";
 import { calculateBomDemand } from "../shared/planningEngine";
 import { computeItemDemand } from "../client/src/pages/WorkDemand";
 import { isSnlEquipmentHoursUnit } from "../shared/snlEquipment";
-import { getMorthReloadApplicableCodes, validateParsedMorthItem } from "../server/snlMorthReload";
+import {
+  getMorthReloadApplicableCodes,
+  morthNormRowsEqualAtDatabasePrecision,
+  validateParsedMorthItem,
+} from "../server/snlMorthReload";
 
 describe("MoRTH SDB amendment", () => {
   const workbook = readFileSync(resolve(
@@ -142,11 +146,12 @@ describe("MoRTH SDB amendment", () => {
   });
 
   it("marks the documented market-rate entries as rate-only while other incomplete items need checking", () => {
-    for (const code of ["5.20", "8.42"]) {
+    for (const code of ["5.20", "8.38", "8.42", "11.12", "11.13", "12.37", "14.12"]) {
       const item = byCode.get(code);
       expect(item, code).toBeDefined();
       expect(validateParsedMorthItem(item!).status).toBe("rate_only");
     }
+    expect(validateParsedMorthItem(byCode.get("3.29")!).status).toBe("needs_check");
     expect(items.find(item => item.code === "12.1-VI")?.shiftOutput).toBeGreaterThan(0);
   });
 
@@ -158,6 +163,17 @@ describe("MoRTH SDB amendment", () => {
       { code: "bad-changed", status: "changed", validationStatus: "needs_check" },
       { code: "unchanged", status: "unchanged", validationStatus: "passing" },
     ])).toEqual(["ok-changed", "rate-only"]);
+  });
+
+  it("compares numeric norm values at PostgreSQL REAL precision", () => {
+    expect(morthNormRowsEqualAtDatabasePrecision(
+      { materials: [{ quantityPerShift: 800, derivedPerUnit: 1.3333334 }] },
+      { materials: [{ quantityPerShift: 800, derivedPerUnit: 1.33333333 }] },
+    )).toBe(true);
+    expect(morthNormRowsEqualAtDatabasePrecision(
+      { materials: [{ quantityPerShift: 800, derivedPerUnit: 1.3333334 }] },
+      { materials: [{ quantityPerShift: 799.9, derivedPerUnit: 1.33333333 }] },
+    )).toBe(false);
   });
 
   it("caps BOM demand at BOQ quantity when multiple bars each carry the full quantity", () => {

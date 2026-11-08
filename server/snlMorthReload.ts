@@ -41,7 +41,9 @@ export type MorthReloadValidationItem = {
   reasons: string[];
 };
 
-const RATE_ONLY_CODES = new Set(["5.20", "8.42"]);
+// These workbook items are intentionally priced by market/current rates or
+// by references to other chapters and do not define machine/labour/material rows.
+const RATE_ONLY_CODES = new Set(["5.20", "8.38", "8.42", "11.12", "11.13", "12.37", "14.12"]);
 
 export function validateParsedMorthItem(item: ParsedMorthItem): {
   status: MorthReloadChange["validationStatus"];
@@ -110,8 +112,24 @@ const stable = (value: unknown): string => JSON.stringify(value, (_key, part) =>
   return part;
 });
 
+function normalizeStoredRealValues(value: unknown): unknown {
+  if (typeof value === "number") return Number.isFinite(value) ? Math.fround(value) : value;
+  if (Array.isArray(value)) return value.map(normalizeStoredRealValues);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, nested]) => [key, normalizeStoredRealValues(nested)]),
+    );
+  }
+  return value;
+}
+
+export function morthNormRowsEqualAtDatabasePrecision(oldNorms: unknown, newNorms: unknown): boolean {
+  return JSON.stringify(normalizeStoredRealValues(oldNorms)) === JSON.stringify(normalizeStoredRealValues(newNorms));
+}
+
 function compareNorms(oldNorms: NormRows, newNorms: NormRows): boolean {
-  return stable(oldNorms) === stable(newNorms);
+  return morthNormRowsEqualAtDatabasePrecision(oldNorms, newNorms);
 }
 
 async function loadCurrentRows(sourceId: number) {

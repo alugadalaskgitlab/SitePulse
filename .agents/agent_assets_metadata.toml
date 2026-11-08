@@ -6401,3 +6401,17 @@ mtime_ms = 1794116615833
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7eaeaa06-a26d-425b-a453-05c0e830dc2d/40b24e31-d815-4150-8850-90165ae22675"
 storage_version_token = "1794116982184493"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "ToE3lwcbpJGrsFsSX2Emi"
+uri = "file://generated-artifacts/NORM-01C-needs-check.csv"
+type = "table"
+title = "NORM-01C Needs-check items"
+description = "Full list of 245 MoRTH workbook items excluded from the development reload, with validation reasons."
+logical_id = "080b07dc-d7e9-4fc4-9f9e-e046c789ca0b"
+content_hash = "sha256:042dd11a11d8ee4fbfd83d869d937748ac643872e88d8965950381a0d73ae1f1"
+size = 60645
+mtime_ms = 1794123258319
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/080b07dc-d7e9-4fc4-9f9e-e046c789ca0b/22bc3976-d5be-4f99-abbd-0acb36ead088"
+storage_version_token = "1794123263241990"
+content_type = "text/csv"
