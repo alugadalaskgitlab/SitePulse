@@ -150,16 +150,20 @@ function isNoiseRow(d: string): boolean {
 
 /** Extract output value + unit from "Taking output = 120 cum" */
 function parseOutput(d: string): { qty: number; unit: string } | null {
-  const m = d.match(/taking\s+output\s*=\s*([\d,]+(?:\.\d+)?)\s*(\S+)/i);
-  if (!m) return null;
-  const qty = parseFloat(m[1].replace(/,/g, ''));
-  return isNaN(qty) ? null : { qty, unit: m[2].toUpperCase() };
+  const outputText = d.split("=").at(-1)?.trim() ?? "";
+  const numeric = outputText.match(/^([\d,]+(?:\.\d+)?)(?:\s*(\S+))?/i);
+  if (numeric) {
+    const qty = parseFloat(numeric[1].replace(/,/g, ""));
+    return Number.isFinite(qty) ? { qty, unit: (numeric[2] ?? "").toUpperCase() } : null;
+  }
+  if (/^(?:one|a|an)\b/i.test(outputText)) return { qty: 1, unit: "" };
+  return null;
 }
 
 /** Extract unit from "Unit = sqm" */
 function parseUnitLine(d: string): string | null {
-  const m = d.match(/unit\s*=\s*(\S+)/i);
-  return m ? m[1].toUpperCase() : null;
+  const m = d.match(/unit\s*=\s*(?:\d+(?:\.\d+)?\s*)?(.+?)\s*$/i);
+  return m ? m[1].replace(/[.;,]+$/, "").trim().toUpperCase() : null;
 }
 
 /**
@@ -217,6 +221,52 @@ function extractVariant(colC: string): string {
   return '';
 }
 
+type NestedPathPart = { code: string; kind: "case" | "roman" | "letter" | "depth" };
+
+const NESTED_CODE_ROOTS: Record<number, Set<string>> = {
+  2: new Set(["2.3"]),
+  3: new Set(["3.13"]),
+  12: new Set(["12.1"]),
+  14: new Set(["14.1"]),
+};
+
+function nestedRootAndParts(codeCell: string, chapterNo: number): { root: string; parts: NestedPathPart[] } | null {
+  const match = codeCell.trim().match(/^(\d+(?:\.\d+)?)(.*)$/);
+  if (!match || !NESTED_CODE_ROOTS[chapterNo]?.has(match[1])) return null;
+  const [, root, suffix] = match;
+  const parts: NestedPathPart[] = [];
+  const remainder = suffix.trim();
+  const tokenPattern = /Case\s*[-– ]\s*(I|II)|\(([A-Za-z]+)\)|(?:^|\s)([A-H])(?=\s|\(|$)|^([A-H])$/gi;
+  for (const token of Array.from(remainder.matchAll(tokenPattern))) {
+    if (token[1]) {
+      parts.push({ code: `Case-${token[1].toUpperCase()}`, kind: "case" });
+    } else {
+      const value = token[2] ?? token[3] ?? token[4];
+      if (!value) continue;
+      const kind = /^[pqr]$/.test(value) ? "depth" :
+        /^[ivxlc]+$/i.test(value) ? "roman" :
+        /^[A-H]$/.test(value) ? "letter" : null;
+      if (kind) parts.push({ code: value, kind });
+    }
+  }
+  return { root, parts };
+}
+
+function nestedPartFromColumnC(value: string): NestedPathPart | null {
+  const caseLabel = extractCase(value);
+  if (caseLabel) return { code: `Case-${caseLabel}`, kind: "case" };
+  const token = extractVariant(value);
+  if (!token) return null;
+  const kind = /^[pqr]$/.test(token) ? "depth" :
+    /^[ivxlc]+$/i.test(token) ? "roman" :
+    /^[A-H]$/.test(token) ? "letter" : null;
+  return kind ? { code: token, kind } : null;
+}
+
+function samePathPart(a: NestedPathPart, b: NestedPathPart): boolean {
+  return a.code.toLowerCase() === b.code.toLowerCase() && a.kind === b.kind;
+}
+
 function skillTier(designation: string): string {
   return /mason|operator|fitter|blacksmith|carpenter|sinker|skilled/i.test(designation)
     ? 'SKILLED'
@@ -251,6 +301,10 @@ function parseChapterSheet(
   let lastBaseTitle = '';
   let lastBaseUnit = '';
   const titleByCode = new Map<string, string>();
+  const nestedPathByCode = new Map<string, NestedPathPart[]>();
+  const nestedItemByCode = new Map<string, ParsedItem>();
+  let currentNestedRoot: string | null = null;
+  let currentNestedParts: NestedPathPart[] = [];
   let lastCaseBaseCode = '';
   let lastCaseBaseTitle = '';
   let lastWbmMethodCode = "";
@@ -263,13 +317,23 @@ function parseChapterSheet(
     if (!current) return;
     // Only keep items that have at least one sub-row OR a meaningful unit
     if (currentHasData || current.unit) {
+      if (currentNestedRoot && process.env.MORTH_TRACE === String(chapterNo)) {
+        console.error(`[morth trace] final ${current.code}: rows=${current.equipment.length}/${current.labour.length}/${current.materials.length} unit=${current.unit}`);
+      }
       items.push({ ...current });
+      if (currentNestedRoot) {
+        const code = current.code;
+        nestedPathByCode.set(code, currentNestedParts.map(part => ({ ...part })));
+        nestedItemByCode.set(code, { ...current });
+      }
     }
     current = null;
     currentHasData = false;
+    currentNestedRoot = null;
+    currentNestedParts = [];
   }
 
-  function startItem(code: string, title: string) {
+  function startItem(code: string, title: string, nested?: { root: string; parts: NestedPathPart[] }) {
     finalise();
     current = {
       code,
@@ -286,6 +350,84 @@ function parseChapterSheet(
     };
     section = 'desc';
     pendingEquipmentAlternative = false;
+    if (nested) {
+      currentNestedRoot = nested.root;
+      currentNestedParts = nested.parts.map(part => ({ ...part }));
+      titleByCode.set(code, title);
+      nestedPathByCode.set(code, currentNestedParts.map(part => ({ ...part })));
+      const parentCodes = [
+        nested.root,
+        ...nested.parts.map((_, index) =>
+          `${nested.root}-${nested.parts.slice(0, index + 1).map(part => part.code).join("-")}`,
+        ),
+      ];
+      for (let index = parentCodes.length - 1; index >= 0; index--) {
+        if (parentCodes[index] === code) continue;
+        const parent = nestedItemByCode.get(parentCodes[index]);
+        if (parent) {
+          current.unit = parent.unit;
+          current.shiftOutput = parent.shiftOutput;
+          break;
+        }
+      }
+      lastBaseCode = nested.root;
+      lastBaseTitle = titleByCode.get(nested.root) ?? lastBaseTitle;
+    } else {
+      currentNestedRoot = null;
+      currentNestedParts = [];
+    }
+  }
+
+  function startNestedItem(root: string, parts: NestedPathPart[], rowTitle: string) {
+    const code = [root, ...parts.map(part => part.code)].join("-");
+    if (process.env.MORTH_TRACE === String(chapterNo)) console.error(`[morth trace] start ${code}: ${rowTitle}`);
+    let title = titleByCode.get(root) ?? lastBaseTitle;
+    for (let index = 0; index < parts.length; index++) {
+      const prefixCode = [root, ...parts.slice(0, index + 1).map(part => part.code)].join("-");
+      const savedTitle = titleByCode.get(prefixCode);
+      if (savedTitle) title = savedTitle;
+      else if (index === parts.length - 1 && rowTitle) title = `${title} — ${rowTitle.replace(/[\s:;-]+$/, "").trim()}`;
+    }
+    if (parts.length && rowTitle) {
+      const finalPartCode = [root, ...parts.map(part => part.code)].join("-");
+      const existingTitle = titleByCode.get(finalPartCode);
+      if (!existingTitle || existingTitle === titleByCode.get(root)) {
+        const parentCode = [root, ...parts.slice(0, -1).map(part => part.code)].join("-");
+        const parentTitle = titleByCode.get(parentCode) ?? titleByCode.get(root) ?? lastBaseTitle;
+        title = `${parentTitle} — ${rowTitle.replace(/[\s:;-]+$/, "").trim()}`;
+      }
+    }
+    titleByCode.set(code, title);
+    startItem(code, title, { root, parts });
+  }
+
+  function resolveNestedPath(
+    root: string,
+    explicitParts: NestedPathPart[],
+    marker: NestedPathPart | null,
+    hasExplicitRoot: boolean,
+  ): NestedPathPart[] {
+    let parts = explicitParts.map(part => ({ ...part }));
+    if (!parts.length && !hasExplicitRoot && currentNestedRoot === root) {
+      parts = currentNestedParts.map(part => ({ ...part }));
+    }
+    if (marker && !parts.some(part => samePathPart(part, marker))) {
+      if (marker.kind === "roman") {
+        const last = parts.at(-1);
+        if (last?.kind === "roman") parts.pop();
+        else if (last?.kind !== "letter" && last?.kind !== "case") {
+          const casePrefix = parts.findIndex(part => part.kind === "case");
+          parts = casePrefix >= 0 ? parts.slice(0, casePrefix + 1) : [];
+        }
+      } else if (marker.kind === "letter") {
+        const romanIndex = parts.map(part => part.kind).lastIndexOf("roman");
+        if (romanIndex >= 0) parts = parts.slice(0, romanIndex + 1);
+      } else if (marker.kind === "depth") {
+        while (parts.at(-1)?.kind === "depth") parts.pop();
+      }
+      parts.push(marker);
+    }
+    return parts;
   }
 
   // Skip the first 3 header rows (chapter title, subtitle, column headers)
@@ -315,6 +457,40 @@ function parseChapterSheet(
     const caseLabel = caseLetter && /^[C-H]$/.test(caseLetter) ? extractCase(colC) : null;
     const variantLabel = extractVariant(colC);
     const isVariant = !!variantLabel;
+
+    // Chapters 2.3, 3.13, 12.1, and 14.1 use nested heading rows. Preserve every
+    // path level (including a roman heading followed by a letter or p/q/r row)
+    // rather than flattening a child onto the nearest numeric code.
+    const nestedIdentity = nestedRootAndParts(colA, chapterNo);
+    const activeNestedRoot = currentNestedRoot;
+    const nestedMarker = nestedPartFromColumnC(colC);
+    const nestedRoot = nestedIdentity?.root ??
+      (activeNestedRoot && nestedMarker ? activeNestedRoot : null);
+    if (nestedRoot) {
+      const parts = resolveNestedPath(
+        nestedRoot,
+        nestedIdentity?.parts ?? [],
+        nestedMarker,
+        !!nestedIdentity,
+      );
+      const isRootBoundary = nestedIdentity && parts.length === 0 && !nestedMarker;
+      const rowHasNestedHeading = nestedIdentity
+        ? !isRootBoundary
+        : !!nestedMarker;
+      if (isRootBoundary) {
+        lastBaseCode = nestedRoot;
+        lastBaseTitle = colD || lastBaseTitle;
+        lastBaseUnit = "";
+        titleByCode.set(nestedRoot, lastBaseTitle);
+        startItem(nestedRoot, lastBaseTitle, { root: nestedRoot, parts: [] });
+        continue;
+      }
+      if (rowHasNestedHeading) {
+        const rowTitle = colD || parts.at(-1)?.code || nestedRoot;
+        startNestedItem(nestedRoot, parts, rowTitle);
+        continue;
+      }
+    }
 
     // Case I/II rows are independent norm variants. In this workbook the
     // "Case II" rows for 12.8 C–H put the spaced child code in column A, while
@@ -465,6 +641,11 @@ function parseChapterSheet(
 
   finalise();
 
+  // The workbook's Modified Binder entry is a market-rate material quoted per
+  // tonne and intentionally has no separate "Taking output" line.
+  const modifiedBinder = items.find(item => item.code === "5.20");
+  if (modifiedBinder?.unit && modifiedBinder.shiftOutput <= 0) modifiedBinder.shiftOutput = 1;
+
   // ── Post-process: ensure all codes within this chapter are unique ───────
   // 3-level nesting can produce the same slug at different depths (e.g. "A"
   // under both "I" and "II" both map to "<base>-A"). Append a counter to
@@ -479,11 +660,44 @@ function parseChapterSheet(
     }
   }
 
-  // Grading variants with no resource rows of their own inherit only the
-  // missing resource categories from their method's parent. The workbook
-  // encodes 4.1A-i as a child of 4.1-A (and 4.1B-i as a child of 4.1-B).
+  // Nested sub-cases with no resource rows of their own inherit missing
+  // categories from the nearest ancestor that has them. This includes the
+  // 14.1 p/q/r formwork-rate rows; their identity and output remain separate.
   const itemByCode = new Map(items.map(item => [item.code, item]));
   for (const item of items) {
+    const nested = Array.from(nestedPathByCode.entries()).find(([code]) => code === item.code);
+    if (nested) {
+      const [code, parts] = nested;
+      if (!parts.length) continue;
+      const root = code.split("-")[0];
+      const ancestors = [
+        ...parts.slice(0, -1).map((_part: NestedPathPart, index: number) =>
+          `${root}-${parts.slice(0, index + 1).map(part => part.code).join("-")}`,
+        ).reverse(),
+        root,
+      ];
+      const parent = ancestors.map((parentCode: string) => itemByCode.get(parentCode)).find(candidate =>
+        !!candidate && (candidate.equipment.length || candidate.labour.length || candidate.materials.length),
+      );
+      if (parent) {
+        if (!item.equipment.length && parent.equipment.length) item.equipment = parent.equipment.map((row: SubRow) => ({ ...row }));
+        if (!item.labour.length && parent.labour.length) item.labour = parent.labour.map((row: SubRow) => ({ ...row }));
+        if (!item.materials.length && parent.materials.length) item.materials = parent.materials.map((row: SubRow) => ({ ...row }));
+      }
+      const parentWithOutput = ancestors.map((parentCode: string) => itemByCode.get(parentCode)).find(candidate =>
+        !!candidate && candidate.shiftOutput > 0,
+      );
+      if (item.shiftOutput <= 0 && parentWithOutput) item.shiftOutput = parentWithOutput.shiftOutput;
+      if (!item.unit) {
+        const parentWithUnit = ancestors.map((parentCode: string) => itemByCode.get(parentCode)).find(candidate =>
+          !!candidate && !!candidate.unit,
+        );
+        if (parentWithUnit) item.unit = parentWithUnit.unit;
+      }
+      continue;
+    }
+
+    // Keep the legacy 4.1/5.6/5.8 grading inheritance behavior.
     const match = item.code.match(/^(.*)-([ivxlc]+)$/);
     if (!match || !/grading/i.test(item.title)) continue;
     const parentRef = match[1].match(/^(\d+(?:\.\d+)?)([A-H])$/i);
@@ -497,7 +711,13 @@ function parseChapterSheet(
     if (!item.unit && parent.unit) item.unit = parent.unit;
   }
 
-  return items;
+  const nestedCodes = new Set(nestedPathByCode.keys());
+  return items.filter(item => {
+    if (!nestedCodes.has(item.code)) return true;
+    const hasResources = item.equipment.length || item.labour.length || item.materials.length;
+    if (hasResources) return true;
+    return !items.some(candidate => candidate.code.startsWith(`${item.code}-`));
+  });
 }
 
 // ─── DB upsert ────────────────────────────────────────────────────────────────

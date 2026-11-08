@@ -11,6 +11,7 @@ export type MorthRelinkMatch = {
   reason: string;
   canApply: boolean;
   blockedReason: string | null;
+  normUnitsPerBoqUnit: number | null;
 };
 
 type MatchRule = {
@@ -34,18 +35,40 @@ const hasPhrase = (value: string, phrase: string) => {
 };
 
 export function sameNormUnit(a: string | null | undefined, b: string | null | undefined): boolean {
-  const norm = (value: string | null | undefined) => {
-    const key = clean(String(value ?? "")).replace(/\s/g, "");
-    const aliases: Record<string, string> = {
-      sqm: "sqm", sqmtr: "sqm", m2: "sqm", squaremeter: "sqm", squaremetre: "sqm",
-      cum: "cum", cbm: "cum", m3: "cum", cubicmeter: "cum", cubicmetre: "cum",
-      metre: "m", meter: "m", meters: "m", metres: "m", m: "m",
-      hectare: "ha", hectares: "ha", hect: "ha", ha: "ha",
-      tonne: "mt", tonnes: "mt", ton: "mt", tons: "mt", mt: "mt",
-    };
-    return aliases[key] ?? key;
+  return getMorthUnitConversion(a, b) !== null;
+}
+
+function normalizeUnit(value: string | null | undefined): string {
+  const key = clean(String(value ?? "")).replace(/\s/g, "");
+  const aliases: Record<string, string> = {
+    sqm: "sqm", sqmtr: "sqm", m2: "sqm", squaremeter: "sqm", squaremetre: "sqm",
+    cum: "cum", cbm: "cum", m3: "cum", cubicmeter: "cum", cubicmetre: "cum",
+    metre: "m", meter: "m", meters: "m", metres: "m", m: "m",
+    hectare: "ha", hectares: "ha", hect: "ha", ha: "ha",
+    tonne: "mt", tonnes: "mt", ton: "mt", tons: "mt", mt: "mt",
   };
-  return norm(a) === norm(b);
+  return aliases[key] ?? key;
+}
+
+/**
+ * Converts one BOQ unit into the number of MoRTH norm units it represents.
+ * E.g. 1 sqm = 0.0001 hectare, so per-hectare resource quantities are scaled
+ * by 0.0001 when copied into a per-sqm BOQ recipe.
+ */
+export function getMorthUnitConversion(
+  boqUnit: string | null | undefined,
+  normUnit: string | null | undefined,
+): { normUnitsPerBoqUnit: number; note: string | null } | null {
+  const boq = normalizeUnit(boqUnit);
+  const norm = normalizeUnit(normUnit);
+  if (boq === norm) return { normUnitsPerBoqUnit: 1, note: null };
+  if (boq === "sqm" && norm === "ha") {
+    return { normUnitsPerBoqUnit: 0.0001, note: "1 hectare = 10,000 sqm" };
+  }
+  if (boq === "ha" && norm === "sqm") {
+    return { normUnitsPerBoqUnit: 10_000, note: "1 hectare = 10,000 sqm" };
+  }
+  return null;
 }
 
 function resolveRule(description: string): MatchRule | null {
@@ -62,6 +85,13 @@ function resolveRule(description: string): MatchRule | null {
   if (/\bclear(?:ing)?\b/.test(source) && /\bgrub(?:bing)?\b/.test(source)) return {
     phrase: "clearing and grubbing",
     matches: title => hasPhrase(title, "clearing and grubbing"),
+    qualifier: (sourceText, title) => {
+      if (/\bmanual(?:ly)?\b/.test(sourceText) && !hasPhrase(title, "by manual means")) return false;
+      if (/\bmechanical(?:ly)?\b/.test(sourceText) && !hasPhrase(title, "by mechanical means")) return false;
+      if (/\blight jungle\b/.test(sourceText) && !hasPhrase(title, "light jungle")) return false;
+      if (/\bthorny jungle\b/.test(sourceText) && !hasPhrase(title, "thorny jungle")) return false;
+      return true;
+    },
   };
   if (/\bscarif\w*\b/.test(source)) {
     const surface = /\bbituminous\b/.test(source)
@@ -192,12 +222,22 @@ export function matchMorthRelinkCandidate(
   if (matches.length !== 1) return null;
 
   const candidate = matches[0];
-  const canApply = sameNormUnit(boqUnit, candidate.unit);
-  const blockedReason = canApply ? null : `Unit differs: BOQ ${boqUnit || "not set"}; MoRTH ${candidate.unit}.`;
+  const conversion = getMorthUnitConversion(boqUnit, candidate.unit);
+  const canApply = conversion !== null;
+  const blockedReason = canApply
+    ? null
+    : `Unit differs: BOQ ${boqUnit || "not set"}; MoRTH ${candidate.unit}.`;
   const clause = source.match(/\bclause\s*(?:no\.?\s*)?(\d{3})\b/)?.[1];
   const reason = `BOQ words “${rule.phrase}” match the MoRTH workbook title${clause ? `; clause ${clause} is supporting context` : ""}.` +
+    (conversion?.note ? ` Unit conversion: ${conversion.note}.` : "") +
     (blockedReason ? ` ${blockedReason} Apply is disabled.` : "");
-  return { candidate, reason, canApply, blockedReason };
+  return {
+    candidate,
+    reason,
+    canApply,
+    blockedReason,
+    normUnitsPerBoqUnit: conversion?.normUnitsPerBoqUnit ?? null,
+  };
 }
 
 export function explainMorthRelinkNoMatch(description: string, candidates: MorthRelinkCandidate[]) {

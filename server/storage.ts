@@ -33999,11 +33999,21 @@ export class DatabaseStorage implements IStorage {
     return rows.length > 0;
   }
 
-  async applySnlMappingToRecipes(boqItemId: number, snlItemId: number, projectCategory: string, gradingVariant: string | null, appliedBy: string): Promise<void> {
+  async applySnlMappingToRecipes(
+    boqItemId: number,
+    snlItemId: number,
+    projectCategory: string,
+    gradingVariant: string | null,
+    appliedBy: string,
+    normUnitsPerBoqUnit = 1,
+  ): Promise<void> {
     const itemFull = await this.getSnlItem(snlItemId);
     if (!itemFull) throw new Error("SNL item not found");
     if (itemFull.source?.code !== (await getNormBookState()).code) {
       throw new Error("Only the selected norm book can be applied to BOQ recipes.");
+    }
+    if (!Number.isFinite(normUnitsPerBoqUnit) || normUnitsPerBoqUnit <= 0) {
+      throw new Error("A valid BOQ-to-norm unit conversion is required.");
     }
 
     const catPri = (cat: string) => cat === projectCategory ? 0 : cat === "ALL" ? 1 : 2;
@@ -34049,7 +34059,7 @@ export class DatabaseStorage implements IStorage {
             boqItemId,
             sortOrder: e.sortOrder ?? i,
             equipmentName: e.equipmentType + (e.equipmentSpec ? ` (${e.equipmentSpec})` : ""),
-            qtyPerBoqUnit: e.derivedPerUnit ?? 0,
+            qtyPerBoqUnit: (e.derivedPerUnit ?? 0) * normUnitsPerBoqUnit,
             count: 1,
             planningEquipmentTypeId: matchPlanTypeId(e.equipmentType),
             notes: e.notes ?? `SNL ${itemFull.itemCode} [${projectCategory}]`,
@@ -34064,7 +34074,7 @@ export class DatabaseStorage implements IStorage {
             boqItemId,
             sortOrder: l.sortOrder ?? i,
             designation: l.designation,
-            qtyPerBoqUnit: l.derivedPerUnit ?? 0,
+            qtyPerBoqUnit: (l.derivedPerUnit ?? 0) * normUnitsPerBoqUnit,
             count: 1,
             notes: `SNL ${itemFull.itemCode} [${projectCategory}]`,
           }))
@@ -34079,7 +34089,7 @@ export class DatabaseStorage implements IStorage {
             sortOrder: m.sortOrder ?? i,
             materialName: m.materialName,
             uom: m.unit,
-            qtyPerBoqUnit: m.derivedPerUnit ?? 0,
+            qtyPerBoqUnit: (m.derivedPerUnit ?? 0) * normUnitsPerBoqUnit,
             isAuto: true,
             notes: m.notes ?? `SNL ${itemFull.itemCode}`,
           }))

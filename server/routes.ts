@@ -9,7 +9,7 @@ import { updatePurchaseIndentRequestSchema } from "@shared/schema";
 import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock, isRecipeManualOverrideError } from "./storage";
 import { buildEquipmentComparison, buildDailyDieselEquipmentReport } from "./dieselComparisonEquipment";
 import { remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, classifyBoqItem, getSectorMultiplier, previewBoqProjectNormRelinks, suggestUnlinkedBoqItemsForReview } from "./snlAutoMapper";
-import { sameNormUnit } from "./snlMorthRelinkMatcher";
+import { getMorthUnitConversion } from "./snlMorthRelinkMatcher";
 import { isConfirmedSnlMapping } from "@shared/snlMappingPolicy";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -26581,9 +26581,10 @@ export async function registerRoutes(
       const nextNorms = await Promise.all(selections.map(row => storage.getSnlItem(row.snlItemId)));
       if (nextNorms.some(norm => !norm)) return res.status(409).json({ error: "A selected MoRTH item is no longer available." });
       const itemById = new Map(currentItems.map(item => [item.id, item]));
-      if (selections.some((selection, index) =>
-        !sameNormUnit(itemById.get(selection.boqItemId)?.unit, nextNorms[index]?.unit),
-      )) {
+      const unitConversions = selections.map((selection, index) =>
+        getMorthUnitConversion(itemById.get(selection.boqItemId)?.unit, nextNorms[index]?.unit),
+      );
+      if (unitConversions.some(conversion => !conversion)) {
         return res.status(409).json({ error: "The BOQ and MoRTH units differ. This proposal cannot be applied safely." });
       }
 
@@ -26591,7 +26592,14 @@ export async function registerRoutes(
       for (const [selectionIndex, selection] of selections.entries()) {
         const item = itemById.get(selection.boqItemId)!;
         const nextNorm = nextNorms[selectionIndex]!;
-        await storage.applySnlMappingToRecipes(item.id, selection.snlItemId, "MEDIUM", null, actor);
+        await storage.applySnlMappingToRecipes(
+          item.id,
+          selection.snlItemId,
+          "MEDIUM",
+          null,
+          actor,
+          unitConversions[selectionIndex]!.normUnitsPerBoqUnit,
+        );
         await storage.setSnlMapping(item.id, {
           boqItemId: item.id,
           snlItemId: selection.snlItemId,
