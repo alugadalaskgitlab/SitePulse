@@ -73,6 +73,8 @@ interface SubRow {
   qty: number;
   ref: string;
   notes?: string;
+  /** Parser-only branch metadata; not persisted in the SNL schema. */
+  sourceGroup?: string;
 }
 
 export interface ParsedMorthItem {
@@ -376,7 +378,7 @@ function extractVariant(colC: string): string {
 type NestedPathPart = { code: string; kind: "case" | "roman" | "letter" | "depth" };
 
 const NESTED_CODE_ROOTS: Record<number, Set<string>> = {
-  2: new Set(["2.3", "2.4"]),
+  2: new Set(["2.3", "2.4", "2.5"]),
   3: new Set(["3.13"]),
   12: new Set(["12.1"]),
   14: new Set(["14.1"]),
@@ -388,14 +390,15 @@ function nestedRootAndParts(codeCell: string, chapterNo: number): { root: string
   const [, root, suffix] = match;
   const parts: NestedPathPart[] = [];
   const remainder = suffix.trim();
-  const tokenPattern = /Case\s*[-– ]\s*(II|I)\b|\(([A-Za-z]+)\)|(?:^|\s)([A-H])(?=\s|\(|$)|^([A-H])$/gi;
+  const tokenPattern = /Case\s*[-– ]\s*(II|I)\b|\(([A-Za-z]+)\)|(?:^|\s)(II|III|IV|V|VI|I)(?=\s|\(|$)|(?:^|\s)([A-H])(?=\s|\(|$)|^([A-H])$/gi;
   for (const token of Array.from(remainder.matchAll(tokenPattern))) {
     if (token[1]) {
       parts.push({ code: `Case-${token[1].toUpperCase()}`, kind: "case" });
     } else {
-      const value = token[2] ?? token[3] ?? token[4];
+      const value = token[2] ?? token[3] ?? token[4] ?? token[5];
       if (!value) continue;
-      const kind = /^[pqr]$/.test(value) ? "depth" :
+      const kind = token[3] || /^[IVXLC]+$/.test(value) ? "roman" :
+        /^[pqr]$/.test(value) ? "depth" :
         /^[A-H]$/.test(value) ? "letter" :
         /^[ivxlc]+$/i.test(value) ? "roman" : null;
       if (kind) parts.push({ code: value, kind });
@@ -432,6 +435,13 @@ function materialCategory(name: string): string {
   return 'OTHER';
 }
 
+function wbmScreeningKey(text: string): string | null {
+  if (/crushable|moorum|gravel/i.test(text)) return "crushable";
+  if (/\btype\s*[- ]?\s*a(?=\s|\d|[().]|$)/i.test(text)) return "type-a";
+  if (/\btype\s*[- ]?\s*b(?=\s|\d|[().]|$)/i.test(text)) return "type-b";
+  return null;
+}
+
 // ─── Sheet parser ─────────────────────────────────────────────────────────────
 
 function parseChapterSheet(
@@ -465,6 +475,10 @@ function parseChapterSheet(
   let pendingEquipmentAlternative = false;
   // Track if the current item saw any sub-row data (has real content)
   let currentHasData = false;
+  let materialChoiceIndex = 0;
+  let materialGradeKey: string | null = null;
+  let materialRole: "shared" | "aggregate" | "screening" = "shared";
+  let materialVariantKey: string | null = null;
 
   function finalise() {
     if (!current) return;
@@ -500,6 +514,10 @@ function parseChapterSheet(
     };
     section = 'desc';
     pendingEquipmentAlternative = false;
+    materialChoiceIndex = 0;
+    materialGradeKey = null;
+    materialRole = "shared";
+    materialVariantKey = null;
     if (nested) {
       currentNestedRoot = nested.root;
       currentNestedParts = nested.parts.map(part => ({ ...part }));
@@ -584,6 +602,7 @@ function parseChapterSheet(
   for (let i = 3; i < rows.length; i++) {
     const row = rows[i];
     const colA = cell(row, 0);
+    const colB = cell(row, 1);
     const colC = cell(row, 2);
     const colD = cell(row, 3);
     const colE = cell(row, 4);
@@ -605,7 +624,11 @@ function parseChapterSheet(
       ? spacedCode[2].toUpperCase()
       : current128Case?.[1]?.toUpperCase();
     const caseLabel = caseLetter && /^[C-H]$/.test(caseLetter) ? extractCase(colC) : null;
-    const variantLabel = extractVariant(colC);
+    // A few 4.17 workbook headings put the child marker in column B instead
+    // of C. Only accept recognised variant tokens so numeric clause refs are
+    // never mistaken for a sub-item.
+    const variantCell = colC || (/^4\.17(?:\b|[AB])/i.test(colA) ? colB : "");
+    const variantLabel = extractVariant(variantCell);
     const isVariant = !!variantLabel;
 
     // Chapters 2.3, 3.13, 12.1, and 14.1 use nested heading rows. Preserve every
@@ -613,14 +636,20 @@ function parseChapterSheet(
     // rather than flattening a child onto the nearest numeric code.
     const nestedIdentity = nestedRootAndParts(colA, chapterNo);
     const activeNestedRoot = currentNestedRoot;
-    const nestedMarker = nestedPartFromColumnC(colC);
+    const nestedMarker = nestedPartFromColumnC(variantCell);
     const nestedRoot = nestedIdentity?.root ??
       (activeNestedRoot && nestedMarker ? activeNestedRoot : null);
     if (nestedRoot) {
+      const explicitParts = (nestedIdentity?.parts ?? []).map(part =>
+        nestedRoot === "2.5" && part.kind === "roman" ? { ...part, code: part.code.toUpperCase() } : part,
+      );
+      const canonicalMarker = nestedMarker && nestedRoot === "2.5" && nestedMarker.kind === "roman"
+        ? { ...nestedMarker, code: nestedMarker.code.toUpperCase() }
+        : nestedMarker;
       const parts = resolveNestedPath(
         nestedRoot,
-        nestedIdentity?.parts ?? [],
-        nestedMarker,
+        explicitParts,
+        canonicalMarker,
         !!nestedIdentity,
       );
       const isRootBoundary = nestedIdentity && parts.length === 0 && !nestedMarker;
@@ -640,6 +669,51 @@ function parseChapterSheet(
         startNestedItem(nestedRoot, parts, rowTitle);
         continue;
       }
+    }
+
+    // Crusher-run method/gradation rows are not consistent about where they
+    // place the method and child markers ("4.17A (i)", "4.17 B" + "(ii)").
+    // Preserve the complete method path and leave the parent rows for a
+    // post-pass that selects the matching aggregate grading.
+    const crusherHeading = colA.match(/^4\.17\s*([AB])(?:\s*\(\s*(i|ii)\s*\))?$/i);
+    const crusherVariant = crusherHeading && variantLabel
+      ? (crusherHeading[2] ?? (/^(?:i|ii)$/i.test(variantLabel) ? variantLabel : null))
+      : null;
+    if (crusherHeading && crusherVariant) {
+      const method = crusherHeading[1].toUpperCase();
+      const grade = crusherVariant.toLowerCase();
+      const parentCode = `4.17-${method}`;
+      const code = `${parentCode}-${grade}`;
+      const parent = items.find(item => item.code === parentCode) ?? activeBeforeBoundary;
+      const title = `${titleByCode.get(parentCode) ?? lastBaseTitle} — ${colD.replace(/[\s:;.-]+$/, "").trim()}`;
+      startItem(code, title);
+      const child = getCurrent();
+      if (child && parent?.code === parentCode) {
+        child.unit = parent.unit;
+        child.shiftOutput = parent.shiftOutput;
+      }
+      lastBaseCode = parentCode;
+      lastBaseTitle = titleByCode.get(parentCode) ?? lastBaseTitle;
+      section = "materials";
+      continue;
+    }
+
+    // The nested screening choices under each 4.9 method/gradation need their
+    // own item identity; the workbook repeats a shortened 4.9A (i) code.
+    const wbmScreenHeading = colA.match(/^4\.9([AB])\s*\(\s*(i|ii|iii)\s*\)$/i);
+    if (wbmScreenHeading && /^[a-c]$/i.test(variantLabel)) {
+      const parentCode = `4.9-${wbmScreenHeading[1].toUpperCase()}-${wbmScreenHeading[2].toLowerCase()}`;
+      const parent = items.find(item => item.code === parentCode) ?? activeBeforeBoundary;
+      const code = `${parentCode}-${variantLabel.toLowerCase()}`;
+      const title = `${titleByCode.get(parentCode) ?? parent?.title ?? lastBaseTitle}: ${colD.replace(/[\s:;.-]+$/, "").trim()}`;
+      startItem(code, title);
+      const child = getCurrent();
+      if (child && parent?.code === parentCode) {
+        child.unit = parent.unit;
+        child.shiftOutput = parent.shiftOutput;
+      }
+      section = "materials";
+      continue;
     }
 
     // Case I/II rows are independent norm variants. In this workbook the
@@ -708,9 +782,13 @@ function parseChapterSheet(
         lastBaseCode = wbmMaterialGrade ? lastWbmMethodCode : colA;
       }
       const varCode = `${lastBaseCode}-${variantLabel}`;
-      const varTitle = colD
+      const crusherRunMethodTitle = chapterNo === 4 && lastBaseCode === "4.17" &&
+        /^[AB]$/.test(variantLabel)
+        ? `${titleByCode.get("4.17") ?? lastBaseTitle}: ${colD}`
+        : null;
+      const varTitle = crusherRunMethodTitle ?? (colD
         ? `${lastBaseTitle}: ${colD}`
-        : `${lastBaseTitle} (${variantLabel})`;
+        : `${lastBaseTitle} (${variantLabel})`);
       titleByCode.set(varCode, varTitle);
       lastCaseBaseCode = varCode;
       lastCaseBaseTitle = varTitle;
@@ -742,6 +820,32 @@ function parseChapterSheet(
       section = sec;
       if (section !== 'equipment') pendingEquipmentAlternative = false;
       continue;
+    }
+
+    const groupingItem = getCurrent();
+    if (section === "materials" && groupingItem) {
+      if (/^or$/i.test(colD)) {
+        if (groupingItem.code === "4.6" || /^4\.17-[AB]$/.test(groupingItem.code)) {
+          materialChoiceIndex++;
+        }
+        continue;
+      }
+
+      if (!colE && parseQty(colF) === null) {
+        const materialHeading = colD.trim();
+        if (/^aggregate\b/i.test(materialHeading)) materialRole = "aggregate";
+        else if (/^stone\s+screening\b/i.test(materialHeading)) materialRole = "screening";
+        else if (/^binding\s+material\b/i.test(materialHeading)) materialRole = "shared";
+
+        const gradeHeading = materialHeading.match(/\bgrading\s*[- ]*\s*(IV|III|II|I|V)/i);
+        if ((groupingItem.code === "5.6" || groupingItem.code === "5.8") && gradeHeading) {
+          materialGradeKey = gradeHeading[1].toLowerCase();
+        }
+        if (groupingItem.code === "8.27") {
+          if (/^for\s+fixing\s+in\s+median\b/i.test(materialHeading)) materialVariantKey = "choice-0";
+          if (/^for\s+fixing\s+in\s+footpath\b/i.test(materialHeading)) materialVariantKey = "choice-1";
+        }
+      }
     }
 
     const outputFallback = activeItem.shiftOutput > 0
@@ -801,7 +905,25 @@ function parseChapterSheet(
     const rawUnit = colE || (section === 'labour' ? 'day' : section === 'equipment' ? 'hour' : activeItem.unit);
     const unit = section === 'equipment' ? equipmentUnit(rawUnit) : rawUnit;
 
-    const subRow: SubRow = { label: colD, unit, qty, ref: colI };
+    let sourceGroup: string | undefined;
+    if (activeItem.code === "4.6") {
+      sourceGroup = /cement\s+at\s+site/i.test(colD) ? "shared" : `choice-${materialChoiceIndex}`;
+    } else if (/^4\.17-[AB]$/.test(activeItem.code)) {
+      sourceGroup = activeItem.code === "4.17-B" && /^cost\s+of\s+water$/i.test(colD)
+        ? "shared"
+        : `choice-${materialChoiceIndex}`;
+    } else if (activeItem.code === "8.27") {
+      sourceGroup = materialVariantKey ?? "shared";
+    } else if (activeItem.code === "5.6" || activeItem.code === "5.8") {
+      sourceGroup = materialGradeKey ? `grade-${materialGradeKey}` : "shared";
+    } else if (/^4\.9-[AB]-(?:i|ii|iii)$/.test(activeItem.code)) {
+      if (materialRole === "aggregate") sourceGroup = "aggregate";
+      else if (materialRole === "screening") {
+        const key = wbmScreeningKey(colD);
+        sourceGroup = key ? `screening-${key}` : "screening-other";
+      } else sourceGroup = "shared";
+    }
+    const subRow: SubRow = { label: colD, unit, qty, ref: colI, ...(sourceGroup ? { sourceGroup } : {}) };
 
     if (section === 'labour')    { activeItem.labour.push(subRow);    currentHasData = true; }
     if (section === 'equipment') {
@@ -894,6 +1016,165 @@ function parseChapterSheet(
     if (!item.materials.length && parent.materials.length) item.materials = parent.materials.map(row => ({ ...row }));
     if (item.shiftOutput <= 0 && parent.shiftOutput > 0) item.shiftOutput = parent.shiftOutput;
     if (!item.unit && parent.unit) item.unit = parent.unit;
+  }
+
+  const byParsedCode = new Map(items.map(item => [item.code, item]));
+  const cloneRows = (rows: SubRow[]) => rows.map(row => ({ ...row }));
+  const copySharedWorkRows = (source: ParsedItem, target: ParsedItem) => {
+    target.unit = source.unit;
+    target.shiftOutput = source.shiftOutput;
+    target.equipment = cloneRows(source.equipment);
+    target.labour = cloneRows(source.labour);
+  };
+  const chooseMaterialBranch = (source: ParsedItem, target: ParsedItem, choice: number) => {
+    target.materials = cloneRows(source.materials.filter(row =>
+      row.sourceGroup === "shared" || row.sourceGroup === `choice-${choice}`,
+    ));
+  };
+
+  // 4.6 has one shared work setup followed by two complete aggregate/water
+  // branches. Keep the cement row shared, but never carry both branches into
+  // one norm item.
+  const cementTreated = byParsedCode.get("4.6");
+  if (cementTreated) {
+    for (let index = 0; index < 2; index++) {
+      const suffix = index === 0 ? "i" : "ii";
+      const child = byParsedCode.get(`4.6-${suffix}`);
+      if (!child) continue;
+      copySharedWorkRows(cementTreated, child);
+      chooseMaterialBranch(cementTreated, child, index);
+    }
+    const firstBranch = cementTreated.materials.filter(row =>
+      row.sourceGroup === "shared" || row.sourceGroup === "choice-0",
+    );
+    cementTreated.materials = cloneRows(firstBranch);
+  }
+
+  // Crusher-run items use shared machinery/labour and one of two aggregate
+  // gradings. 4.17-B's water line applies to both alternatives.
+  for (const method of ["A", "B"] as const) {
+    const parent = byParsedCode.get(`4.17-${method}`);
+    if (!parent) continue;
+    for (let index = 0; index < 2; index++) {
+      const suffix = index === 0 ? "i" : "ii";
+      const child = byParsedCode.get(`4.17-${method}-${suffix}`);
+      if (!child) continue;
+      copySharedWorkRows(parent, child);
+      chooseMaterialBranch(parent, child, index);
+    }
+    parent.materials = cloneRows(parent.materials.filter(row =>
+      row.sourceGroup === "shared" || row.sourceGroup === "choice-0",
+    ));
+  }
+
+  // WBM grading items share the method's machine/labour rows. Screening
+  // choices are separate leaf norms; each leaf receives only its grading,
+  // selected screening, binding material, and water.
+  for (const method of ["A", "B"] as const) {
+    const methodItem = byParsedCode.get(`4.9-${method}`);
+    for (const grade of ["i", "ii", "iii"] as const) {
+      const gradeItem = byParsedCode.get(`4.9-${method}-${grade}`);
+      if (!methodItem || !gradeItem) continue;
+      copySharedWorkRows(methodItem, gradeItem);
+      const gradeMaterials = cloneRows(gradeItem.materials);
+      const leafItems = items.filter(item => item.code.startsWith(`${gradeItem.code}-`));
+      const screeningFor = (item: ParsedItem) => wbmScreeningKey(item.title);
+      const leafForDefault = leafItems.find(item => item.code.endsWith("-a"));
+      const defaultKey = leafForDefault ? screeningFor(leafForDefault) : "crushable";
+      const materialsForScreen = (key: string | null) =>
+        gradeMaterials.filter(row =>
+          row.sourceGroup === "aggregate" ||
+          row.sourceGroup === "shared" ||
+          (!!key && (
+            row.sourceGroup === `screening-${key}` ||
+            wbmScreeningKey(row.label) === key
+          )),
+        );
+      gradeItem.materials = cloneRows(materialsForScreen(defaultKey));
+      for (const leaf of leafItems) {
+        copySharedWorkRows(methodItem, leaf);
+        leaf.materials = cloneRows(materialsForScreen(screeningFor(leaf)));
+      }
+    }
+  }
+
+  // The asphalt main item defaults to Grading I; each grading child contains
+  // the common binder plus only its own aggregate and filler rows.
+  for (const parentCode of ["5.6", "5.8"]) {
+    const parent = byParsedCode.get(parentCode);
+    if (!parent) continue;
+    const allMaterials = cloneRows(parent.materials);
+    const firstGrade = allMaterials.filter(row =>
+      row.sourceGroup === "shared" || row.sourceGroup === "grade-i",
+    );
+    parent.materials = cloneRows(firstGrade);
+    for (const [suffix, group] of [["i", "grade-i"], ["ii", "grade-ii"]] as const) {
+      const child = byParsedCode.get(`${parentCode}-${suffix}`);
+      if (!child) continue;
+      copySharedWorkRows(parent, child);
+      child.materials = cloneRows(allMaterials.filter(row =>
+        row.sourceGroup === "shared" || row.sourceGroup === group,
+      ));
+    }
+  }
+
+  // Street-lighting variants share labour and the pole/lamp rows, but their
+  // painted area quantities differ.
+  const streetLighting = byParsedCode.get("8.27");
+  if (streetLighting) {
+    for (let index = 0; index < 2; index++) {
+      const suffix = index === 0 ? "i" : "ii";
+      const child = byParsedCode.get(`8.27-${suffix}`);
+      if (!child) continue;
+      copySharedWorkRows(streetLighting, child);
+      child.materials = cloneRows(streetLighting.materials.filter(row =>
+        row.sourceGroup === "shared" || row.sourceGroup === `choice-${index}`,
+      ));
+    }
+    streetLighting.materials = cloneRows(streetLighting.materials.filter(row =>
+      row.sourceGroup === "shared" || row.sourceGroup === "choice-0",
+    ));
+  }
+
+  // 1.4 haulage is an equipment-hour norm for one tipper. Preserve the two
+  // workbook time components in the row note while presenting a single
+  // correctly named machine row.
+  const haulageTitles: Record<string, string> = {
+    "1.4-i": "Cost of haulage — Surfaced road",
+    "1.4-ii": "Cost of haulage — Unsurfaced gravelled road",
+    "1.4-iii": "Cost of haulage — Katcha track",
+  };
+  for (const item of items.filter(candidate => candidate.code in haulageTitles)) {
+    const onward = item.equipment.find(row => /time taken for onward haulage/i.test(row.label));
+    const returning = item.equipment.find(row => /time taken for empty return/i.test(row.label));
+    item.title = haulageTitles[item.code];
+    item.description = haulageTitles[item.code];
+    if (onward && returning) {
+      item.equipment = item.equipment.filter(row => row !== onward && row !== returning);
+      item.equipment.unshift({
+        label: "Tipper 10 tonne capacity",
+        unit: "hrs",
+        qty: Number((onward.qty + returning.qty).toFixed(6)),
+        ref: onward.ref || returning.ref,
+        notes: `Onward haulage with load: ${onward.qty} hrs; empty return: ${returning.qty} hrs`,
+      });
+    }
+  }
+
+  // The message display board is a commercial product priced from the market,
+  // unlike the resource-bearing gantry support system in 8.33 (i).
+  const messageDisplay = byParsedCode.get("8.33-ii");
+  if (messageDisplay) {
+    messageDisplay.unit = "EACH";
+    messageDisplay.shiftOutput = 1;
+  }
+
+  // 3.26 is a composite rate based on the designed hard-rock quantity and
+  // the separately analysed rock-cutting item; the workbook prices it per m.
+  const hardRockDrainRate = byParsedCode.get("3.26");
+  if (hardRockDrainRate) {
+    hardRockDrainRate.unit = "METRE";
+    hardRockDrainRate.shiftOutput = 1;
   }
 
   return items.filter(item => {

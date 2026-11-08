@@ -88,8 +88,6 @@ describe("MoRTH SDB amendment", () => {
     for (const [parentCode, childCodes] of [
       ["4.1-A", ["4.1A-i", "4.1A-ii", "4.1A-iii"]],
       ["4.1-B", ["4.1B-i", "4.1B-ii", "4.1B-iii"]],
-      ["5.6", ["5.6-i", "5.6-ii"]],
-      ["5.8", ["5.8-i", "5.8-ii"]],
     ] as const) {
       const parent = byCode.get(parentCode)!;
       for (const childCode of childCodes) {
@@ -117,6 +115,147 @@ describe("MoRTH SDB amendment", () => {
     expect(byCode.get("3.13-i-B")).toMatchObject({ unit: "CUM", shiftOutput: 300 });
     expect(byCode.get("3.13-i-A")!.labour.length).toBeGreaterThan(0);
     expect(byCode.get("3.13-i-B")!.equipment.length).toBeGreaterThan(0);
+  });
+
+  it("keeps dismantling pavement paths as method × material sub-cases", () => {
+    for (const code of ["2.5-I-A", "2.5-I-B", "2.5-II-A"]) {
+      const item = byCode.get(code);
+      expect(item, code).toBeDefined();
+      expect(item).toMatchObject({ unit: "CUM", shiftOutput: 1 });
+      expect(item!.labour.length + item!.equipment.length + item!.materials.length).toBeGreaterThan(0);
+      expect(validateParsedMorthItem(item!).status).toBe("passing");
+    }
+    expect(byCode.get("2.5-I-A")!.equipment.map(row => row.label)).toContain("Tractor-trolley");
+    expect(byCode.get("2.5-II-A")!.equipment.map(row => row.label)).toContain("Farm tractor with ripper @ 60 cum per hour");
+    expect(byCode.has("2.5-II-B")).toBe(false);
+    expect(byCode.has("2.5-A")).toBe(false);
+  });
+
+  it("gives 4.6 and 4.17 variants shared work rows and only their own aggregate choice", () => {
+    for (const [parentCode, childCodes] of [
+      ["4.6", ["4.6-i", "4.6-ii"]],
+      ["4.17-A", ["4.17-A-i", "4.17-A-ii"]],
+      ["4.17-B", ["4.17-B-i", "4.17-B-ii"]],
+    ] as const) {
+      const parent = byCode.get(parentCode)!;
+      const children = childCodes.map(code => byCode.get(code)!);
+      expect(children.every(Boolean)).toBe(true);
+      for (const child of children) {
+        expect(child.equipment).toEqual(parent.equipment);
+        expect(child.labour).toEqual(parent.labour);
+        expect(child.materials.length).toBeGreaterThan(0);
+        expect(validateParsedMorthItem(child).status).toBe("passing");
+      }
+      expect(children[0].materials.map(row => row.label)).not.toEqual(children[1].materials.map(row => row.label));
+    }
+    expect(byCode.get("4.6-i")!.materials.map(row => row.label).join(" ")).toContain("55");
+    expect(byCode.get("4.6-i")!.materials.map(row => row.label).join(" ")).not.toContain("32.5");
+    expect(byCode.get("4.17-A-i")!.materials.map(row => row.label).join(" ")).toContain("33");
+    expect(byCode.get("4.17-A-i")!.materials.map(row => row.label).join(" ")).not.toContain("45 mm to 22.5");
+    expect(byCode.get("4.17-B-ii")!.materials.map(row => row.label).join(" ")).toContain("Cost of water");
+  });
+
+  it("splits WBM screening choices into their own material norms", () => {
+    const crushed = byCode.get("4.9-A-i-a")!;
+    const typeA = byCode.get("4.9-A-i-b")!;
+    const typeB = byCode.get("4.9-A-ii-c")!;
+    expect(crushed.materials.map(row => row.label).join(" ")).toMatch(/Grading-I.*Crushable.*Binding Material.*Cost of water/);
+    expect(typeA.materials.map(row => row.label).join(" ")).toMatch(/Grading-I.*Type A.*Binding Material.*Cost of water/);
+    expect(typeA.materials.some(row => /Crushable|Moorum/i.test(row.label))).toBe(false);
+    expect(typeB.materials.map(row => row.label).join(" ")).toMatch(/Grading-II.*Type B.*Binding Material.*Cost of water/);
+    for (const item of [crushed, typeA, typeB]) {
+      expect(item.equipment.length).toBeGreaterThan(0);
+      expect(item.labour.length).toBeGreaterThan(0);
+      expect(validateParsedMorthItem(item).status).toBe("passing");
+    }
+
+    const expectedLeaves = [
+      ["A", "i", "a", /crushable|moorum|gravel/i],
+      ["A", "i", "b", /type a/i],
+      ["A", "ii", "a", /crushable|moorum|gravel/i],
+      ["A", "ii", "b", /type a/i],
+      ["A", "ii", "c", /type b/i],
+      ["A", "iii", "a", /crushable|moorum|gravel/i],
+      ["A", "iii", "b", /type b/i],
+      ["B", "i", "a", /crushable|moorum|gravel/i],
+      ["B", "i", "b", /type a/i],
+      ["B", "ii", "a", /crushable|moorum|gravel/i],
+      ["B", "ii", "b", /type a/i],
+      ["B", "ii", "c", /type b/i],
+      ["B", "iii", "a", /crushable|moorum|gravel/i],
+      ["B", "iii", "b", /type b/i],
+    ] as const;
+    for (const [method, grade, option, expectedScreening] of expectedLeaves) {
+      const item = byCode.get(`4.9-${method}-${grade}-${option}`)!;
+      const screeningRows = item.materials.filter(row => row.sourceGroup?.startsWith("screening-"));
+      expect(screeningRows, item.code).toHaveLength(1);
+      expect(screeningRows[0].label).toMatch(expectedScreening);
+      expect(item.materials.some(row => row.sourceGroup === "aggregate")).toBe(true);
+      expect(item.materials.some(row => /Binding Material/i.test(row.label))).toBe(true);
+      expect(item.materials.some(row => /Cost of water/i.test(row.label))).toBe(true);
+      expect(validateParsedMorthItem(item).status).toBe("passing");
+    }
+  });
+
+  it("keeps one asphalt grading per child and defaults the main item to Grading I", () => {
+    for (const parentCode of ["5.6", "5.8"]) {
+      const parent = byCode.get(parentCode)!;
+      const gradeI = byCode.get(`${parentCode}-i`)!;
+      const gradeII = byCode.get(`${parentCode}-ii`)!;
+      const aggregateRows = (item: ParsedMorthItem) => item.materials.filter(row => row.sourceGroup !== "shared");
+      expect(aggregateRows(parent).every(row => row.sourceGroup === "grade-i")).toBe(true);
+      expect(aggregateRows(gradeI).every(row => row.sourceGroup === "grade-i")).toBe(true);
+      expect(aggregateRows(gradeII).every(row => row.sourceGroup === "grade-ii")).toBe(true);
+      expect(gradeI.materials.some(row => /Bitumen/i.test(row.label))).toBe(true);
+      expect(gradeII.materials.some(row => /Bitumen/i.test(row.label))).toBe(true);
+      expect(aggregateRows(gradeI).map(row => row.label).join(" ")).toContain("Filler");
+      expect(aggregateRows(gradeII).map(row => row.label).join(" ")).toContain("Filler");
+      expect(gradeI.equipment).toEqual(parent.equipment);
+      expect(gradeII.equipment).toEqual(parent.equipment);
+      expect(gradeI.labour).toEqual(parent.labour);
+      expect(gradeII.labour).toEqual(parent.labour);
+    }
+  });
+
+  it("gives street-light variants their own painting quantity and classifies 8.33(ii) as rate-only", () => {
+    const median = byCode.get("8.27-i")!;
+    const footpath = byCode.get("8.27-ii")!;
+    expect(median.materials.map(row => row.qty)).toEqual([1, 1, 5.75]);
+    expect(footpath.materials.map(row => row.qty)).toEqual([1, 1, 4.63]);
+    expect(validateParsedMorthItem(median).status).toBe("passing");
+    expect(validateParsedMorthItem(footpath).status).toBe("passing");
+    expect(byCode.get("8.33-i")!.equipment.length + byCode.get("8.33-i")!.labour.length).toBeGreaterThan(0);
+    expect(byCode.get("8.33-ii")).toMatchObject({ unit: "EACH", shiftOutput: 1 });
+    expect(validateParsedMorthItem(byCode.get("8.33-ii")!).status).toBe("rate_only");
+  });
+
+  it("keeps haulage titles and tipper hours distinct from carrying-by-lead norms", () => {
+    const expected = [
+      ["Cost of haulage — Surfaced road", 0.69, /0\.4 hrs.*0\.29 hrs/],
+      ["Cost of haulage — Unsurfaced gravelled road", 0.83, /0\.5 hrs.*0\.33 hrs/],
+      ["Cost of haulage — Katcha track", 1.67, /1 hrs.*0\.67 hrs/],
+    ] as const;
+    for (const [index, code] of ["1.4-i", "1.4-ii", "1.4-iii"].entries()) {
+      const item = byCode.get(code)!;
+      expect(item.title).toBe(expected[index][0]);
+      expect(item.equipment).toHaveLength(1);
+      expect(item.equipment[0]).toMatchObject({
+        label: "Tipper 10 tonne capacity",
+        unit: "hrs",
+        qty: expected[index][1],
+      });
+      expect(item.equipment[0].notes).toMatch(expected[index][2]);
+    }
+  });
+
+  it("keeps the established road norm outputs stable", () => {
+    expect(byCode.get("4.12")).toMatchObject({ unit: "CUM", shiftOutput: 225 });
+    expect(byCode.get("5.1")?.unit).toBe("SQM");
+    expect(byCode.get("5.2")?.unit).toBe("SQM");
+    expect(byCode.get("3.16")?.unit).toBe("CUM");
+    expect(byCode.get("3.18")?.unit).toBe("CUM");
+    expect(byCode.get("2.3-i-A")).toMatchObject({ unit: "HECTARE", shiftOutput: 1 });
+    expect(byCode.get("2.3-ii-B")?.equipment.some(row => /Dozer 80 HP/i.test(row.label))).toBe(true);
   });
 
   it("derives outputs from costing lines and keeps the full three-level 2.4 path", () => {
@@ -241,7 +380,7 @@ describe("MoRTH SDB amendment", () => {
   });
 
   it("marks the documented market-rate entries as rate-only while other incomplete items need checking", () => {
-    for (const code of ["5.20", "8.38", "8.42", "11.12", "11.13", "12.2", "12.37", "14.12"]) {
+    for (const code of ["3.26", "5.20", "8.33-ii", "8.38", "8.42", "11.12", "11.13", "12.2", "12.37", "14.12"]) {
       const item = byCode.get(code);
       expect(item, code).toBeDefined();
       expect(validateParsedMorthItem(item!).status).toBe("rate_only");
