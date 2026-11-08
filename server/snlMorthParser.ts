@@ -72,6 +72,7 @@ interface SubRow {
   unit: string;
   qty: number;
   ref: string;
+  notes?: string;
 }
 
 export interface ParsedMorthItem {
@@ -95,14 +96,27 @@ function cell(row: unknown[], col: number): string {
   return String(row[col] ?? '').trim();
 }
 
-/** Parse first numeric value from a cell that may contain "6.00x0.65*" or "450 x L" */
+/** Parse numeric factors as a product, while retaining the coefficient in "450 x L". */
 function parseQty(v: unknown): number | null {
   const s = String(v ?? '').trim();
   if (!s || s === 'input') return null;
+  const expression = s.replace(/,/g, '').replace(/×/g, 'x').replace(/\*+$/, '').replace(/\s+/g, '');
+  const factors = expression.split(/x/i);
+  if (factors.length > 1 && factors.every(part => /^(?:\d+(?:\.\d*)?|\.\d+)$/.test(part))) {
+    const product = factors.reduce((total, part) => total * Number(part), 1);
+    return Number.isFinite(product) ? product : null;
+  }
   const m = s.match(/^[\d,]+(?:\.\d+)?/);
   if (!m) return null;
   const n = parseFloat(m[0].replace(/,/g, ''));
   return isNaN(n) ? null : n;
+}
+
+function equipmentUnit(unit: string): string {
+  const normalized = unit.trim().toLowerCase().replace(/\s+/g, '');
+  if (/^(?:hr|hrs|hour|hours)$/.test(normalized)) return 'hrs';
+  if (/^(?:tonne\.?km|t\.?km)$/.test(normalized)) return 'tonne.km';
+  return unit.trim();
 }
 
 /** Detect section headings in column D */
@@ -241,6 +255,7 @@ function parseChapterSheet(
   let lastCaseBaseTitle = '';
   let lastWbmMethodCode = "";
   let lastWbmShiftOutput = 0;
+  let pendingEquipmentAlternative = false;
   // Track if the current item saw any sub-row data (has real content)
   let currentHasData = false;
 
@@ -270,6 +285,7 @@ function parseChapterSheet(
       materials: [],
     };
     section = 'desc';
+    pendingEquipmentAlternative = false;
   }
 
   // Skip the first 3 header rows (chapter title, subtitle, column headers)
@@ -381,9 +397,20 @@ function parseChapterSheet(
 
     // Detect section changes
     const sec = detectSection(colD);
-    if (sec !== null) { section = sec; continue; }
+    if (sec !== null) {
+      section = sec;
+      if (section !== 'equipment') pendingEquipmentAlternative = false;
+      continue;
+    }
 
     if (section === 'skip') continue;
+
+    // An "or" row in Machinery introduces an alternative, not another machine
+    // to add to demand. Keep the alternative as a note on the first norm row.
+    if (section === 'equipment' && /^or\b/i.test(colD)) {
+      pendingEquipmentAlternative = activeItem.equipment.length > 0;
+      continue;
+    }
 
     // Description section: pick up unit and output lines
     if (section === 'desc') {
@@ -410,12 +437,29 @@ function parseChapterSheet(
 
     const qty = parseQty(colF);
     if (qty === null || qty <= 0) continue;
-    const unit = colE || (section === 'labour' ? 'day' : section === 'equipment' ? 'hour' : activeItem.unit);
+    const rawUnit = colE || (section === 'labour' ? 'day' : section === 'equipment' ? 'hour' : activeItem.unit);
+    const unit = section === 'equipment' ? equipmentUnit(rawUnit) : rawUnit;
 
     const subRow: SubRow = { label: colD, unit, qty, ref: colI };
 
     if (section === 'labour')    { activeItem.labour.push(subRow);    currentHasData = true; }
-    if (section === 'equipment') { activeItem.equipment.push(subRow); currentHasData = true; }
+    if (section === 'equipment') {
+      if (pendingEquipmentAlternative) {
+        const firstNorm = activeItem.equipment[activeItem.equipment.length - 1];
+        if (firstNorm) {
+          const altUnit = unit === 'hrs' ? 'hr' : unit;
+          const alternative = `Alternative only: ${subRow.label} — ${subRow.qty} ${altUnit}`;
+          firstNorm.notes = [firstNorm.notes, alternative].filter(Boolean).join("; ");
+        }
+        pendingEquipmentAlternative = false;
+      } else {
+        if (unit === 'tonne.km') {
+          subRow.notes = `Carrying by lead: ${qty} tonne.km per shift per km lead`;
+        }
+        activeItem.equipment.push(subRow);
+      }
+      currentHasData = true;
+    }
     if (section === 'materials') { activeItem.materials.push(subRow); currentHasData = true; }
   }
 
@@ -433,6 +477,23 @@ function parseChapterSheet(
     if (seen > 0) {
       item.code = `${orig}-${seen + 1}`;
     }
+  }
+
+  // Grading variants with no resource rows of their own inherit only the
+  // missing resource categories from their immediate parent. This also lets
+  // 4.9-A/B grading children keep their own materials while sharing the
+  // parent method's machines and labour.
+  const itemByCode = new Map(items.map(item => [item.code, item]));
+  for (const item of items) {
+    const match = item.code.match(/^(.*)-([ivxlc]+)$/);
+    if (!match) continue;
+    const parent = itemByCode.get(match[1]);
+    if (!parent) continue;
+    if (!item.equipment.length && parent.equipment.length) item.equipment = parent.equipment.map(row => ({ ...row }));
+    if (!item.labour.length && parent.labour.length) item.labour = parent.labour.map(row => ({ ...row }));
+    if (!item.materials.length && parent.materials.length) item.materials = parent.materials.map(row => ({ ...row }));
+    if (item.shiftOutput <= 0 && parent.shiftOutput > 0) item.shiftOutput = parent.shiftOutput;
+    if (!item.unit && parent.unit) item.unit = parent.unit;
   }
 
   return items;
@@ -512,10 +573,11 @@ async function upsertParsedItems(
           sortOrder: j,
           equipmentType: er.label,
           equipmentSpec: null,
-          unit: 'hrs',
+          unit: er.unit,
           quantityPerShift: er.qty,
           shiftOutputRef: shiftOutput,
           derivedPerUnit: er.qty / shiftOutput,
+          notes: er.notes ?? null,
         });
         result.equipment++;
       }

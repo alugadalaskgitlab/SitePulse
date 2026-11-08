@@ -18,7 +18,7 @@ import { parseMorthSdbWorkbook, type ParsedMorthItem } from "./snlMorthParser";
 
 type NormRows = {
   productivity: Array<{ projectCategory: string; shiftOutput: number; shiftHours: number; outputUnit: string; derivedPerHour: number | null }>;
-  equipment: Array<{ projectCategory: string; sortOrder: number; equipmentType: string; unit: string; quantityPerShift: number | null; shiftOutputRef: number; derivedPerUnit: number | null }>;
+  equipment: Array<{ projectCategory: string; sortOrder: number; equipmentType: string; unit: string; quantityPerShift: number | null; shiftOutputRef: number; derivedPerUnit: number | null; notes: string | null }>;
   labour: Array<{ projectCategory: string; sortOrder: number; designation: string; skillTier: string; unit: string; quantityPerShift: number; shiftOutputRef: number; derivedPerUnit: number | null }>;
   materials: Array<{ projectCategory: string; sortOrder: number; materialName: string; materialCategory: string; unit: string; quantityPerShift: number; shiftOutputRef: number; derivedPerUnit: number | null }>;
 };
@@ -51,8 +51,9 @@ function parsedNorms(item: ParsedMorthItem): NormRows {
       derivedPerHour: storedPrecision(shiftOutput / 8),
     }],
     equipment: item.equipment.map((row, sortOrder) => ({
-      projectCategory: "ALL", sortOrder, equipmentType: row.label, unit: "hrs",
+      projectCategory: "ALL", sortOrder, equipmentType: row.label, unit: row.unit,
       quantityPerShift: row.qty, shiftOutputRef: shiftOutput, derivedPerUnit: storedPrecision(row.qty / shiftOutput),
+      notes: row.notes ?? null,
     })),
     labour: item.labour.map((row, sortOrder) => ({
       projectCategory: "ALL", sortOrder, designation: row.label, skillTier: skillTier(row.label), unit: "day",
@@ -107,8 +108,8 @@ async function loadCurrentRows(sourceId: number) {
         .sort((a, b) => a.projectCategory.localeCompare(b.projectCategory) || a.shiftOutput - b.shiftOutput)
         .map(({ projectCategory, shiftOutput, shiftHours, outputUnit, derivedPerHour }) =>
         ({ projectCategory, shiftOutput, shiftHours, outputUnit, derivedPerHour })),
-      equipment: ordered(equipmentById.get(item.id) ?? []).map(({ projectCategory, sortOrder, equipmentType, unit, quantityPerShift, shiftOutputRef, derivedPerUnit }) =>
-        ({ projectCategory, sortOrder, equipmentType, unit, quantityPerShift, shiftOutputRef, derivedPerUnit })),
+      equipment: ordered(equipmentById.get(item.id) ?? []).map(({ projectCategory, sortOrder, equipmentType, unit, quantityPerShift, shiftOutputRef, derivedPerUnit, notes }) =>
+        ({ projectCategory, sortOrder, equipmentType, unit, quantityPerShift, shiftOutputRef, derivedPerUnit, notes: notes ?? null })),
       labour: ordered(labourById.get(item.id) ?? []).map(({ projectCategory, sortOrder, designation, skillTier, unit, quantityPerShift, shiftOutputRef, derivedPerUnit }) =>
         ({ projectCategory, sortOrder, designation, skillTier, unit, quantityPerShift, shiftOutputRef, derivedPerUnit })),
       materials: ordered(materialsById.get(item.id) ?? []).map(({ projectCategory, sortOrder, materialName, materialCategory, unit, quantityPerShift, shiftOutputRef, derivedPerUnit }) =>

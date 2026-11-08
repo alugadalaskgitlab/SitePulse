@@ -27242,8 +27242,8 @@ async function seedSnlItems() {
     await seedSnlFromBundles();
     // Global remap — pick up items mapped while the app was down
     autoMapAllUnmappedItems()
-      .then(r => { if (r.remapped > 0) console.log(`SNL global remap: ${r.remapped} items processed`); })
-      .catch(err => console.error("SNL global remap failed:", err));
+      .then(r => { if (r.suggested > 0) console.log(`SNL startup suggestions: ${r.suggested} items queued for review`); })
+      .catch(err => console.error("SNL startup suggestions failed:", err));
   } catch (err) {
     console.error("seedSnlItems failed:", err);
   }

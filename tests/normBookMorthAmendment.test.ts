@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parseMorthSdbWorkbook } from "../server/snlMorthParser";
 import { calculateBomDemand } from "../shared/planningEngine";
 import { computeItemDemand } from "../client/src/pages/WorkDemand";
+import { isSnlEquipmentHoursUnit } from "../shared/snlEquipment";
 
 describe("MoRTH SDB amendment", () => {
   const workbook = readFileSync(resolve(
@@ -47,6 +48,45 @@ describe("MoRTH SDB amendment", () => {
       expect(gradeII?.materials.length).toBeGreaterThan(0);
       expect(gradeI!.shiftOutput).toBe(parent!.shiftOutput);
       expect(gradeII!.shiftOutput).toBe(parent!.shiftOutput);
+    }
+  });
+
+  it("keeps OR machinery alternatives out of hours and parses decimal quantity factors", () => {
+    const wmm = byCode.get("4.12")!;
+    const roller = wmm.equipment.find(row => /vibratory roller/i.test(row.label))!;
+    expect(roller.qty).toBeCloseTo(3.9);
+    expect(roller.notes).toContain("Alternative only");
+    expect(roller.notes).toContain("Smooth 3 wheeled steel roller");
+    expect(wmm.equipment.some(row => /smooth 3 wheeled steel roller/i.test(row.label))).toBe(false);
+
+    const tipper = wmm.equipment.find(row => /tipper/i.test(row.label))!;
+    expect(tipper).toMatchObject({ unit: "tonne.km", qty: 495 });
+    expect(tipper.notes).toContain("Carrying by lead");
+  });
+
+  it("keeps lead-based tipper transport out of embankment machine-hour rows", () => {
+    const embankment = byCode.get("3.16")!;
+    const tipper = embankment.equipment.find(row => /tipper/i.test(row.label))!;
+    expect(tipper.unit).toBe("tonne.km");
+    expect(tipper.qty).toBe(160);
+    expect(embankment.equipment.filter(row => row.unit === "hrs")).toHaveLength(5);
+    expect(isSnlEquipmentHoursUnit(tipper.unit)).toBe(false);
+    expect(isSnlEquipmentHoursUnit("hour")).toBe(true);
+  });
+
+  it("fills empty grading sub-items from their parent without double-counting the OR machine", () => {
+    for (const [parentCode, childCodes] of [
+      ["5.6", ["5.6-i", "5.6-ii"]],
+      ["5.8", ["5.8-i", "5.8-ii"]],
+    ] as const) {
+      const parent = byCode.get(parentCode)!;
+      for (const childCode of childCodes) {
+        const child = byCode.get(childCode)!;
+        expect(child.shiftOutput).toBe(parent.shiftOutput);
+        expect(child.equipment).toEqual(parent.equipment);
+        expect(child.labour).toEqual(parent.labour);
+        expect(child.materials).toEqual(parent.materials);
+      }
     }
   });
 

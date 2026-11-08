@@ -21,7 +21,7 @@
 
 import { db } from "./db";
 import { boqCategories, boqItems, snlItems, snlSources, snlBoqMappings } from "@shared/schema";
-import { eq, and, inArray, notInArray } from "drizzle-orm";
+import { eq, and, inArray, notInArray, isNull } from "drizzle-orm";
 import { storage } from "./storage";
 import { isSnlWorkFamilyCompatible } from "@shared/snlMappingPolicy";
 import { getNormBookSourceId } from "./normBook";
@@ -1230,21 +1230,150 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
 }
 
 /**
- * Re-map ALL unmapped / needs_review BOQ items across every project.
- * Called at startup after SNL seeding so existing items benefit from updated
- * SNL data and scorer logic without requiring a manual re-import.
+ * Startup may save a review suggestion for a BOQ item with no mapping row.
+ * It must not confirm a mapping, change recipes, or propagate suggestions.
  */
-export async function autoMapAllUnmappedItems(): Promise<{ remapped: number; skippedManual: number }> {
-  const rows = await db
-    .select({ id: boqItems.id, recipeManualOverride: boqItems.recipeManualOverride })
+export async function suggestUnlinkedBoqItemsAtStartup(): Promise<{ suggested: number; skippedManual: number }> {
+  const pending = await db
+    .select({
+      id: boqItems.id,
+      snlCode: boqItems.snlCode,
+      description: boqItems.description,
+      unit: boqItems.unit,
+      workCategory: boqItems.workCategory,
+      recipeManualOverride: boqItems.recipeManualOverride,
+      isComposite: boqItems.isComposite,
+      categoryName: boqCategories.name,
+    })
     .from(boqItems)
-    .where(inArray(boqItems.mappingStatus, ["unmapped", "needs_review"]));
-  if (rows.length === 0) return { remapped: 0, skippedManual: 0 };
-  const ids = rows.filter((r) => r.recipeManualOverride !== true).map((r) => r.id);
-  const skippedManual = rows.length - ids.length;
-  if (ids.length === 0) return { remapped: 0, skippedManual };
-  await autoMapBoqItems(ids);
-  return { remapped: ids.length, skippedManual };
+    .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
+    .leftJoin(snlBoqMappings, eq(snlBoqMappings.boqItemId, boqItems.id))
+    .where(and(
+      inArray(boqItems.mappingStatus, ["unmapped", "needs_review"]),
+      isNull(snlBoqMappings.id),
+    ));
+  if (!pending.length) return { suggested: 0, skippedManual: 0 };
+
+  const skippedManual = pending.filter(row => row.recipeManualOverride === true).length;
+  const eligible = pending.filter(row => row.recipeManualOverride !== true);
+  if (!eligible.length) return { suggested: 0, skippedManual };
+
+  const sourceId = await getNormBookSourceId();
+  if (sourceId == null) return { suggested: 0, skippedManual };
+  const candidates = await db
+    .select({
+      id: snlItems.id,
+      itemCode: snlItems.itemCode,
+      description: snlItems.description,
+      shortLabel: snlItems.shortLabel,
+      unit: snlItems.unit,
+      workCategory: snlItems.workCategory,
+      sector: snlItems.sector,
+    })
+    .from(snlItems)
+    .where(and(eq(snlItems.isActive, true), eq(snlItems.sourceId, sourceId)));
+  if (!candidates.length) return { suggested: 0, skippedManual };
+
+  const tokensById = new Map<number, string[]>(
+    candidates.map(candidate => [candidate.id, richTokens(`${candidate.description ?? ""} ${candidate.shortLabel ?? ""}`)]),
+  );
+  const idf = buildIdf(Array.from(tokensById.values()));
+  let suggested = 0;
+
+  for (const item of eligible) {
+    // Composite splitting requires explicit user confirmation; startup does not
+    // create component links or mark a BOQ item composite.
+    if (item.isComposite === true || detectCompositeComponents(item.description ?? "")) continue;
+
+    let candidate: typeof candidates[number] | undefined;
+    let score = 0;
+    let mappedBy = "startup-suggestion";
+    let note = "";
+
+    const explicitCode = (item.snlCode ?? "").trim().toLowerCase();
+    if (explicitCode) {
+      const matches = candidates.filter(row => row.itemCode.trim().toLowerCase() === explicitCode);
+      if (matches.length === 1) {
+        candidate = matches[0];
+        score = 1;
+        note = `Suggested by explicit MoRTH code "${candidate.itemCode}"; user review required`;
+      }
+    }
+
+    const ruleTag = classifyBoqItemForSnl(item.description ?? "");
+    const boqCategory = classifyBoqItem(item.description ?? "");
+    if (!candidate && ruleTag) {
+      const rulePool = candidates.filter(row => isPrimaryRuleCandidate(boqCategory, row));
+      const ruleResult = ruleMatchSnl(ruleTag, rulePool, `${item.description ?? ""} ${item.categoryName ?? ""}`);
+      if (ruleResult) {
+        candidate = candidates.find(row => row.id === ruleResult.snlItemId);
+        score = ruleResult.confidence;
+        mappedBy = "startup-suggestion";
+        note = `Suggested by rule "${ruleTag}"; user review required`;
+      }
+    }
+
+    if (!candidate) {
+      const text = richTokens(`${item.description ?? ""} ${item.workCategory ?? ""}`);
+      const workFamily = item.workCategory ?? inferWorkCategory(item.description ?? "");
+      const familyCandidates = candidates.filter(row =>
+        isSnlWorkFamilyCompatible(workFamily, ruleTag, row.workCategory),
+      );
+      const eligibleCandidates = familyCandidates.filter(row =>
+        getEffectiveSectorMultiplier(boqCategory, row) > 0,
+      );
+      const pool = eligibleCandidates.length >= 5 ? eligibleCandidates : familyCandidates;
+      const ranked = pool.map(row => {
+        const similarity = weightedCosine(text, tokensById.get(row.id) ?? [], idf);
+        const sectorMultiplier = getEffectiveSectorMultiplier(boqCategory, row);
+        const unitMultiplier = unitsCompatible(item.unit, row.unit) ? 1 : UNIT_MISMATCH_PENALTY;
+        return { row, score: similarity * sectorMultiplier * unitMultiplier };
+      }).sort((a, b) => b.score - a.score);
+      if (ranked[0] && ranked[0].score >= SUGGEST_FLOOR) {
+        candidate = ranked[0].row;
+        score = ranked[0].score;
+        note = `Suggested by description similarity (${score.toFixed(3)}); user review required`;
+      }
+    }
+
+    if (!candidate) continue;
+    if (!unitsCompatible(item.unit, candidate.unit)) {
+      note += " (unit mismatch — review)";
+    }
+    const [saved] = await db
+      .insert(snlBoqMappings)
+      .values({
+        boqItemId: item.id,
+        snlItemId: candidate.id,
+        projectCategory: "MEDIUM",
+        gradingVariant: null,
+        mappedBy,
+        isAutoMapped: true,
+        confidenceScore: score,
+        notes: note,
+      })
+      .onConflictDoNothing()
+      .returning({ boqItemId: snlBoqMappings.boqItemId });
+    if (!saved) continue;
+
+    // Keep the item visibly unconfirmed. No recipe write or "mapped" status
+    // occurs in this startup-only path.
+    await db.update(boqItems)
+      .set({ mappingStatus: "needs_review" })
+      .where(eq(boqItems.id, item.id));
+    suggested++;
+  }
+
+  return { suggested, skippedManual };
+}
+
+/**
+ * Compatibility name retained for the startup caller. This path is suggestions
+ * only; user-initiated Map to Norm / Re-link actions perform actual linking.
+ */
+export async function autoMapAllUnmappedItems(): Promise<{ remapped: number; suggested: number; skippedManual: number }> {
+  const result = await suggestUnlinkedBoqItemsAtStartup();
+  return { remapped: 0, ...result };
 }
 
 /**

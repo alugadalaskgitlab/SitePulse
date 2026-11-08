@@ -118,7 +118,7 @@ interface MorthReloadPreview {
 
 interface MorthNormRows {
   productivity: Array<{ projectCategory: string; shiftOutput: number; shiftHours: number; outputUnit: string; derivedPerHour: number | null }>;
-  equipment: Array<{ projectCategory: string; sortOrder: number; equipmentType: string; unit: string; quantityPerShift: number | null; shiftOutputRef: number; derivedPerUnit: number | null }>;
+  equipment: Array<{ projectCategory: string; sortOrder: number; equipmentType: string; unit: string; quantityPerShift: number | null; shiftOutputRef: number; derivedPerUnit: number | null; notes?: string | null }>;
   labour: Array<{ projectCategory: string; sortOrder: number; designation: string; skillTier: string; unit: string; quantityPerShift: number; shiftOutputRef: number; derivedPerUnit: number | null }>;
   materials: Array<{ projectCategory: string; sortOrder: number; materialName: string; materialCategory: string; unit: string; quantityPerShift: number; shiftOutputRef: number; derivedPerUnit: number | null }>;
 }
@@ -132,7 +132,8 @@ function formatReloadRows(norms: MorthNormRows | null, key: "equipment" | "labou
     const qty = row.quantityPerShift == null
       ? "variable"
       : `${row.quantityPerShift.toLocaleString("en-IN")} ${row.unit} per ${row.shiftOutputRef.toLocaleString("en-IN")} ${norms.productivity[0]?.outputUnit ?? ""}`.trim();
-    return `${row.projectCategory} · ${name}: ${qty}`;
+    const note = "notes" in row && row.notes ? ` · ${row.notes}` : "";
+    return `${row.projectCategory} · ${name}: ${qty}${note}`;
   }).join("; ");
 }
 

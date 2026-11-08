@@ -140,6 +140,7 @@ import { getBillFinancialTotals } from "@shared/vendorBillFinancialReport";
 import { hasVendorBillCentPrecision } from "@shared/vendorBillSettlement";
 import { isAlpsLikeFreeTextPayer } from "@shared/vendorBillAttention";
 import { formatPersonName } from "@shared/personName";
+import { isSnlEquipmentHoursUnit } from "@shared/snlEquipment";
 import {
   buildSiteTripSuggestions,
   normalizeSiteTripHistorySite,
@@ -31461,6 +31462,7 @@ export class DatabaseStorage implements IStorage {
 
     const needle = equipmentName.trim().toLowerCase();
     const rows = snlItem.equipment.filter((e) => {
+      if (!isSnlEquipmentHoursUnit(e.unit)) return false;
       const et = e.equipmentType.trim().toLowerCase();
       return et === needle || et.includes(needle) || needle.includes(et);
     });
@@ -34011,7 +34013,10 @@ export class DatabaseStorage implements IStorage {
       return filtered;
     };
 
-    const equipment = pickRows(itemFull.equipment);
+    // SNL rows such as tipper tonne.km are carriage-by-lead norms, not machine
+    // operating hours. Keep them in the norm book but never write them into
+    // the BOQ equipment-hours recipe.
+    const equipment = pickRows(itemFull.equipment).filter((e) => isSnlEquipmentHoursUnit(e.unit));
     const labour = pickRows(itemFull.labour);
     const gradingMaterials = gradingVariant
       ? itemFull.materials.filter(m => m.gradingVariant === gradingVariant)
