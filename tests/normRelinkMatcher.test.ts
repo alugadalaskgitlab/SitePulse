@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parseMorthSdbWorkbook } from "../server/snlMorthParser";
 import {
   explainMorthRelinkNoMatch,
+  getMorthUnitConversion,
   matchMorthRelinkCandidate,
 } from "../server/snlMorthRelinkMatcher";
 
@@ -24,7 +25,8 @@ describe("MoRTH re-link title matching", () => {
     matchMorthRelinkCandidate(description, unit, candidates, sector)?.candidate.code ?? null;
 
   it("uses exact work phrases in workbook titles instead of nearby codes", () => {
-    expect(matchCode("Clearing and grubbing including uprooting trees", "sqm")).toBe("2.3");
+    expect(matchCode("Clearing and grubbing including uprooting trees", "sqm")).toBeNull();
+    expect(matchCode("Clearing and grubbing by manual means in light jungle", "sqm")).toBe("2.3-i-A");
     expect(matchCode("Scarifying existing bituminous road surface", "sqm")).toBe("3.15");
     expect(matchCode("Construction of embankment with approved earth")).toBeNull();
     expect(explainMorthRelinkNoMatch("Construction of embankment with approved earth", candidates))
@@ -52,15 +54,17 @@ describe("MoRTH re-link title matching", () => {
       .toContain("single-row and double-row");
   });
 
-  it("shows an exact title proposal but prevents applying incompatible units", () => {
+  it("supports the explicit square-metre to hectare conversion for clearing", () => {
     const result = matchMorthRelinkCandidate(
-      "Clearing and grubbing road land",
+      "Clearing and grubbing road land by manual means in light jungle",
       "sqm",
       candidates,
       "ROAD",
     );
-    expect(result?.candidate.code).toBe("2.3");
-    expect(result?.canApply).toBe(false);
-    expect(result?.reason).toContain("BOQ sqm; MoRTH HECTARE");
+    expect(result?.candidate.code).toBe("2.3-i-A");
+    expect(result?.canApply).toBe(true);
+    expect(result?.normUnitsPerBoqUnit).toBeCloseTo(0.0001);
+    expect(result?.reason).toContain("1 hectare = 10,000 sqm");
+    expect(getMorthUnitConversion("HECTARE", "sqm")?.normUnitsPerBoqUnit).toBe(10_000);
   });
 });

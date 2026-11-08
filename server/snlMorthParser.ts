@@ -150,7 +150,8 @@ function isNoiseRow(d: string): boolean {
 
 /** Extract output value + unit from "Taking output = 120 cum" */
 function parseOutput(d: string): { qty: number; unit: string } | null {
-  const outputText = d.split("=").at(-1)?.trim() ?? "";
+  const outputText = d.match(/taking\s+output\s*(?:=|:)?\s*(.*)$/i)?.[1]
+    ?.split(/[:=]/).at(-1)?.trim() ?? "";
   const numeric = outputText.match(/^([\d,]+(?:\.\d+)?)(?:\s*(\S+))?/i);
   if (numeric) {
     const qty = parseFloat(numeric[1].replace(/,/g, ""));
@@ -236,7 +237,7 @@ function nestedRootAndParts(codeCell: string, chapterNo: number): { root: string
   const [, root, suffix] = match;
   const parts: NestedPathPart[] = [];
   const remainder = suffix.trim();
-  const tokenPattern = /Case\s*[-– ]\s*(I|II)|\(([A-Za-z]+)\)|(?:^|\s)([A-H])(?=\s|\(|$)|^([A-H])$/gi;
+  const tokenPattern = /Case\s*[-– ]\s*(II|I)\b|\(([A-Za-z]+)\)|(?:^|\s)([A-H])(?=\s|\(|$)|^([A-H])$/gi;
   for (const token of Array.from(remainder.matchAll(tokenPattern))) {
     if (token[1]) {
       parts.push({ code: `Case-${token[1].toUpperCase()}`, kind: "case" });
@@ -264,7 +265,7 @@ function nestedPartFromColumnC(value: string): NestedPathPart | null {
 }
 
 function samePathPart(a: NestedPathPart, b: NestedPathPart): boolean {
-  return a.code.toLowerCase() === b.code.toLowerCase() && a.kind === b.kind;
+  return a.code === b.code && a.kind === b.kind;
 }
 
 function skillTier(designation: string): string {
@@ -317,9 +318,6 @@ function parseChapterSheet(
     if (!current) return;
     // Only keep items that have at least one sub-row OR a meaningful unit
     if (currentHasData || current.unit) {
-      if (currentNestedRoot && process.env.MORTH_TRACE === String(chapterNo)) {
-        console.error(`[morth trace] final ${current.code}: rows=${current.equipment.length}/${current.labour.length}/${current.materials.length} unit=${current.unit}`);
-      }
       items.push({ ...current });
       if (currentNestedRoot) {
         const code = current.code;
@@ -380,13 +378,12 @@ function parseChapterSheet(
 
   function startNestedItem(root: string, parts: NestedPathPart[], rowTitle: string) {
     const code = [root, ...parts.map(part => part.code)].join("-");
-    if (process.env.MORTH_TRACE === String(chapterNo)) console.error(`[morth trace] start ${code}: ${rowTitle}`);
     let title = titleByCode.get(root) ?? lastBaseTitle;
     for (let index = 0; index < parts.length; index++) {
       const prefixCode = [root, ...parts.slice(0, index + 1).map(part => part.code)].join("-");
       const savedTitle = titleByCode.get(prefixCode);
       if (savedTitle) title = savedTitle;
-      else if (index === parts.length - 1 && rowTitle) title = `${title} — ${rowTitle.replace(/[\s:;-]+$/, "").trim()}`;
+      else if (index === parts.length - 1 && rowTitle) title = `${title} — ${rowTitle.replace(/[\s:;.-]+$/, "").trim()}`;
     }
     if (parts.length && rowTitle) {
       const finalPartCode = [root, ...parts.map(part => part.code)].join("-");
@@ -394,7 +391,7 @@ function parseChapterSheet(
       if (!existingTitle || existingTitle === titleByCode.get(root)) {
         const parentCode = [root, ...parts.slice(0, -1).map(part => part.code)].join("-");
         const parentTitle = titleByCode.get(parentCode) ?? titleByCode.get(root) ?? lastBaseTitle;
-        title = `${parentTitle} — ${rowTitle.replace(/[\s:;-]+$/, "").trim()}`;
+        title = `${parentTitle} — ${rowTitle.replace(/[\s:;.-]+$/, "").trim()}`;
       }
     }
     titleByCode.set(code, title);
@@ -414,7 +411,8 @@ function parseChapterSheet(
     if (marker && !parts.some(part => samePathPart(part, marker))) {
       if (marker.kind === "roman") {
         const last = parts.at(-1);
-        if (last?.kind === "roman") parts.pop();
+        if (marker.code === marker.code.toUpperCase()) parts = [];
+        else if (last?.kind === "roman") parts.pop();
         else if (last?.kind !== "letter" && last?.kind !== "case") {
           const casePrefix = parts.findIndex(part => part.kind === "case");
           parts = casePrefix >= 0 ? parts.slice(0, casePrefix + 1) : [];
@@ -479,7 +477,7 @@ function parseChapterSheet(
         : !!nestedMarker;
       if (isRootBoundary) {
         lastBaseCode = nestedRoot;
-        lastBaseTitle = colD || lastBaseTitle;
+        lastBaseTitle = colD.replace(/[\s.]+$/, "") || lastBaseTitle;
         lastBaseUnit = "";
         titleByCode.set(nestedRoot, lastBaseTitle);
         startItem(nestedRoot, lastBaseTitle, { root: nestedRoot, parts: [] });
@@ -711,11 +709,11 @@ function parseChapterSheet(
     if (!item.unit && parent.unit) item.unit = parent.unit;
   }
 
-  const nestedCodes = new Set(nestedPathByCode.keys());
   return items.filter(item => {
-    if (!nestedCodes.has(item.code)) return true;
     const hasResources = item.equipment.length || item.labour.length || item.materials.length;
     if (hasResources) return true;
+    // Heading-only parent rows are not independent norms when their child
+    // cases contain the actual resources.
     return !items.some(candidate => candidate.code.startsWith(`${item.code}-`));
   });
 }

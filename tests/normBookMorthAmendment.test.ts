@@ -5,6 +5,7 @@ import { parseMorthSdbWorkbook } from "../server/snlMorthParser";
 import { calculateBomDemand } from "../shared/planningEngine";
 import { computeItemDemand } from "../client/src/pages/WorkDemand";
 import { isSnlEquipmentHoursUnit } from "../shared/snlEquipment";
+import { getMorthReloadApplicableCodes, validateParsedMorthItem } from "../server/snlMorthReload";
 
 describe("MoRTH SDB amendment", () => {
   const workbook = readFileSync(resolve(
@@ -90,6 +91,73 @@ describe("MoRTH SDB amendment", () => {
         expect(child.materials).toEqual(parent.materials);
       }
     }
+  });
+
+  it("keeps the full nested path and inherits heading units and output", () => {
+    for (const code of ["2.3-i-A", "2.3-i-B", "2.3-ii-A", "2.3-ii-B"]) {
+      const item = byCode.get(code);
+      expect(item, code).toBeDefined();
+      expect(item!.unit).toBe("HECTARE");
+      expect(item!.shiftOutput).toBe(1);
+      expect(item!.labour.length + item!.equipment.length + item!.materials.length).toBeGreaterThan(0);
+    }
+    expect(byCode.get("2.3-i-A")!.title).toMatch(/^Clearing and Grubbing Road Land —/);
+    expect(byCode.get("2.3-i-A")?.title).toContain("By Manual Means — In area of light jungle");
+    expect(byCode.get("2.3-ii-B")?.title).toContain("By Mechanical Means — In area of thorny jungle");
+    expect(byCode.get("3.13-i-A")).toMatchObject({ unit: "CUM", shiftOutput: 10 });
+    expect(byCode.get("3.13-i-B")).toMatchObject({ unit: "CUM", shiftOutput: 300 });
+    expect(byCode.get("3.13-i-A")!.labour.length).toBeGreaterThan(0);
+    expect(byCode.get("3.13-i-B")!.equipment.length).toBeGreaterThan(0);
+  });
+
+  it("preserves chapter 12.1 depth paths and reports missing heading data for a resource-bearing row", () => {
+    expect(byCode.get("12.1-I-A-i")).toMatchObject({ unit: "CUM", shiftOutput: 10 });
+    expect(byCode.get("12.1-I-A-ii")).toMatchObject({ unit: "CUM", shiftOutput: 10 });
+    expect(byCode.get("12.1-I-B-i")).toMatchObject({ unit: "CUM", shiftOutput: 240 });
+    const backfill = byCode.get("12.1-VI");
+    expect(backfill).toMatchObject({ unit: "CUM", shiftOutput: 6 });
+    expect(backfill!.equipment.length + backfill!.labour.length + backfill!.materials.length).toBeGreaterThan(0);
+    expect(validateParsedMorthItem(backfill!).status).toBe("passing");
+  });
+
+  it("normalizes Chapter 14 unit prefixes and gives p/q/r sub-cases resources and positive output", () => {
+    expect(byCode.get("14.1-A-Case-I")?.unit).toBe("CUM");
+    expect(byCode.get("14.1-A-Case-II")?.unit).toBe("CUM");
+    expect(byCode.has("14.1-A-Case-II-i-2")).toBe(false);
+    expect(byCode.has("14.1-A-Case-II-i-p")).toBe(true);
+    for (const code of [
+      "14.1-A-Case-I-i-p",
+      "14.1-A-Case-I-i-q",
+      "14.1-A-Case-I-i-r",
+      "14.1-A-Case-II-i-p",
+      "14.1-A-Case-II-i-q",
+      "14.1-A-Case-II-i-r",
+    ]) {
+      const item = byCode.get(code);
+      expect(item, code).toBeDefined();
+      expect(item!.unit).toBe("CUM");
+      expect(item!.shiftOutput).toBeGreaterThan(0);
+      expect(item!.equipment.length + item!.labour.length + item!.materials.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("marks the documented market-rate entries as rate-only while other incomplete items need checking", () => {
+    for (const code of ["5.20", "8.42"]) {
+      const item = byCode.get(code);
+      expect(item, code).toBeDefined();
+      expect(validateParsedMorthItem(item!).status).toBe("rate_only");
+    }
+    expect(items.find(item => item.code === "12.1-VI")?.shiftOutput).toBeGreaterThan(0);
+  });
+
+  it("never includes Needs check rows in the set of reloadable changes", () => {
+    expect(getMorthReloadApplicableCodes([
+      { code: "ok-changed", status: "changed", validationStatus: "passing" },
+      { code: "rate-only", status: "added", validationStatus: "rate_only" },
+      { code: "bad-added", status: "added", validationStatus: "needs_check" },
+      { code: "bad-changed", status: "changed", validationStatus: "needs_check" },
+      { code: "unchanged", status: "unchanged", validationStatus: "passing" },
+    ])).toEqual(["ok-changed", "rate-only"]);
   });
 
   it("caps BOM demand at BOQ quantity when multiple bars each carry the full quantity", () => {

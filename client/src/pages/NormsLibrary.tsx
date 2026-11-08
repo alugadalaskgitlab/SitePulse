@@ -105,11 +105,23 @@ interface MorthReloadPreview {
   sourceName: string;
   fingerprint: string;
   parsedCount: number;
-  counts: { added: number; changed: number; unchanged: number; preservedOutsideWorkbook: number };
+  counts: {
+    added: number;
+    changed: number;
+    unchanged: number;
+    preservedOutsideWorkbook: number;
+    passing: number;
+    rateOnly: number;
+    needsCheck: number;
+  };
   preservedOutsideWorkbookItems: Array<{ code: string; description: string; unit: string }>;
+  rateOnlyItems: Array<{ code: string; title: string; unit: string; shiftOutput: number; reasons: string[] }>;
+  needsCheckItems: Array<{ code: string; title: string; unit: string; shiftOutput: number; reasons: string[] }>;
   changes: Array<{
     code: string;
     status: "added" | "changed" | "unchanged";
+    validationStatus: "passing" | "rate_only" | "needs_check";
+    validationReasons: string[];
     old: null | { description: string; unit: string; norms: MorthNormRows };
     new: { description: string; unit: string; norms: MorthNormRows };
     reasons: string[];
@@ -752,14 +764,41 @@ export default function NormsLibrary() {
               <span>{reloadPreview.counts.preservedOutsideWorkbook} outside workbook, preserved</span>
             </div>
           </div>
+          <div className="flex flex-wrap gap-3 text-xs font-medium text-slate-700">
+            <span>{reloadPreview.counts.passing} passing</span>
+            <span>{reloadPreview.counts.rateOnly} rate-only</span>
+            <span className={reloadPreview.counts.needsCheck ? "text-rose-700" : ""}>
+              {reloadPreview.counts.needsCheck} needs check
+            </span>
+          </div>
+          <p className="text-xs text-slate-700">
+            Items marked Needs check are excluded from Apply and will not be written.
+          </p>
           <div className="max-h-80 overflow-auto rounded border bg-white divide-y">
             {reloadPreview.changes.filter(change => change.status !== "unchanged").map(change => (
               <div key={change.code} className="p-3 text-xs space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-semibold">{change.code}</span>
                   <Badge variant="outline" className={change.status === "added" ? "border-emerald-300 text-emerald-700" : "border-amber-300 text-amber-700"}>{change.status}</Badge>
+                  <Badge
+                    variant="outline"
+                    className={
+                      change.validationStatus === "needs_check"
+                        ? "border-rose-300 text-rose-700"
+                        : change.validationStatus === "rate_only"
+                          ? "border-sky-300 text-sky-700"
+                          : "border-emerald-300 text-emerald-700"
+                    }
+                  >
+                    {change.validationStatus === "needs_check" ? "Needs check" : change.validationStatus === "rate_only" ? "Rate-only" : "Passing"}
+                  </Badge>
                   <span className="text-slate-500">{change.reasons.join(" · ")}</span>
                 </div>
+                {change.validationReasons.length > 0 && (
+                  <p className={change.validationStatus === "needs_check" ? "text-rose-700" : "text-sky-700"}>
+                    {change.validationReasons.join(" ")}
+                  </p>
+                )}
                 <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1">
                   <div><span className="font-semibold">Old:</span> {change.old ? `${change.old.description} · ${change.old.unit}` : "Not in current MoRTH source"}
                     {change.old && (
@@ -792,6 +831,36 @@ export default function NormsLibrary() {
               {reloadPreview.changes.filter(change => change.status === "unchanged").map(change => (
                 <span key={change.code}>{change.code} · {change.new.description} · {change.new.unit}</span>
               ))}
+            </div>
+          </details>
+          <details className="text-xs" open={reloadPreview.needsCheckItems.length > 0}>
+            <summary className="cursor-pointer font-semibold text-rose-800">
+              Needs check — not applied ({reloadPreview.needsCheckItems.length})
+            </summary>
+            <div className="mt-2 max-h-56 overflow-auto divide-y rounded border border-rose-200 bg-white">
+              {reloadPreview.needsCheckItems.map(item => (
+                <div key={item.code} className="p-2">
+                  <span className="font-mono font-semibold">{item.code}</span> · {item.title}
+                  <div className="text-slate-600">
+                    Unit: {item.unit || "missing"} · Output: {item.shiftOutput > 0 ? item.shiftOutput : "missing"}
+                    {" · "}{item.reasons.join(" ")}
+                  </div>
+                </div>
+              ))}
+              {reloadPreview.needsCheckItems.length === 0 && <p className="p-2 text-slate-600">None</p>}
+            </div>
+          </details>
+          <details className="text-xs">
+            <summary className="cursor-pointer font-semibold text-sky-800">
+              Rate-only items ({reloadPreview.rateOnlyItems.length})
+            </summary>
+            <div className="mt-2 max-h-40 overflow-auto grid sm:grid-cols-2 gap-x-4 gap-y-1 text-slate-600">
+              {reloadPreview.rateOnlyItems.map(item => (
+                <span key={item.code}>
+                  <span className="font-mono">{item.code}</span> · {item.title} · {item.unit} · output {item.shiftOutput}
+                </span>
+              ))}
+              {reloadPreview.rateOnlyItems.length === 0 && <span>None</span>}
             </div>
           </details>
           <details className="text-xs">

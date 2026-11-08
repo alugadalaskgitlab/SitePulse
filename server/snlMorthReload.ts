@@ -26,10 +26,47 @@ type NormRows = {
 export type MorthReloadChange = {
   code: string;
   status: "added" | "changed" | "unchanged";
+  validationStatus: "passing" | "rate_only" | "needs_check";
+  validationReasons: string[];
   old: null | { description: string; unit: string; norms: NormRows };
   new: { description: string; unit: string; norms: NormRows };
   reasons: string[];
 };
+
+export type MorthReloadValidationItem = {
+  code: string;
+  title: string;
+  unit: string;
+  shiftOutput: number;
+  reasons: string[];
+};
+
+const RATE_ONLY_CODES = new Set(["5.20", "8.42"]);
+
+export function validateParsedMorthItem(item: ParsedMorthItem): {
+  status: MorthReloadChange["validationStatus"];
+  reasons: string[];
+} {
+  const reasons: string[] = [];
+  if (!item.unit.trim()) reasons.push("Unit is missing.");
+  if (!Number.isFinite(item.shiftOutput) || item.shiftOutput <= 0) reasons.push("Taking output must be above 0.");
+
+  const hasResources = item.equipment.length + item.labour.length + item.materials.length > 0;
+  if (hasResources && !reasons.length) return { status: "passing", reasons: [] };
+  if (!hasResources && RATE_ONLY_CODES.has(item.code) && !reasons.length) {
+    return { status: "rate_only", reasons: ["Workbook entry is intentionally rate-only and has no resource rows."] };
+  }
+  if (!hasResources) reasons.push("No machine, labour, or material rows were parsed.");
+  return { status: "needs_check", reasons };
+}
+
+export function getMorthReloadApplicableCodes(
+  changes: Array<Pick<MorthReloadChange, "code" | "status" | "validationStatus">>,
+): string[] {
+  return changes
+    .filter(row => row.status !== "unchanged" && row.validationStatus !== "needs_check")
+    .map(row => row.code);
+}
 
 const materialCategory = (name: string) =>
   /aggregate|gsb|wmm/i.test(name) ? "AGGREGATE" :
@@ -123,11 +160,14 @@ export async function previewMorthReload(buffer: Buffer) {
   const [source] = await db.select().from(snlSources).where(eq(snlSources.code, MORTH_SDB_SOURCE_CODE)).limit(1);
   const current = source ? await loadCurrentRows(source.id) : new Map<string, any>();
   const changes: MorthReloadChange[] = parsed.map(item => {
+    const validation = validateParsedMorthItem(item);
     const prior = current.get(item.code);
     const nextNorms = parsedNorms(item);
     if (!prior) return {
       code: item.code,
       status: "added",
+      validationStatus: validation.status,
+      validationReasons: validation.reasons,
       old: null,
       new: { description: item.description || item.title, unit: item.unit || "CUM", norms: nextNorms },
       reasons: ["New MoRTH item"],
@@ -142,7 +182,15 @@ export async function previewMorthReload(buffer: Buffer) {
       !compareNorms({ productivity: [], equipment: [], labour: old.norms.labour, materials: [] }, { productivity: [], equipment: [], labour: next.norms.labour, materials: [] }) ? "Labour rows changed" : "",
       !compareNorms({ productivity: [], equipment: [], labour: [], materials: old.norms.materials }, { productivity: [], equipment: [], labour: [], materials: next.norms.materials }) ? "Material rows changed" : "",
     ].filter(Boolean);
-    return { code: item.code, status: reasons.length ? "changed" : "unchanged", old, new: next, reasons };
+    return {
+      code: item.code,
+      status: reasons.length ? "changed" : "unchanged",
+      validationStatus: validation.status,
+      validationReasons: validation.reasons,
+      old,
+      new: next,
+      reasons,
+    };
   });
   const fingerprint = createHash("sha256").update(stable({
     sourceId: source?.id ?? null,
@@ -153,6 +201,16 @@ export async function previewMorthReload(buffer: Buffer) {
     .filter(([code]) => !parsedCodes.has(code))
     .map(([code, row]) => ({ code, description: row.item.description, unit: row.item.unit }))
     .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  const statusByCode = new Map(changes.map(change => [change.code, change.validationStatus]));
+  const validationItems: MorthReloadValidationItem[] = parsed.map(item => ({
+    code: item.code,
+    title: item.title,
+    unit: item.unit,
+    shiftOutput: item.shiftOutput,
+    reasons: validateParsedMorthItem(item).reasons,
+  }));
+  const rateOnlyItems = validationItems.filter(item => statusByCode.get(item.code) === "rate_only");
+  const needsCheckItems = validationItems.filter(item => statusByCode.get(item.code) === "needs_check");
   return {
     sourceCode: MORTH_SDB_SOURCE_CODE,
     sourceName: MORTH_SDB_DISPLAY_NAME,
@@ -163,7 +221,12 @@ export async function previewMorthReload(buffer: Buffer) {
       changed: changes.filter(row => row.status === "changed").length,
       unchanged: changes.filter(row => row.status === "unchanged").length,
       preservedOutsideWorkbook: preservedOutsideWorkbookItems.length,
+      passing: changes.filter(row => row.validationStatus === "passing").length,
+      rateOnly: rateOnlyItems.length,
+      needsCheck: needsCheckItems.length,
     },
+    rateOnlyItems,
+    needsCheckItems,
     preservedOutsideWorkbookItems,
     changes,
   };
@@ -175,7 +238,7 @@ export async function applyMorthReload(buffer: Buffer, expectedFingerprint: stri
     throw new Error("The MoRTH book or current rows changed after preview. Review a fresh change list before applying.");
   }
   const parsed = parseMorthSdbWorkbook(buffer);
-  const changedCodes = preview.changes.filter(row => row.status !== "unchanged").map(row => row.code);
+  const changedCodes = new Set(getMorthReloadApplicableCodes(preview.changes));
 
   const applied = await db.transaction(async tx => {
     const [source] = await tx.insert(snlSources).values({
@@ -190,7 +253,7 @@ export async function applyMorthReload(buffer: Buffer, expectedFingerprint: stri
     }).returning();
     const changedIds: number[] = [];
     for (const item of parsed) {
-      if (!changedCodes.includes(item.code)) continue;
+      if (!changedCodes.has(item.code)) continue;
       const shiftOutput = item.shiftOutput > 0 ? item.shiftOutput : 1;
       const [saved] = await tx.insert(snlItems).values({
         sourceId: source.id,
@@ -214,7 +277,7 @@ export async function applyMorthReload(buffer: Buffer, expectedFingerprint: stri
           isActive: true,
         },
       }).returning({ id: snlItems.id });
-      if (changedCodes.includes(item.code)) changedIds.push(saved.id);
+      if (changedCodes.has(item.code)) changedIds.push(saved.id);
 
       await tx.delete(snlItemProductivity).where(eq(snlItemProductivity.itemId, saved.id));
       await tx.delete(snlItemEquipment).where(eq(snlItemEquipment.itemId, saved.id));
@@ -278,8 +341,11 @@ export async function applyMorthReload(buffer: Buffer, expectedFingerprint: stri
   return {
     sourceCode: MORTH_SDB_SOURCE_CODE,
     sourceName: MORTH_SDB_DISPLAY_NAME,
-    appliedCount: changedCodes.length,
-    changedCount: preview.counts.added + preview.counts.changed,
+    appliedCount: changedCodes.size,
+    changedCount: changedCodes.size,
+    skippedNeedsCheckCount: preview.changes.filter(row =>
+      row.status !== "unchanged" && row.validationStatus === "needs_check",
+    ).length,
     affectedBoqItems,
   };
 }
