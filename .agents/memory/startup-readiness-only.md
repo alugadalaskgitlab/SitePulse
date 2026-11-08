@@ -16,6 +16,16 @@ and route registration. Do not introduce a restart environment toggle that
 reenables all legacy repairs. Preserve runtime permission checks and account
 prerequisites instead of silently bypassing them.
 
+The owner has authorized one narrow exception: development startup may queue
+review suggestions for unlinked BOQ items, but it must not confirm mappings,
+write recipes, or run in production.
+
+**Why:** NORM-01B requires unlinked items to receive review-only suggestions;
+production data must remain untouched.
+
+**How to apply:** Keep this path gated to `NODE_ENV=development` and separate
+from any user action that confirms a norm link.
+
 The recurring GRN reminder must preserve notification delivery without deleting
 expired subscriptions. Other notification callers retain their existing cleanup.
 Database-read-only does not mean no external effects: reminders still contact

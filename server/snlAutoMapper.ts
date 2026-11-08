@@ -21,7 +21,7 @@
 
 import { db } from "./db";
 import { boqCategories, boqItems, snlItems, snlSources, snlBoqMappings } from "@shared/schema";
-import { eq, and, inArray, notInArray, isNull } from "drizzle-orm";
+import { eq, and, inArray, notInArray, isNull, or } from "drizzle-orm";
 import { storage } from "./storage";
 import { isSnlWorkFamilyCompatible } from "@shared/snlMappingPolicy";
 import { getNormBookSourceId } from "./normBook";
@@ -773,8 +773,8 @@ export function detectCompositeComponents(description: string): ComponentDraft[]
 // ─── Main mapper ──────────────────────────────────────────────────────────────
 
 /**
- * Attempt auto-mapping for a list of BOQ item IDs.
- * Fires DB updates and (for confident matches) applies recipes.
+ * Map a list of BOQ item IDs from an explicit Map to Norm user action.
+ * Background startup and post-import flows must use suggestions-only helpers.
  */
 export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
   if (boqItemIds.length === 0) return;
@@ -1153,6 +1153,7 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
     description: boqItems.description,
     unit: boqItems.unit,
     workCategory: boqItems.workCategory,
+    mappingStatus: boqItems.mappingStatus,
     recipeManualOverride: boqItems.recipeManualOverride,
     currentNormId: snlBoqMappings.snlItemId,
     currentNormCode: snlItems.itemCode,
@@ -1212,7 +1213,7 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
 
     return {
       ...item,
-      currentNorm: item.currentNormId ? {
+      currentNorm: item.mappingStatus === "mapped" && item.currentNormId ? {
         id: item.currentNormId,
         code: item.currentNormCode,
         description: item.currentNormDescription,
@@ -1224,7 +1225,9 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
       proposed,
       proposalReason,
       protected: item.recipeManualOverride === true,
-      needsChange: !!proposed && proposed.id !== item.currentNormId,
+      needsChange: !!proposed && (
+        item.mappingStatus !== "mapped" || proposed.id !== item.currentNormId
+      ),
     };
   });
 }
@@ -1233,25 +1236,38 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
  * Startup may save a review suggestion for a BOQ item with no mapping row.
  * It must not confirm a mapping, change recipes, or propagate suggestions.
  */
-export async function suggestUnlinkedBoqItemsAtStartup(): Promise<{ suggested: number; skippedManual: number }> {
+export async function suggestUnlinkedBoqItemsForReview(boqItemIds?: number[]): Promise<{ suggested: number; skippedManual: number }> {
+  if (boqItemIds && boqItemIds.length === 0) return { suggested: 0, skippedManual: 0 };
+  const conditions = [
+    inArray(boqItems.mappingStatus, ["unmapped", "needs_review"]),
+    or(
+      isNull(snlBoqMappings.id),
+      and(
+        eq(boqItems.mappingStatus, "needs_review"),
+        eq(snlBoqMappings.mappedBy, "startup-suggestion"),
+        eq(snlBoqMappings.isAutoMapped, true),
+      ),
+    ),
+  ];
+  if (boqItemIds) conditions.push(inArray(boqItems.id, boqItemIds));
   const pending = await db
     .select({
       id: boqItems.id,
-      snlCode: boqItems.snlCode,
       description: boqItems.description,
       unit: boqItems.unit,
-      workCategory: boqItems.workCategory,
+      mappingStatus: boqItems.mappingStatus,
       recipeManualOverride: boqItems.recipeManualOverride,
       isComposite: boqItems.isComposite,
-      categoryName: boqCategories.name,
+      suggestionId: snlBoqMappings.id,
+      suggestedSnlItemId: snlBoqMappings.snlItemId,
+      suggestionMappedBy: snlBoqMappings.mappedBy,
+      suggestionIsAutoMapped: snlBoqMappings.isAutoMapped,
+      suggestionConfidence: snlBoqMappings.confidenceScore,
+      suggestionNotes: snlBoqMappings.notes,
     })
     .from(boqItems)
-    .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
     .leftJoin(snlBoqMappings, eq(snlBoqMappings.boqItemId, boqItems.id))
-    .where(and(
-      inArray(boqItems.mappingStatus, ["unmapped", "needs_review"]),
-      isNull(snlBoqMappings.id),
-    ));
+    .where(and(...conditions));
   if (!pending.length) return { suggested: 0, skippedManual: 0 };
 
   const skippedManual = pending.filter(row => row.recipeManualOverride === true).length;
@@ -1264,103 +1280,99 @@ export async function suggestUnlinkedBoqItemsAtStartup(): Promise<{ suggested: n
     .select({
       id: snlItems.id,
       itemCode: snlItems.itemCode,
-      description: snlItems.description,
-      shortLabel: snlItems.shortLabel,
-      unit: snlItems.unit,
-      workCategory: snlItems.workCategory,
-      sector: snlItems.sector,
     })
     .from(snlItems)
     .where(and(eq(snlItems.isActive, true), eq(snlItems.sourceId, sourceId)));
   if (!candidates.length) return { suggested: 0, skippedManual };
 
-  const tokensById = new Map<number, string[]>(
-    candidates.map(candidate => [candidate.id, richTokens(`${candidate.description ?? ""} ${candidate.shortLabel ?? ""}`)]),
+  const workbookCandidates: MorthRelinkCandidate[] = getMorthRelinkWorkbookItems().map(item => ({
+    code: item.code,
+    title: item.title,
+    description: item.description,
+    unit: item.unit,
+    sector: item.sector,
+  }));
+  const candidateByCode = new Map(
+    candidates.map(candidate => [candidate.itemCode.trim().toLowerCase(), candidate]),
   );
-  const idf = buildIdf(Array.from(tokensById.values()));
   let suggested = 0;
 
   for (const item of eligible) {
-    // Composite splitting requires explicit user confirmation; startup does not
-    // create component links or mark a BOQ item composite.
-    if (item.isComposite === true || detectCompositeComponents(item.description ?? "")) continue;
-
-    let candidate: typeof candidates[number] | undefined;
-    let score = 0;
-    let mappedBy = "startup-suggestion";
-    let note = "";
-
-    const explicitCode = (item.snlCode ?? "").trim().toLowerCase();
-    if (explicitCode) {
-      const matches = candidates.filter(row => row.itemCode.trim().toLowerCase() === explicitCode);
-      if (matches.length === 1) {
-        candidate = matches[0];
-        score = 1;
-        note = `Suggested by explicit MoRTH code "${candidate.itemCode}"; user review required`;
+    const hasStartupSuggestion =
+      item.suggestionId != null &&
+      item.suggestionMappedBy === "startup-suggestion" &&
+      item.suggestionIsAutoMapped === true;
+    const clearStaleSuggestion = async () => {
+      if (!hasStartupSuggestion || item.suggestionId == null) return;
+      await db.delete(snlBoqMappings).where(and(
+        eq(snlBoqMappings.id, item.suggestionId),
+        eq(snlBoqMappings.mappedBy, "startup-suggestion"),
+        eq(snlBoqMappings.isAutoMapped, true),
+      ));
+      if (item.mappingStatus === "needs_review") {
+        await db.update(boqItems)
+          .set({ mappingStatus: "unmapped" })
+          .where(and(eq(boqItems.id, item.id), eq(boqItems.mappingStatus, "needs_review")));
       }
+    };
+
+    // Composite splitting and all actual links require an explicit user action.
+    if (item.isComposite === true || detectCompositeComponents(item.description ?? "")) {
+      await clearStaleSuggestion();
+      continue;
     }
 
-    const ruleTag = classifyBoqItemForSnl(item.description ?? "");
-    const boqCategory = classifyBoqItem(item.description ?? "");
-    if (!candidate && ruleTag) {
-      const rulePool = candidates.filter(row => isPrimaryRuleCandidate(boqCategory, row));
-      const ruleResult = ruleMatchSnl(ruleTag, rulePool, `${item.description ?? ""} ${item.categoryName ?? ""}`);
-      if (ruleResult) {
-        candidate = candidates.find(row => row.id === ruleResult.snlItemId);
-        score = ruleResult.confidence;
-        mappedBy = "startup-suggestion";
-        note = `Suggested by rule "${ruleTag}"; user review required`;
-      }
+    // Use exact work phrases against the MoRTH workbook titles. Similarity or
+    // a nearby code is not enough to create even a review suggestion.
+    const match = matchMorthRelinkCandidate(item.description ?? "", item.unit ?? "", workbookCandidates);
+    const candidate = match
+      ? candidateByCode.get(match.candidate.code.trim().toLowerCase())
+      : undefined;
+    if (!match || !candidate) {
+      await clearStaleSuggestion();
+      continue;
     }
 
-    if (!candidate) {
-      const text = richTokens(`${item.description ?? ""} ${item.workCategory ?? ""}`);
-      const workFamily = item.workCategory ?? inferWorkCategory(item.description ?? "");
-      const familyCandidates = candidates.filter(row =>
-        isSnlWorkFamilyCompatible(workFamily, ruleTag, row.workCategory),
-      );
-      const eligibleCandidates = familyCandidates.filter(row =>
-        getEffectiveSectorMultiplier(boqCategory, row) > 0,
-      );
-      const pool = eligibleCandidates.length >= 5 ? eligibleCandidates : familyCandidates;
-      const ranked = pool.map(row => {
-        const similarity = weightedCosine(text, tokensById.get(row.id) ?? [], idf);
-        const sectorMultiplier = getEffectiveSectorMultiplier(boqCategory, row);
-        const unitMultiplier = unitsCompatible(item.unit, row.unit) ? 1 : UNIT_MISMATCH_PENALTY;
-        return { row, score: similarity * sectorMultiplier * unitMultiplier };
-      }).sort((a, b) => b.score - a.score);
-      if (ranked[0] && ranked[0].score >= SUGGEST_FLOOR) {
-        candidate = ranked[0].row;
-        score = ranked[0].score;
-        note = `Suggested by description similarity (${score.toFixed(3)}); user review required`;
-      }
+    const note = `Suggested from MoRTH workbook title: ${match.reason} User review required.`;
+    const unchangedSuggestion =
+      hasStartupSuggestion &&
+      item.suggestedSnlItemId === candidate.id &&
+      Number(item.suggestionConfidence) === 1 &&
+      item.suggestionNotes === note &&
+      item.mappingStatus === "needs_review";
+    if (unchangedSuggestion) continue;
+
+    const suggestionFields = {
+      snlItemId: candidate.id,
+      projectCategory: "MEDIUM" as const,
+      gradingVariant: null,
+      mappedBy: "startup-suggestion",
+      isAutoMapped: true,
+      confidenceScore: 1,
+      notes: note,
+    };
+    if (hasStartupSuggestion && item.suggestionId != null) {
+      await db.update(snlBoqMappings)
+        .set(suggestionFields)
+        .where(and(
+          eq(snlBoqMappings.id, item.suggestionId),
+          eq(snlBoqMappings.mappedBy, "startup-suggestion"),
+          eq(snlBoqMappings.isAutoMapped, true),
+        ));
+    } else {
+      const [saved] = await db
+        .insert(snlBoqMappings)
+        .values({ boqItemId: item.id, ...suggestionFields })
+        .onConflictDoNothing()
+        .returning({ boqItemId: snlBoqMappings.boqItemId });
+      if (!saved) continue;
     }
 
-    if (!candidate) continue;
-    if (!unitsCompatible(item.unit, candidate.unit)) {
-      note += " (unit mismatch — review)";
+    if (item.mappingStatus !== "needs_review") {
+      await db.update(boqItems)
+        .set({ mappingStatus: "needs_review" })
+        .where(eq(boqItems.id, item.id));
     }
-    const [saved] = await db
-      .insert(snlBoqMappings)
-      .values({
-        boqItemId: item.id,
-        snlItemId: candidate.id,
-        projectCategory: "MEDIUM",
-        gradingVariant: null,
-        mappedBy,
-        isAutoMapped: true,
-        confidenceScore: score,
-        notes: note,
-      })
-      .onConflictDoNothing()
-      .returning({ boqItemId: snlBoqMappings.boqItemId });
-    if (!saved) continue;
-
-    // Keep the item visibly unconfirmed. No recipe write or "mapped" status
-    // occurs in this startup-only path.
-    await db.update(boqItems)
-      .set({ mappingStatus: "needs_review" })
-      .where(eq(boqItems.id, item.id));
     suggested++;
   }
 
@@ -1372,7 +1384,7 @@ export async function suggestUnlinkedBoqItemsAtStartup(): Promise<{ suggested: n
  * only; user-initiated Map to Norm / Re-link actions perform actual linking.
  */
 export async function autoMapAllUnmappedItems(): Promise<{ remapped: number; suggested: number; skippedManual: number }> {
-  const result = await suggestUnlinkedBoqItemsAtStartup();
+  const result = await suggestUnlinkedBoqItemsForReview();
   return { remapped: 0, ...result };
 }
 

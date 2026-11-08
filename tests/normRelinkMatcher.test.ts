@@ -31,6 +31,7 @@ describe("MoRTH re-link title matching", () => {
       .toContain("borrow pits (3.16) and roadway cutting (3.17)");
     expect(matchCode("Earthen shoulder construction including compaction")).toBe("3.18");
     expect(matchCode("Wet Mix Macadam (WMM), clause 406")).toBe("4.12");
+    expect(matchCode("Wet Mix Macadam (WMM) layer")).toBe("4.12");
     expect(matchCode("Prime coat with bitumen emulsion", "sqm")).toBe("5.1");
     expect(matchCode("Tack coat between bituminous layers", "sqm")).toBe("5.2");
     expect(matchCode("Tack coat over DGBM", "sqm")).toBe("5.2");

@@ -104,7 +104,7 @@ function parseQty(v: unknown): number | null {
   const factors = expression.split(/x/i);
   if (factors.length > 1 && factors.every(part => /^(?:\d+(?:\.\d*)?|\.\d+)$/.test(part))) {
     const product = factors.reduce((total, part) => total * Number(part), 1);
-    return Number.isFinite(product) ? product : null;
+    return Number.isFinite(product) ? Number(product.toFixed(6)) : null;
   }
   const m = s.match(/^[\d,]+(?:\.\d+)?/);
   if (!m) return null;
@@ -480,14 +480,15 @@ function parseChapterSheet(
   }
 
   // Grading variants with no resource rows of their own inherit only the
-  // missing resource categories from their immediate parent. This also lets
-  // 4.9-A/B grading children keep their own materials while sharing the
-  // parent method's machines and labour.
+  // missing resource categories from their method's parent. The workbook
+  // encodes 4.1A-i as a child of 4.1-A (and 4.1B-i as a child of 4.1-B).
   const itemByCode = new Map(items.map(item => [item.code, item]));
   for (const item of items) {
     const match = item.code.match(/^(.*)-([ivxlc]+)$/);
-    if (!match) continue;
-    const parent = itemByCode.get(match[1]);
+    if (!match || !/grading/i.test(item.title)) continue;
+    const parentRef = match[1].match(/^(\d+(?:\.\d+)?)([A-H])$/i);
+    const parentCode = parentRef ? `${parentRef[1]}-${parentRef[2].toUpperCase()}` : match[1];
+    const parent = itemByCode.get(parentCode);
     if (!parent) continue;
     if (!item.equipment.length && parent.equipment.length) item.equipment = parent.equipment.map(row => ({ ...row }));
     if (!item.labour.length && parent.labour.length) item.labour = parent.labour.map(row => ({ ...row }));

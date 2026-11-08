@@ -8,7 +8,7 @@ import type { Server } from "http";
 import { updatePurchaseIndentRequestSchema } from "@shared/schema";
 import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock, isRecipeManualOverrideError } from "./storage";
 import { buildEquipmentComparison, buildDailyDieselEquipmentReport } from "./dieselComparisonEquipment";
-import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, classifyBoqItem, getSectorMultiplier, previewBoqProjectNormRelinks } from "./snlAutoMapper";
+import { remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, classifyBoqItem, getSectorMultiplier, previewBoqProjectNormRelinks, suggestUnlinkedBoqItemsForReview } from "./snlAutoMapper";
 import { sameNormUnit } from "./snlMorthRelinkMatcher";
 import { isConfirmedSnlMapping } from "@shared/snlMappingPolicy";
 import { api } from "@shared/routes";
@@ -17536,9 +17536,9 @@ export async function registerRoutes(
       }
       const result = await storage.importBoqItems(boqProjectId, items);
       res.status(201).json({ ...result, deleted });
-      // Fire-and-forget auto-mapping using the exact IDs returned from insert
+      // Keep imported rows unlinked; queue suggestions for an explicit user review.
       if (result.insertedIds.length > 0) {
-        autoMapBoqItems(result.insertedIds).catch(err => console.error("[autoMapper] post-import error:", err));
+        suggestUnlinkedBoqItemsForReview(result.insertedIds).catch(err => console.error("[normSuggestions] post-import error:", err));
       }
     } catch (err) {
       console.error("POST /api/boq/projects/:id/import:", err);

@@ -76,6 +76,8 @@ describe("MoRTH SDB amendment", () => {
 
   it("fills empty grading sub-items from their parent without double-counting the OR machine", () => {
     for (const [parentCode, childCodes] of [
+      ["4.1-A", ["4.1A-i", "4.1A-ii", "4.1A-iii"]],
+      ["4.1-B", ["4.1B-i", "4.1B-ii", "4.1B-iii"]],
       ["5.6", ["5.6-i", "5.6-ii"]],
       ["5.8", ["5.8-i", "5.8-ii"]],
     ] as const) {

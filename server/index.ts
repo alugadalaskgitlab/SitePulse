@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes, setEarthworkSchemaReady } from "./routes";
+import { autoMapAllUnmappedItems } from "./snlAutoMapper";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { initPush, sendPushToAudience } from "./push";
@@ -50,13 +51,21 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // SELECT-only, fail-closed readiness. Startup must not seed, backfill,
-  // reclassify, grant access, alter schema, or rewrite historical records.
+  // SELECT-only, fail-closed readiness. This check never seeds, backfills,
+  // reclassifies, grants access, alters schema, or rewrites historical records.
   const readiness = await verifyStartupReadiness(pool);
   log(`Read-only startup readiness: ${JSON.stringify(readiness)}`);
   setEarthworkSchemaReady(true);
   initPush();
   await registerRoutes(httpServer, app);
+  // Development-only review suggestions. This does not confirm mappings or write recipes.
+  if (process.env.NODE_ENV === "development") {
+    void autoMapAllUnmappedItems()
+      .then(({ suggested }) => {
+        if (suggested > 0) log(`SNL startup suggestions: ${suggested} items queued for review`);
+      })
+      .catch(error => console.error("SNL startup suggestions failed:", error));
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
