@@ -14,7 +14,7 @@ import {
 } from "@shared/schema";
 import { MORTH_SDB_DISPLAY_NAME, MORTH_SDB_SOURCE_CODE } from "@shared/normBook";
 import { db } from "./db";
-import { parseMorthSdbWorkbook, type ParsedMorthItem } from "./snlMorthParser";
+import { mergeMorthSnlNotes, parseMorthSdbWorkbook, type ParsedMorthItem } from "./snlMorthParser";
 
 type NormRows = {
   productivity: Array<{ projectCategory: string; shiftOutput: number; shiftHours: number; outputUnit: string; derivedPerHour: number | null }>;
@@ -26,10 +26,12 @@ type NormRows = {
 export type MorthReloadChange = {
   code: string;
   status: "added" | "changed" | "unchanged";
-  validationStatus: "passing" | "rate_only" | "needs_check";
+  validationStatus: "passing" | "copied" | "rate_only" | "needs_check";
+  copyReference?: string;
+  costNote?: string;
   validationReasons: string[];
-  old: null | { description: string; unit: string; norms: NormRows };
-  new: { description: string; unit: string; norms: NormRows };
+  old: null | { description: string; unit: string; notes: string | null; norms: NormRows };
+  new: { description: string; unit: string; notes: string | null; norms: NormRows };
   reasons: string[];
 };
 
@@ -52,9 +54,12 @@ export function validateParsedMorthItem(item: ParsedMorthItem): {
   const reasons: string[] = [];
   if (!item.unit.trim()) reasons.push("Unit is missing.");
   if (!Number.isFinite(item.shiftOutput) || item.shiftOutput <= 0) reasons.push("Taking output must be above 0.");
+  if (item.copyError) reasons.push(item.copyError);
 
   const hasResources = item.equipment.length + item.labour.length + item.materials.length > 0;
-  if (hasResources && !reasons.length) return { status: "passing", reasons: [] };
+  if (hasResources && !reasons.length) {
+    return { status: item.copyReference ? "copied" : "passing", reasons: [] };
+  }
   if (!hasResources && RATE_ONLY_CODES.has(item.code) && !reasons.length) {
     return { status: "rate_only", reasons: ["Workbook entry is intentionally rate-only and has no resource rows."] };
   }
@@ -181,20 +186,24 @@ export async function previewMorthReload(buffer: Buffer) {
     const validation = validateParsedMorthItem(item);
     const prior = current.get(item.code);
     const nextNorms = parsedNorms(item);
+    const notes = mergeMorthSnlNotes(prior?.item.notes, item);
     if (!prior) return {
       code: item.code,
       status: "added",
       validationStatus: validation.status,
+      copyReference: item.copyReference,
+      costNote: item.costNote,
       validationReasons: validation.reasons,
       old: null,
-      new: { description: item.description || item.title, unit: item.unit || "CUM", norms: nextNorms },
+      new: { description: item.description || item.title, unit: item.unit || "CUM", notes, norms: nextNorms },
       reasons: ["New MoRTH item"],
     };
-    const next = { description: item.description || item.title, unit: item.unit || "CUM", norms: nextNorms };
-    const old = { description: prior.item.description, unit: prior.item.unit, norms: prior.norms };
+    const next = { description: item.description || item.title, unit: item.unit || "CUM", notes, norms: nextNorms };
+    const old = { description: prior.item.description, unit: prior.item.unit, notes: prior.item.notes ?? null, norms: prior.norms };
     const reasons = [
       old.description !== next.description ? "Description changed" : "",
       old.unit !== next.unit ? "Unit changed" : "",
+      old.notes !== next.notes ? "Estimator note changed" : "",
       !compareNorms({ productivity: old.norms.productivity, equipment: [], labour: [], materials: [] }, { productivity: next.norms.productivity, equipment: [], labour: [], materials: [] }) ? "Productivity changed" : "",
       !compareNorms({ productivity: [], equipment: old.norms.equipment, labour: [], materials: [] }, { productivity: [], equipment: next.norms.equipment, labour: [], materials: [] }) ? "Machine rows changed" : "",
       !compareNorms({ productivity: [], equipment: [], labour: old.norms.labour, materials: [] }, { productivity: [], equipment: [], labour: next.norms.labour, materials: [] }) ? "Labour rows changed" : "",
@@ -204,6 +213,8 @@ export async function previewMorthReload(buffer: Buffer) {
       code: item.code,
       status: reasons.length ? "changed" : "unchanged",
       validationStatus: validation.status,
+      copyReference: item.copyReference,
+      costNote: item.costNote,
       validationReasons: validation.reasons,
       old,
       new: next,
@@ -239,11 +250,21 @@ export async function previewMorthReload(buffer: Buffer) {
       changed: changes.filter(row => row.status === "changed").length,
       unchanged: changes.filter(row => row.status === "unchanged").length,
       preservedOutsideWorkbook: preservedOutsideWorkbookItems.length,
-      passing: changes.filter(row => row.validationStatus === "passing").length,
+      passed: changes.filter(row => row.validationStatus === "passing").length,
+      copiedFromAnotherItem: changes.filter(row => row.validationStatus === "copied").length,
       rateOnly: rateOnlyItems.length,
       needsCheck: needsCheckItems.length,
     },
     rateOnlyItems,
+    copiedItems: changes
+      .filter(change => change.validationStatus === "copied")
+      .map(change => ({
+        code: change.code,
+        title: change.new.description,
+        unit: change.new.unit,
+        copyReference: change.copyReference!,
+        costNote: change.costNote ?? null,
+      })),
     needsCheckItems,
     preservedOutsideWorkbookItems,
     changes,
@@ -257,6 +278,7 @@ export async function applyMorthReload(buffer: Buffer, expectedFingerprint: stri
   }
   const parsed = parseMorthSdbWorkbook(buffer);
   const changedCodes = new Set(getMorthReloadApplicableCodes(preview.changes));
+  const notesByCode = new Map(preview.changes.map(change => [change.code, change.new.notes]));
 
   const applied = await db.transaction(async tx => {
     const [source] = await tx.insert(snlSources).values({
@@ -282,6 +304,7 @@ export async function applyMorthReload(buffer: Buffer, expectedFingerprint: stri
         workCategory: item.workCategory,
         sector: item.sector,
         chapterNo: item.chapterNo,
+        notes: notesByCode.get(item.code) ?? null,
         isActive: true,
       }).onConflictDoUpdate({
         target: [snlItems.sourceId, snlItems.itemCode],
@@ -292,6 +315,7 @@ export async function applyMorthReload(buffer: Buffer, expectedFingerprint: stri
           workCategory: item.workCategory,
           sector: item.sector,
           chapterNo: item.chapterNo,
+          notes: notesByCode.get(item.code) ?? null,
           isActive: true,
         },
       }).returning({ id: snlItems.id });

@@ -54,6 +54,7 @@ interface SnlItemFull {
   chapterNo: string | null;
   isMixSpecific: boolean;
   hasGradingVariants: boolean;
+  notes: string | null;
   source: { code: string; name: string; authority: string; year: number };
   productivity: Array<{
     id: number;
@@ -110,20 +111,24 @@ interface MorthReloadPreview {
     changed: number;
     unchanged: number;
     preservedOutsideWorkbook: number;
-    passing: number;
+    passed: number;
+    copiedFromAnotherItem: number;
     rateOnly: number;
     needsCheck: number;
   };
   preservedOutsideWorkbookItems: Array<{ code: string; description: string; unit: string }>;
+  copiedItems: Array<{ code: string; title: string; unit: string; copyReference: string; costNote: string | null }>;
   rateOnlyItems: Array<{ code: string; title: string; unit: string; shiftOutput: number; reasons: string[] }>;
   needsCheckItems: Array<{ code: string; title: string; unit: string; shiftOutput: number; reasons: string[] }>;
   changes: Array<{
     code: string;
     status: "added" | "changed" | "unchanged";
-    validationStatus: "passing" | "rate_only" | "needs_check";
+    validationStatus: "passing" | "copied" | "rate_only" | "needs_check";
+    copyReference?: string;
+    costNote?: string;
     validationReasons: string[];
-    old: null | { description: string; unit: string; norms: MorthNormRows };
-    new: { description: string; unit: string; norms: MorthNormRows };
+    old: null | { description: string; unit: string; notes: string | null; norms: MorthNormRows };
+    new: { description: string; unit: string; notes: string | null; norms: MorthNormRows };
     reasons: string[];
   }>;
 }
@@ -232,6 +237,9 @@ function ItemDetailPanel({ itemId, includeOtherBooks = false }: { itemId: number
   const equip = item.equipment.filter(e => e.projectCategory === catFilter || e.projectCategory === "ALL").sort((a, b) => a.sortOrder - b.sortOrder);
   const labour = item.labour.filter(l => l.projectCategory === catFilter || l.projectCategory === "ALL").sort((a, b) => a.sortOrder - b.sortOrder);
   const mats = item.materials.filter(m => !gradingFilter || (m.gradingVariant ?? "") === gradingFilter).sort((a, b) => a.sortOrder - b.sortOrder);
+  const estimatorNotes = (item.notes ?? "")
+    .split(/\r?\n/)
+    .filter(line => line.startsWith("MoRTH cost note:") || line.startsWith("MoRTH source:"));
 
   return (
     <div className="space-y-4">
@@ -266,6 +274,17 @@ function ItemDetailPanel({ itemId, includeOtherBooks = false }: { itemId: number
           )}
         </div>
       </div>
+
+      {estimatorNotes.length > 0 && (
+        <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+          <p className="font-semibold text-xs uppercase tracking-wide">Estimator notes</p>
+          {estimatorNotes.map((line, index) => (
+            <p key={index} className="mt-1">
+              {line.replace(/^MoRTH (?:cost note|source):\s*/, "")}
+            </p>
+          ))}
+        </div>
+      )}
 
       {prod.length > 0 && (
         <div className="rounded-lg border border-teal-200 bg-teal-50/30 p-3">
@@ -765,7 +784,8 @@ export default function NormsLibrary() {
             </div>
           </div>
           <div className="flex flex-wrap gap-3 text-xs font-medium text-slate-700">
-            <span>{reloadPreview.counts.passing} passing</span>
+            <span>{reloadPreview.counts.passed} passed</span>
+            <span>{reloadPreview.counts.copiedFromAnotherItem} copied from another item</span>
             <span>{reloadPreview.counts.rateOnly} rate-only</span>
             <span className={reloadPreview.counts.needsCheck ? "text-rose-700" : ""}>
               {reloadPreview.counts.needsCheck} needs check
@@ -775,7 +795,7 @@ export default function NormsLibrary() {
             Items marked Needs check are excluded from Apply and will not be written.
           </p>
           <div className="max-h-80 overflow-auto rounded border bg-white divide-y">
-            {reloadPreview.changes.filter(change => change.status !== "unchanged").map(change => (
+            {reloadPreview.changes.filter(change => change.status !== "unchanged" || change.validationStatus === "copied").map(change => (
               <div key={change.code} className="p-3 text-xs space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-semibold">{change.code}</span>
@@ -787,13 +807,25 @@ export default function NormsLibrary() {
                         ? "border-rose-300 text-rose-700"
                         : change.validationStatus === "rate_only"
                           ? "border-sky-300 text-sky-700"
+                          : change.validationStatus === "copied"
+                            ? "border-indigo-300 text-indigo-700"
                           : "border-emerald-300 text-emerald-700"
                     }
                   >
-                    {change.validationStatus === "needs_check" ? "Needs check" : change.validationStatus === "rate_only" ? "Rate-only" : "Passing"}
+                    {change.validationStatus === "needs_check"
+                      ? "Needs check"
+                      : change.validationStatus === "rate_only"
+                        ? "Rate-only"
+                        : change.validationStatus === "copied"
+                          ? "Copied"
+                          : "Passing"}
                   </Badge>
                   <span className="text-slate-500">{change.reasons.join(" · ")}</span>
                 </div>
+                {change.copyReference && <p className="text-indigo-800 font-medium">{change.copyReference}</p>}
+                {change.costNote && (
+                  <p className="text-sky-800"><span className="font-medium">Estimator cost note:</span> {change.costNote}</p>
+                )}
                 {change.validationReasons.length > 0 && (
                   <p className={change.validationStatus === "needs_check" ? "text-rose-700" : "text-sky-700"}>
                     {change.validationReasons.join(" ")}
@@ -821,7 +853,7 @@ export default function NormsLibrary() {
                 </div>
               </div>
             ))}
-            {reloadPreview.changes.filter(change => change.status !== "unchanged").length === 0 && (
+            {reloadPreview.changes.filter(change => change.status !== "unchanged" || change.validationStatus === "copied").length === 0 && (
               <p className="p-3 text-sm text-slate-600">No additions or changes detected.</p>
             )}
           </div>

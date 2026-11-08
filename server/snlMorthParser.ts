@@ -87,8 +87,122 @@ export interface ParsedMorthItem {
   labour: SubRow[];
   equipment: SubRow[];
   materials: SubRow[];
+  copyReference?: string;
+  copyError?: string;
+  costNote?: string;
 }
 type ParsedItem = ParsedMorthItem;
+
+const MORTH_SOURCE_NOTE_PREFIX = "MoRTH source: ";
+const MORTH_COST_NOTE_PREFIX = "MoRTH cost note: ";
+
+export function mergeMorthSnlNotes(
+  existing: string | null | undefined,
+  item: Pick<ParsedMorthItem, "copyReference" | "costNote">,
+): string | null {
+  const retained = (existing ?? "")
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line &&
+      !line.startsWith(MORTH_SOURCE_NOTE_PREFIX) &&
+      !line.startsWith(MORTH_COST_NOTE_PREFIX));
+  if (item.copyReference) retained.push(`${MORTH_SOURCE_NOTE_PREFIX}${item.copyReference}`);
+  if (item.costNote) retained.push(`${MORTH_COST_NOTE_PREFIX}${item.costNote}`);
+  return retained.length ? retained.join("\n") : null;
+}
+
+function hasResources(item: ParsedMorthItem): boolean {
+  return item.equipment.length + item.labour.length + item.materials.length > 0;
+}
+
+function extractMorthReference(text: string): { code: string; label: string } | null {
+  const matches = [...text.matchAll(
+    /\bsame\s+as(?:\s+for)?\s+(?:item(?:\s+no\.?)?\s*)?(\d+(?:\.\d+)?)\s*\(\s*([A-H])\s*\)/gi,
+  )];
+  const unique = new Map(matches.map(match => {
+    const clause = `${match[1]} (${match[2].toUpperCase()})`;
+    return [`${match[1]}-${match[2].toUpperCase()}`, clause];
+  }));
+  if (unique.size !== 1) return null;
+  const [code, label] = [...unique.entries()][0];
+  return { code, label };
+}
+
+function splitMorthClauses(text: string): string[] {
+  return text.split(/;|(?<!\d)\.(?!\d)/g).map(clause => clause.trim()).filter(Boolean);
+}
+
+function extractCostAdjustmentNote(text: string): string | undefined {
+  const notes: string[] = [];
+  for (const clause of splitMorthClauses(text)) {
+    const formworkStart = clause.search(/form\s*work/i);
+    const formworkText = formworkStart >= 0 ? clause.slice(formworkStart) : "";
+    const formworkPercents = [...formworkText.matchAll(/(\d+(?:\.\d+)?)\s*(?:per\s+cent|%)/gi)]
+      .map(match => `${match[1]}%`);
+    if (formworkPercents.length) {
+      const costBasis = formworkText.match(/\bcost\s+of\s+(?:the\s+)?(.+?)(?=\s+instead\s+of\b|$)/i)?.[1]
+        ?.replace(/\s+/g, " ")
+        .replace(/[,\s]+$/, "");
+      notes.push([
+        `Formwork ${formworkPercents[0]}`,
+        costBasis ? `of ${costBasis} cost` : "",
+        formworkPercents[1] ? `(instead of ${formworkPercents[1]})` : "",
+      ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim());
+    }
+
+    const action = clause.match(/\b(add|increase|decrease|reduce)\s+(\d+(?:\.\d+)?)\s*(?:per\s+cent|%)([^.;]*)/i);
+    if (action && !(formworkStart >= 0 && action.index! >= formworkStart)) {
+      let context = action[3]
+        .replace(/(?:,\s*)?(?:excluding|except(?:ing)?|except for)\s+form\s*work[\s\S]*$/i, "")
+        .replace(/\s+/g, " ")
+        .replace(/^[,;:\s]+|[,;:\s.]+$/g, "");
+      const verb = action[1][0].toUpperCase() + action[1].slice(1).toLowerCase();
+      notes.push(`${verb} ${action[2]}%${context ? ` ${context}` : ""}`.trim());
+    } else if (!formworkPercents.length && /\d+(?:\.\d+)?\s*(?:per\s+cent|%)/i.test(clause) &&
+               /\bcost\b/i.test(clause)) {
+      const cleaned = clause
+        .replace(/^.*?\bexcept\s+(?:for\s+)?/i, "")
+        .replace(/\bper\s+cent\b/gi, "%")
+        .replace(/\s+/g, " ")
+        .replace(/^[,;:\s]+|[,;:\s.]+$/g, "");
+      if (cleaned) notes.push(cleaned.replace(/^./, first => first.toUpperCase()));
+    }
+  }
+  return [...new Set(notes.filter(Boolean))].join("; ") || undefined;
+}
+
+function hasUnclearQuantityAdjustment(text: string): boolean {
+  const percentageClauses = splitMorthClauses(text)
+    .filter(clause => /\d+(?:\.\d+)?\s*(?:per\s+cent|%)/i.test(clause));
+  return percentageClauses.some(clause => !/\b(?:cost|form\s*work)\b/i.test(clause));
+}
+
+export function applyMorthReferenceRows(items: ParsedMorthItem[]): void {
+  const byCode = new Map(items.map(item => [item.code, item]));
+  for (const item of items) {
+    const sourceRef = extractMorthReference(item.description || item.title);
+    if (!sourceRef) continue;
+    item.costNote = extractCostAdjustmentNote(item.description || "");
+    if (hasUnclearQuantityAdjustment(item.description || "")) {
+      item.copyError = "Percentage adjustment may change resource quantities; review required.";
+      continue;
+    }
+    const source = byCode.get(sourceRef.code);
+    if (!source || !hasResources(source)) {
+      item.copyError = `Referenced item ${sourceRef.label} has no parsed resource rows.`;
+      continue;
+    }
+    // A "Same as item X (Y)" entry inherits the referenced norm's complete
+    // basis as well as its rows. Do not scale the copied quantities to the
+    // destination's local "rate per" denominator.
+    item.unit = source.unit;
+    item.shiftOutput = source.shiftOutput;
+    item.equipment = source.equipment.map(row => ({ ...row }));
+    item.labour = source.labour.map(row => ({ ...row }));
+    item.materials = source.materials.map(row => ({ ...row }));
+    item.copyReference = `Uses item ${sourceRef.label}`;
+  }
+}
 
 // ─── Row-level helpers ────────────────────────────────────────────────────────
 
@@ -805,7 +919,7 @@ async function upsertParsedItems(
       const derivedPerHour = shiftOutput / shiftHours;
 
       const existing = await db
-        .select({ id: snlItems.id })
+        .select({ id: snlItems.id, notes: snlItems.notes })
         .from(snlItems)
         .where(and(eq(snlItems.sourceId, sourceId), eq(snlItems.itemCode, item.code)))
         .limit(1);
@@ -823,6 +937,7 @@ async function upsertParsedItems(
           workCategory: item.workCategory,
           sector: item.sector,
           chapterNo: item.chapterNo,
+          notes: mergeMorthSnlNotes(existing[0].notes, item),
           isActive: true,
         }).where(eq(snlItems.id, itemId));
         result.itemsUpdated++;
@@ -836,6 +951,7 @@ async function upsertParsedItems(
           workCategory: item.workCategory,
           sector: item.sector,
           chapterNo: item.chapterNo,
+          notes: mergeMorthSnlNotes(null, item),
           isActive: true,
         }).returning({ id: snlItems.id });
         itemId = ins.id;
@@ -941,6 +1057,7 @@ export function parseMorthSdbWorkbook(buffer: Buffer): ParsedMorthItem[] {
     const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as unknown[][];
     parsed.push(...parseChapterSheet(rows, chapterNo));
   }
+  applyMorthReferenceRows(parsed);
   return parsed;
 }
 

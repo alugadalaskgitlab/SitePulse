@@ -20,3 +20,9 @@ description: Context-sensitive resource sections and review safeguards for the M
 **Why:** Workbook calculations are JavaScript doubles, while SNL norm columns use `REAL`. Tiny representation differences are not meaningful workbook changes, but cause repeated reload diffs if compared exactly.
 
 **How to apply:** Normalize numeric values to stored `REAL` precision in preview comparison only; preserve the source values for display and save.
+
+**Rule:** Exact “Same as item X (Y)” references inherit that source item’s unit/output and machine, labour, and material rows unchanged. Cost-only percentage differences are notes on the item; uncertain quantity adjustments remain Needs check. MoRTH reloads are applied only through the Owner review UI.
+
+**Why:** Rescaling copied rows to a destination’s local rate denominator changes the referenced norm, while treating cost adjustments as physical quantities distorts demand. Owner review is the required guard before persisted standards change.
+
+**How to apply:** Resolve only explicit item/case references, preserve unrelated notes when writing source/cost annotations, show “Uses item …” and the cost note in preview, and leave ambiguous or quantity-changing adjustments unapplied.

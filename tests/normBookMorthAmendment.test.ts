@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseMorthSdbWorkbook } from "../server/snlMorthParser";
+import {
+  applyMorthReferenceRows,
+  mergeMorthSnlNotes,
+  parseMorthSdbWorkbook,
+  type ParsedMorthItem,
+} from "../server/snlMorthParser";
 import { calculateBomDemand } from "../shared/planningEngine";
 import { computeItemDemand } from "../client/src/pages/WorkDemand";
 import { isSnlEquipmentHoursUnit } from "../shared/snlEquipment";
@@ -161,6 +166,49 @@ describe("MoRTH SDB amendment", () => {
     expect(byCode.has("15.1-B")).toBe(false);
   });
 
+  it("copies exact referenced rows and carries cost-only adjustments as notes", () => {
+    const source = byCode.get("12.8-A")!;
+    const copied = byCode.get("12.11-I")!;
+    expect(copied.copyReference).toBe("Uses item 12.8 (A)");
+    expect(copied.unit).toBe(source.unit);
+    expect(copied.shiftOutput).toBe(source.shiftOutput);
+    expect(copied.equipment).toEqual(source.equipment);
+    expect(copied.labour).toEqual(source.labour);
+    expect(copied.materials).toEqual(source.materials);
+    expect(copied.costNote).toMatch(/Formwork 10%.*4%/);
+    expect(validateParsedMorthItem(copied).status).toBe("copied");
+    expect(mergeMorthSnlNotes("Existing reviewer note", copied)).toContain("MoRTH cost note:");
+    expect(mergeMorthSnlNotes("Existing reviewer note", copied)).toContain("Existing reviewer note");
+
+    const heightAdjusted = byCode.get("13.5-q-2")!;
+    const referenced = byCode.get("12.8-F")!;
+    expect(heightAdjusted.copyReference).toBe("Uses item 12.8 (F)");
+    expect(heightAdjusted.equipment).toEqual(referenced.equipment);
+    expect(heightAdjusted.labour).toEqual(referenced.labour);
+    expect(heightAdjusted.materials).toEqual(referenced.materials);
+    expect(heightAdjusted.costNote).toContain("Add 2%");
+    expect(heightAdjusted.costNote).toMatch(/Formwork 12%.*3\.50%/);
+  });
+
+  it("keeps percentage adjustments that may change quantities in Needs check", () => {
+    const source = byCode.get("12.8-C")!;
+    const target: ParsedMorthItem = {
+      ...source,
+      code: "test-reference-target",
+      description: "Same as item 12.8 (C), add 5 per cent to material quantity.",
+      copyReference: undefined,
+      copyError: undefined,
+      costNote: undefined,
+      equipment: [],
+      labour: [],
+      materials: [],
+    };
+    applyMorthReferenceRows([source, target]);
+    expect(target.copyReference).toBeUndefined();
+    expect(target.copyError).toMatch(/may change resource quantities/);
+    expect(validateParsedMorthItem(target).status).toBe("needs_check");
+  });
+
   it("preserves chapter 12.1 depth paths and reports missing heading data for a resource-bearing row", () => {
     expect(byCode.get("12.1-I-A-i")).toMatchObject({ unit: "CUM", shiftOutput: 10 });
     expect(byCode.get("12.1-I-A-ii")).toMatchObject({ unit: "CUM", shiftOutput: 10 });
@@ -193,7 +241,7 @@ describe("MoRTH SDB amendment", () => {
   });
 
   it("marks the documented market-rate entries as rate-only while other incomplete items need checking", () => {
-    for (const code of ["5.20", "8.38", "8.42", "11.12", "11.13", "12.37", "14.12"]) {
+    for (const code of ["5.20", "8.38", "8.42", "11.12", "11.13", "12.2", "12.37", "14.12"]) {
       const item = byCode.get(code);
       expect(item, code).toBeDefined();
       expect(validateParsedMorthItem(item!).status).toBe("rate_only");
@@ -205,11 +253,12 @@ describe("MoRTH SDB amendment", () => {
   it("never includes Needs check rows in the set of reloadable changes", () => {
     expect(getMorthReloadApplicableCodes([
       { code: "ok-changed", status: "changed", validationStatus: "passing" },
+      { code: "copied", status: "added", validationStatus: "copied" },
       { code: "rate-only", status: "added", validationStatus: "rate_only" },
       { code: "bad-added", status: "added", validationStatus: "needs_check" },
       { code: "bad-changed", status: "changed", validationStatus: "needs_check" },
       { code: "unchanged", status: "unchanged", validationStatus: "passing" },
-    ])).toEqual(["ok-changed", "rate-only"]);
+    ])).toEqual(["ok-changed", "copied", "rate-only"]);
   });
 
   it("compares numeric norm values at PostgreSQL REAL precision", () => {
