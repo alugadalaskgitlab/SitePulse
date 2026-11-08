@@ -114,6 +114,53 @@ describe("MoRTH SDB amendment", () => {
     expect(byCode.get("3.13-i-B")!.equipment.length).toBeGreaterThan(0);
   });
 
+  it("derives outputs from costing lines and keeps the full three-level 2.4 path", () => {
+    for (const code of ["1.4-i", "1.4-ii", "1.4-iii"]) {
+      const item = byCode.get(code);
+      expect(item, code).toBeDefined();
+      expect(item).toMatchObject({ unit: "T.KM", shiftOutput: 100 });
+      expect(validateParsedMorthItem(item!).status).toBe("passing");
+      expect(item!.equipment.length).toBeGreaterThan(0);
+    }
+    for (const code of ["2.1-i", "2.1-ii", "2.1-iii", "2.1-iv"]) {
+      const item = byCode.get(code);
+      expect(item, code).toBeDefined();
+      expect(item).toMatchObject({ unit: "EACH", shiftOutput: 1 });
+      expect(validateParsedMorthItem(item!).status).toBe("passing");
+    }
+    for (const code of ["2.4-i-I-A", "2.4-i-I-B", "2.4-i-I-C"]) {
+      const item = byCode.get(code);
+      expect(item, code).toBeDefined();
+      expect(item).toMatchObject({ unit: "CUM", shiftOutput: 1.25 });
+      expect(item!.title).toContain("Lime /Cement Concrete");
+      expect(item!.title).toContain("By Manual Means");
+      expect(validateParsedMorthItem(item!).status).toBe("passing");
+      expect(item!.equipment.length + item!.labour.length + item!.materials.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("accepts the workbook's split 'Taking out put' spelling and a material row before section labels", () => {
+    expect(byCode.get("10.5")).toMatchObject({ unit: "SQM", shiftOutput: 4900 });
+    expect(validateParsedMorthItem(byCode.get("10.5")!).status).toBe("passing");
+    expect(byCode.get("12.2")?.shiftOutput).toBe(1);
+    expect(validateParsedMorthItem(byCode.get("12.2")!).status).toBe("rate_only");
+    expect(byCode.get("15.3")).toMatchObject({ unit: "CUM", shiftOutput: 1 });
+    expect(byCode.get("15.3")!.materials).toHaveLength(1);
+    expect(byCode.get("15.3")!.materials[0]).toMatchObject({ unit: "cum", qty: 1 });
+    expect(validateParsedMorthItem(byCode.get("15.3")!).status).toBe("passing");
+  });
+
+  it("uses the 'Rate per cum' basis and keeps the 15.10 alternative under its correct parent", () => {
+    for (const code of ["15.10-A", "15.10-B"]) {
+      const item = byCode.get(code);
+      expect(item, code).toBeDefined();
+      expect(item).toMatchObject({ unit: "CUM", shiftOutput: 1 });
+      expect(item!.materials.length).toBeGreaterThan(0);
+      expect(validateParsedMorthItem(item!).status).toBe("passing");
+    }
+    expect(byCode.has("15.1-B")).toBe(false);
+  });
+
   it("preserves chapter 12.1 depth paths and reports missing heading data for a resource-bearing row", () => {
     expect(byCode.get("12.1-I-A-i")).toMatchObject({ unit: "CUM", shiftOutput: 10 });
     expect(byCode.get("12.1-I-A-ii")).toMatchObject({ unit: "CUM", shiftOutput: 10 });
@@ -151,7 +198,7 @@ describe("MoRTH SDB amendment", () => {
       expect(item, code).toBeDefined();
       expect(validateParsedMorthItem(item!).status).toBe("rate_only");
     }
-    expect(validateParsedMorthItem(byCode.get("3.29")!).status).toBe("needs_check");
+    expect(validateParsedMorthItem(byCode.get("3.29")!).status).toBe("passing");
     expect(items.find(item => item.code === "12.1-VI")?.shiftOutput).toBeGreaterThan(0);
   });
 

@@ -31,6 +31,7 @@ import { parseMorthSdbWorkbook, type ParsedMorthItem } from "./snlMorthParser";
 import {
   explainMorthRelinkNoMatch,
   matchMorthRelinkCandidate,
+  matchMorthRelinkCandidates,
   type MorthRelinkCandidate,
 } from "./snlMorthRelinkMatcher";
 
@@ -1191,10 +1192,27 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
 
   return items.map(item => {
     const description = item.description ?? "";
-    const match = matchMorthRelinkCandidate(description, item.unit ?? "", workbookCandidates, projectSector);
+    const matches = matchMorthRelinkCandidates(description, item.unit ?? "", workbookCandidates, projectSector);
+    const match = matches.length === 1 ? matches[0] : null;
     const loaded = match
       ? loadedByCode.get(match.candidate.code.trim().toLowerCase())
       : null;
+    const proposalOptions = matches.length > 1
+      ? matches.map(option => {
+        const loadedOption = loadedByCode.get(option.candidate.code.trim().toLowerCase());
+        return {
+          id: loadedOption?.id ?? null,
+          code: option.candidate.code,
+          description: option.candidate.title.slice(0, 60),
+          unit: option.candidate.unit,
+          reason: option.reason,
+          canApply: option.canApply && !!loadedOption,
+          blockedReason: !loadedOption
+            ? "This workbook item is not loaded in the selected book."
+            : option.blockedReason,
+        };
+      })
+      : [];
     const proposed = match && loaded ? {
       id: loaded.id,
       code: match.candidate.code,
@@ -1223,6 +1241,7 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
           : item.currentSourceName,
       } : null,
       proposed,
+      proposalOptions,
       proposalReason,
       protected: item.recipeManualOverride === true,
       needsChange: !!proposed && (

@@ -26573,6 +26573,19 @@ export async function registerRoutes(
       if (currentItems.some(item => item.recipeManualOverride === true)) {
         return res.status(409).json({ error: "Manual recipe protected items cannot be re-linked here." });
       }
+      const currentPreviewById = new Map(
+        (await previewBoqProjectNormRelinks(projectId)).map(row => [row.boqItemId, row]),
+      );
+      for (const selection of selections) {
+        const preview = currentPreviewById.get(selection.boqItemId);
+        const isCurrentProposal = preview?.proposed?.id === selection.snlItemId;
+        const isExplicitChoice = preview?.proposalOptions?.some(option =>
+          option.id === selection.snlItemId && option.canApply,
+        );
+        if (!isCurrentProposal && !isExplicitChoice) {
+          return res.status(409).json({ error: "The selected MoRTH item is not a current proposal for this BOQ item. Refresh the preview and choose a listed option." });
+        }
+      }
       for (const row of selections) {
         if (!(await isSnlItemInNormBook(row.snlItemId))) {
           return res.status(409).json({ error: "Only items from the selected MoRTH norm book can be applied." });

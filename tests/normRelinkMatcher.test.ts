@@ -6,6 +6,7 @@ import {
   explainMorthRelinkNoMatch,
   getMorthUnitConversion,
   matchMorthRelinkCandidate,
+  matchMorthRelinkCandidates,
 } from "../server/snlMorthRelinkMatcher";
 
 describe("MoRTH re-link title matching", () => {
@@ -66,5 +67,26 @@ describe("MoRTH re-link title matching", () => {
     expect(result?.normUnitsPerBoqUnit).toBeCloseTo(0.0001);
     expect(result?.reason).toContain("1 hectare = 10,000 sqm");
     expect(getMorthUnitConversion("HECTARE", "sqm")?.normUnitsPerBoqUnit).toBe(10_000);
+  });
+
+  it("offers all four clearing cases when the BOQ omits method and ground cover", () => {
+    const choices = matchMorthRelinkCandidates(
+      "Clearing and grubbing road land",
+      "sqm",
+      candidates,
+      "ROAD",
+    );
+    expect(choices.map(choice => choice.candidate.code)).toEqual([
+      "2.3-i-A",
+      "2.3-i-B",
+      "2.3-ii-A",
+      "2.3-ii-B",
+    ]);
+    expect(choices.every(choice => choice.canApply && choice.normUnitsPerBoqUnit === 0.0001)).toBe(true);
+    expect(matchCode("Clearing and grubbing road land")).toBeNull();
+    expect(matchCode(
+      "Clearing and grubbing road land by mechanical means in light jungle",
+      "sqm",
+    )).toBe("2.3-ii-A");
   });
 });

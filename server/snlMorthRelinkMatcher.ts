@@ -14,6 +14,8 @@ export type MorthRelinkMatch = {
   normUnitsPerBoqUnit: number | null;
 };
 
+export type MorthRelinkCandidateMatch = MorthRelinkMatch;
+
 type MatchRule = {
   phrase: string;
   matches: (title: string) => boolean;
@@ -92,6 +94,7 @@ function resolveRule(description: string): MatchRule | null {
       if (/\bthorny jungle\b/.test(sourceText) && !hasPhrase(title, "thorny jungle")) return false;
       return true;
     },
+    ambiguousReason: "The workbook separates manual/mechanical work in light/thorny jungle. The BOQ does not specify which of the four cases applies.",
   };
   if (/\bscarif\w*\b/.test(source)) {
     const surface = /\bbituminous\b/.test(source)
@@ -196,8 +199,18 @@ export function matchMorthRelinkCandidate(
   candidates: MorthRelinkCandidate[],
   projectSector?: string | null,
 ): MorthRelinkMatch | null {
+  const matches = matchMorthRelinkCandidates(description, boqUnit, candidates, projectSector);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+export function matchMorthRelinkCandidates(
+  description: string,
+  boqUnit: string,
+  candidates: MorthRelinkCandidate[],
+  projectSector?: string | null,
+): MorthRelinkCandidateMatch[] {
   const rule = resolveRule(description);
-  if (!rule) return null;
+  if (!rule) return [];
   const source = clean(description);
   let matches = candidates.filter(candidate => {
     const title = candidate.title;
@@ -205,7 +218,7 @@ export function matchMorthRelinkCandidate(
       (!rule.qualifier || rule.qualifier(source, title));
   });
 
-  if (!matches.length) return null;
+  if (!matches.length) return [];
   if (matches.length > 1) {
     // When the BOQ does not specify a workbook sub-item's distinguishing detail,
     // prefer a single parent entry only if that parent itself is an exact title match.
@@ -219,25 +232,24 @@ export function matchMorthRelinkCandidate(
     const sectorMatches = matches.filter(candidate => clean(candidate.sector ?? "") === sector);
     if (sectorMatches.length === 1) matches = sectorMatches;
   }
-  if (matches.length !== 1) return null;
-
-  const candidate = matches[0];
-  const conversion = getMorthUnitConversion(boqUnit, candidate.unit);
-  const canApply = conversion !== null;
-  const blockedReason = canApply
-    ? null
-    : `Unit differs: BOQ ${boqUnit || "not set"}; MoRTH ${candidate.unit}.`;
   const clause = source.match(/\bclause\s*(?:no\.?\s*)?(\d{3})\b/)?.[1];
-  const reason = `BOQ words “${rule.phrase}” match the MoRTH workbook title${clause ? `; clause ${clause} is supporting context` : ""}.` +
-    (conversion?.note ? ` Unit conversion: ${conversion.note}.` : "") +
-    (blockedReason ? ` ${blockedReason} Apply is disabled.` : "");
-  return {
-    candidate,
-    reason,
-    canApply,
-    blockedReason,
-    normUnitsPerBoqUnit: conversion?.normUnitsPerBoqUnit ?? null,
-  };
+  return matches.map(candidate => {
+    const conversion = getMorthUnitConversion(boqUnit, candidate.unit);
+    const canApply = conversion !== null;
+    const blockedReason = canApply
+      ? null
+      : `Unit differs: BOQ ${boqUnit || "not set"}; MoRTH ${candidate.unit}.`;
+    const reason = `BOQ words “${rule.phrase}” match the MoRTH workbook title${clause ? `; clause ${clause} is supporting context` : ""}.` +
+      (conversion?.note ? ` Unit conversion: ${conversion.note}.` : "") +
+      (blockedReason ? ` ${blockedReason} Apply is disabled.` : "");
+    return {
+      candidate,
+      reason,
+      canApply,
+      blockedReason,
+      normUnitsPerBoqUnit: conversion?.normUnitsPerBoqUnit ?? null,
+    };
+  });
 }
 
 export function explainMorthRelinkNoMatch(description: string, candidates: MorthRelinkCandidate[]) {

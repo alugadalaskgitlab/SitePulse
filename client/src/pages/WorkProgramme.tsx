@@ -3277,6 +3277,15 @@ type SnlRelinkRow = {
     canApply: boolean;
     blockedReason: string | null;
   };
+  proposalOptions: Array<{
+    id: number | null;
+    code: string;
+    description: string;
+    unit: string;
+    reason: string;
+    canApply: boolean;
+    blockedReason: string | null;
+  }>;
   proposalReason: string;
   protected: boolean;
   needsChange: boolean;
@@ -3286,6 +3295,7 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [choiceByBoqItem, setChoiceByBoqItem] = useState<Record<number, number>>({});
   const { data, isLoading, error } = useQuery<{ items: SnlRelinkRow[] }>({
     queryKey: ["/api/boq/projects", projectId, "snl", "relink-preview"],
     queryFn: async () => {
@@ -3297,18 +3307,27 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
   });
   useEffect(() => {
     if (!data) return;
+    setChoiceByBoqItem({});
     setSelected(new Set(data.items.filter(row =>
       row.needsChange && !row.protected && row.proposed?.canApply,
     ).map(row => row.boqItemId)));
   }, [data]);
 
+  const chosenProposal = (row: SnlRelinkRow) =>
+    row.proposed ?? row.proposalOptions?.find(option => option.id === choiceByBoqItem[row.boqItemId]) ?? null;
+  const canApplyProposal = (row: SnlRelinkRow) => {
+    const proposal = chosenProposal(row);
+    return !row.protected && !!proposal?.canApply && proposal.id != null &&
+      proposal.id !== row.currentNorm?.id;
+  };
+
   const applyMutation = useMutation({
     mutationFn: async () => {
-      const rows = data?.items.filter(row =>
-        selected.has(row.boqItemId) && row.proposed?.canApply,
-      ) ?? [];
+      const rows = data?.items
+        .filter(row => selected.has(row.boqItemId) && canApplyProposal(row))
+        .map(row => ({ boqItemId: row.boqItemId, snlItemId: chosenProposal(row)!.id! })) ?? [];
       const response = await apiRequest("POST", `/api/boq/projects/${projectId}/snl/relink-apply`, {
-        items: rows.map(row => ({ boqItemId: row.boqItemId, snlItemId: row.proposed!.id })),
+        items: rows,
       });
       return response.json();
     },
@@ -3330,7 +3349,12 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
   });
 
   const rows = data?.items ?? [];
-  const applicable = rows.filter(row => row.needsChange && !row.protected && row.proposed?.canApply);
+  const applicable = rows.filter(row =>
+    !row.protected && (
+      (row.needsChange && !!row.proposed?.canApply) ||
+      row.proposalOptions?.some(option => option.canApply && option.id != null && option.id !== row.currentNorm?.id)
+    ),
+  );
 
   return (
     <>
@@ -3361,7 +3385,7 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
                       <div className="pt-0.5">
                         <Checkbox
                           checked={selected.has(row.boqItemId)}
-                          disabled={!row.needsChange || row.protected || !row.proposed?.canApply}
+                          disabled={!canApplyProposal(row)}
                           onCheckedChange={checked => setSelected(prev => {
                             const next = new Set(prev);
                             if (checked === true) next.add(row.boqItemId); else next.delete(row.boqItemId);
@@ -3381,7 +3405,44 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-muted-foreground">Proposed MoRTH item</p>
-                        {row.proposed ? (
+                        {row.proposalOptions?.length ? (
+                          <>
+                            <p className="mt-1 text-xs text-muted-foreground">Choose the exact case; nothing is selected automatically.</p>
+                            <select
+                              value={choiceByBoqItem[row.boqItemId] ?? ""}
+                              onChange={event => {
+                                const value = Number(event.target.value);
+                                setChoiceByBoqItem(prev => {
+                                  const next = { ...prev };
+                                  if (value > 0) next[row.boqItemId] = value;
+                                  else delete next[row.boqItemId];
+                                  return next;
+                                });
+                                setSelected(prev => {
+                                  const next = new Set(prev);
+                                  next.delete(row.boqItemId);
+                                  return next;
+                                });
+                              }}
+                              className="mt-1 w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+                              aria-label={`Choose MoRTH case for ${row.description ?? "BOQ item"}`}
+                            >
+                              <option value="">Choose a MoRTH case…</option>
+                              {row.proposalOptions.map(option => (
+                                <option
+                                  key={option.code}
+                                  value={option.id ?? ""}
+                                  disabled={!option.canApply || option.id == null}
+                                >
+                                  {option.code} · {option.description}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {row.proposalOptions.find(option => option.id === choiceByBoqItem[row.boqItemId])?.reason ?? row.proposalReason}
+                            </p>
+                          </>
+                        ) : row.proposed ? (
                           <>
                             <p className="mt-1 break-words"><span className="font-mono">{row.proposed.code}</span> · {row.proposed.description}</p>
                             <p className="mt-1 text-xs text-muted-foreground">{row.proposed.reason}</p>

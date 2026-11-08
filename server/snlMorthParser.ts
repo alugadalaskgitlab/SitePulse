@@ -150,7 +150,7 @@ function isNoiseRow(d: string): boolean {
 
 /** Extract output value + unit from "Taking output = 120 cum" */
 function parseOutput(d: string): { qty: number; unit: string } | null {
-  const outputText = d.match(/taking\s+output\s*(?:=|:)?\s*(.*)$/i)?.[1]
+  const outputText = d.match(/taking\s+(?:out\s*)?put\s*(?:=|:)?\s*(.*)$/i)?.[1]
     ?.split(/[:=]/).at(-1)?.trim() ?? "";
   const numeric = outputText.match(/^([\d,]+(?:\.\d+)?)(?:\s*(\S+))?/i);
   if (numeric) {
@@ -158,6 +158,43 @@ function parseOutput(d: string): { qty: number; unit: string } | null {
     return Number.isFinite(qty) ? { qty, unit: (numeric[2] ?? "").toUpperCase() } : null;
   }
   if (/^(?:one|a|an)\b/i.test(outputText)) return { qty: 1, unit: "" };
+  return null;
+}
+
+function normaliseOutputUnit(value: string): string {
+  const unit = value.trim().toLowerCase().replace(/\s+/g, " ");
+  if (/\b(?:t|tonne|tonnes)\b.*\bkm\b|\bt\s*\.?\s*km\b/.test(unit)) return "T.KM";
+  if (/^(?:cum|cu\.?\s*m|cubic\s+met(?:re|er)s?)\b/.test(unit)) return "CUM";
+  if (/^(?:sqm|sq\.?\s*m|square\s+met(?:re|er)s?)\b/.test(unit)) return "SQM";
+  if (/^(?:met(?:re|er)s?|m)\b/.test(unit)) return "METRE";
+  if (/^(?:nos?|numbers?)\b/.test(unit)) return "NUMBERS";
+  return value.trim().toUpperCase();
+}
+
+/** Infer an item's output from its own costing line when no output heading exists. */
+function parseCostRateOutput(d: string, itemUnit: string): { qty: number; unit: string } | null {
+  const basis = d.match(/^\s*(?:cost|rate)\s+for\s+(.+?)(?:\s*=\s*|$)/i)?.[1]?.trim();
+  if (basis) {
+    if (/^(?:each|one|a|an)\b/i.test(basis)) return { qty: 1, unit: itemUnit };
+    const quantity = basis.match(/^([\d,]+(?:\.\d+)?)\s*(.*)$/);
+    if (quantity) {
+      const qty = Number(quantity[1].replace(/,/g, ""));
+      if (Number.isFinite(qty) && qty > 0) {
+        return {
+          qty,
+          unit: quantity[2] ? normaliseOutputUnit(quantity[2]) : itemUnit,
+        };
+      }
+    }
+  }
+
+  const ratePer = d.match(/^\s*rate\s+per\s+([\d,]+(?:\.\d+)?)?\s*(\S+)/i);
+  if (ratePer) {
+    const qty = ratePer[1] ? Number(ratePer[1].replace(/,/g, "")) : 1;
+    if (Number.isFinite(qty) && qty > 0) {
+      return { qty, unit: normaliseOutputUnit(ratePer[2]) };
+    }
+  }
   return null;
 }
 
@@ -225,14 +262,14 @@ function extractVariant(colC: string): string {
 type NestedPathPart = { code: string; kind: "case" | "roman" | "letter" | "depth" };
 
 const NESTED_CODE_ROOTS: Record<number, Set<string>> = {
-  2: new Set(["2.3"]),
+  2: new Set(["2.3", "2.4"]),
   3: new Set(["3.13"]),
   12: new Set(["12.1"]),
   14: new Set(["14.1"]),
 };
 
 function nestedRootAndParts(codeCell: string, chapterNo: number): { root: string; parts: NestedPathPart[] } | null {
-  const match = codeCell.trim().match(/^(\d+(?:\.\d+)?)(.*)$/);
+  const match = codeCell.trim().match(/^(\d+(?:\.\d+)?[A-Z]?)(.*)$/i);
   if (!match || !NESTED_CODE_ROOTS[chapterNo]?.has(match[1])) return null;
   const [, root, suffix] = match;
   const parts: NestedPathPart[] = [];
@@ -245,8 +282,8 @@ function nestedRootAndParts(codeCell: string, chapterNo: number): { root: string
       const value = token[2] ?? token[3] ?? token[4];
       if (!value) continue;
       const kind = /^[pqr]$/.test(value) ? "depth" :
-        /^[ivxlc]+$/i.test(value) ? "roman" :
-        /^[A-H]$/.test(value) ? "letter" : null;
+        /^[A-H]$/.test(value) ? "letter" :
+        /^[ivxlc]+$/i.test(value) ? "roman" : null;
       if (kind) parts.push({ code: value, kind });
     }
   }
@@ -259,8 +296,8 @@ function nestedPartFromColumnC(value: string): NestedPathPart | null {
   const token = extractVariant(value);
   if (!token) return null;
   const kind = /^[pqr]$/.test(token) ? "depth" :
-    /^[ivxlc]+$/i.test(token) ? "roman" :
-    /^[A-H]$/.test(token) ? "letter" : null;
+    /^[A-H]$/.test(token) ? "letter" :
+    /^[ivxlc]+$/i.test(token) ? "roman" : null;
   return kind ? { code: token, kind } : null;
 }
 
@@ -301,6 +338,7 @@ function parseChapterSheet(
   let lastBaseCode = '';
   let lastBaseTitle = '';
   let lastBaseUnit = '';
+  let lastBaseOutput = 0;
   const titleByCode = new Map<string, string>();
   const nestedPathByCode = new Map<string, NestedPathPart[]>();
   const nestedItemByCode = new Map<string, ParsedItem>();
@@ -405,24 +443,24 @@ function parseChapterSheet(
     hasExplicitRoot: boolean,
   ): NestedPathPart[] {
     let parts = explicitParts.map(part => ({ ...part }));
-    if (!parts.length && !hasExplicitRoot && currentNestedRoot === root) {
+    if (currentNestedRoot === root && !hasExplicitRoot) {
+      parts = currentNestedParts.map(part => ({ ...part }));
+    }
+    if (marker && currentNestedRoot === root && hasExplicitRoot && explicitParts.length > 0 &&
+        explicitParts.length <= currentNestedParts.length &&
+        explicitParts.every((part, index) => samePathPart(part, currentNestedParts[index]))) {
       parts = currentNestedParts.map(part => ({ ...part }));
     }
     if (marker && !parts.some(part => samePathPart(part, marker))) {
-      if (marker.kind === "roman") {
-        const last = parts.at(-1);
-        if (marker.code === marker.code.toUpperCase()) parts = [];
-        else if (last?.kind === "roman") parts.pop();
-        else if (last?.kind !== "letter" && last?.kind !== "case") {
-          const casePrefix = parts.findIndex(part => part.kind === "case");
-          parts = casePrefix >= 0 ? parts.slice(0, casePrefix + 1) : [];
-        }
-      } else if (marker.kind === "letter") {
-        const romanIndex = parts.map(part => part.kind).lastIndexOf("roman");
-        if (romanIndex >= 0) parts = parts.slice(0, romanIndex + 1);
-      } else if (marker.kind === "depth") {
-        while (parts.at(-1)?.kind === "depth") parts.pop();
-      }
+      const markerCase = marker.kind === "roman"
+        ? marker.code === marker.code.toUpperCase() ? "upper" : "lower"
+        : null;
+      const siblingIndex = parts.map(part => {
+        if (part.kind !== marker.kind) return false;
+        return marker.kind !== "roman" ||
+          (part.code === part.code.toUpperCase() ? "upper" : "lower") === markerCase;
+      }).lastIndexOf(true);
+      if (siblingIndex >= 0) parts = parts.slice(0, siblingIndex);
       parts.push(marker);
     }
     return parts;
@@ -518,6 +556,7 @@ function parseChapterSheet(
       lastBaseCode = colA;
       lastBaseTitle = colD || lastBaseTitle;
       lastBaseUnit = '';
+      lastBaseOutput = 0;
       lastCaseBaseCode = colA;
       lastCaseBaseTitle = lastBaseTitle;
       titleByCode.set(colA, lastBaseTitle);
@@ -535,9 +574,20 @@ function parseChapterSheet(
         !!lastWbmMethodCode;
       // Capture the unit from the base item before starting sub-variant
       const activeBeforeVariant = getCurrent();
-      if (activeBeforeVariant && activeBeforeVariant.unit) lastBaseUnit = activeBeforeVariant.unit;
+      if (activeBeforeVariant) {
+        if (activeBeforeVariant.unit) lastBaseUnit = activeBeforeVariant.unit;
+        lastBaseOutput = activeBeforeVariant.shiftOutput;
+      }
+      const priorDescription = i > 0 ? cell(rows[i - 1], 3) : "";
+      const apparentShortCodeInOrGroup =
+        isCode &&
+        !!lastBaseCode &&
+        lastBaseCode.length > colA.length &&
+        lastBaseCode.startsWith(colA) &&
+        /^\d+(?:\.\d+)?$/.test(colA) &&
+        /^\s*or\b/i.test(priorDescription);
       // Sub-variant: col A may repeat the base code or be empty
-      if (isCode) {
+      if (isCode && !apparentShortCodeInOrGroup) {
         // The workbook writes the WBM grading code as "4.9A" under the
         // already active 4.9-A / 4.9-B work item. Keep that parent identity so
         // the material rows stay distinguishable by work method.
@@ -562,6 +612,9 @@ function parseChapterSheet(
       }
       // Inherit parent's unit for all sub-variants
       if (lastBaseUnit && startedVariant) startedVariant.unit = lastBaseUnit;
+      if (lastBaseOutput > 0 && startedVariant && startedVariant.shiftOutput <= 0) {
+        startedVariant.shiftOutput = lastBaseOutput;
+      }
       continue;
     }
 
@@ -574,6 +627,15 @@ function parseChapterSheet(
     if (sec !== null) {
       section = sec;
       if (section !== 'equipment') pendingEquipmentAlternative = false;
+      continue;
+    }
+
+    const outputFallback = activeItem.shiftOutput > 0
+      ? null
+      : parseCostRateOutput(colD, activeItem.unit);
+    if (outputFallback) {
+      activeItem.shiftOutput = outputFallback.qty;
+      if (!activeItem.unit && outputFallback.unit) activeItem.unit = outputFallback.unit;
       continue;
     }
 
@@ -595,6 +657,17 @@ function parseChapterSheet(
         activeItem.shiftOutput = o.qty;
         if (activeItem.code === lastWbmMethodCode) lastWbmShiftOutput = o.qty;
         if (!activeItem.unit) activeItem.unit = o.unit;
+        continue;
+      }
+      const descQty = parseQty(colF);
+      const isRateOnlyLine =
+        /^\s*(?:[a-z]\)\s*)?(?:cost|rate)\b/i.test(colD) ||
+        /\bload\s+test\b/i.test(colD);
+      if (colE && descQty !== null && descQty > 0 && !isRateOnlyLine) {
+        // Some workbook items put a sole priced material/reference row directly
+        // beneath the output line without an "a) Material" heading.
+        activeItem.materials.push({ label: colD, unit: colE, qty: descQty, ref: colI });
+        currentHasData = true;
         continue;
       }
       // Accumulate description text (skip explanatory prose that's too long)

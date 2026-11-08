@@ -43,7 +43,7 @@ export type MorthReloadValidationItem = {
 
 // These workbook items are intentionally priced by market/current rates or
 // by references to other chapters and do not define machine/labour/material rows.
-const RATE_ONLY_CODES = new Set(["5.20", "8.38", "8.42", "11.12", "11.13", "12.37", "14.12"]);
+const RATE_ONLY_CODES = new Set(["5.20", "8.38", "8.42", "11.12", "11.13", "12.2", "12.37", "14.12"]);
 
 export function validateParsedMorthItem(item: ParsedMorthItem): {
   status: MorthReloadChange["validationStatus"];
