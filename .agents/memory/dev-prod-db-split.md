@@ -10,6 +10,13 @@ Treat the dev runtime database, Replit's managed development database used by Pu
 
 **Why:** The dev app was correctly using its isolated database while the managed Publish comparison database missed additive migrations. Publish therefore proposed deleting populated production columns and a history table to match stale development schema.
 
+## NORM-01 production restriction (2026-11-08)
+For NORM-01 work, do not query the production database or its replica for reads or writes. Use development data and test fixtures only.
+
+**Why:** The user explicitly prohibited production access while continuing this work.
+
+**How to apply:** NORM-01 verification, reload, re-link, and comparisons must use development databases and fixtures only. This restriction overrides the general read-only-production query guidance below for NORM-01.
+
 ## How to Apply
 - `server/db.ts` reads `process.env.DEV_DATABASE_URL || process.env.DATABASE_URL`.
 - `DEV_DATABASE_URL` is set as a **development-scoped** env var (not shared, not a secret) pointing to `postgresql://...@helium:5432/sitelog_dev?sslmode=disable`.

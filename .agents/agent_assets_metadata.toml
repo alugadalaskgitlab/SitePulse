@@ -6359,3 +6359,45 @@ mtime_ms = 1794047907512
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/a2a39c67-bc88-4bf7-abc6-d82db2c377cb/876f6c89-cc8a-4b98-912a-9ca25586e6e5"
 storage_version_token = "1794048206272974"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "wvPNYcXT52iufas6pfauh"
+uri = "file://generated-artifacts/norm-01b/demand-by-item.jpg"
+type = "image"
+title = "NORM-01 fixture — By Item"
+description = "Development screenshot after the MoRTH reload and safe re-links."
+logical_id = "0a712d69-ae5c-45e1-b7bf-8ae66256571a"
+content_hash = "sha256:24d5423c032d39ae2dbcecda7bb19a971730d4752dfd5a4d92e71fe44f52544f"
+size = 187591
+mtime_ms = 1794116909312
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/0a712d69-ae5c-45e1-b7bf-8ae66256571a/eec202e1-e6e3-4fd8-9862-58e4389f28ef"
+storage_version_token = "1794116977759240"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "_6FB437EoIq__QiDrCs-v"
+uri = "file://generated-artifacts/norm-01b/demand-equipment.jpg"
+type = "image"
+title = "NORM-01 fixture — Equipment"
+description = "Development screenshot showing equipment hours after the safe re-links."
+logical_id = "79228c86-cdb8-40c7-b651-4d24de6ec1cf"
+content_hash = "sha256:6c77ce2538aa9776d50227e5295372952019c4e846a2ad261875fdf5ad973fa2"
+size = 176438
+mtime_ms = 1794116909960
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/79228c86-cdb8-40c7-b651-4d24de6ec1cf/a7af9305-acf0-4f7d-8a26-23849c682567"
+storage_version_token = "1794116979952352"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "eRH1ZjHj1qhQzSAgLSIy6"
+uri = "file://generated-artifacts/norm-01b/relink-preview-top.jpg"
+type = "image"
+title = "NORM-01 fixture — Re-link preview"
+description = "Development screenshot of the proposed matches before the nine safe links were applied."
+logical_id = "7eaeaa06-a26d-425b-a453-05c0e830dc2d"
+content_hash = "sha256:4d7709184d6d159c9226fc7d47a53fe3227774f5c2d99123b33d1ea39872cec9"
+size = 155924
+mtime_ms = 1794116615833
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/7eaeaa06-a26d-425b-a453-05c0e830dc2d/40b24e31-d815-4150-8850-90165ae22675"
+storage_version_token = "1794116982184493"
+content_type = "image/jpeg"
