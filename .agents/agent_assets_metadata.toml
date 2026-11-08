@@ -6415,3 +6415,45 @@ mtime_ms = 1794127675398
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/080b07dc-d7e9-4fc4-9f9e-e046c789ca0b/471de93e-5098-4749-bfc7-ec5965299ed7"
 storage_version_token = "1794127784567286"
 content_type = "text/csv"
+
+[[outputs]]
+id = "va5pqs39DyMpN2sooKxbF"
+uri = "file://generated-artifacts/norm01e/reload-complete.jpg"
+type = "image"
+title = "MoRTH reload complete"
+description = "Development Norms Library after applying the reviewed MoRTH reload."
+logical_id = "78acbde8-bb66-4828-80a4-876885963431"
+content_hash = "sha256:7bb346065c51fd72cab90624be837cb1d40cad9af0438c00432d9a0bbda69f95"
+size = 49115
+mtime_ms = 1794140498623
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/78acbde8-bb66-4828-80a4-876885963431/4553718e-0222-4570-889b-af20ffb2c9ec"
+storage_version_token = "1794140512564179"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "Oa-SyQEsGoJw8MXDkyiP8"
+uri = "file://generated-artifacts/norm01e/relink-preview-generic-choices.jpg"
+type = "image"
+title = "Re-link preview — four clearing cases"
+description = "Generic clearing BOQ item showing all four manual/mechanical and light/thorny jungle choices."
+logical_id = "b9789456-83d8-4ccb-a28e-36d38d942653"
+content_hash = "sha256:50759a88129367bdebd908cd29ef8f8b57118d4bf259bcdb9b377b708d503773"
+size = 44756
+mtime_ms = 1794140498640
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/b9789456-83d8-4ccb-a28e-36d38d942653/07e3120b-065b-49c0-9704-61d11419d319"
+storage_version_token = "1794140514049993"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "1-turTo-qTFD9jP70v4dv"
+uri = "file://generated-artifacts/norm01e/relink-preview-specific-case.jpg"
+type = "image"
+title = "Re-link preview — mechanical, light jungle"
+description = "Fixture item with the requested details proposing MoRTH 2.3-ii-A and the sqm-to-hectare conversion note."
+logical_id = "afbce76d-f550-4704-8518-20ea15857c17"
+content_hash = "sha256:8a0afeccb9d679fee5abc90669dbfd77de96259b71348125194348a737559571"
+size = 45476
+mtime_ms = 1794140498657
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/afbce76d-f550-4704-8518-20ea15857c17/62f36385-2476-437e-a61e-83d9bae43cc1"
+storage_version_token = "1794140515529096"
+content_type = "image/jpeg"
