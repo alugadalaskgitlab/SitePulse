@@ -26,3 +26,9 @@ description: Context-sensitive resource sections and review safeguards for the M
 **Why:** Rescaling copied rows to a destination’s local rate denominator changes the referenced norm, while treating cost adjustments as physical quantities distorts demand. Owner review is the required guard before persisted standards change.
 
 **How to apply:** Resolve only explicit item/case references, preserve unrelated notes when writing source/cost annotations, show “Uses item …” and the cost note in preview, and leave ambiguous or quantity-changing adjustments unapplied.
+
+**Rule:** MoRTH 2.5 has only three workbook sub-items: 2.5-I-A, 2.5-I-B, and 2.5-II-A. Do not create or copy a 2.5-II-B norm.
+
+**Why:** The workbook’s mechanical section lists only the bituminous-course case; the user confirmed that inventing a granular mechanical norm would be unsupported.
+
+**How to apply:** Keep the missing 2.5-II-B absent from parsed reload data and do not copy the mechanical A quantities into a B case.
