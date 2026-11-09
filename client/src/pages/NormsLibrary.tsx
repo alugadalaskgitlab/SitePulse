@@ -50,6 +50,7 @@ interface SnlItemFull {
   shortLabel: string;
   description: string;
   unit: string;
+  specClause: string | null;
   workCategory: string;
   chapterNo: string | null;
   isMixSpecific: boolean;
@@ -101,6 +102,19 @@ interface SnlItemFull {
   }>;
 }
 
+interface RememberedLinkRow {
+  id: number;
+  normalizedBoqWording: string;
+  displayBoqWording: string;
+  snlItemId: number;
+  itemCode: string;
+  itemTitle: string;
+  unit: string;
+  confirmedBy: string | null;
+  confirmedAt: string;
+  createdAt: string;
+}
+
 interface MorthReloadPreview {
   sourceCode: string;
   sourceName: string;
@@ -127,8 +141,8 @@ interface MorthReloadPreview {
     copyReference?: string;
     costNote?: string;
     validationReasons: string[];
-    old: null | { description: string; unit: string; notes: string | null; norms: MorthNormRows };
-    new: { description: string; unit: string; notes: string | null; norms: MorthNormRows };
+    old: null | { description: string; unit: string; specClause: string | null; notes: string | null; norms: MorthNormRows };
+    new: { description: string; unit: string; specClause: string | null; notes: string | null; norms: MorthNormRows };
     reasons: string[];
   }>;
 }
@@ -239,7 +253,11 @@ function ItemDetailPanel({ itemId, includeOtherBooks = false }: { itemId: number
   const mats = item.materials.filter(m => !gradingFilter || (m.gradingVariant ?? "") === gradingFilter).sort((a, b) => a.sortOrder - b.sortOrder);
   const estimatorNotes = (item.notes ?? "")
     .split(/\r?\n/)
-    .filter(line => line.startsWith("MoRTH cost note:") || line.startsWith("MoRTH source:"));
+    .filter(line =>
+      line.startsWith("MoRTH cost note:") ||
+      line.startsWith("MoRTH source:") ||
+      line.startsWith("MoRTH spec note:"),
+    );
 
   return (
     <div className="space-y-4">
@@ -252,7 +270,11 @@ function ItemDetailPanel({ itemId, includeOtherBooks = false }: { itemId: number
             {item.hasGradingVariants && <Badge variant="outline" className="text-xs h-4 px-1 border-amber-300 text-amber-700">Grading variants</Badge>}
           </div>
           <p className="text-sm font-medium mt-0.5">{item.description}</p>
-          <p className="text-xs text-muted-foreground">Unit: <span className="font-medium">{item.unit}</span> · Source: {item.source.code} ({item.source.year}) · {item.source.authority}</p>
+          <p className="text-xs text-muted-foreground">
+            Unit: <span className="font-medium">{item.unit}</span>
+            {item.specClause && <> · Spec clause: <span className="font-medium">{item.specClause}</span></>}
+            {" · "}Source: {item.source.code} ({item.source.year}) · {item.source.authority}
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {cats.filter(c => c !== "ALL").length > 1 && (
@@ -277,10 +299,10 @@ function ItemDetailPanel({ itemId, includeOtherBooks = false }: { itemId: number
 
       {estimatorNotes.length > 0 && (
         <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
-          <p className="font-semibold text-xs uppercase tracking-wide">Estimator notes</p>
+          <p className="font-semibold text-xs uppercase tracking-wide">MoRTH notes</p>
           {estimatorNotes.map((line, index) => (
             <p key={index} className="mt-1">
-              {line.replace(/^MoRTH (?:cost note|source):\s*/, "")}
+              {line.replace(/^MoRTH (?:cost note|source|spec note):\s*/, "")}
             </p>
           ))}
         </div>
@@ -394,6 +416,69 @@ function ItemDetailPanel({ itemId, includeOtherBooks = false }: { itemId: number
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function RememberedLinksPanel({ canRemove }: { canRemove: boolean }) {
+  const { toast } = useToast();
+  const { data: links = [], isLoading } = useQuery<RememberedLinkRow[]>({
+    queryKey: ["/api/snl/remembered-links"],
+    queryFn: async () => {
+      const response = await fetch("/api/snl/remembered-links", { credentials: "include" });
+      if (!response.ok) throw new Error("Unable to load remembered links");
+      return response.json();
+    },
+  });
+  const removeMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`/api/snl/remembered-links/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Unable to remove the remembered link");
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/snl/remembered-links"] });
+      toast({ title: "Remembered link removed." });
+    },
+    onError: (error: Error) => toast({ title: "Unable to remove remembered link", description: error.message, variant: "destructive" }),
+  });
+
+  return (
+    <section className="rounded-lg border bg-white p-3 space-y-2" data-testid="snl-remembered-links">
+      <div>
+        <h2 className="text-sm font-semibold">Remembered links</h2>
+        <p className="text-xs text-muted-foreground">Confirmed MoRTH links suggest the same exact sub-item next time.</p>
+      </div>
+      {isLoading ? <p className="text-xs text-muted-foreground">Loading remembered links…</p> :
+        links.length === 0 ? <p className="text-xs text-muted-foreground">No remembered MoRTH links yet.</p> : (
+          <div className="divide-y rounded border">
+            {links.slice(0, 8).map(link => (
+              <div key={link.id} className="flex items-center justify-between gap-3 px-2.5 py-2 text-xs">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{link.displayBoqWording}</p>
+                  <p className="text-muted-foreground">
+                    {link.itemCode} · {link.itemTitle} · {link.confirmedBy ?? "User"} · {new Date(link.confirmedAt).toLocaleDateString("en-IN")}
+                  </p>
+                </div>
+                {canRemove && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 shrink-0"
+                    onClick={() => removeMutation.mutate(link.id)}
+                    disabled={removeMutation.isPending}
+                    data-testid={`button-remove-remembered-link-${link.id}`}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+    </section>
   );
 }
 
@@ -767,6 +852,8 @@ export default function NormsLibrary() {
         )}
       </div>
 
+      <RememberedLinksPanel canRemove={isOwner} />
+
       {reloadPreview && (
         <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-3" data-testid="morth-reload-preview">
           <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -833,6 +920,7 @@ export default function NormsLibrary() {
                 )}
                 <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1">
                   <div><span className="font-semibold">Old:</span> {change.old ? `${change.old.description} · ${change.old.unit}` : "Not in current MoRTH source"}
+                    {change.old?.specClause && <p className="text-xs text-slate-500">Spec clause: {change.old.specClause}</p>}
                     {change.old && (
                       <ul className="mt-1 text-slate-600 space-y-0.5">
                       <li><span className="font-medium">Productivity:</span> {formatReloadProductivity(change.old.norms)}</li>
@@ -843,6 +931,7 @@ export default function NormsLibrary() {
                     )}
                   </div>
                   <div><span className="font-semibold">New:</span> {change.new.description} · {change.new.unit}
+                    {change.new.specClause && <p className="text-xs text-slate-500">{change.old?.specClause ? "Spec clause" : "Spec clause added"}: {change.new.specClause}</p>}
                     <ul className="mt-1 text-slate-600 space-y-0.5">
                       <li><span className="font-medium">Productivity:</span> {formatReloadProductivity(change.new.norms)}</li>
                       <li><span className="font-medium">Machines:</span> {formatReloadRows(change.new.norms, "equipment")}</li>

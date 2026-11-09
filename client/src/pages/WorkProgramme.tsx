@@ -3268,7 +3268,7 @@ type SnlRelinkRow = {
   unit: string | null;
   currentNorm: null | { id: number; code: string | null; description: string | null; sourceCode: string | null; sourceName: string | null };
   proposed: null | {
-    id: number;
+    id: number | null;
     code: string;
     description: string;
     unit: string;
@@ -3396,7 +3396,10 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
                       </div>
                       <div className="min-w-0">
                         <p className="font-medium">{row.description ?? "BOQ item"}</p>
-                        <p className="text-xs text-muted-foreground">{row.itemCode ? `${row.itemCode} · ` : ""}{row.unit ?? ""}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {row.itemCode ? `${row.itemCode} · ` : ""}
+                          {row.unit?.trim() || <span className="text-amber-700">Unit missing in BOQ</span>}
+                        </p>
                         {row.protected && <Badge variant="outline" className="mt-1">Manual recipe protected</Badge>}
                       </div>
                       <div className="min-w-0">

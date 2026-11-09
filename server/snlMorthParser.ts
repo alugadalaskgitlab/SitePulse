@@ -92,24 +92,39 @@ export interface ParsedMorthItem {
   copyReference?: string;
   copyError?: string;
   costNote?: string;
+  specClause?: string | null;
+  specClauseNote?: string;
 }
 type ParsedItem = ParsedMorthItem;
 
 const MORTH_SOURCE_NOTE_PREFIX = "MoRTH source: ";
 const MORTH_COST_NOTE_PREFIX = "MoRTH cost note: ";
+const MORTH_SPEC_NOTE_PREFIX = "MoRTH spec note: ";
+
+function parseSpecClauseCell(value: string): { specClause: string | null; specClauseNote?: string } {
+  const text = value.trim().replace(/\s+/g, " ");
+  if (!text) return { specClause: null };
+  const clause = text.replace(/^morth(?:\s+spec(?:ification)?)?\s*[:#-]?\s*/i, "");
+  if (/^\d+(?:\.\d+)*(?:\s*(?:&|,|\/|and)\s*\d+(?:\.\d+)*)*$/i.test(clause)) {
+    return { specClause: clause.replace(/\s*(?:&|,|\/|and)\s*/gi, " & ") };
+  }
+  return { specClause: null, specClauseNote: text };
+}
 
 export function mergeMorthSnlNotes(
   existing: string | null | undefined,
-  item: Pick<ParsedMorthItem, "copyReference" | "costNote">,
+  item: Pick<ParsedMorthItem, "copyReference" | "costNote" | "specClauseNote">,
 ): string | null {
   const retained = (existing ?? "")
     .split(/\r?\n/)
     .map(line => line.trim())
     .filter(line => line &&
       !line.startsWith(MORTH_SOURCE_NOTE_PREFIX) &&
-      !line.startsWith(MORTH_COST_NOTE_PREFIX));
+      !line.startsWith(MORTH_COST_NOTE_PREFIX) &&
+      !line.startsWith(MORTH_SPEC_NOTE_PREFIX));
   if (item.copyReference) retained.push(`${MORTH_SOURCE_NOTE_PREFIX}${item.copyReference}`);
   if (item.costNote) retained.push(`${MORTH_COST_NOTE_PREFIX}${item.costNote}`);
+  if (item.specClauseNote) retained.push(`${MORTH_SPEC_NOTE_PREFIX}${item.specClauseNote}`);
   return retained.length ? retained.join("\n") : null;
 }
 
@@ -463,6 +478,7 @@ function parseChapterSheet(
   let lastBaseTitle = '';
   let lastBaseUnit = '';
   let lastBaseOutput = 0;
+  let lastBaseSpecClauseInfo: { specClause: string | null; specClauseNote?: string } = { specClause: null };
   const titleByCode = new Map<string, string>();
   const nestedPathByCode = new Map<string, NestedPathPart[]>();
   const nestedItemByCode = new Map<string, ParsedItem>();
@@ -497,7 +513,12 @@ function parseChapterSheet(
     currentNestedParts = [];
   }
 
-  function startItem(code: string, title: string, nested?: { root: string; parts: NestedPathPart[] }) {
+  function startItem(
+    code: string,
+    title: string,
+    nested?: { root: string; parts: NestedPathPart[] },
+    specClauseInfo = lastBaseSpecClauseInfo,
+  ) {
     finalise();
     current = {
       code,
@@ -511,6 +532,8 @@ function parseChapterSheet(
       labour: [],
       equipment: [],
       materials: [],
+      specClause: specClauseInfo.specClause,
+      specClauseNote: specClauseInfo.specClauseNote,
     };
     section = 'desc';
     pendingEquipmentAlternative = false;
@@ -660,8 +683,9 @@ function parseChapterSheet(
         lastBaseCode = nestedRoot;
         lastBaseTitle = colD.replace(/[\s.]+$/, "") || lastBaseTitle;
         lastBaseUnit = "";
+        lastBaseSpecClauseInfo = parseSpecClauseCell(colB);
         titleByCode.set(nestedRoot, lastBaseTitle);
-        startItem(nestedRoot, lastBaseTitle, { root: nestedRoot, parts: [] });
+        startItem(nestedRoot, lastBaseTitle, { root: nestedRoot, parts: [] }, lastBaseSpecClauseInfo);
         continue;
       }
       if (rowHasNestedHeading) {
@@ -745,10 +769,12 @@ function parseChapterSheet(
       lastBaseTitle = colD || lastBaseTitle;
       lastBaseUnit = '';
       lastBaseOutput = 0;
+      const columnBIsVariant = /^4\.17(?:\b|[AB])/i.test(colA) && !colC && !!extractVariant(colB);
+      lastBaseSpecClauseInfo = columnBIsVariant ? { specClause: null } : parseSpecClauseCell(colB);
       lastCaseBaseCode = colA;
       lastCaseBaseTitle = lastBaseTitle;
       titleByCode.set(colA, lastBaseTitle);
-      startItem(colA, colD);
+      startItem(colA, colD, undefined, lastBaseSpecClauseInfo);
       continue;
     }
 
@@ -1215,6 +1241,7 @@ async function upsertParsedItems(
           description: descFull,
           shortLabel: shortLbl,
           unit: item.unit || 'CUM',
+          specClause: item.specClause ?? null,
           workCategory: item.workCategory,
           sector: item.sector,
           chapterNo: item.chapterNo,
@@ -1229,6 +1256,7 @@ async function upsertParsedItems(
           description: descFull,
           shortLabel: shortLbl,
           unit: item.unit || 'CUM',
+          specClause: item.specClause ?? null,
           workCategory: item.workCategory,
           sector: item.sector,
           chapterNo: item.chapterNo,

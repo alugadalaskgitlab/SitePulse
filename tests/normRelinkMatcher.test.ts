@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseMorthSdbWorkbook } from "../server/snlMorthParser";
+import { mergeMorthSnlNotes, parseMorthSdbWorkbook } from "../server/snlMorthParser";
 import {
   explainMorthRelinkNoMatch,
   getMorthUnitConversion,
@@ -19,6 +19,7 @@ describe("MoRTH re-link title matching", () => {
     title: item.title,
     description: item.description,
     unit: item.unit,
+    specClause: item.specClause,
     sector: item.sector,
   }));
 
@@ -38,14 +39,18 @@ describe("MoRTH re-link title matching", () => {
     expect(matchCode("Prime coat with bitumen emulsion", "sqm")).toBe("5.1");
     expect(matchCode("Tack coat between bituminous layers", "sqm")).toBe("5.2");
     expect(matchCode("Tack coat over DGBM", "sqm")).toBe("5.2");
-    expect(matchCode("Dense Graded Bituminous Macadam (DGBM), 50 mm")).toBe("5.6");
-    expect(matchCode("Bituminous Concrete (BC), 40 mm")).toBe("5.8");
+    expect(matchMorthRelinkCandidates("Dense Graded Bituminous Macadam (DGBM), 50 mm", "CUM", candidates)
+      .map(row => row.candidate.code)).toEqual(["5.6-i", "5.6-ii"]);
+    expect(matchMorthRelinkCandidates("Bituminous Concrete (BC), 40 mm", "CUM", candidates)
+      .map(row => row.candidate.code)).toEqual(["5.8-i", "5.8-ii"]);
     expect(matchCode("PCC 1:3:6", "cum", "ROAD")).toBe("9.1");
   });
 
   it("does not guess where the BOQ omits a distinguishing application or row arrangement", () => {
     const m15 = "M15 concrete";
     expect(matchCode(m15)).toBeNull();
+    expect(matchMorthRelinkCandidates(m15, "CUM", candidates, "ROAD")
+      .map(row => row.candidate.code)).toEqual(["12.8-A", "12.11-I", "13.5-A"]);
     expect(explainMorthRelinkNoMatch(m15, candidates))
       .toContain("does not state the application");
 
@@ -88,5 +93,30 @@ describe("MoRTH re-link title matching", () => {
       "Clearing and grubbing road land by mechanical means in light jungle",
       "sqm",
     )).toBe("2.3-ii-A");
+  });
+
+  it("uses workbook spec clauses before title similarity and never guesses a missing BOQ unit", () => {
+    expect(workbookItems.find(item => item.code === "4.12")?.specClause).toBe("406");
+    expect(workbookItems.find(item => item.code === "5.1")?.specClause).toBe("502");
+    expect(workbookItems.find(item => item.code === "5.2")?.specClause).toBe("503");
+    expect(matchCode("Wet mix macadam, clause 406", "CUM")).toBe("4.12");
+    expect(mergeMorthSnlNotes("MoRTH spec note: stale note", {
+      specClauseNote: "Item 202 (b) and (c)",
+    })).toBe("MoRTH spec note: Item 202 (b) and (c)");
+
+    const noUnit = matchMorthRelinkCandidates("Clearing and grubbing road land", "", candidates);
+    expect(noUnit).toHaveLength(4);
+    expect(noUnit.every(row => !row.canApply && row.blockedReason === "Unit missing in BOQ")).toBe(true);
+  });
+
+  it("uses title-word matching for broader wording, honors grading details, and excludes foundation sand for pavers", () => {
+    expect(matchCode("Wet mix macadam layer with vibratory compaction, clause 406", "CUM")).toBe("4.12");
+    expect(matchCode("Dense graded bituminous macadam, grading II", "CUM")).toBe("5.6-ii");
+    expect(matchCode("Girth size above 300mm upto 600mm", "Nos")).toBe("2.1-i");
+    expect(matchCode("Girth size above 600mm upto 900mm", "Nos")).toBe("2.1-ii");
+    expect(getMorthUnitConversion("Rmt", "METRE")?.normUnitsPerBoqUnit).toBe(1);
+    const paverSand = matchMorthRelinkCandidates("Sand filling beneath concrete pavers", "CUM", candidates);
+    expect(paverSand.map(row => row.candidate.code)).toEqual(["7.3", "14.18-iv"]);
+    expect(paverSand.every(row => row.reason.includes("not"))).toBe(true);
   });
 });

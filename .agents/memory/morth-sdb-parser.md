@@ -32,3 +32,9 @@ description: Context-sensitive resource sections and review safeguards for the M
 **Why:** The workbook’s mechanical section lists only the bituminous-course case; the user confirmed that inventing a granular mechanical norm would be unsupported.
 
 **How to apply:** Keep the missing 2.5-II-B absent from parsed reload data and do not copy the mechanical A quantities into a B case.
+
+**Rule:** Read MoRTH spec references from workbook column B into `spec_clause`; keep non-numeric references as a separate MoRTH note. Reload previews must show when a spec clause is added.
+
+**Why:** Re-linking needs the workbook's actual clause reference as its strongest evidence, while explanatory text in the same column should not be mistaken for a clause number.
+
+**How to apply:** Preserve the clause on nested items through their nearest heading, carry it through reload/import, and compare against workbook titles only after clause filtering.

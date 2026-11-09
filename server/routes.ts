@@ -10,6 +10,7 @@ import { storage, StockShortageError, EquipmentIncomingConflictError, Insufficie
 import { buildEquipmentComparison, buildDailyDieselEquipmentReport } from "./dieselComparisonEquipment";
 import { remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, classifyBoqItem, getSectorMultiplier, previewBoqProjectNormRelinks, suggestUnlinkedBoqItemsForReview } from "./snlAutoMapper";
 import { getMorthUnitConversion } from "./snlMorthRelinkMatcher";
+import { getRememberedSnlLinks, rememberSnlLink, removeRememberedSnlLink } from "./snlRememberedLinks";
 import { isConfirmedSnlMapping } from "@shared/snlMappingPolicy";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -26443,12 +26444,41 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/snl/remembered-links", async (req, res) => {
+    try {
+      if (!assertView(req, res, "norms_library")) return;
+      const [source] = await db.select({ id: snlSources.id })
+        .from(snlSources)
+        .where(eq(snlSources.code, "MORTH_SDB_2019"))
+        .limit(1);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json(source ? await getRememberedSnlLinks(source.id) : []);
+    } catch (err) {
+      console.error("GET /api/snl/remembered-links:", err);
+      res.status(500).json({ error: "Unable to load remembered MoRTH links." });
+    }
+  });
+
+  app.delete("/api/snl/remembered-links/:id", async (req, res) => {
+    try {
+      if (!assertDelete(req, res, "norms_library")) return;
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid remembered link id." });
+      res.json({ success: await removeRememberedSnlLink(id) });
+    } catch (err) {
+      console.error("DELETE /api/snl/remembered-links/:id:", err);
+      res.status(500).json({ error: "Unable to remove the remembered link." });
+    }
+  });
+
   app.post("/api/snl/mappings", async (req, res) => {
     try {
       if (!assertEdit(req, res, "norms_library")) return;
       const { boqItemId, snlItemId, projectCategory, gradingVariant, notes } = req.body;
       if (!boqItemId || !snlItemId) return res.status(400).json({ error: "boqItemId and snlItemId required" });
       if (!(await isSnlItemInNormBook(Number(snlItemId)))) return res.status(409).json({ error: "Only the selected MoRTH norm book can be mapped." });
+      const boqItem = await storage.getBoqItem(Number(boqItemId));
+      if (!boqItem) return res.status(404).json({ error: "BOQ item not found" });
       const mapping = await storage.setSnlMapping(boqItemId, {
         boqItemId, snlItemId,
         projectCategory: projectCategory ?? "MEDIUM",
@@ -26457,6 +26487,11 @@ export async function registerRoutes(
         isAutoMapped: false,
         confidenceScore: null,
         notes: notes ?? null,
+      });
+      await rememberSnlLink({
+        wording: boqItem.description ?? "",
+        snlItemId: Number(snlItemId),
+        confirmedByUserId: req.authUser?.id ?? null,
       });
       res.json(mapping);
     } catch (err) {
@@ -26491,6 +26526,11 @@ export async function registerRoutes(
       await storage.applySnlMappingToRecipes(boqItemId, snlItemId, projectCategory ?? "MEDIUM", gradingVariant ?? null, user);
       // Mark item as manually mapped
       await storage.updateBoqItemMappingStatus(boqItemId, "mapped");
+      await rememberSnlLink({
+        wording: item.description ?? "",
+        snlItemId: Number(snlItemId),
+        confirmedByUserId: req.authUser?.id ?? null,
+      });
       res.json({ success: true });
     } catch (err) {
       console.error("POST /api/snl/mappings/:boqItemId/apply:", err);
@@ -26597,6 +26637,9 @@ export async function registerRoutes(
       const unitConversions = selections.map((selection, index) =>
         getMorthUnitConversion(itemById.get(selection.boqItemId)?.unit, nextNorms[index]?.unit),
       );
+      if (currentItems.some(item => !item.unit?.trim())) {
+        return res.status(409).json({ error: "Unit missing in BOQ. Add the BOQ unit before applying this MoRTH link." });
+      }
       if (unitConversions.some(conversion => !conversion)) {
         return res.status(409).json({ error: "The BOQ and MoRTH units differ. This proposal cannot be applied safely." });
       }
@@ -26626,6 +26669,11 @@ export async function registerRoutes(
         await db.delete(snlCompositeComponents).where(eq(snlCompositeComponents.boqItemId, item.id));
         await db.update(boqItems).set({ isComposite: false }).where(eq(boqItems.id, item.id));
         await storage.updateBoqItemMappingStatus(item.id, "mapped");
+        await rememberSnlLink({
+          wording: item.description ?? "",
+          snlItemId: selection.snlItemId,
+          confirmedByUserId: req.authUser?.id ?? null,
+        });
         await storage.logAudit({
           module: "boq_norm_relink",
           transactionId: item.id,

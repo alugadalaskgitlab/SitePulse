@@ -30,10 +30,12 @@ import { resolve } from "node:path";
 import { parseMorthSdbWorkbook, type ParsedMorthItem } from "./snlMorthParser";
 import {
   explainMorthRelinkNoMatch,
+  getMorthUnitConversion,
   matchMorthRelinkCandidate,
   matchMorthRelinkCandidates,
   type MorthRelinkCandidate,
 } from "./snlMorthRelinkMatcher";
+import { getRememberedSnlLinks, matchRememberedSnlLinks } from "./snlRememberedLinks";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1173,6 +1175,7 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
     title: item.title,
     description: item.description,
     unit: item.unit,
+    specClause: item.specClause ?? null,
     sector: item.sector,
   }));
   const projectSector = inferRelinkProjectSector(items.map(item => item.description ?? ""));
@@ -1189,45 +1192,74 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
     .innerJoin(snlSources, eq(snlSources.id, snlItems.sourceId))
     .where(and(eq(snlItems.sourceId, sourceId), eq(snlItems.isActive, true)));
   const loadedByCode = new Map(snlRows.map(row => [row.itemCode.trim().toLowerCase(), row]));
+  const rememberedLinks = sourceId == null ? [] : await getRememberedSnlLinks(sourceId);
 
   return items.map(item => {
     const description = item.description ?? "";
-    const matches = matchMorthRelinkCandidates(description, item.unit ?? "", workbookCandidates, projectSector);
+    const remembered = matchRememberedSnlLinks(description, rememberedLinks);
+    const rememberedMatches = remembered.map(record => {
+      const candidate = workbookCandidates.find(row => row.code.toLowerCase() === record.itemCode.toLowerCase());
+      const loadedOption = loadedByCode.get(record.itemCode.trim().toLowerCase());
+      const conversion = candidate ? getMorthUnitConversion(item.unit ?? "", candidate.unit) : null;
+      const id = loadedOption?.id === record.snlItemId ? loadedOption.id : null;
+      const blockedReason = !candidate || id == null
+        ? "The remembered MoRTH sub-item is not loaded in the selected book."
+        : !item.unit?.trim()
+          ? "Unit missing in BOQ"
+          : conversion ? null : `Unit differs: BOQ ${item.unit}; MoRTH ${candidate.unit}.`;
+      return candidate ? {
+        candidate,
+        reason: `Used before for “${record.displayBoqWording}”; reuses the exact MoRTH sub-item ${record.itemCode}.` +
+          (conversion?.note ? ` Unit conversion: ${conversion.note}.` : "") +
+          (blockedReason ? ` ${blockedReason}. Apply is disabled.` : ""),
+        canApply: blockedReason == null,
+        blockedReason,
+        normUnitsPerBoqUnit: conversion?.normUnitsPerBoqUnit ?? null,
+        loadedId: id,
+      } : null;
+    }).filter((row): row is NonNullable<typeof row> => row != null);
+    const matches = rememberedMatches.length
+      ? rememberedMatches
+      : matchMorthRelinkCandidates(description, item.unit ?? "", workbookCandidates, projectSector)
+        .map(match => ({
+          ...match,
+          loadedId: loadedByCode.get(match.candidate.code.trim().toLowerCase())?.id ?? null,
+        }));
     const match = matches.length === 1 ? matches[0] : null;
-    const loaded = match
-      ? loadedByCode.get(match.candidate.code.trim().toLowerCase())
-      : null;
     const proposalOptions = matches.length > 1
       ? matches.map(option => {
-        const loadedOption = loadedByCode.get(option.candidate.code.trim().toLowerCase());
         return {
-          id: loadedOption?.id ?? null,
+          id: option.loadedId,
           code: option.candidate.code,
           description: option.candidate.title.slice(0, 60),
           unit: option.candidate.unit,
           reason: option.reason,
-          canApply: option.canApply && !!loadedOption,
-          blockedReason: !loadedOption
+          canApply: option.canApply && option.loadedId != null,
+          blockedReason: option.loadedId == null
             ? "This workbook item is not loaded in the selected book."
             : option.blockedReason,
         };
       })
       : [];
-    const proposed = match && loaded ? {
-      id: loaded.id,
+    const proposed = match ? {
+      id: match.loadedId,
       code: match.candidate.code,
       description: match.candidate.title.slice(0, 60),
       unit: match.candidate.unit,
       score: 1,
       reason: match.reason,
-      canApply: match.canApply,
-      blockedReason: match.blockedReason,
+      canApply: match.canApply && match.loadedId != null,
+      blockedReason: match.loadedId == null
+        ? "This workbook item is not loaded in the selected book."
+        : match.blockedReason,
     } : null;
-    const proposalReason = !match
-      ? explainMorthRelinkNoMatch(description, workbookCandidates)
-      : !loaded
-        ? `The MoRTH title “${match.candidate.title.slice(0, 60)}” matches, but its workbook item is not loaded in the selected book.`
-        : match.reason;
+    const proposalReason = matches.length > 1
+      ? matches[0].reason
+      : !match
+        ? explainMorthRelinkNoMatch(description, workbookCandidates)
+        : match.loadedId == null
+          ? `The MoRTH title “${match.candidate.title.slice(0, 60)}” matches, but its workbook item is not loaded in the selected book.`
+          : match.reason;
 
     return {
       ...item,
@@ -1309,8 +1341,10 @@ export async function suggestUnlinkedBoqItemsForReview(boqItemIds?: number[]): P
     title: item.title,
     description: item.description,
     unit: item.unit,
+    specClause: item.specClause ?? null,
     sector: item.sector,
   }));
+  const rememberedLinks = await getRememberedSnlLinks(sourceId);
   const candidateByCode = new Map(
     candidates.map(candidate => [candidate.itemCode.trim().toLowerCase(), candidate]),
   );
@@ -1341,12 +1375,26 @@ export async function suggestUnlinkedBoqItemsForReview(boqItemIds?: number[]): P
       continue;
     }
 
-    // Use exact work phrases against the MoRTH workbook titles. Similarity or
-    // a nearby code is not enough to create even a review suggestion.
-    const match = matchMorthRelinkCandidate(item.description ?? "", item.unit ?? "", workbookCandidates);
-    const candidate = match
-      ? candidateByCode.get(match.candidate.code.trim().toLowerCase())
+    // Match BOQ wording to workbook titles and use confirmed wording memory only
+    // as a review suggestion. A nearby code never creates a confirmed link.
+    const remembered = matchRememberedSnlLinks(item.description ?? "", rememberedLinks);
+    const rememberedWorkbookCandidate = remembered.length === 1
+      ? workbookCandidates.find(row => row.code.toLowerCase() === remembered[0].itemCode.toLowerCase())
       : undefined;
+    const rememberedTarget = rememberedWorkbookCandidate
+      ? candidateByCode.get(rememberedWorkbookCandidate.code.trim().toLowerCase())
+      : undefined;
+    const match = rememberedTarget
+      ? {
+        candidate: rememberedWorkbookCandidate!,
+        reason: `Used before for “${remembered[0].displayBoqWording}”; exact sub-item ${remembered[0].itemCode} is suggested. User review required.`,
+      }
+      : remembered.length
+        ? null
+        : matchMorthRelinkCandidate(item.description ?? "", item.unit ?? "", workbookCandidates);
+    const candidate = rememberedTarget ?? (match
+      ? candidateByCode.get(match.candidate.code.trim().toLowerCase())
+      : undefined);
     if (!match || !candidate) {
       await clearStaleSuggestion();
       continue;

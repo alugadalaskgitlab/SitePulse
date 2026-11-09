@@ -4080,6 +4080,20 @@ export const snlBoqMappings = pgTable("snl_boq_mappings", {
   notes: text("notes"),
 });
 
+export const snlRememberedLinks = pgTable("snl_remembered_links", {
+  id: serial("id").primaryKey(),
+  normalizedBoqWording: text("normalized_boq_wording").notNull(),
+  displayBoqWording: text("display_boq_wording").notNull(),
+  snlItemId: integer("snl_item_id").notNull().references(() => snlItems.id, { onDelete: "restrict" }),
+  confirmedByUserId: integer("confirmed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  confirmedAt: timestamp("confirmed_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  wordingTargetIdx: uniqueIndex("snl_remembered_links_wording_target_idx")
+    .on(t.normalizedBoqWording, t.snlItemId),
+  confirmedAtIdx: index("snl_remembered_links_confirmed_at_idx").on(t.confirmedAt),
+}));
+
 // Per-component SNL mapping rows for composite BOQ items.
 // A composite item (isComposite=true) maps each detected layer/material to its own SNL norm.
 // Recipes are merged from all confirmed components when the BOQ item reaches "mapped" status.

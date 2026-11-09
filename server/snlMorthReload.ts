@@ -30,8 +30,8 @@ export type MorthReloadChange = {
   copyReference?: string;
   costNote?: string;
   validationReasons: string[];
-  old: null | { description: string; unit: string; notes: string | null; norms: NormRows };
-  new: { description: string; unit: string; notes: string | null; norms: NormRows };
+  old: null | { description: string; unit: string; specClause: string | null; notes: string | null; norms: NormRows };
+  new: { description: string; unit: string; specClause: string | null; notes: string | null; norms: NormRows };
   reasons: string[];
 };
 
@@ -195,14 +195,21 @@ export async function previewMorthReload(buffer: Buffer) {
       costNote: item.costNote,
       validationReasons: validation.reasons,
       old: null,
-      new: { description: item.description || item.title, unit: item.unit || "CUM", notes, norms: nextNorms },
-      reasons: ["New MoRTH item"],
+      new: { description: item.description || item.title, unit: item.unit || "CUM", specClause: item.specClause ?? null, notes, norms: nextNorms },
+      reasons: ["New MoRTH item", ...(item.specClause ? ["Spec clause added"] : [])],
     };
-    const next = { description: item.description || item.title, unit: item.unit || "CUM", notes, norms: nextNorms };
-    const old = { description: prior.item.description, unit: prior.item.unit, notes: prior.item.notes ?? null, norms: prior.norms };
+    const next = { description: item.description || item.title, unit: item.unit || "CUM", specClause: item.specClause ?? null, notes, norms: nextNorms };
+    const old = { description: prior.item.description, unit: prior.item.unit, specClause: prior.item.specClause ?? null, notes: prior.item.notes ?? null, norms: prior.norms };
     const reasons = [
       old.description !== next.description ? "Description changed" : "",
       old.unit !== next.unit ? "Unit changed" : "",
+      old.specClause !== next.specClause
+        ? old.specClause == null && next.specClause != null
+          ? "Spec clause added"
+          : next.specClause == null
+            ? "Spec clause removed"
+            : "Spec clause changed"
+        : "",
       old.notes !== next.notes ? "Estimator note changed" : "",
       !compareNorms({ productivity: old.norms.productivity, equipment: [], labour: [], materials: [] }, { productivity: next.norms.productivity, equipment: [], labour: [], materials: [] }) ? "Productivity changed" : "",
       !compareNorms({ productivity: [], equipment: old.norms.equipment, labour: [], materials: [] }, { productivity: [], equipment: next.norms.equipment, labour: [], materials: [] }) ? "Machine rows changed" : "",
@@ -301,6 +308,7 @@ export async function applyMorthReload(buffer: Buffer, expectedFingerprint: stri
         description: item.description || item.title,
         shortLabel: item.title.slice(0, 80),
         unit: item.unit || "CUM",
+        specClause: item.specClause ?? null,
         workCategory: item.workCategory,
         sector: item.sector,
         chapterNo: item.chapterNo,
@@ -312,6 +320,7 @@ export async function applyMorthReload(buffer: Buffer, expectedFingerprint: stri
           description: item.description || item.title,
           shortLabel: item.title.slice(0, 80),
           unit: item.unit || "CUM",
+          specClause: item.specClause ?? null,
           workCategory: item.workCategory,
           sector: item.sector,
           chapterNo: item.chapterNo,
