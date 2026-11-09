@@ -3893,6 +3893,8 @@ export type BoqItemWithCategory = BoqItem & {
   snlConfidence?: number | null;
   snlItemDescription?: string | null;
   snlShortLabel?: string | null;
+  snlSourceCode?: string | null;
+  snlSourceName?: string | null;
   snlMappedBy?: string | null;
   snlMappingIsAuto?: boolean | null;
   canonicalDisplayName?: string | null;

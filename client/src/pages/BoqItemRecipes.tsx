@@ -38,6 +38,7 @@ import type {
   InsertBoqItemMaterials,
   BoqMixTemplateLink,
 } from "@shared/schema";
+import { buildSnlSearchUrl, getSnlSearchItemTitle, getSnlSourceDisplayName, groupSnlSearchResults } from "@shared/normBook";
 import { boqItemDisplayName } from "@shared/boqItemName";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -1296,12 +1297,13 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
   const { data: results = [], isFetching } = useQuery<SnlSearchResult[]>({
     queryKey: ["/api/snl/search", q],
     queryFn: async () => {
-      const res = await fetch(`/api/snl/search?q=${encodeURIComponent(q)}`, { credentials: "include" });
+      const res = await fetch(buildSnlSearchUrl(q, { includeOtherBooks: !!q.trim() }), { credentials: "include" });
       return res.ok ? res.json() : [];
     },
     enabled: q.trim().length > 1 || q === "",
   });
 
+  const resultGroups = groupSnlSearchResults(results);
   const selectedItem = results.find(r => r.id === selectedSnlId);
   const codePrefix = selectedItem?.itemCode?.split(".").slice(0, 2).join(".") ?? "";
   const gradingOptions = GRADING_OPTIONS[codePrefix] ?? [];
@@ -1380,8 +1382,11 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
 
           {/* Results */}
           {results.length > 0 && (
-            <div className="space-y-1 max-h-48 overflow-y-auto">
-              {results.map(r => (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {resultGroups.morth.length > 0 && (
+                <section className="space-y-1" aria-label="MoRTH results">
+                  <p className="sticky top-0 z-10 bg-background px-1 py-0.5 text-[11px] font-semibold text-slate-600">MoRTH</p>
+                  {resultGroups.morth.map(r => (
                 <button
                   key={r.id}
                   onClick={() => { setSelectedSnlId(r.id === selectedSnlId ? null : r.id); setGradingVariant(""); }}
@@ -1391,10 +1396,10 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
                   <div className="flex items-center gap-2 justify-between">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="text-[12px] font-mono font-semibold text-teal-700 shrink-0">{r.itemCode}</span>
-                      <span className="text-sm font-medium truncate">{r.shortLabel}</span>
+                      <span className="text-sm font-medium whitespace-normal line-clamp-2">{getSnlSearchItemTitle(r)}</span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-xs text-muted-foreground">{r.sourceCode}</span>
+                      <span className="text-xs text-muted-foreground">{getSnlSourceDisplayName(r.sourceCode, r.sourceName)}</span>
                       {r.hasGradingVariants && <Badge variant="outline" className="text-[8px] h-3.5 px-1 border-amber-300 text-amber-600">grading</Badge>}
                     </div>
                   </div>
@@ -1403,6 +1408,31 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
                   )}
                 </button>
               ))}
+                </section>
+              )}
+              {resultGroups.otherBooks.length > 0 && (
+                <section className="space-y-1" aria-label="Other books results">
+                  <p className="sticky top-0 z-10 bg-background px-1 py-0.5 text-[11px] font-semibold text-slate-600">Other books</p>
+                  {resultGroups.otherBooks.map(r => (
+                    <button
+                      key={r.id}
+                      onClick={() => { setSelectedSnlId(r.id === selectedSnlId ? null : r.id); setGradingVariant(""); }}
+                      className={`w-full text-left rounded-lg border p-2.5 transition-colors ${selectedSnlId === r.id ? "border-teal-500 bg-teal-50/60" : "border-slate-200 hover:border-teal-300 hover:bg-slate-50/50"}`}
+                      data-testid={`norm-result-${r.id}`}
+                    >
+                      <div className="flex items-start gap-2 justify-between">
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-mono font-semibold text-teal-700">{r.itemCode}</p>
+                          <p className="text-sm font-medium whitespace-normal line-clamp-2">{getSnlSearchItemTitle(r)}</p>
+                          <p className="text-xs text-muted-foreground">{getSnlSourceDisplayName(r.sourceCode, r.sourceName)}</p>
+                        </div>
+                        {r.hasGradingVariants && <Badge variant="outline" className="text-[8px] h-3.5 px-1 border-amber-300 text-amber-600">grading</Badge>}
+                      </div>
+                      {r.shiftOutput && <p className="text-[12px] text-muted-foreground mt-0.5">{r.shiftOutput} {r.outputUnit}/shift</p>}
+                    </button>
+                  ))}
+                </section>
+              )}
             </div>
           )}
           {q.length > 1 && !isFetching && results.length === 0 && (
@@ -1415,7 +1445,9 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
           {/* Apply options — shown when an item is selected */}
           {selectedItem && (
             <div className="rounded-lg border border-teal-200 bg-teal-50/30 p-3 space-y-3">
-              <p className="text-[12px] font-semibold text-teal-700">Apply Options for {selectedItem.itemCode} — {selectedItem.shortLabel}</p>
+              <p className="text-[12px] font-semibold text-teal-700 whitespace-normal">
+                Apply Options for {getSnlSourceDisplayName(selectedItem.sourceCode, selectedItem.sourceName)} · {selectedItem.itemCode} — {getSnlSearchItemTitle(selectedItem)}
+              </p>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

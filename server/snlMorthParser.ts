@@ -197,6 +197,7 @@ function hasUnclearQuantityAdjustment(text: string): boolean {
 export function applyMorthReferenceRows(items: ParsedMorthItem[]): void {
   const byCode = new Map(items.map(item => [item.code, item]));
   for (const item of items) {
+    if (item.copyError) continue;
     const sourceRef = extractMorthReference(item.description || item.title);
     if (!sourceRef) continue;
     item.costNote = extractCostAdjustmentNote(item.description || "");
@@ -1212,6 +1213,110 @@ function parseChapterSheet(
   });
 }
 
+const SUBSTRUCTURE_135_GRADES: Record<string, { kind: "PCC" | "RCC"; grade: string }> = {
+  A: { kind: "PCC", grade: "M15" },
+  B: { kind: "PCC", grade: "M20" },
+  C: { kind: "PCC", grade: "M25" },
+  D: { kind: "PCC", grade: "M30" },
+  E: { kind: "RCC", grade: "M20" },
+  F: { kind: "RCC", grade: "M25" },
+  G: { kind: "RCC", grade: "M30" },
+  H: { kind: "RCC", grade: "M35" },
+};
+
+const SUBSTRUCTURE_135_HEIGHTS: Record<string, string> = {
+  p: "Height up to 5 m",
+  q: "Height 5 m to 10 m",
+  r: "Height above 10 m",
+};
+
+/**
+ * Chapter 13.5 uses a grade letter followed by p/q/r headings; the generic
+ * chapter parser loses that parent identity on rows such as "13.5 C (q)".
+ * Rebuild the 24 stable grade-height paths and source each one from its
+ * matching 12.8 grade. Percentages in this chapter affect cost only.
+ */
+function parseMorthSubstructure135(rows: unknown[][]): ParsedItem[] {
+  const gradeNameByLetter = new Map<string, string>();
+  const blocks = new Map<string, Map<string, unknown[][]>>();
+  let currentGrade: string | null = null;
+  let currentHeight: string | null = null;
+
+  for (let index = 3; index < rows.length; index++) {
+    const row = rows[index] ?? [];
+    const colA = cell(row, 0);
+    const colC = cell(row, 2);
+    const colD = cell(row, 3);
+
+    if (/^13\.6\b/.test(colA)) break;
+    const gradeMarker = colC.match(/^([A-H])$/i);
+    if (gradeMarker && /^(?:PCC|RCC)\s+Grade\b/i.test(colD)) {
+      currentGrade = gradeMarker[1].toUpperCase();
+      gradeNameByLetter.set(currentGrade, colD.replace(/\s+/g, " ").trim());
+      currentHeight = null;
+      continue;
+    }
+
+    const heightMarker = colC.match(/^\(([pqr])\)$/i);
+    if (heightMarker && currentGrade) {
+      currentHeight = heightMarker[1].toLowerCase();
+      const perGrade = blocks.get(currentGrade) ?? new Map<string, unknown[][]>();
+      perGrade.set(currentHeight, [row]);
+      blocks.set(currentGrade, perGrade);
+      continue;
+    }
+
+    if (currentGrade && currentHeight) {
+      blocks.get(currentGrade)?.get(currentHeight)?.push(row);
+    }
+  }
+
+  const meta = CHAPTER_META[13];
+  const result: ParsedItem[] = [];
+  for (const grade of Object.keys(SUBSTRUCTURE_135_GRADES)) {
+    const gradeInfo = SUBSTRUCTURE_135_GRADES[grade];
+    const gradeLabel = gradeNameByLetter.get(grade) ?? `${gradeInfo.kind} Grade ${gradeInfo.grade}`;
+    const baseTitle = `${gradeLabel} in sub-structure`;
+
+    for (const height of ["p", "q", "r"]) {
+      const blockRows = blocks.get(grade)?.get(height) ?? [];
+      const costSourceLines = Array.from(new Set(blockRows
+        .map(row => cell(row, 3))
+        .filter(text => /\d+(?:\.\d+)?\s*(?:per\s+cent|%)/i.test(text) && /\bcost\b/i.test(text))
+        .map(text => text
+          .replace(/\bsame\s+as\s+item\s+12\.8\s*\(\s*[A-H]\s*\)/ig, "")
+          .replace(/\s+/g, " ")
+          .trim())
+        .filter(Boolean)));
+      const description = [
+        `Same as Item 12.8 (${grade})`,
+        ...costSourceLines,
+      ].join(". ");
+      const hasSeparateResourceRows = blockRows.some(row =>
+        /^\s*[abc]\s*[).:-]\s*(?:labou?r|machinery|materials?)\b/i.test(cell(row, 3)),
+      );
+
+      result.push({
+        code: `13.5-${grade}-${height}`,
+        chapterNo: "13",
+        workCategory: meta.workCategory,
+        sector: meta.sector,
+        title: `${baseTitle} — ${SUBSTRUCTURE_135_HEIGHTS[height]}`,
+        description,
+        unit: "CUM",
+        shiftOutput: 1,
+        labour: [],
+        equipment: [],
+        materials: [],
+        ...(hasSeparateResourceRows
+          ? { copyError: "Workbook lists separate resource quantities for this height; review them before applying." }
+          : {}),
+      });
+    }
+  }
+  return result;
+}
+
 // ─── DB upsert ────────────────────────────────────────────────────────────────
 
 async function upsertParsedItems(
@@ -1233,7 +1338,7 @@ async function upsertParsedItems(
 
       let itemId: number;
       const descFull = item.description || item.title;
-      const shortLbl = item.title.slice(0, 80);
+      const shortLbl = item.title;
 
       if (existing.length > 0) {
         itemId = existing[0].id;
@@ -1360,12 +1465,20 @@ export function parseMorthSdbWorkbook(buffer: Buffer): ParsedMorthItem[] {
   const wb = XLSX.read(buffer, { type: "buffer" });
   if (!isMorthFormat(wb)) throw new Error("This is not a MoRTH chapter-per-sheet workbook.");
   const parsed: ParsedMorthItem[] = [];
+  let substructure135: ParsedItem[] = [];
   for (let chapterNo = 1; chapterNo <= 16; chapterNo++) {
     const worksheet = wb.Sheets[String(chapterNo)];
     if (!worksheet) continue;
     const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as unknown[][];
-    parsed.push(...parseChapterSheet(rows, chapterNo));
+    if (chapterNo === 13) {
+      parsed.push(...parseChapterSheet(rows, chapterNo)
+        .filter(item => !/^13\.5(?:-|$)/.test(item.code)));
+      substructure135 = parseMorthSubstructure135(rows);
+    } else {
+      parsed.push(...parseChapterSheet(rows, chapterNo));
+    }
   }
+  parsed.push(...substructure135);
   applyMorthReferenceRows(parsed);
   return parsed;
 }

@@ -30,8 +30,8 @@ export type MorthReloadChange = {
   copyReference?: string;
   costNote?: string;
   validationReasons: string[];
-  old: null | { description: string; unit: string; specClause: string | null; notes: string | null; norms: NormRows };
-  new: { description: string; unit: string; specClause: string | null; notes: string | null; norms: NormRows };
+  old: null | { title: string; shortLabel: string | null; description: string; unit: string; specClause: string | null; notes: string | null; norms: NormRows };
+  new: { title: string; shortLabel: string; description: string; unit: string; specClause: string | null; notes: string | null; norms: NormRows };
   reasons: string[];
 };
 
@@ -178,6 +178,35 @@ async function loadCurrentRows(sourceId: number) {
   }]));
 }
 
+async function countProjectUsage(
+  sourceId: number | null,
+  statusByCode: Map<string, MorthReloadChange["status"]>,
+): Promise<{ changed: number; unchanged: number }> {
+  if (sourceId == null) return { changed: 0, unchanged: 0 };
+  const [direct, components] = await Promise.all([
+    db.select({ boqItemId: boqItems.id, normCode: snlItems.itemCode })
+      .from(snlBoqMappings)
+      .innerJoin(snlItems, eq(snlItems.id, snlBoqMappings.snlItemId))
+      .innerJoin(boqItems, eq(boqItems.id, snlBoqMappings.boqItemId))
+      .where(eq(snlItems.sourceId, sourceId)),
+    db.select({ boqItemId: boqItems.id, normCode: snlItems.itemCode })
+      .from(snlCompositeComponents)
+      .innerJoin(snlItems, eq(snlItems.id, snlCompositeComponents.snlItemId))
+      .innerJoin(boqItems, eq(boqItems.id, snlCompositeComponents.boqItemId))
+      .where(eq(snlItems.sourceId, sourceId)),
+  ]);
+  const changedByBoqItem = new Map<number, boolean>();
+  for (const row of [...direct, ...components]) {
+    const status = statusByCode.get(row.normCode);
+    const changed = status === "added" || status === "changed";
+    changedByBoqItem.set(row.boqItemId, (changedByBoqItem.get(row.boqItemId) ?? false) || changed);
+  }
+  return {
+    changed: Array.from(changedByBoqItem.values()).filter(Boolean).length,
+    unchanged: Array.from(changedByBoqItem.values()).filter(value => !value).length,
+  };
+}
+
 export async function previewMorthReload(buffer: Buffer) {
   const parsed = parseMorthSdbWorkbook(buffer);
   const [source] = await db.select().from(snlSources).where(eq(snlSources.code, MORTH_SDB_SOURCE_CODE)).limit(1);
@@ -195,12 +224,21 @@ export async function previewMorthReload(buffer: Buffer) {
       costNote: item.costNote,
       validationReasons: validation.reasons,
       old: null,
-      new: { description: item.description || item.title, unit: item.unit || "CUM", specClause: item.specClause ?? null, notes, norms: nextNorms },
+      new: { title: item.title, shortLabel: item.title, description: item.description || item.title, unit: item.unit || "CUM", specClause: item.specClause ?? null, notes, norms: nextNorms },
       reasons: ["New MoRTH item", ...(item.specClause ? ["Spec clause added"] : [])],
     };
-    const next = { description: item.description || item.title, unit: item.unit || "CUM", specClause: item.specClause ?? null, notes, norms: nextNorms };
-    const old = { description: prior.item.description, unit: prior.item.unit, specClause: prior.item.specClause ?? null, notes: prior.item.notes ?? null, norms: prior.norms };
+    const next = { title: item.title, shortLabel: item.title, description: item.description || item.title, unit: item.unit || "CUM", specClause: item.specClause ?? null, notes, norms: nextNorms };
+    const old = {
+      title: prior.item.shortLabel ?? prior.item.description,
+      shortLabel: prior.item.shortLabel ?? null,
+      description: prior.item.description,
+      unit: prior.item.unit,
+      specClause: prior.item.specClause ?? null,
+      notes: prior.item.notes ?? null,
+      norms: prior.norms,
+    };
     const reasons = [
+      old.shortLabel !== next.shortLabel ? "Full item title changed" : "",
       old.description !== next.description ? "Description changed" : "",
       old.unit !== next.unit ? "Unit changed" : "",
       old.specClause !== next.specClause
@@ -247,6 +285,7 @@ export async function previewMorthReload(buffer: Buffer) {
   }));
   const rateOnlyItems = validationItems.filter(item => statusByCode.get(item.code) === "rate_only");
   const needsCheckItems = validationItems.filter(item => statusByCode.get(item.code) === "needs_check");
+  const projectUsage = await countProjectUsage(source?.id ?? null, new Map(changes.map(row => [row.code, row.status])));
   return {
     sourceCode: MORTH_SDB_SOURCE_CODE,
     sourceName: MORTH_SDB_DISPLAY_NAME,
@@ -261,13 +300,15 @@ export async function previewMorthReload(buffer: Buffer) {
       copiedFromAnotherItem: changes.filter(row => row.validationStatus === "copied").length,
       rateOnly: rateOnlyItems.length,
       needsCheck: needsCheckItems.length,
+      projectItemsChanged: projectUsage.changed,
+      projectItemsUnchanged: projectUsage.unchanged,
     },
     rateOnlyItems,
     copiedItems: changes
       .filter(change => change.validationStatus === "copied")
       .map(change => ({
         code: change.code,
-        title: change.new.description,
+        title: change.new.title,
         unit: change.new.unit,
         copyReference: change.copyReference!,
         costNote: change.costNote ?? null,
@@ -306,7 +347,7 @@ export async function applyMorthReload(buffer: Buffer, expectedFingerprint: stri
         sourceId: source.id,
         itemCode: item.code,
         description: item.description || item.title,
-        shortLabel: item.title.slice(0, 80),
+        shortLabel: item.title,
         unit: item.unit || "CUM",
         specClause: item.specClause ?? null,
         workCategory: item.workCategory,
@@ -318,7 +359,7 @@ export async function applyMorthReload(buffer: Buffer, expectedFingerprint: stri
         target: [snlItems.sourceId, snlItems.itemCode],
         set: {
           description: item.description || item.title,
-          shortLabel: item.title.slice(0, 80),
+          shortLabel: item.title,
           unit: item.unit || "CUM",
           specClause: item.specClause ?? null,
           workCategory: item.workCategory,

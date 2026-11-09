@@ -14,7 +14,8 @@ import { bulkTripConditions } from "./siteMaterialTripFilters";
 import { currentVendorNamesByIds, resolveVendorNameMatch, resolveVendorNameMatchById, vendorNameIdentityCondition } from "./vendorNameResolution";
 import { validatedTransportRateFields } from "../shared/transportRate";
 import { db } from "./db";
-import { getNormBookState } from "./normBook";
+import { getNormBookState, isSnlItemFromActiveSource } from "./normBook";
+import { canApplySnlSource } from "@shared/normBook";
 import { insertLabourWithWorkers, readWorkerNames } from "./labourWorkers";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, lockDprIdentity, readSectionAggregate, readDraftStoppages, stageDraftStoppages, reconcileRows, reconcileDraftEquipmentAssignments, sameContext, sectionSnapshot } from "./dprSections";
 import { normalizeDprSectionContext } from "../shared/dprSections";
@@ -1830,10 +1831,10 @@ export interface IStorage {
   // BOQ item in a project (used before Re-map All so stale data doesn't pollute BOM).
   clearAllBoqProjectRecipes(projectId: number): Promise<void>;
   // Composite BOQ item component mapping
-  getCompositeComponents(boqItemId: number): Promise<Array<{ id: number; componentIndex: number; componentTag: string; componentDescription: string; snlItemId: number | null; snlItemCode: string | null; snlItemDescription: string | null; confidenceScore: number | null; status: string; notes: string | null }>>;
+  getCompositeComponents(boqItemId: number): Promise<Array<{ id: number; componentIndex: number; componentTag: string; componentDescription: string; snlItemId: number | null; snlItemCode: string | null; snlItemDescription: string | null; snlShortLabel: string | null; snlSourceCode: string | null; snlSourceName: string | null; confidenceScore: number | null; status: string; notes: string | null }>>;
   upsertCompositeComponents(boqItemId: number, components: Array<{ componentIndex: number; componentTag: string; componentDescription: string; snlItemId?: number | null; confidenceScore?: number | null; status?: string; notes?: string | null }>): Promise<void>;
   applyCompositeComponentMap(componentId: number, snlItemId: number, mappedBy: string): Promise<void>;
-  applyCompositeRecipesIfComplete(boqItemId: number, appliedBy: string): Promise<boolean>;
+  applyCompositeRecipesIfComplete(boqItemId: number, appliedBy: string, allowOtherBooks?: boolean): Promise<boolean>;
   clearCompositeComponents(boqItemId: number): Promise<void>;
   // Task #1186 — BOQ planning include/exclude flag
   backfillBoqPlanningInclude(): Promise<{ set: number; excluded: number }>;
@@ -31410,6 +31411,8 @@ export class DatabaseStorage implements IStorage {
         snlItemCode: snlItems.itemCode,
         snlItemDescription: snlItems.description,
         snlShortLabel: snlItems.shortLabel,
+        snlSourceCode: snlSources.code,
+        snlSourceName: snlSources.name,
         snlConfidence: snlBoqMappings.confidenceScore,
         snlMappedBy: snlBoqMappings.mappedBy,
         snlMappingIsAuto: snlBoqMappings.isAutoMapped,
@@ -31424,6 +31427,7 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
       .leftJoin(snlBoqMappings, eq(snlBoqMappings.boqItemId, boqItems.id))
       .leftJoin(snlItems, eq(snlItems.id, snlBoqMappings.snlItemId))
+      .leftJoin(snlSources, eq(snlSources.id, snlItems.sourceId))
       .where(eq(boqItems.boqProjectId, boqProjectId))
       .orderBy(
         sql`${boqCategories.sortOrder} ASC NULLS LAST`,
@@ -31441,6 +31445,8 @@ export class DatabaseStorage implements IStorage {
       snlItemCode: r.snlItemCode ?? null,
       snlItemDescription: r.snlItemDescription ?? null,
       snlShortLabel: r.snlShortLabel ?? null,
+      snlSourceCode: r.snlSourceCode ?? null,
+      snlSourceName: r.snlSourceName ?? null,
       snlConfidence: r.snlConfidence ?? null,
       snlMappedBy: r.snlMappedBy ?? null,
       snlMappingIsAuto: r.snlMappingIsAuto ?? null,
@@ -33930,8 +33936,15 @@ export class DatabaseStorage implements IStorage {
     return { ...item, source, productivity, equipment, labour, materials };
   }
 
-  async searchSnlItems(q: string, category?: string, sourceId?: number, sector?: string): Promise<SnlSearchResult[]> {
+  async searchSnlItems(
+    q: string,
+    category?: string,
+    sourceId?: number,
+    sector?: string,
+    includeOtherBooks = false,
+  ): Promise<SnlSearchResult[]> {
     const conds: ReturnType<typeof eq>[] = [eq(snlItems.isActive, true)];
+    if (includeOtherBooks) conds.push(eq(snlSources.isActive, true));
     if (q.trim()) {
       // Split on whitespace and require ALL words to appear somewhere in code|description|shortLabel.
       // This way "EARTHWORK EXCAVATION IN ROAD" finds rows containing "earthwork" AND "excavation"
@@ -33950,7 +33963,7 @@ export class DatabaseStorage implements IStorage {
     if (sourceId) conds.push(eq(snlItems.sourceId, sourceId));
     if (sector) conds.push(sql`coalesce(${snlItems.sector}, ${snlItems.workCategory}) = ${sector}`);
 
-    const rows = await db
+    const searchQuery = db
       .select({
         id: snlItems.id,
         itemCode: snlItems.itemCode,
@@ -33969,8 +33982,16 @@ export class DatabaseStorage implements IStorage {
       .from(snlItems)
       .innerJoin(snlSources, eq(snlSources.id, snlItems.sourceId))
       .where(and(...conds))
-      .orderBy(snlItems.chapterNo, snlItems.itemCode)
-      .limit(50);
+      .orderBy(
+        ...(includeOtherBooks
+          ? [sql`CASE WHEN ${snlSources.code} = 'MORTH_SDB_2019' THEN 0 ELSE 1 END`, snlSources.name]
+          : []),
+        snlItems.chapterNo,
+        snlItems.itemCode,
+      );
+    const rows = includeOtherBooks
+      ? await searchQuery
+      : await searchQuery.limit(50);
     return rows;
   }
 
@@ -34035,10 +34056,18 @@ export class DatabaseStorage implements IStorage {
     gradingVariant: string | null,
     appliedBy: string,
     normUnitsPerBoqUnit = 1,
+    allowOtherBooks = false,
   ): Promise<void> {
     const itemFull = await this.getSnlItem(snlItemId);
     if (!itemFull) throw new Error("SNL item not found");
-    if (itemFull.source?.code !== (await getNormBookState()).code) {
+    const selectedBook = await getNormBookState();
+    const sourceIsActive = await isSnlItemFromActiveSource(snlItemId);
+    if (!canApplySnlSource({
+      itemSourceCode: itemFull.source?.code,
+      selectedBookCode: selectedBook.code,
+      sourceIsActive,
+      allowOtherBooks,
+    })) {
       throw new Error("Only the selected norm book can be applied to BOQ recipes.");
     }
     if (!Number.isFinite(normUnitsPerBoqUnit) || normUnitsPerBoqUnit <= 0) {
@@ -34182,7 +34211,7 @@ export class DatabaseStorage implements IStorage {
 
   // ─── Composite BOQ Item component methods ────────────────────────────────────
 
-  async getCompositeComponents(boqItemId: number): Promise<Array<{ id: number; componentIndex: number; componentTag: string; componentDescription: string; snlItemId: number | null; snlItemCode: string | null; snlItemDescription: string | null; confidenceScore: number | null; status: string; notes: string | null }>> {
+  async getCompositeComponents(boqItemId: number): Promise<Array<{ id: number; componentIndex: number; componentTag: string; componentDescription: string; snlItemId: number | null; snlItemCode: string | null; snlItemDescription: string | null; snlShortLabel: string | null; snlSourceCode: string | null; snlSourceName: string | null; confidenceScore: number | null; status: string; notes: string | null }>> {
     const rows = await db
       .select({
         id: snlCompositeComponents.id,
@@ -34192,18 +34221,25 @@ export class DatabaseStorage implements IStorage {
         snlItemId: snlCompositeComponents.snlItemId,
         snlItemCode: snlItems.itemCode,
         snlItemDescription: snlItems.description,
+        snlShortLabel: snlItems.shortLabel,
+        snlSourceCode: snlSources.code,
+        snlSourceName: snlSources.name,
         confidenceScore: snlCompositeComponents.confidenceScore,
         status: snlCompositeComponents.status,
         notes: snlCompositeComponents.notes,
       })
       .from(snlCompositeComponents)
       .leftJoin(snlItems, eq(snlItems.id, snlCompositeComponents.snlItemId))
+      .leftJoin(snlSources, eq(snlSources.id, snlItems.sourceId))
       .where(eq(snlCompositeComponents.boqItemId, boqItemId))
       .orderBy(snlCompositeComponents.componentIndex);
     return rows.map(r => ({
       ...r,
       snlItemCode: r.snlItemCode ?? null,
       snlItemDescription: r.snlItemDescription ?? null,
+      snlShortLabel: r.snlShortLabel ?? null,
+      snlSourceCode: r.snlSourceCode ?? null,
+      snlSourceName: r.snlSourceName ?? null,
     }));
   }
 
@@ -34243,7 +34279,7 @@ export class DatabaseStorage implements IStorage {
    * Returns true when all components are done (and recipes were applied),
    * false when some components are still unmapped/needs_review.
    */
-  async applyCompositeRecipesIfComplete(boqItemId: number, appliedBy: string): Promise<boolean> {
+  async applyCompositeRecipesIfComplete(boqItemId: number, appliedBy: string, allowOtherBooks = false): Promise<boolean> {
     const components = await this.getCompositeComponents(boqItemId);
     if (components.length === 0) return false;
     const allMapped = components.every(c => c.status === "mapped" && c.snlItemId != null);
@@ -34257,6 +34293,16 @@ export class DatabaseStorage implements IStorage {
     for (const comp of components) {
       const itemFull = await this.getSnlItem(comp.snlItemId!);
       if (!itemFull) continue;
+      const selectedBook = await getNormBookState();
+      const sourceIsActive = await isSnlItemFromActiveSource(comp.snlItemId!);
+      if (!canApplySnlSource({
+        itemSourceCode: itemFull.source?.code,
+        selectedBookCode: selectedBook.code,
+        sourceIsActive,
+        allowOtherBooks,
+      })) {
+        throw new Error("Only the selected norm book can be applied to composite BOQ recipes.");
+      }
       const base = comp.componentIndex * 1000;
 
       for (const e of itemFull.equipment) {

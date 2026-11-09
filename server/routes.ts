@@ -23,7 +23,7 @@ import multer from 'multer';
 import { importSdbXlsx, buildImportTemplate } from './snlImporter';
 import { isMorthFormat } from './snlMorthParser';
 import { applyMorthReload, previewMorthReload } from "./snlMorthReload";
-import { getNormBookState, isSnlItemInNormBook } from "./normBook";
+import { getNormBookState, isSnlItemFromActiveSource, isSnlItemFromSourceCode, isSnlItemInNormBook } from "./normBook";
 import { MORTH_SDB_DISPLAY_NAME, MORTH_SDB_SOURCE_CODE, NORM_BOOK_SETTING_KEY } from "@shared/normBook";
 import PDFDocument from 'pdfkit';
 import { projectBillHireReviews, hireReviewTable, MONTHLY_BILL_HEADERS } from "../shared/vendorBillLayout";
@@ -26455,10 +26455,13 @@ export async function registerRoutes(
       const boqDesc = req.query.boqDesc as string | undefined;
       const includeOtherBooks = req.query.includeOtherBooks === "true";
       const sourceId = includeOtherBooks ? requestedSourceId : (await getNormBookState()).sourceId ?? -1;
-      const items = await storage.searchSnlItems(q, category, sourceId, sector);
+      const items = await storage.searchSnlItems(q, category, sourceId, sector, includeOtherBooks);
+      const namedItems = items.map(item => item.sourceCode === MORTH_SDB_SOURCE_CODE
+        ? { ...item, sourceName: MORTH_SDB_DISPLAY_NAME }
+        : item);
       if (boqDesc) {
         const boqCategory = classifyBoqItem(boqDesc);
-        const enriched = items.map(item => {
+        const enriched = namedItems.map(item => {
           const mul = getSectorMultiplier(boqCategory, (item as any).sector ?? null);
           const categoryMatchStatus: "match" | "secondary" | "mismatch" | "unknown" =
             !(item as any).sector ? "unknown" :
@@ -26469,7 +26472,7 @@ export async function registerRoutes(
         });
         return res.json(enriched);
       }
-      res.json(items);
+      res.json(namedItems);
     } catch (err) {
       res.status(500).json({ error: "Failed to search SNL" });
     }
@@ -26517,7 +26520,7 @@ export async function registerRoutes(
       if (!assertEdit(req, res, "norms_library")) return;
       const { boqItemId, snlItemId, projectCategory, gradingVariant, notes } = req.body;
       if (!boqItemId || !snlItemId) return res.status(400).json({ error: "boqItemId and snlItemId required" });
-      if (!(await isSnlItemInNormBook(Number(snlItemId)))) return res.status(409).json({ error: "Only the selected MoRTH norm book can be mapped." });
+      if (!(await isSnlItemFromActiveSource(Number(snlItemId)))) return res.status(409).json({ error: "Choose an item from an active norms-library book." });
       const boqItem = await storage.getBoqItem(Number(boqItemId));
       if (!boqItem) return res.status(404).json({ error: "BOQ item not found" });
       const mapping = await storage.setSnlMapping(boqItemId, {
@@ -26548,7 +26551,7 @@ export async function registerRoutes(
       if (!snlItemId) return res.status(400).json({ error: "snlItemId required" });
       const item = await storage.getBoqItem(boqItemId);
       if (!item) return res.status(404).json({ error: "BOQ item not found" });
-      if (!(await isSnlItemInNormBook(Number(snlItemId)))) return res.status(409).json({ error: "Only the selected MoRTH norm book can be applied." });
+      if (!(await isSnlItemFromActiveSource(Number(snlItemId)))) return res.status(409).json({ error: "Choose an item from an active norms-library book." });
       if (item.recipeManualOverride === true) {
         return res.status(409).json({
           error: "This recipe is protected by a manual edit. Reset the recipe override before applying SNL norms.",
@@ -26564,7 +26567,7 @@ export async function registerRoutes(
         confidenceScore: null,
         notes: null,
       });
-      await storage.applySnlMappingToRecipes(boqItemId, snlItemId, projectCategory ?? "MEDIUM", gradingVariant ?? null, user);
+      await storage.applySnlMappingToRecipes(boqItemId, snlItemId, projectCategory ?? "MEDIUM", gradingVariant ?? null, user, 1, true);
       // Mark item as manually mapped
       await storage.updateBoqItemMappingStatus(boqItemId, "mapped");
       await rememberSnlLink({
@@ -26668,8 +26671,8 @@ export async function registerRoutes(
         }
       }
       for (const row of selections) {
-        if (!(await isSnlItemInNormBook(row.snlItemId))) {
-          return res.status(409).json({ error: "Only items from the selected MoRTH norm book can be applied." });
+        if (!(await isSnlItemFromSourceCode(row.snlItemId, MORTH_SDB_SOURCE_CODE))) {
+          return res.status(409).json({ error: "Only loaded MoRTH items can be applied from the re-link screen." });
         }
       }
       const nextNorms = await Promise.all(selections.map(row => storage.getSnlItem(row.snlItemId)));
@@ -26696,6 +26699,7 @@ export async function registerRoutes(
           null,
           actor,
           unitConversions[selectionIndex]!.normUnitsPerBoqUnit,
+          true,
         );
         await storage.setSnlMapping(item.id, {
           boqItemId: item.id,
@@ -26946,7 +26950,7 @@ export async function registerRoutes(
         return res.status(409).json({ error: "The Owner must confirm that these are separate works before mapping components." });
       }
       if (!components.some(component => component.id === componentId)) return res.status(404).json({ error: "Component not found for this BOQ item" });
-      if (!(await isSnlItemInNormBook(Number(snlItemId)))) return res.status(409).json({ error: "Only the selected MoRTH norm book can be applied." });
+      if (!(await isSnlItemFromActiveSource(Number(snlItemId)))) return res.status(409).json({ error: "Choose an item from an active norms-library book." });
       if (item.recipeManualOverride === true) {
         return res.status(409).json({
           error: "This recipe is protected by a manual edit. Reset the recipe override before applying SNL norms.",
@@ -26957,7 +26961,7 @@ export async function registerRoutes(
       await db.update(snlCompositeComponents)
         .set({ notes: `Confirmed by ${user}\n${compositeSplitConfirmationMarker}` })
         .where(eq(snlCompositeComponents.id, componentId));
-      const allDone = await storage.applyCompositeRecipesIfComplete(boqItemId, user);
+      const allDone = await storage.applyCompositeRecipesIfComplete(boqItemId, user, true);
       res.json({ allDone });
     } catch (err) {
       console.error("POST /api/boq/items/:id/components/:compId/map:", err);

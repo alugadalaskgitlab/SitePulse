@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
+import { getSnlSearchItemTitle } from "@shared/normBook";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -129,6 +130,8 @@ interface MorthReloadPreview {
     copiedFromAnotherItem: number;
     rateOnly: number;
     needsCheck: number;
+    projectItemsChanged: number;
+    projectItemsUnchanged: number;
   };
   preservedOutsideWorkbookItems: Array<{ code: string; description: string; unit: string }>;
   copiedItems: Array<{ code: string; title: string; unit: string; copyReference: string; costNote: string | null }>;
@@ -141,8 +144,8 @@ interface MorthReloadPreview {
     copyReference?: string;
     costNote?: string;
     validationReasons: string[];
-    old: null | { description: string; unit: string; specClause: string | null; notes: string | null; norms: MorthNormRows };
-    new: { description: string; unit: string; specClause: string | null; notes: string | null; norms: MorthNormRows };
+    old: null | { title: string; shortLabel: string | null; description: string; unit: string; specClause: string | null; notes: string | null; norms: MorthNormRows };
+    new: { title: string; shortLabel: string; description: string; unit: string; specClause: string | null; notes: string | null; norms: MorthNormRows };
     reasons: string[];
   }>;
 }
@@ -152,6 +155,14 @@ interface MorthNormRows {
   equipment: Array<{ projectCategory: string; sortOrder: number; equipmentType: string; unit: string; quantityPerShift: number | null; shiftOutputRef: number; derivedPerUnit: number | null; notes?: string | null }>;
   labour: Array<{ projectCategory: string; sortOrder: number; designation: string; skillTier: string; unit: string; quantityPerShift: number; shiftOutputRef: number; derivedPerUnit: number | null }>;
   materials: Array<{ projectCategory: string; sortOrder: number; materialName: string; materialCategory: string; unit: string; quantityPerShift: number; shiftOutputRef: number; derivedPerUnit: number | null }>;
+}
+
+function fullNormTitle(item: Pick<SnlSearchResult, "sourceCode" | "shortLabel" | "description">) {
+  return getSnlSearchItemTitle({
+    ...item,
+    sourceName: "",
+    itemCode: "",
+  });
 }
 
 function formatReloadRows(norms: MorthNormRows | null, key: "equipment" | "labour" | "materials") {
@@ -269,7 +280,13 @@ function ItemDetailPanel({ itemId, includeOtherBooks = false }: { itemId: number
             {item.isMixSpecific && <Badge variant="outline" className="text-xs h-4 px-1 border-purple-300 text-purple-700">Mix-specific</Badge>}
             {item.hasGradingVariants && <Badge variant="outline" className="text-xs h-4 px-1 border-amber-300 text-amber-700">Grading variants</Badge>}
           </div>
-          <p className="text-sm font-medium mt-0.5">{item.description}</p>
+          <p className="text-sm font-medium mt-0.5 whitespace-normal">{getSnlSearchItemTitle({
+            sourceCode: item.source.code,
+            sourceName: item.source.name,
+            itemCode: item.itemCode,
+            shortLabel: item.shortLabel,
+            description: item.description,
+          })}</p>
           <p className="text-xs text-muted-foreground">
             Unit: <span className="font-medium">{item.unit}</span>
             {item.specClause && <> · Spec clause: <span className="font-medium">{item.specClause}</span></>}
@@ -484,7 +501,7 @@ function RememberedLinksPanel({ canRemove }: { canRemove: boolean }) {
 
 // ─── Items List ──────────────────────────────────────────────────────────────
 
-function SourceItemsList({ sourceId, sectorFilter, includeOtherBooks = false }: { sourceId: number; sectorFilter?: string; includeOtherBooks?: boolean }) {
+function SourceItemsList({ sourceId, sourceCode, sourceName, sectorFilter, includeOtherBooks = false }: { sourceId: number; sourceCode: string; sourceName: string; sectorFilter?: string; includeOtherBooks?: boolean }) {
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [catFilter, setCatFilter] = useState<string>("");
 
@@ -525,7 +542,7 @@ function SourceItemsList({ sourceId, sectorFilter, includeOtherBooks = false }: 
               <span className="text-[12px] font-mono font-semibold text-teal-600">{item.itemCode}</span>
               {catBadge(item.workCategory)}
             </div>
-            <p className="text-sm font-medium mt-0.5 leading-tight">{item.shortLabel}</p>
+            <p className="text-sm font-medium mt-0.5 leading-snug whitespace-normal line-clamp-2">{getSnlSearchItemTitle({ ...item, sourceCode, sourceName })}</p>
             {item.shiftOutput && <p className="text-[12px] text-muted-foreground mt-0.5">{fmtNum(item.shiftOutput)} {item.outputUnit}/shift</p>}
           </button>
         ))}
@@ -589,7 +606,7 @@ function SearchPanel({ sectorFilter, includeOtherBooks = false }: { sectorFilter
               <span className="text-[12px] font-mono font-semibold text-teal-600">{item.itemCode}</span>
               {catBadge(item.workCategory)}
             </div>
-            <p className="text-sm font-medium mt-0.5 leading-tight">{item.shortLabel}</p>
+            <p className="text-sm font-medium mt-0.5 leading-snug whitespace-normal line-clamp-2">{fullNormTitle(item)}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{item.sourceName}</p>
           </button>
         ))}
@@ -878,9 +895,15 @@ export default function NormsLibrary() {
               {reloadPreview.counts.needsCheck} needs check
             </span>
           </div>
+          <p className="text-xs font-medium text-slate-700">
+            Items used by your projects: {reloadPreview.counts.projectItemsChanged} changed · {reloadPreview.counts.projectItemsUnchanged} unchanged
+          </p>
           <p className="text-xs text-slate-700">
             Items marked Needs check are excluded from Apply and will not be written.
           </p>
+          <details className="text-xs">
+            <summary className="cursor-pointer font-semibold">Show all changes ({reloadPreview.changes.length})</summary>
+            <div className="mt-2 space-y-3">
           <div className="max-h-80 overflow-auto rounded border bg-white divide-y">
             {reloadPreview.changes.filter(change => change.status !== "unchanged" || change.validationStatus === "copied").map(change => (
               <div key={change.code} className="p-3 text-xs space-y-1">
@@ -919,7 +942,8 @@ export default function NormsLibrary() {
                   </p>
                 )}
                 <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1">
-                  <div><span className="font-semibold">Old:</span> {change.old ? `${change.old.description} · ${change.old.unit}` : "Not in current MoRTH source"}
+                  <div><span className="font-semibold">Old:</span> {change.old ? `${change.old.title} · ${change.old.unit}` : "Not in current MoRTH source"}
+                    {change.old && change.old.description !== change.old.title && <p className="text-xs text-slate-500">Description: {change.old.description}</p>}
                     {change.old?.specClause && <p className="text-xs text-slate-500">Spec clause: {change.old.specClause}</p>}
                     {change.old && (
                       <ul className="mt-1 text-slate-600 space-y-0.5">
@@ -930,7 +954,8 @@ export default function NormsLibrary() {
                       </ul>
                     )}
                   </div>
-                  <div><span className="font-semibold">New:</span> {change.new.description} · {change.new.unit}
+                  <div><span className="font-semibold">New:</span> {change.new.title} · {change.new.unit}
+                    {change.new.description !== change.new.title && <p className="text-xs text-slate-500">Description: {change.new.description}</p>}
                     {change.new.specClause && <p className="text-xs text-slate-500">{change.old?.specClause ? "Spec clause" : "Spec clause added"}: {change.new.specClause}</p>}
                     <ul className="mt-1 text-slate-600 space-y-0.5">
                       <li><span className="font-medium">Productivity:</span> {formatReloadProductivity(change.new.norms)}</li>
@@ -993,6 +1018,8 @@ export default function NormsLibrary() {
                 <span key={item.code}><span className="font-mono">{item.code}</span> · {item.description} · {item.unit}</span>
               ))}
               {reloadPreview.preservedOutsideWorkbookItems.length === 0 && <span>None</span>}
+            </div>
+          </details>
             </div>
           </details>
           <div className="flex items-center gap-2">
@@ -1094,7 +1121,13 @@ export default function NormsLibrary() {
                   <p className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
                     {activeSource.name} — {activeSource.itemCount} items{sectorFilter ? ` · filtered: ${sectorFilter}` : ""}
                   </p>
-                  <SourceItemsList sourceId={selectedSourceId} sectorFilter={sectorFilter || undefined} includeOtherBooks={showOtherBooks} />
+                  <SourceItemsList
+                    sourceId={selectedSourceId}
+                    sourceCode={activeSource?.code ?? ""}
+                    sourceName={activeSource?.name ?? ""}
+                    sectorFilter={sectorFilter || undefined}
+                    includeOtherBooks={showOtherBooks}
+                  />
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2 rounded-xl border border-dashed">

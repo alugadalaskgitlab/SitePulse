@@ -319,14 +319,49 @@ describe("MoRTH SDB amendment", () => {
     expect(mergeMorthSnlNotes("Existing reviewer note", copied)).toContain("MoRTH cost note:");
     expect(mergeMorthSnlNotes("Existing reviewer note", copied)).toContain("Existing reviewer note");
 
-    const heightAdjusted = byCode.get("13.5-q-2")!;
-    const referenced = byCode.get("12.8-F")!;
-    expect(heightAdjusted.copyReference).toBe("Uses item 12.8 (F)");
+    const heightAdjusted = byCode.get("13.5-C-q")!;
+    const referenced = byCode.get("12.8-C")!;
+    expect(heightAdjusted.copyReference).toBe("Uses item 12.8 (C)");
     expect(heightAdjusted.equipment).toEqual(referenced.equipment);
     expect(heightAdjusted.labour).toEqual(referenced.labour);
     expect(heightAdjusted.materials).toEqual(referenced.materials);
     expect(heightAdjusted.costNote).toContain("Add 2%");
-    expect(heightAdjusted.costNote).toMatch(/Formwork 12%.*3\.50%/);
+    expect(heightAdjusted.costNote).toMatch(/Formwork 12%.*3\.75%/);
+  });
+
+  it("builds every 13.5 grade-height case from its matching 12.8 grade", () => {
+    const grades = ["A", "B", "C", "D", "E", "F", "G", "H"];
+    const expectedCodes = grades.flatMap(grade => ["p", "q", "r"].map(height => `13.5-${grade}-${height}`));
+    expect(items.filter(item => item.code.startsWith("13.5-")).map(item => item.code).sort())
+      .toEqual(expectedCodes.sort());
+
+    const gradeTitles: Record<string, string> = {
+      A: "PCC Grade M15", B: "PCC Grade M20", C: "PCC Grade M25", D: "PCC Grade M30",
+      E: "RCC Grade M20", F: "RCC Grade M25", G: "RCC Grade M30", H: "RCC Grade M35",
+    };
+    for (const grade of grades) {
+      const source = byCode.get(`12.8-${grade}`);
+      expect(source, `12.8-${grade}`).toBeDefined();
+      for (const height of ["p", "q", "r"]) {
+        const item = byCode.get(`13.5-${grade}-${height}`)!;
+        expect(item.title).toContain(gradeTitles[grade]);
+        expect(item.title).toMatch(/in sub-structure — Height/);
+        expect(item.copyReference).toBe(`Uses item 12.8 (${grade})`);
+        expect(item.unit).toBe(source!.unit);
+        expect(item.shiftOutput).toBe(source!.shiftOutput);
+        expect(item.equipment).toEqual(source!.equipment);
+        expect(item.labour).toEqual(source!.labour);
+        expect(item.materials).toEqual(source!.materials);
+        expect(item.copyError).toBeUndefined();
+        expect(validateParsedMorthItem(item).status).toBe("copied");
+      }
+    }
+
+    for (const grade of ["C", "D", "E", "F", "G", "H"]) {
+      expect(byCode.get(`13.5-${grade}-q`)!.costNote).toBeTruthy();
+      expect(byCode.get(`13.5-${grade}-r`)!.costNote).toBeTruthy();
+    }
+    expect(byCode.has("13.5-q-2")).toBe(false);
   });
 
   it("keeps percentage adjustments that may change quantities in Needs check", () => {

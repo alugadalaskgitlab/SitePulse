@@ -417,7 +417,7 @@ export function matchMorthRelinkCandidates(
     const statedContext = ["foundation", "substructure", "well foundation", "approach slab", "levelling course"]
       .some(term => hasPhrase(source, term));
     if (!statedContext) {
-      const representativeCodes = new Set(["12.8-A", "12.11-I", "13.5-A"]);
+      const representativeCodes = new Set(["12.8-A", "12.11-I"]);
       const representatives = searchCandidates.filter(candidate => representativeCodes.has(candidate.code));
       matches = representatives.length
         ? representatives

@@ -50,7 +50,7 @@ describe("MoRTH re-link title matching", () => {
     const m15 = "M15 concrete";
     expect(matchCode(m15)).toBeNull();
     expect(matchMorthRelinkCandidates(m15, "CUM", candidates, "ROAD")
-      .map(row => row.candidate.code)).toEqual(["12.8-A", "12.11-I", "13.5-A"]);
+      .map(row => row.candidate.code)).toEqual(["12.8-A", "12.11-I"]);
     expect(explainMorthRelinkNoMatch(m15, candidates))
       .toContain("does not state the application");
 

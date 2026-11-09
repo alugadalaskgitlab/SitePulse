@@ -25,6 +25,7 @@ import { eq, and, inArray, notInArray, isNull, or } from "drizzle-orm";
 import { storage } from "./storage";
 import { isSnlWorkFamilyCompatible } from "@shared/snlMappingPolicy";
 import { getNormBookSourceId } from "./normBook";
+import { MORTH_SDB_SOURCE_CODE } from "@shared/normBook";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseMorthSdbWorkbook, type ParsedMorthItem } from "./snlMorthParser";
@@ -1148,7 +1149,11 @@ function cleanRelinkText(text: string) {
 }
 
 export async function previewBoqProjectNormRelinks(boqProjectId: number) {
-  const sourceId = await getNormBookSourceId();
+  const [morthSource] = await db.select({ id: snlSources.id })
+    .from(snlSources)
+    .where(and(eq(snlSources.code, MORTH_SDB_SOURCE_CODE), eq(snlSources.isActive, true)))
+    .limit(1);
+  const sourceId = morthSource?.id ?? null;
   const items = await db.select({
     boqItemId: boqItems.id,
     itemCode: boqItems.itemCode,
@@ -1161,6 +1166,7 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
     currentNormId: snlBoqMappings.snlItemId,
     currentNormCode: snlItems.itemCode,
     currentNormDescription: snlItems.description,
+    currentNormShortLabel: snlItems.shortLabel,
     currentSourceCode: snlSources.code,
     currentSourceName: snlSources.name,
   }).from(boqItems)
@@ -1231,7 +1237,7 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
         return {
           id: option.loadedId,
           code: option.candidate.code,
-          description: option.candidate.title.slice(0, 60),
+          description: option.candidate.title,
           unit: option.candidate.unit,
           reason: option.reason,
           canApply: option.canApply && option.loadedId != null,
@@ -1244,7 +1250,7 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
     const proposed = match ? {
       id: match.loadedId,
       code: match.candidate.code,
-      description: match.candidate.title.slice(0, 60),
+      description: match.candidate.title,
       unit: match.candidate.unit,
       score: 1,
       reason: match.reason,
@@ -1258,7 +1264,7 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
       : !match
         ? explainMorthRelinkNoMatch(description, workbookCandidates)
         : match.loadedId == null
-          ? `The MoRTH title “${match.candidate.title.slice(0, 60)}” matches, but its workbook item is not loaded in the selected book.`
+          ? `The MoRTH title “${match.candidate.title}” matches, but its workbook item is not loaded in the selected book.`
           : match.reason;
 
     return {
@@ -1266,7 +1272,9 @@ export async function previewBoqProjectNormRelinks(boqProjectId: number) {
       currentNorm: item.mappingStatus === "mapped" && item.currentNormId ? {
         id: item.currentNormId,
         code: item.currentNormCode,
-        description: item.currentNormDescription,
+        description: item.currentSourceCode === MORTH_SDB_SOURCE_CODE && item.currentNormShortLabel?.length !== 80
+          ? item.currentNormShortLabel || item.currentNormDescription
+          : item.currentNormDescription || item.currentNormShortLabel,
         sourceCode: item.currentSourceCode,
         sourceName: item.currentSourceCode === "MORTH_SDB_2019"
           ? "MoRTH Standard Data Book (2003)"

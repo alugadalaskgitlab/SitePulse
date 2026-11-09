@@ -43,3 +43,30 @@ export async function isSnlItemInNormBook(snlItemId: number): Promise<boolean> {
     .limit(1);
   return !!row;
 }
+
+export async function isSnlItemFromActiveSource(snlItemId: number): Promise<boolean> {
+  const [row] = await db.select({ id: snlItems.id })
+    .from(snlItems)
+    .innerJoin(snlSources, eq(snlSources.id, snlItems.sourceId))
+    .where(and(
+      eq(snlItems.id, snlItemId),
+      eq(snlItems.isActive, true),
+      eq(snlSources.isActive, true),
+    ))
+    .limit(1);
+  return !!row;
+}
+
+export async function isSnlItemFromSourceCode(snlItemId: number, sourceCode: string): Promise<boolean> {
+  const [row] = await db.select({ id: snlItems.id })
+    .from(snlItems)
+    .innerJoin(snlSources, eq(snlSources.id, snlItems.sourceId))
+    .where(and(
+      eq(snlItems.id, snlItemId),
+      eq(snlItems.isActive, true),
+      eq(snlSources.isActive, true),
+      eq(snlSources.code, sourceCode),
+    ))
+    .limit(1);
+  return !!row;
+}

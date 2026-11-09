@@ -29,6 +29,7 @@ import { boqItemDisplayName } from "@shared/boqItemName";
 import { uppercaseBusinessText } from "@shared/businessText";
 import { resolveBoqDisplayUnit, resolveBoqUomProfile } from "@shared/dprGeometry";
 import { canonicalizeUnit } from "@shared/boqNormalise";
+import { buildSnlSearchUrl, getSnlSearchItemTitle, getSnlSourceDisplayName, groupSnlSearchResults } from "@shared/normBook";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -818,6 +819,9 @@ type CompositeComponent = {
   snlItemId: number | null;
   snlItemCode: string | null;
   snlItemDescription: string | null;
+  snlShortLabel: string | null;
+  snlSourceCode: string | null;
+  snlSourceName: string | null;
   confidenceScore: number | null;
   status: string;
   notes: string | null;
@@ -851,18 +855,20 @@ function CompositeReviewCard({
 
   const searchingComp = components.find(c => c.id === searchCompId);
   const { data: searchResults = [], isFetching: searching } = useQuery<SnlSearchResult[]>({
-    queryKey: ["/api/snl/search", searchQ, item.workCategory, item.description],
+    queryKey: ["/api/snl/search", searchQ, item.workCategory, item.description, "manual-all-books"],
     queryFn: async () => {
       if (!searchQ.trim()) return [];
-      const params = new URLSearchParams({ q: searchQ });
-      if (item.workCategory) params.set("category", item.workCategory);
-      if (item.description) params.set("boqDesc", item.description);
-      const res = await fetch(`/api/snl/search?${params}`, { credentials: "include" });
+      const res = await fetch(buildSnlSearchUrl(searchQ, {
+        includeOtherBooks: true,
+        category: item.workCategory ?? undefined,
+        boqDesc: item.description ?? undefined,
+      }), { credentials: "include" });
       if (!res.ok) throw new Error("Search failed");
       return res.json();
     },
     enabled: searchCompId != null && searchQ.length >= 2,
   });
+  const searchResultGroups = groupSnlSearchResults(searchResults);
 
   const mapMutation = useMutation({
     mutationFn: ({ compId, snlItemId }: { compId: number; snlItemId: number }) =>
@@ -972,15 +978,32 @@ function CompositeReviewCard({
                         <span className={`ml-1 px-1 py-0.5 rounded text-[10px] font-bold ${lowConf ? "bg-orange-100 text-orange-800" : "bg-amber-100 text-amber-800"}`}>
                           {(conf * 100).toFixed(0)}%
                         </span>
-                        {comp.snlItemDescription && (
-                          <span className="block text-[11px] text-slate-500 line-clamp-1 mt-0.5">{comp.snlItemDescription}</span>
+                        {comp.snlItemCode && (
+                          <span className="block text-[11px] text-slate-500 mt-0.5 whitespace-normal">
+                          {getSnlSourceDisplayName(comp.snlSourceCode, comp.snlSourceName)} · {comp.snlItemCode} — {getSnlSearchItemTitle({
+                              sourceCode: comp.snlSourceCode ?? "",
+                              sourceName: comp.snlSourceName ?? "",
+                              itemCode: comp.snlItemCode,
+                              shortLabel: comp.snlShortLabel,
+                              description: comp.snlItemDescription,
+                            })}
+                          </span>
                         )}
                       </p>
                     )}
                     {isMapped && comp.snlItemCode && (
                       <p className="text-[11px] text-emerald-700 mt-0.5">
                         <Check className="w-2.5 h-2.5 inline mr-0.5" />
-                        SNL: <span className="font-mono">{comp.snlItemCode}</span>
+                        {getSnlSourceDisplayName(comp.snlSourceCode, comp.snlSourceName)} · <span className="font-mono">{comp.snlItemCode}</span>
+                        <span className="block text-[11px] text-slate-500 mt-0.5 whitespace-normal">
+                          {getSnlSearchItemTitle({
+                            sourceCode: comp.snlSourceCode ?? "",
+                            sourceName: comp.snlSourceName ?? "",
+                            itemCode: comp.snlItemCode,
+                            shortLabel: comp.snlShortLabel,
+                            description: comp.snlItemDescription,
+                          })}
+                        </span>
                       </p>
                     )}
                   </div>
@@ -1050,21 +1073,41 @@ function CompositeReviewCard({
               {!searching && searchResults.length === 0 && searchQ.length >= 2 && (
                 <p className="text-[12px] text-muted-foreground">No results</p>
               )}
-              <div className="max-h-60 overflow-y-auto space-y-1">
-                {searchResults.map(r => (
+              <div className="max-h-60 overflow-y-auto space-y-2">
+                {searchResultGroups.morth.length > 0 && (
+                  <section className="space-y-1">
+                    <p className="sticky top-0 bg-background py-1 text-[11px] font-semibold">MoRTH</p>
+                    {searchResultGroups.morth.map(r => (
                   <button
                     key={r.id}
                     className={`w-full text-left px-2 py-1.5 rounded border text-[12px] transition-colors ${selectedSnlId === r.id ? "border-teal-400 bg-teal-50" : "border-slate-200 hover:bg-slate-50"}`}
                     onClick={() => setSelectedSnlId(r.id)}
                     data-testid={`option-comp-snl-${r.id}`}
                   >
-                    <p className="font-semibold text-slate-700"><span className="font-mono text-teal-700">{r.itemCode}</span> — {r.shortLabel || r.description.slice(0, 50)}</p>
-                    {r.description && r.shortLabel && (
-                      <p className="text-slate-400 line-clamp-1 mt-0.5">{r.description}</p>
-                    )}
-                    <p className="text-[11px] text-slate-400">{r.sourceName} · {r.unit}</p>
+                    <p className="font-semibold text-slate-700 whitespace-normal"><span className="font-mono text-teal-700">{r.itemCode}</span> — {getSnlSearchItemTitle(r)}</p>
+                    <p className="text-[11px] text-slate-400">{getSnlSourceDisplayName(r.sourceCode, r.sourceName)} · {r.unit}</p>
                   </button>
                 ))}
+                  </section>
+                )}
+                {searchResultGroups.otherBooks.length > 0 && (
+                  <section className="space-y-1">
+                    <p className="sticky top-0 bg-background py-1 text-[11px] font-semibold">Other books</p>
+                    {searchResultGroups.otherBooks.map(r => (
+                      <button
+                        key={r.id}
+                        className={`w-full text-left px-2 py-1.5 rounded border text-[12px] transition-colors ${selectedSnlId === r.id ? "border-teal-400 bg-teal-50" : "border-slate-200 hover:bg-slate-50"}`}
+                        onClick={() => setSelectedSnlId(r.id)}
+                        data-testid={`option-comp-snl-${r.id}`}
+                      >
+                        <p className="font-semibold text-slate-700 whitespace-normal">
+                          <span className="font-mono text-teal-700">{r.itemCode}</span> — {getSnlSearchItemTitle(r)}
+                        </p>
+                        <p className="text-[11px] text-slate-400">{getSnlSourceDisplayName(r.sourceCode, r.sourceName)} · {r.unit}</p>
+                      </button>
+                    ))}
+                  </section>
+                )}
               </div>
             </div>
             <DialogFooter>
@@ -1102,7 +1145,8 @@ function SnlMappingPanel({
   const unmapped    = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "unmapped");
   const mapped      = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "mapped");
   type MappingDisplayRow =
-    | { kind: "bill" | "source"; key: string; label: string }
+    | { kind: "bill"; key: string; label: string }
+    | { kind: "source"; key: string; label: string }
     | { kind: "item"; key: string; item: BoqItemWithCategory };
   const mappingDisplayRows = (list: BoqItemWithCategory[]): MappingDisplayRow[] =>
     buildBoqDisplayHierarchy(list, getWorkCategoryLabel).flatMap(bill => [
@@ -1184,18 +1228,20 @@ function SnlMappingPanel({
   });
 
   const { data: searchResults = [], isFetching: searching } = useQuery<SnlSearchResult[]>({
-    queryKey: ["/api/snl/search", searchQ, searchItem?.workCategory, searchItem?.description],
+    queryKey: ["/api/snl/search", searchQ, searchItem?.workCategory, searchItem?.description, "manual-all-books"],
     queryFn: async () => {
-      if (!searchQ.trim() && !searchItem) return [];
-      const params = new URLSearchParams({ q: searchQ });
-      if (searchItem?.workCategory) params.set("category", searchItem.workCategory);
-      if (searchItem?.description) params.set("boqDesc", searchItem.description);
-      const res = await fetch(`/api/snl/search?${params}`, { credentials: "include" });
+      if (searchQ.trim().length < 2) return [];
+      const res = await fetch(buildSnlSearchUrl(searchQ, {
+        includeOtherBooks: true,
+        category: searchItem?.workCategory ?? undefined,
+        boqDesc: searchItem?.description ?? undefined,
+      }), { credentials: "include" });
       if (!res.ok) throw new Error("Search failed");
       return res.json();
     },
-    enabled: !!searchItem,
+    enabled: !!searchItem && searchQ.trim().length >= 2,
   });
+  const searchResultGroups = groupSnlSearchResults(searchResults);
 
   if (items.length === 0) return null;
 
@@ -1328,9 +1374,15 @@ function SnlMappingPanel({
                                 {(conf * 100).toFixed(0)}%{lowConf ? " — low" : ""}
                               </span>
                             </p>
-                            {item.snlItemDescription && (
-                              <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5" title={item.snlItemDescription}>
-                                {item.snlItemDescription}
+                            {(item.snlShortLabel || item.snlItemDescription) && (
+                              <p className="text-[11px] text-slate-500 whitespace-normal line-clamp-2 mt-0.5" title={item.snlItemDescription ?? undefined}>
+                                {getSnlSourceDisplayName(item.snlSourceCode, item.snlSourceName)} · {item.snlItemCode} — {getSnlSearchItemTitle({
+                                  sourceCode: item.snlSourceCode ?? "",
+                                  sourceName: item.snlSourceName ?? "",
+                                  itemCode: item.snlItemCode,
+                                  shortLabel: item.snlShortLabel,
+                                  description: item.snlItemDescription,
+                                })}
                               </p>
                             )}
                           </div>
@@ -1400,7 +1452,7 @@ function SnlMappingPanel({
                     data-testid={`row-unmapped-${item.id}`}>
                     <div className="flex-1 min-w-0">
                       <p className="text-[12px] font-mono text-muted-foreground">{item.itemCode ?? "—"}</p>
-                      <p className="text-sm text-slate-600 line-clamp-1" title={item.description}>{boqItemDisplayName(item)}</p>
+                      <p className="text-sm text-slate-600 line-clamp-2 whitespace-normal" title={item.description}>{boqItemDisplayName(item)}</p>
                     </div>
                     <button
                       onClick={() => { setSearchItem(item); setSearchQ(item.description.slice(0, 30)); }}
@@ -1439,7 +1491,7 @@ function SnlMappingPanel({
                 <span className="text-muted-foreground">BOQ: </span>
                 <span className="font-mono">{searchItem.itemCode ?? "—"}</span>
                 <span className="mx-1 text-muted-foreground">—</span>
-                <span className="text-slate-700 line-clamp-1">{searchItem.description}</span>
+                <span className="text-slate-700 line-clamp-2 whitespace-normal">{searchItem.description}</span>
               </div>
               <div className="relative">
                 <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
@@ -1452,14 +1504,17 @@ function SnlMappingPanel({
                 />
               </div>
               {searching && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-3 h-3 animate-spin" /> Searching…</div>}
-              <div className="space-y-1 max-h-64 overflow-y-auto">
-                {searchResults.map(result => (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {searchResultGroups.morth.length > 0 && (
+                  <section className="space-y-1">
+                    <p className="sticky top-0 bg-background py-1 text-[11px] font-semibold">MoRTH</p>
+                    {searchResultGroups.morth.map(result => (
                   <div key={result.id} className={`flex items-start gap-2 p-2 rounded-md border transition-colors hover:bg-slate-50 ${result.categoryMatchStatus === "mismatch" ? "border-yellow-200 bg-yellow-50/40" : result.categoryMatchStatus === "secondary" ? "border-orange-100 bg-orange-50/20" : "border-transparent hover:border-slate-200"}`}>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[12px] font-mono text-teal-700 font-semibold">{result.itemCode}</span>
                         <span className="text-[12px] text-muted-foreground">{result.unit}</span>
-                        <span className="text-[12px] text-slate-400">· {result.sourceCode ?? result.sourceName}</span>
+                        <span className="text-[12px] text-slate-400">· {getSnlSourceDisplayName(result.sourceCode, result.sourceName)}</span>
                         {result.sector && (
                           <span className="text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500 font-medium">{result.sector}</span>
                         )}
@@ -1470,7 +1525,7 @@ function SnlMappingPanel({
                           <span className="text-[10px] px-1 py-0.5 rounded bg-orange-100 text-orange-700">Cross-sector</span>
                         )}
                       </div>
-                      <p className="text-sm text-slate-700 line-clamp-2">{result.description}</p>
+                      <p className="text-sm text-slate-700 whitespace-normal line-clamp-2">{getSnlSearchItemTitle(result)}</p>
                     </div>
                     <button
                       onClick={() => applyMutation.mutate({
@@ -1486,6 +1541,33 @@ function SnlMappingPanel({
                     </button>
                   </div>
                 ))}
+                  </section>
+                )}
+                {searchResultGroups.otherBooks.length > 0 && (
+                  <section className="space-y-1">
+                    <p className="sticky top-0 bg-background py-1 text-[11px] font-semibold">Other books</p>
+                    {searchResultGroups.otherBooks.map(result => (
+                      <div key={result.id} className={`flex items-start gap-2 p-2 rounded-md border transition-colors hover:bg-slate-50 ${result.categoryMatchStatus === "mismatch" ? "border-yellow-200 bg-yellow-50/40" : result.categoryMatchStatus === "secondary" ? "border-orange-100 bg-orange-50/20" : "border-transparent hover:border-slate-200"}`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[12px] font-mono text-teal-700 font-semibold">{result.itemCode}</span>
+                            <span className="text-[12px] text-muted-foreground">{result.unit}</span>
+                            <span className="text-[12px] text-slate-400">· {getSnlSourceDisplayName(result.sourceCode, result.sourceName)}</span>
+                          </div>
+                          <p className="text-sm text-slate-700 whitespace-normal line-clamp-2">{getSnlSearchItemTitle(result)}</p>
+                        </div>
+                        <button
+                          onClick={() => applyMutation.mutate({ boqItemId: searchItem.id, snlItemId: result.id, workCategory: searchItem.workCategory ?? "MEDIUM" })}
+                          disabled={applyMutation.isPending}
+                          className="flex-shrink-0 text-[12px] px-2 py-1 rounded bg-teal-600 hover:bg-teal-700 text-white font-semibold transition-colors"
+                          data-testid={`button-apply-snl-${result.id}`}
+                        >
+                          {applyMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Apply"}
+                        </button>
+                      </div>
+                    ))}
+                  </section>
+                )}
                 {!searching && searchResults.length === 0 && searchQ.trim() && (
                   <p className="text-sm text-muted-foreground text-center py-4">No SNL items found. Try a different search term.</p>
                 )}

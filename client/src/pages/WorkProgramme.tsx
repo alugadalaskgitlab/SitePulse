@@ -3378,7 +3378,7 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
               <div className="divide-y">
                 {rows.map(row => {
                   const oldNorm = row.currentNorm
-                    ? `${row.currentNorm.code ?? ""} ${row.currentNorm.description ?? ""}${row.currentNorm.sourceCode && row.currentNorm.sourceCode !== "MORTH_SDB_2019" ? ` · ${row.currentNorm.sourceName ?? ""}` : ""}`.trim()
+                    ? `${row.currentNorm.sourceName ?? row.currentNorm.sourceCode ?? ""} · ${row.currentNorm.code ?? ""} ${row.currentNorm.description ?? ""}`.trim()
                     : "Not linked";
                   return (
                     <div key={row.boqItemId} className="grid grid-cols-[32px_minmax(180px,1.4fr)_minmax(150px,1fr)_minmax(150px,1fr)] gap-3 p-3 text-sm items-start">
@@ -3404,7 +3404,7 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-muted-foreground">Current norm</p>
-                        <p className="mt-1 break-words">{oldNorm}</p>
+                        <p className="mt-1 break-words whitespace-normal line-clamp-2">{oldNorm}</p>
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-muted-foreground">Proposed MoRTH item</p>
@@ -3441,13 +3441,25 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
                                 </option>
                               ))}
                             </select>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {row.proposalOptions.find(option => option.id === choiceByBoqItem[row.boqItemId])?.reason ?? row.proposalReason}
-                            </p>
+                            {(() => {
+                              const selectedOption = row.proposalOptions.find(option => option.id === choiceByBoqItem[row.boqItemId]);
+                              return (
+                                <>
+                                  {selectedOption && (
+                                    <p className="mt-1 break-words whitespace-normal line-clamp-2">
+                                      <span className="font-mono">{selectedOption.code}</span> · {selectedOption.description}
+                                    </p>
+                                  )}
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    {selectedOption?.reason ?? row.proposalReason}
+                                  </p>
+                                </>
+                              );
+                            })()}
                           </>
                         ) : row.proposed ? (
                           <>
-                            <p className="mt-1 break-words"><span className="font-mono">{row.proposed.code}</span> · {row.proposed.description}</p>
+                            <p className="mt-1 break-words whitespace-normal line-clamp-2"><span className="font-mono">{row.proposed.code}</span> · {row.proposed.description}</p>
                             <p className="mt-1 text-xs text-muted-foreground">{row.proposed.reason}</p>
                           </>
                         ) : (

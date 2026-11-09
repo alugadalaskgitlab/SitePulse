@@ -14,3 +14,9 @@ description: User-confirmation boundary for BOQ-to-SNL mappings and recipe write
 **Why:** The same work recurs across projects with different BOQ numbering and chainage, while distinct workbook sub-cases can have different resource norms.
 
 **How to apply:** Normalize BOQ wording for lookup, persist the exact SNL item only after a user confirms Map to Norm or Re-link, and keep the remembered-link list removable without changing existing recipes or mappings.
+
+**Rule:** Manual Map to Norm and BOQ review searches may use any active norm book after explicit user selection. Startup/import matching, automatic recipe building, and the Re-link proposal flow remain MoRTH-only.
+
+**Why:** Other books can be useful for deliberate matching, but broadening background suggestions or re-link proposals can silently introduce unreviewed or incomparable norms.
+
+**How to apply:** Keep cross-book results limited to the two manual search surfaces and require a selected active source item before applying recipes or component mappings.
