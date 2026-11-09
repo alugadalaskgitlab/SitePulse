@@ -2301,6 +2301,7 @@ export const dieselRequirements = pgTable("diesel_requirements", {
   rejectionReason: text("rejection_reason"),
   qtyPurchased: real("qty_purchased"),
   supplier: text("supplier"),
+  vendorId: integer("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
   billNo: text("bill_no"),
   rate: real("rate"),
   amount: real("amount"),
@@ -2362,7 +2363,7 @@ export type DieselRequirementWithItems = DieselRequirement & {
   items: DieselRequirementItem[];
 };
 
-export const createDieselRequirementRequestSchema = insertDieselRequirementSchema.extend({
+export const createDieselRequirementRequestSchema = insertDieselRequirementSchema.omit({ vendorId: true }).extend({
   siteId: z.number().int().nullish(),
   raisedFrom: z.string().nullish(),
   items: z.array(insertDieselRequirementItemSchema.omit({ requirementId: true })),

@@ -8,12 +8,14 @@ type MasterOption = { id: number; label: string };
 export function TripMasterCombobox({
   id, value, options, selectedId, onChange, onSelect, disabled, placeholder, testId, searchable = true,
   otherOptionLabel, otherSelected = false, onSelectOther, onDismiss,
+  emptyMessage = "No active Master match.",
 }: {
   id: string; value: string; options: MasterOption[]; selectedId?: number | null;
   onChange: (text: string) => void; onSelect: (id: number) => void;
   disabled?: boolean; placeholder: string; testId?: string; searchable?: boolean;
   otherOptionLabel?: string; otherSelected?: boolean; onSelectOther?: () => void;
   onDismiss?: () => void;
+  emptyMessage?: string;
 }) {
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -90,7 +92,7 @@ export function TripMasterCombobox({
           {otherOptionLabel}
         </div>}
       </div>
-      {!options.length && <p role="status" className="px-3 py-3 text-sm text-muted-foreground">No active Master match.</p>}
+      {!options.length && <p role="status" className="px-3 py-3 text-sm text-muted-foreground">{emptyMessage}</p>}
     </div>}
   </div>;
 }

@@ -5307,6 +5307,13 @@ export async function registerRoutes(
     }
     // Retain a historical exception reason after later regularisation.
     input.dieselExceptionReason = existing?.dieselExceptionReason ?? null;
+    if (existing?.linkedDieselRequirementId != null) {
+      // Existing receipts keep their original supplier text exactly as saved.
+      delete input.supplier;
+    } else {
+      // New receipts (and explicit regularisation) inherit the purchase source.
+      input.supplier = (linkedReq as any).supplier ?? null;
+    }
     return null;
   }
 
@@ -11701,6 +11708,28 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/diesel-requirements/purchase-suppliers", async (req, res) => {
+    try {
+      if (!assertDieselOrStoresView(req, res, true)) return;
+      const rows = await visibleDieselRequirements(
+        req,
+        await storage.getDieselRequirements({ status: "purchased" }),
+      );
+      const seen = new Set<string>();
+      const names = rows.flatMap((row: any) => {
+        const name = typeof row.supplier === "string" ? row.supplier.trim() : "";
+        const key = name.replace(/\s+/g, " ").toLocaleUpperCase();
+        if (!name || seen.has(key)) return [];
+        seen.add(key);
+        return [{ name }];
+      });
+      res.json(names);
+    } catch (err) {
+      console.error("Error fetching diesel purchase supplier suggestions:", err);
+      res.status(500).json({ message: "Failed to fetch diesel supplier suggestions" });
+    }
+  });
+
   app.get("/api/diesel-requirements/summary", async (req, res) => {
     try {
       if (!assertDieselOrStoresView(req, res, true)) return;
@@ -11967,7 +11996,8 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const updateSchema = z.object({
         qtyPurchased: z.number().optional(),
-        supplier: z.string().optional(),
+        supplier: z.string().max(160).nullable().optional(),
+        vendorId: z.number().int().positive().nullable().optional(),
         billNo: z.string().optional(),
         rate: z.number().optional(),
         amount: z.number().optional(),
@@ -11978,6 +12008,17 @@ export async function registerRoutes(
         paidBy: z.string().max(120).optional(),
       });
       const purchaseData = updateSchema.parse(req.body);
+      if (purchaseData.vendorId != null) {
+        const [masterVendor] = await db.select({
+          id: vendors.id,
+          name: vendors.name,
+          isActive: vendors.isActive,
+        }).from(vendors).where(eq(vendors.id, purchaseData.vendorId)).limit(1);
+        if (!masterVendor || !masterVendor.isActive) {
+          return res.status(400).json({ message: "Select an active Vendor Master entry, or keep the name typed." });
+        }
+        purchaseData.supplier = masterVendor.name;
+      }
       const requirement = await storage.updateDieselPurchase(id, purchaseData);
       if (!requirement) {
         return res.status(404).json({ message: "Diesel requirement not found" });

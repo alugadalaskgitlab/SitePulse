@@ -379,7 +379,7 @@ export default function PlantMaterialReceipts() {
       if (autoOpenParams.piRef) { setIndentRef(autoOpenParams.piRef); setIndentLockedFromPi(true); }
       if (autoOpenParams.piItemId) setSelectedPendingPiItemId(autoOpenParams.piItemId);
       if (autoOpenParams.qty) setQuantity(autoOpenParams.qty);
-      if (autoOpenParams.supplier) setSupplier(autoOpenParams.supplier);
+      if (autoOpenParams.supplier && !autoOpenParams.dieselReqId) setSupplier(autoOpenParams.supplier);
       // 06M-C: deep links set materialId programmatically, bypassing the
       // Select's onChange (which normally applies defaultUom) — apply the
       // material's default UoM here so litres never get saved as Tons.
@@ -452,10 +452,13 @@ export default function PlantMaterialReceipts() {
   }, [materials, materialId]);
   const isSelectedDiesel = /^(diesel|hsd)$/i.test(selectedMaterialName.trim());
   const canRecordStandaloneDiesel = featureCan("plant_receipts", "add") || featureCan("diesel_issue", "edit");
-  const { data: dieselRequirements = [] } = useQuery<any[]>({
+  const { data: dieselRequirements = [], isLoading: dieselRequirementsLoading } = useQuery<any[]>({
     queryKey: ["/api/diesel-requirements"],
     enabled: dialogOpen && isSelectedDiesel,
   });
+  const linkedDieselPurchase = linkedDieselRequirementId == null
+    ? null
+    : dieselRequirements.find((row) => row.id === linkedDieselRequirementId) ?? null;
   const purchasedDieselRequirementIds = dieselRequirements
     .filter((row) => row.status === "purchased" && Number(row.qtyPurchased) > 0)
     .map((row) => row.id);
@@ -864,11 +867,13 @@ export default function PlantMaterialReceipts() {
       );
       const supplierUnchanged = !!editingReceipt && supplier.trim() === (editingReceipt.supplier || "").trim();
       const transporterUnchanged = !!editingReceipt && transporter.trim() === (editingReceipt.transporter || "").trim();
-      if ((supplier.trim() && !activeVendorName(supplier) && !supplierUnchanged) ||
+      if ((linkedDieselRequirementId == null && supplier.trim() && !activeVendorName(supplier) && !supplierUnchanged) ||
           (transporter.trim() && !activeVendorName(transporter) && !transporterUnchanged)) {
         toast({
           title: "Select a Vendor Master entry",
-          description: "For HLC stock, supplier and transporter names must be selected from Vendor Master.",
+          description: linkedDieselRequirementId == null
+            ? "For HLC stock, supplier and transporter names must be selected from Vendor Master."
+            : "For HLC stock, the transporter name must be selected from Vendor Master.",
           variant: "destructive",
         });
         return;
@@ -1567,7 +1572,24 @@ export default function PlantMaterialReceipts() {
               )}
 
               <div className="grid grid-cols-2 gap-4">
-                {isHlcOwnedReceipt ? (
+                {linkedDieselRequirementId != null ? (
+                  <div className="col-span-2 rounded-md border border-emerald-200 bg-emerald-50/60 p-3 dark:border-emerald-800 dark:bg-emerald-900/10" data-testid="diesel-purchase-details-readonly">
+                    <h3 className="text-sm font-semibold">Purchase details</h3>
+                    {dieselRequirementsLoading ? (
+                      <p role="status" className="mt-2 text-sm text-muted-foreground">Loading linked purchase…</p>
+                    ) : linkedDieselPurchase ? (
+                      <dl className="mt-2 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:grid-cols-5">
+                        <div><dt className="text-xs text-muted-foreground">Fuel station / vendor</dt><dd className="font-medium">{linkedDieselPurchase.supplier || "—"}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">Bill no.</dt><dd className="font-medium">{linkedDieselPurchase.billNo || "—"}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">Rate</dt><dd className="font-medium">{linkedDieselPurchase.rate == null ? "—" : `₹${new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(Number(linkedDieselPurchase.rate))} / L`}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">Payment mode</dt><dd className="font-medium">{linkedDieselPurchase.paymentMode ? linkedDieselPurchase.paymentMode.charAt(0).toUpperCase() + linkedDieselPurchase.paymentMode.slice(1) : "—"}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">Paid by</dt><dd className="font-medium">{linkedDieselPurchase.paidBy ? linkedDieselPurchase.paidBy === "company" ? "Company" : linkedDieselPurchase.paidBy : "—"}</dd></div>
+                      </dl>
+                    ) : (
+                      <p className="mt-2 text-sm text-muted-foreground">Linked purchase details are unavailable.</p>
+                    )}
+                  </div>
+                ) : isHlcOwnedReceipt ? (
                   <VendorMasterNamePicker
                     label="Supplier/Vendor"
                     value={supplier}

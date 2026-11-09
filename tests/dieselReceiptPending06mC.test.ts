@@ -266,6 +266,41 @@ describe("06M-C purchase completion", () => {
 });
 
 describe("06M-C linked material receipt", () => {
+  it("copies the linked purchase supplier on create and preserves existing linked receipt supplier text", async () => {
+    const { storage } = await import("../server/storage");
+    const previousReceipt = fx.receipt;
+    const previousLinkedReceipts = fx.linkedReceipts;
+    try {
+      fx.linkedReceipts = [];
+      const created = await request(app).post("/api/plant-module/material-receipts").send({
+        date: "2026-08-15", materialId: 12, quantity: 100, uom: "Liters",
+        partyId: null, isPlantCommon: 1, linkedDieselRequirementId: 77,
+        supplier: "Typed text must not override purchase",
+      });
+      expect(created.status).toBe(201);
+      expect((storage as any).createMaterialReceipt.mock.calls.at(-1)[0].supplier).toBe("ABC FUELS");
+
+      fx.receipt = {
+        ...previousReceipt,
+        id: 501,
+        supplier: "Legacy supplier spelling",
+        linkedDieselRequirementId: 77,
+        materialId: 12,
+        quantity: 100,
+        uom: "Liters",
+        documentStatus: "draft",
+      };
+      const updated = await request(app)
+        .put("/api/plant-module/material-receipts/501")
+        .send({ supplier: "Do not replace the saved receipt supplier" });
+      expect(updated.status).toBe(200);
+      expect((storage as any).updateMaterialReceipt.mock.calls.at(-1)[1]).not.toHaveProperty("supplier");
+    } finally {
+      fx.receipt = previousReceipt;
+      fx.linkedReceipts = previousLinkedReceipts;
+    }
+  });
+
   it("links qualifying diesel purchase evidence to the newly created receipt", async () => {
     const { storage } = await import("../server/storage");
     fx.linkedReceipts = [];

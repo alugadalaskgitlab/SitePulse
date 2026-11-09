@@ -29,6 +29,13 @@ import { computeEquipmentUsage } from "@shared/equipmentUsage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import * as XLSX from "xlsx";
 import { DailyDieselReport } from "@/components/DailyDieselReport";
+import { DieselSupplierPicker } from "@/components/DieselSupplierPicker";
+import {
+  findCloseDieselSupplierMatch,
+  type DieselSupplierSuggestion,
+  type DieselSupplierAlias,
+  type DieselSupplierVendor,
+} from "@shared/dieselSupplier";
 
 let nextDieselFormRowId = 1;
 
@@ -537,6 +544,8 @@ export default function DieselRequirements() {
 
   const [purchaseQty, setPurchaseQty] = useState("");
   const [purchaseSupplier, setPurchaseSupplier] = useState("");
+  const [purchaseVendorId, setPurchaseVendorId] = useState<number | null>(null);
+  const [closeSupplierMatch, setCloseSupplierMatch] = useState<DieselSupplierSuggestion | null>(null);
   const [purchaseBillNo, setPurchaseBillNo] = useState("");
   const [purchaseRate, setPurchaseRate] = useState("");
   const [purchaseAmount, setPurchaseAmount] = useState("");
@@ -589,6 +598,24 @@ export default function DieselRequirements() {
   const { data: sitesList } = useQuery<{ id: number; name: string }[]>({
     queryKey: ["/api/sites"],
   });
+  const vendorMasterQuery = useQuery<DieselSupplierVendor[]>({
+    queryKey: ["/api/vendor-master"],
+    enabled: view === "update",
+  });
+  const vendorAliasesQuery = useQuery<DieselSupplierAlias[]>({
+    queryKey: ["/api/vendor-aliases"],
+    queryFn: async () => {
+      const response = await fetch("/api/vendor-aliases", { credentials: "include" });
+      if (!response.ok) throw new Error("Vendor aliases could not be loaded");
+      return response.json();
+    },
+    enabled: view === "update",
+    staleTime: 30_000,
+  });
+  const previousPurchaseNamesQuery = useQuery<{ name: string }[]>({
+    queryKey: ["/api/diesel-requirements/purchase-suppliers"],
+    enabled: view === "update",
+  });
 
   // 06M-C: canonical Diesel plant material (for Material Receipt prefill) and
   // derived receipt status for every purchased requirement in view.
@@ -622,7 +649,7 @@ export default function DieselRequirements() {
   const canRecordReceipt = featureCan("plant_receipts", "add");
   // Post-purchase prompt: PURCHASE RECORDED → [RECORD MATERIAL RECEIPT] [NOT NOW]
   const [postPurchase, setPostPurchase] = useState<{ id: number; qty: number; supplier: string } | null>(null);
-  const goToMaterialReceipt = (reqId: number, suggestedQty: number, supplier?: string | null) => {
+  const goToMaterialReceipt = (reqId: number, suggestedQty: number) => {
     const params = new URLSearchParams({ autoOpen: "1", dieselReqId: String(reqId) });
     if (dieselMaterial) {
       params.set("materialId", String(dieselMaterial.id));
@@ -630,7 +657,6 @@ export default function DieselRequirements() {
       params.set("uom", dieselMaterial.defaultUom || "Liters");
     }
     if (suggestedQty > 0) params.set("qty", String(suggestedQty));
-    if (supplier) params.set("supplier", supplier);
     navigate(`/plant/material-receipts?${params.toString()}`);
   };
 
@@ -930,6 +956,8 @@ export default function DieselRequirements() {
     setSelectedId(req.id);
     setPurchaseQty(req.qtyPurchased ? String(req.qtyPurchased) : "");
     setPurchaseSupplier(req.supplier || "");
+    setPurchaseVendorId((req as any).vendorId == null ? null : Number((req as any).vendorId));
+    setCloseSupplierMatch(null);
     setPurchaseBillNo(req.billNo || "");
     setPurchaseRate(req.rate ? String(req.rate) : "");
     setPurchaseAmount(req.amount ? String(req.amount) : "");
@@ -1005,7 +1033,7 @@ export default function DieselRequirements() {
     deleteMutation.mutate({ id: selectedId });
   };
 
-  const handlePurchaseSubmit = () => {
+  const savePurchaseWithSupplier = (supplierName: string, vendorId: number | null) => {
     if (!selectedId) return;
     const qty = parseFloat(purchaseQty);
     const rate = parseFloat(purchaseRate);
@@ -1014,7 +1042,8 @@ export default function DieselRequirements() {
       id: selectedId,
       purchaseData: {
         qtyPurchased: qty || undefined,
-        supplier: purchaseSupplier.toUpperCase() || undefined,
+        supplier: supplierName.trim() || null,
+        vendorId,
         billNo: purchaseBillNo.toUpperCase() || undefined,
         rate: rate || undefined,
         amount: computedAmount,
@@ -1028,6 +1057,18 @@ export default function DieselRequirements() {
             : undefined,
       },
     });
+  };
+
+  const handlePurchaseSubmit = () => {
+    if (!selectedId) return;
+    const vendorList = vendorMasterQuery.data || [];
+    const previousNames = (previousPurchaseNamesQuery.data || []).map((row) => row.name);
+    const match = findCloseDieselSupplierMatch(purchaseSupplier, vendorList, previousNames);
+    if (match) {
+      setCloseSupplierMatch(match);
+      return;
+    }
+    savePurchaseWithSupplier(purchaseSupplier, purchaseVendorId);
   };
 
   const filteredRequirements = useMemo(() => {
@@ -1104,12 +1145,48 @@ export default function DieselRequirements() {
                 onClick={() => {
                   const p = postPurchase!;
                   setPostPurchase(null);
-                  goToMaterialReceipt(p.id, p.qty, p.supplier);
+                  goToMaterialReceipt(p.id, p.qty);
                 }}
               >
                 RECORD MATERIAL RECEIPT
               </AlertDialogAction>
             )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={!!closeSupplierMatch} onOpenChange={(open) => { if (!open) setCloseSupplierMatch(null); }}>
+        <AlertDialogContent data-testid="dialog-diesel-supplier-match">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Did you mean {closeSupplierMatch?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Use the existing name, or keep the fuel station / vendor name exactly as typed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="button-keep-new-diesel-supplier"
+              onClick={() => {
+                setCloseSupplierMatch(null);
+                savePurchaseWithSupplier(purchaseSupplier, null);
+              }}
+            >
+              Keep new name
+            </Button>
+            <Button
+              type="button"
+              data-testid="button-use-existing-diesel-supplier"
+              onClick={() => {
+                if (!closeSupplierMatch) return;
+                setPurchaseSupplier(closeSupplierMatch.name);
+                setPurchaseVendorId(closeSupplierMatch.vendorId);
+                setCloseSupplierMatch(null);
+                savePurchaseWithSupplier(closeSupplierMatch.name, closeSupplierMatch.vendorId);
+              }}
+            >
+              Use {closeSupplierMatch?.name}
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1681,7 +1758,6 @@ export default function DieselRequirements() {
                         goToMaterialReceipt(
                           selectedRequirement.id,
                           st ? st.pendingQty : selectedRequirement.qtyPurchased!,
-                          selectedRequirement.supplier,
                         );
                       }}
                     />
@@ -1943,8 +2019,20 @@ export default function DieselRequirements() {
                       <p className="text-xs text-muted-foreground mt-1">Planned: {Math.round(selectedRequirement.totalPlanned)} L</p>
                     </div>
                     <div>
-                      <Label className="text-sm">FUEL STATION / SUPPLIER</Label>
-                      <Input value={purchaseSupplier} onChange={(e) => setPurchaseSupplier(e.target.value)} onBlur={(e) => setPurchaseSupplier(e.target.value.toUpperCase())} placeholder="HP PETROL PUMP, KURNOOL" className="uppercase" data-testid="input-purchase-supplier" />
+                      <DieselSupplierPicker
+                        value={purchaseSupplier}
+                        vendorId={purchaseVendorId}
+                        vendors={vendorMasterQuery.data || []}
+                        aliases={vendorAliasesQuery.data || []}
+                        previousNames={(previousPurchaseNamesQuery.data || []).map((row) => row.name)}
+                        vendorsLoading={vendorMasterQuery.isLoading || vendorAliasesQuery.isLoading || previousPurchaseNamesQuery.isLoading}
+                        vendorsError={vendorMasterQuery.isError || vendorAliasesQuery.isError || previousPurchaseNamesQuery.isError}
+                        testId="input-purchase-supplier"
+                        onChange={(name, vendorId) => {
+                          setPurchaseSupplier(name);
+                          setPurchaseVendorId(vendorId);
+                        }}
+                      />
                     </div>
                     <div>
                       <Label className="text-sm">BILL NO.</Label>

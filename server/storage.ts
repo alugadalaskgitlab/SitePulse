@@ -213,6 +213,7 @@ import {
 } from "@shared/equipmentActivityAllocations";
 import { sendPushToAll } from "./push";
 import { randomUUID } from "node:crypto";
+import { linkedDieselReceiptCanCreateVendorBillItem } from "@shared/dieselSupplier";
 import {
   type CreateDprRequest,
   type Dpr,
@@ -1582,7 +1583,7 @@ export interface IStorage {
   createDieselRequirement(data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems>;
   approveDieselRequirement(id: number, approvedItems: { itemId: number; approvedQty: number }[], approvedBy: string): Promise<DieselRequirementWithItems | undefined>;
   rejectDieselRequirement(id: number, reason: string, rejectedBy: string): Promise<DieselRequirementWithItems | undefined>;
-  updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string }): Promise<DieselRequirementWithItems | undefined>;
+  updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string | null; vendorId?: number | null; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string; paymentMode?: string; paidBy?: string }): Promise<DieselRequirementWithItems | undefined>;
   updateDieselPaymentStatus(id: number, data: { paymentStatus?: "paid"; paymentMode?: string; paidBy?: string; paymentAccountKey?: string | null }, actor: string): Promise<DieselRequirementWithItems | undefined>;
   getDieselComparisonReport(dateFrom: string, dateTo: string): Promise<{ date: string; totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }[]>;
   getDieselComparisonEquipmentSources(dateFrom: string, dateTo: string): Promise<Omit<import("./dieselComparisonEquipment").ComparisonInput, "dateWise">>;
@@ -19605,8 +19606,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getVendorBillAutoItems(vendorName: string, billType: string, periodFrom: string, periodTo: string, entryTypeFilter?: string | null, siteName?: string | null, knownHlcPartyId?: number | null, options?: { includeZeroQuantity?: boolean }): Promise<(Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null; actualMt?: number | null; physicalQuantity?: number; physicalUnit?: string | null })[]> {
+    const bt = billType.toLowerCase();
     const vendorVariants = await this.resolveVendorAliases(vendorName);
     const vendorVariantKeys = new Set(vendorVariants.map(ownerNameKey));
+    const dieselMasterVendorIds = bt === "material" || bt === "all"
+      ? (await db.select({
+        id: identityVendors.id,
+        name: identityVendors.name,
+        businessName: identityVendors.businessName,
+      }).from(identityVendors))
+        .filter(vendor =>
+          vendorVariantKeys.has(ownerNameKey(vendor.name)) ||
+          (!!vendor.businessName && vendorVariantKeys.has(ownerNameKey(vendor.businessName))),
+        )
+        .map(vendor => vendor.id)
+      : [];
     const selectedIdentities = (await db.select().from(identityVendors)).filter(v =>
       vendorVariantKeys.has(ownerNameKey(v.name)) ||
       (!!v.businessName && vendorVariantKeys.has(ownerNameKey(v.businessName))));
@@ -19615,7 +19629,6 @@ export class DatabaseStorage implements IStorage {
     const ownerIdentities = await equipmentVendorIdentities(db, ownerEquipment);
     const reviewedIds = ownerEquipment.filter(e => ownerIdentities.get(e.id)?.auditId).map(e => e.id);
     const matchingIds = ownerEquipment.filter(e => ownerIdentities.get(e.id)?.vendor?.id === selectedIdentity).map(e => e.id);
-    const bt = billType.toLowerCase();
     const needsReceiptOwnershipFilter = bt === "material" || bt === "transport" || bt === "all";
     const hlcPartyId = needsReceiptOwnershipFilter
       ? knownHlcPartyId === undefined ? await this.getHlcPartyId() : knownHlcPartyId
@@ -19953,18 +19966,34 @@ export class DatabaseStorage implements IStorage {
         receiptTransporter: materialReceipts.transporter,
         vehicleNumber: materialReceipts.vehicleNumber,
         receiptNumber: materialReceipts.receiptNo,
+        linkedDieselRequirementId: materialReceipts.linkedDieselRequirementId,
+        dieselPaymentMode: dieselRequirements.paymentMode,
+        dieselPaymentStatus: dieselRequirements.paymentStatus,
+        dieselVendorId: dieselRequirements.vendorId,
       })
       .from(materialReceipts)
       .innerJoin(plantMaterials, eq(plantMaterials.id, materialReceipts.materialId))
       .leftJoin(parties, eq(parties.id, materialReceipts.partyId))
+      .leftJoin(dieselRequirements, eq(dieselRequirements.id, materialReceipts.linkedDieselRequirementId))
       .where(and(
-        vendorMatchSql(materialReceipts.supplier),
+        sql`(
+          (${materialReceipts.linkedDieselRequirementId} IS NULL AND ${vendorMatchSql(materialReceipts.supplier)})
+          OR ${materialReceipts.linkedDieselRequirementId} IS NOT NULL
+        )`,
         or(eq(materialReceipts.partyId, hlcPartyId), isNull(materialReceipts.partyId), eq(materialReceipts.isPlantCommon, 1)),
         gte(materialReceipts.date, periodFrom),
         lte(materialReceipts.date, periodTo),
       ));
 
       for (const row of plantReceipts) {
+        if (row.linkedDieselRequirementId != null &&
+            !linkedDieselReceiptCanCreateVendorBillItem({
+              paymentMode: row.dieselPaymentMode,
+              paymentStatus: row.dieselPaymentStatus,
+              vendorId: row.dieselVendorId,
+            }, dieselMasterVendorIds)) {
+          continue;
+        }
         if (row.quantity && row.quantity > 0) {
           items.push({
             date: typeof row.date === "string" ? row.date : (row.date as Date).toISOString().split("T")[0],
@@ -20396,12 +20425,12 @@ export class DatabaseStorage implements IStorage {
     return result as DieselRequirementWithItems | undefined;
   }
 
-  async updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string; paymentMode?: string; paidBy?: string }): Promise<DieselRequirementWithItems | undefined> {
+  async updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string | null; vendorId?: number | null; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string; paymentMode?: string; paidBy?: string }): Promise<DieselRequirementWithItems | undefined> {
     const existing = await this.getDieselRequirement(id);
     if (!existing) return undefined;
 
     const updates: any = { ...purchaseData };
-    if (updates.supplier) updates.supplier = updates.supplier.toUpperCase();
+    if (updates.supplier !== undefined) updates.supplier = updates.supplier?.trim() || null;
     if (updates.billNo) updates.billNo = updates.billNo.toUpperCase();
     if (updates.purchaseRemarks) updates.purchaseRemarks = updates.purchaseRemarks.toUpperCase();
     if (!updates.purchasedAt) updates.purchasedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");

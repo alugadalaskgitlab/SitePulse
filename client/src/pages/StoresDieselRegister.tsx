@@ -10,6 +10,11 @@ import { locationLabel } from "@/components/LocationPicker";
 import { deriveDieselRegisterStatus, dieselRegisterStatusClass } from "@/lib/dieselRegister";
 import type { DieselRequirementWithItems, Attachment, PlantMaterial } from "@shared/schema";
 import type { DieselReceiptState } from "@shared/dieselReceiptStatus";
+import {
+  dieselSupplierReportGroup,
+  type DieselSupplierAlias,
+  type DieselSupplierVendor,
+} from "@shared/dieselSupplier";
 
 type ReceiptEntry = DieselReceiptState & {
   receipts: Array<{
@@ -60,7 +65,6 @@ function RequirementRow({
   const recordReceipt = () => {
     const params = new URLSearchParams({ autoOpen: "1", dieselReqId: String(requirement.id) });
     if (balance && balance > 0) params.set("qty", String(balance));
-    if (requirement.supplier) params.set("supplier", requirement.supplier);
     if (dieselMaterial) {
       params.set("materialId", String(dieselMaterial.id));
       params.set("uom", dieselMaterial.defaultUom || "Liters");
@@ -130,6 +134,16 @@ export default function StoresDieselRegister() {
   const canRecordReceipt = featureCan("plant_receipts", "add");
   const { data: requirements = [], isLoading } = useQuery<DieselRequirementWithItems[]>({ queryKey: ["/api/diesel-requirements"] });
   const { data: sites } = useQuery<{ id: number; name: string }[]>({ queryKey: ["/api/sites"] });
+  const { data: vendorMaster = [] } = useQuery<DieselSupplierVendor[]>({ queryKey: ["/api/vendor-master"] });
+  const { data: vendorAliases = [] } = useQuery<DieselSupplierAlias[]>({
+    queryKey: ["/api/vendor-aliases"],
+    queryFn: async () => {
+      const response = await fetch("/api/vendor-aliases", { credentials: "include" });
+      if (!response.ok) throw new Error("Vendor aliases could not be loaded");
+      return response.json();
+    },
+    staleTime: 30_000,
+  });
   const { data: materials = [] } = useQuery<PlantMaterial[]>({
     queryKey: ["/api/plant-module/materials"],
     enabled: canRecordReceipt,
@@ -155,9 +169,70 @@ export default function StoresDieselRegister() {
     },
     enabled: purchasedIds.length > 0,
   });
+  const supplierGroups = useMemo(() => {
+    const groups = new Map<string, {
+      kind: "master" | "fuel_station";
+      label: string;
+      purchases: number;
+      litres: number;
+      amount: number;
+    }>();
+    for (const purchase of requirements) {
+      if (purchase.status !== "purchased" || purchase.qtyPurchased == null) continue;
+      const identity = dieselSupplierReportGroup(purchase, vendorMaster, vendorAliases);
+      const current = groups.get(identity.key) || {
+        kind: identity.kind,
+        label: identity.label,
+        purchases: 0,
+        litres: 0,
+        amount: 0,
+      };
+      current.purchases += 1;
+      current.litres += Number(purchase.qtyPurchased) || 0;
+      current.amount += Number(purchase.amount) || 0;
+      groups.set(identity.key, current);
+    }
+    return Array.from(groups.values()).sort((a, b) =>
+      a.kind === b.kind ? a.label.localeCompare(b.label) : a.kind === "master" ? -1 : 1,
+    );
+  }, [requirements, vendorMaster, vendorAliases]);
+  const formatLitres = (value: number) => `${new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(value)} L`;
+  const formatRupees = (value: number) => `₹${new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
   return <HubShell title="Diesel Purchase Register" subtitle="Requirement, purchase and physical receipt progress" backHref="/stores/hub" backLabel="Stores & Inventory">
     <div className="p-6 max-w-5xl mx-auto space-y-5">
       <div className="flex items-center gap-3"><div className="p-3 rounded-lg bg-amber-100"><Fuel className="w-5 h-5 text-amber-700" /></div><div><h2 className="font-semibold text-slate-800">Diesel Purchase Register</h2><p className="text-sm text-slate-500">Read-only register. Receipt progress is calculated from linked material receipts.</p></div></div>
+       {!!supplierGroups.length && (
+         <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3" aria-label="Purchase totals by supplier" data-testid="diesel-purchase-supplier-groups">
+           <div>
+             <h3 className="font-semibold text-slate-800">Purchase totals by supplier</h3>
+             <p className="text-sm text-slate-500">Master-linked purchases appear under the vendor. Other names are grouped under Fuel stations.</p>
+           </div>
+           <div className="overflow-x-auto">
+             <table className="w-full text-sm">
+               <thead><tr className="border-b text-left text-slate-500">
+                 <th className="py-2 pr-3 font-medium">Group</th>
+                 <th className="py-2 pr-3 font-medium text-right">Purchases</th>
+                 <th className="py-2 pr-3 font-medium text-right">Quantity</th>
+                 <th className="py-2 font-medium text-right">Amount</th>
+               </tr></thead>
+               <tbody>{supplierGroups.map((group) => (
+                 <tr key={`${group.kind}:${group.label}`} className="border-b last:border-0">
+                   <td className="py-2 pr-3">
+                     {group.kind === "master" ? (
+                       <span>{group.label} <Badge variant="outline">Master</Badge></span>
+                     ) : (
+                       <span><span className="text-slate-500">Fuel stations</span><span className="block font-medium">{group.label}</span></span>
+                     )}
+                   </td>
+                   <td className="py-2 pr-3 text-right">{group.purchases}</td>
+                   <td className="py-2 pr-3 text-right">{formatLitres(group.litres)}</td>
+                   <td className="py-2 text-right">{formatRupees(group.amount)}</td>
+                 </tr>
+               ))}</tbody>
+             </table>
+           </div>
+         </section>
+       )}
        {isLoading ? <p className="text-sm text-slate-500">Loading requirements…</p> : requirements.length ? requirements.map(r => <RequirementRow key={r.id} requirement={r} receipt={receipts[r.id]} attachmentCount={attachmentCounts[r.id]} canRecordReceipt={canRecordReceipt} sites={sites} dieselMaterial={dieselMaterial} />) : <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">No diesel requirements found.</p>}
     </div>
   </HubShell>;

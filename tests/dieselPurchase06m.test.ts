@@ -96,6 +96,17 @@ describe("06M diesel purchase-update payment details", () => {
     expect(passed.paidBy).toBe("company");
   });
 
+  it("keeps a newly typed supplier name as entered and permits an unlinked name", async () => {
+    const res = await request(app)
+      .patch("/api/diesel-requirements/42/purchase-update")
+      .send({ supplier: "Shell Ur City", vendorId: null });
+    expect(res.status).toBe(200);
+    expect(storage.updateDieselPurchase.mock.calls.at(-1)[1]).toMatchObject({
+      supplier: "Shell Ur City",
+      vendorId: null,
+    });
+  });
+
   it("E: personal payer name is forwarded as paidBy", async () => {
     const res = await request(app)
       .patch("/api/diesel-requirements/42/purchase-update")
