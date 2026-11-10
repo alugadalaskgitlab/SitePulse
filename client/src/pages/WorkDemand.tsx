@@ -39,7 +39,7 @@ import {
 } from "@shared/compactedLoose";
 import { resolveEquipmentBoqHours } from "@shared/equipmentActivityAllocations";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
-import { MaterialsBuyAndWorkDone } from "@/components/MaterialsBuyAndWorkDone";
+import { MaterialsBuyAndWorkDone, type MaterialPlanRow } from "@/components/MaterialsBuyAndWorkDone";
 import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
 import { CompactedLooseReminder } from "@/components/CompactedLooseReminder";
 import type { BoqProject, PlanVsActualRow } from "@shared/schema";
@@ -2677,17 +2677,24 @@ function HorizonSelector({
 
 function ProcurementTable({
   data, projectId, projectLinkedSiteId,
+  planMaterialRows,
   horizonMode, horizonCustomDate,
   onHorizonChange, onMappingResolved,
 }: {
   data: ShortageData;
   projectId: number;
   projectLinkedSiteId?: number | null;
+  planMaterialRows: MaterialPlanRow[];
   horizonMode: HorizonMode;
   horizonCustomDate: string;
   onHorizonChange: (mode: HorizonMode, custom: string) => void;
   onMappingResolved: () => void;
 }) {
+  const planRowsByMaterialId = new Map(
+    planMaterialRows
+      .filter((row) => row.materialMasterId != null)
+      .map((row) => [Number(row.materialMasterId), row]),
+  );
   if (!data.hasBars) return (
     <EmptyState label="Add stretches to the Work Programme first to generate demand." />
   );
@@ -2796,7 +2803,7 @@ function ProcurementTable({
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>HLC Stock</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Other Parties</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Confirmed Incoming</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Actionable Shortfall</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>To buy (Plan vs Actual)</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Future Req.</th>
               <th className="px-3 py-2 font-semibold text-white text-left min-w-[150px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Status / Action</th>
             </tr>
@@ -2805,6 +2812,12 @@ function ProcurementTable({
             {data.rows.map(row => {
               const hasShortfall = row.actionableShortfall > 0;
               const isUnresolved = row.materialMappingUnresolved;
+              const planRow = row.materialId == null ? undefined : planRowsByMaterialId.get(row.materialId);
+              const pvaAmount = planRow?.excess ?? planRow?.stillToBuy;
+              const pvaCft = planRow?.excess != null ? planRow.excessCft : planRow?.stillToBuyCft;
+              const pvaToBuy = planRow
+                ? `${planRow.excess != null ? "Excess " : ""}${pvaAmount == null ? "—" : fmtQty(pvaAmount, 1)} ${planRow.uom}${planRow.showCft && pvaCft != null ? ` · ≈ ${fmtQty(pvaCft, 0)} CFT` : ""}`
+                : "—";
               return (
                 <tr
                   key={row.materialName}
@@ -2860,7 +2873,8 @@ function ProcurementTable({
                     {isUnresolved ? "—" : row.confirmedIncomingPurchase > 0 ? fmtQty(row.confirmedIncomingPurchase, 1) : "—"}
                   </td>
                   <td className={`px-2 py-2 text-right font-mono font-semibold ${hasShortfall ? "text-red-700" : "text-emerald-600"}`}>
-                    {isUnresolved ? "—" : hasShortfall ? fmtQty(row.actionableShortfall, 1) : "✓"}
+                    {pvaToBuy}
+                    {!!planRow?.soilValuesMissingCount && <span className="block text-[10px] font-normal text-amber-700">{planRow.soilValuesMissingCount} item{planRow.soilValuesMissingCount === 1 ? "" : "s"} need soil values</span>}
                   </td>
                   <td className={`px-2 py-2 text-right font-mono text-[12px] ${row.futureRequirement > 0 ? "text-amber-600" : "text-slate-300"}`}>
                     {row.futureRequirement > 0 ? fmtQty(row.futureRequirement, 1) : "—"}
@@ -2986,6 +3000,28 @@ export default function WorkDemand() {
     },
     enabled: !isNaN(projectId) && activeTab === "plan-vs-actual",
   });
+
+  const reportToday = (() => {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  })();
+  const reportFrom = String(project?.startDate ?? reportToday).slice(0, 10);
+  const {
+    data: procurementPlanReport,
+    isError: procurementPlanError,
+    error: procurementPlanErrorDetail,
+  } = useQuery<{ rows: MaterialPlanRow[] }>({
+    queryKey: ["/api/boq/projects", projectId, "material-buy-use", reportFrom, reportToday, "procurement"],
+    queryFn: async () => {
+      const params = new URLSearchParams({ from: reportFrom, to: reportToday });
+      const res = await fetch(`/api/boq/projects/${projectId}/material-buy-use?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Could not load Plan vs Actual material balances.");
+      return res.json();
+    },
+    enabled: !isNaN(projectId) && activeTab === "procurement",
+    retry: 1,
+  });
+  const procurementPlanRows = procurementPlanReport?.rows ?? [];
 
   const demand = useMemo((): BomDemand | null => {
     if (!bomData || !project) return null;
@@ -3329,6 +3365,7 @@ export default function WorkDemand() {
             <TabsContent value="plan-vs-actual" className="mt-3">
               <MaterialsBuyAndWorkDone
                 projectId={projectId}
+                projectStartDate={project.startDate ?? null}
                 workRows={planVsActualRows}
                 workLoading={planVsActualLoading}
                 canEditDemandSource={canEditDemandSource}
@@ -3363,10 +3400,23 @@ export default function WorkDemand() {
                 </div>
               )}
               {!shortageLoading && !shortageIsError && shortageData && (
+                <>
+                {procurementPlanError && (
+                  <div role="alert" className="mb-3 rounded border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
+                    Could not load Plan vs Actual balances for the To buy column. No substitute calculation is shown.
+                    {procurementPlanErrorDetail instanceof Error ? ` ${procurementPlanErrorDetail.message}` : ""}
+                  </div>
+                )}
+                {procurementPlanReport && (
+                  <p className="mb-2 text-[11px] text-slate-500">
+                    To buy matches Plan vs Actual. A dash means no unambiguous material-master row is available.
+                  </p>
+                )}
                 <ProcurementTable
                   data={shortageData}
                   projectId={projectId}
                   projectLinkedSiteId={project?.siteId}
+                  planMaterialRows={procurementPlanRows}
                   horizonMode={horizonMode}
                   horizonCustomDate={horizonCustomDate}
                   onHorizonChange={(mode, custom) => { setHorizonMode(mode); setHorizonCustomDate(custom); }}
@@ -3377,6 +3427,7 @@ export default function WorkDemand() {
                     refetchShortage();
                   }}
                 />
+                </>
               )}
             </TabsContent>
           </Tabs>

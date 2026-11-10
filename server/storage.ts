@@ -481,7 +481,8 @@ import { computeEquipmentUsage } from "@shared/equipmentUsage";
 import { isMeaningfulEquipmentRow, meaningfulEquipmentRows } from "@shared/equipmentUsage";
 import { shouldCreateDprEquipmentDieselLedger } from "@shared/dprPlantLink";
 import { dprProgressReviewFactsChanged, resolveDprProgressSources } from "@shared/dprProgressIdentity";
-import { normaliseUnit, computeRequirementStatus, isContractCutToFillDescription } from "@shared/planningEngine";
+import { normaliseUnit, computeRequirementStatus, isContractCutToFillDescription, deriveMaterialsFromLayerConfig } from "@shared/planningEngine";
+import { materialPlanQuantity, siteMaterialLyingBalance, soilCompactedToLooseCum, useSourceForLayer } from "@shared/bomPlanActual";
 import { convertSolidQty } from "@shared/uomConvert";
 import { emptyDensitySkips, needsStockDensity, recordDensitySkip, type DensitySkips } from "@shared/siteMaterialStockWarnings";
 import { canonMaterialName } from "@shared/materialMatch";
@@ -13420,7 +13421,7 @@ export class DatabaseStorage implements IStorage {
   async getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[]; dateFrom?: string; dateTo?: string }): Promise<{
     site: string; material: string; matched: boolean; uom: string;
     ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number;
-    consumed: number; toSupply: number; lying: number;
+    consumed: number; toSupply: number; lying: number; overConsumed: boolean;
     densitySkips: DensitySkips;
     lastDeliveryDate: string | null;
   }[]> {
@@ -13429,25 +13430,109 @@ export class DatabaseStorage implements IStorage {
     const dateTo    = filters?.dateTo;
     if (permitted !== undefined && permitted.length === 0) return [];
 
-    // Material master → canonical map (bulk density + display name)
+    // Material master → canonical map. New compacted/loose values are the
+    // primary conversion source; legacy UOM profiles are used only when those
+    // material values are absent.
     const materials = await db.select().from(plantMaterials);
-    const matByCanon = new Map<string, { name: string; bulkDensity: number | null }>();
+    const matByCanon = new Map<string, Array<any>>();
     for (const m of materials) {
-      matByCanon.set(canonMaterialName(m.name), {
-        name: m.name,
+      const master = {
+        ...m,
         bulkDensity: effectiveMaterialBulkDensity(m),
-      });
+      };
+      const labels = [m.name];
+      try {
+        const aliases = typeof m.aliases === "string" ? JSON.parse(m.aliases) : m.aliases;
+        if (Array.isArray(aliases)) labels.push(...aliases.map(String));
+      } catch { /* invalid aliases are ignored */ }
+      for (const label of labels) {
+        const key = canonMaterialName(label);
+        const matches = matByCanon.get(key) ?? [];
+        if (!matches.some((candidate) => candidate.id === master.id)) matches.push(master);
+        matByCanon.set(key, matches);
+      }
     }
-    const resolve = (raw?: string | null) => (raw ? matByCanon.get(canonMaterialName(raw)) ?? null : null);
-    const toMTsafe = (qty: number, uom: string | null | undefined, density: number | null) =>
-      convertSolidQty(qty, uom, "MT", density);
+    const resolve = (raw?: string | null) => {
+      if (!raw) return null;
+      const key = canonMaterialName(raw);
+      const direct = matByCanon.get(key) ?? [];
+      if (direct.length === 1) return direct[0];
+      if (direct.length > 1) return null;
+      if (["SOILEARTH", "EARTHBORROWSOIL", "SHOULDEREARTHSOIL", "SELECTEDSOILSUBGRADEMATERIAL"].includes(key)) {
+        const soilMasters = materials.filter((material) => /\bsoil\b/i.test(material.name));
+        return soilMasters.length === 1 ? {
+          ...soilMasters[0],
+          bulkDensity: effectiveMaterialBulkDensity(soilMasters[0]),
+        } : null;
+      }
+      return null;
+    };
+    const stockUom = (master: any | null, rawName: string) => {
+      const name = String(master?.name ?? rawName);
+      if (/\bsoil\b/i.test(name)) return "cum loose";
+      if (/\b(diesel|hsd)\b/i.test(name)) return "L";
+      return "MT";
+    };
+    const profileFor = (master: any | null) => master ? ({
+      rolledDensity: master.rolledDensity == null ? null : Number(master.rolledDensity),
+      rollingPct: master.rollingPct == null ? null : Number(master.rollingPct),
+      looseFactor: master.looseFactor == null ? null : Number(master.looseFactor),
+      wastagePct: master.wastagePct == null ? null : Number(master.wastagePct),
+      bulkDensity: master.bulkDensity == null ? null : Number(master.bulkDensity),
+    }) : null;
+    const legacyProfiles = await db.select().from(materialUomConversions).where(and(
+      eq(materialUomConversions.conversionType, "loose_to_compacted"),
+      eq(materialUomConversions.isActive, 1),
+    ));
+    const legacyFactors = (materialId: number | null | undefined) => legacyProfiles
+      .filter((profile) => Number(profile.materialId) === Number(materialId))
+      .filter((profile) =>
+        canonMaterialName(profile.fromUom) === "CUM" &&
+        canonMaterialName(profile.toUom) === "CUM" &&
+        Number(profile.conversionFactor) > 0,
+      )
+      .map((profile) => Number(profile.conversionFactor));
+    const convertToStock = (
+      qty: number,
+      uom: string | null | undefined,
+      master: any | null,
+      isCompacted: boolean,
+    ) => {
+      const unit = stockUom(master, String(master?.name ?? ""));
+      const profile = profileFor(master);
+      if (unit === "L") {
+        const canon = canonMaterialName(String(uom ?? ""));
+        if (["L", "LTR", "LITER", "LITERS", "LITRE", "LITRES"].includes(canon)) return qty;
+        if (["KL", "KILOLITER", "KILOLITERS", "KILOLITRE", "KILOLITRES"].includes(canon)) return qty * 1000;
+        return null;
+      }
+      if (unit === "cum loose") {
+        const canon = canonMaterialName(String(uom ?? ""));
+        if (isCompacted && (canon === "CUM" || canon === "M3" || canon === "CBM")) {
+          return soilCompactedToLooseCum(qty, profile, legacyFactors(master?.id));
+        }
+        return materialPlanQuantity(qty, String(uom ?? ""), "CUM", profile, "loose");
+      }
+      const converted = materialPlanQuantity(
+        qty,
+        String(uom ?? ""),
+        "MT",
+        profile,
+        isCompacted ? "compacted" : "loose",
+      );
+      if (converted != null) return converted;
+      return convertSolidQty(qty, uom, "MT", master?.bulkDensity ?? null);
+    };
 
-    type Row = { site: string; material: string; matched: boolean; ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number; consumed: number; lastDeliveryDate: string | null; densitySkips: DensitySkips };
+    type Row = { site: string; material: string; matched: boolean; uom: string; ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number; consumed: number; overConsumed: boolean; lastDeliveryDate: string | null; densitySkips: DensitySkips };
     const map = new Map<string, Row>();
     const bucket = (site: string, materialName: string, matched: boolean): Row => {
-      const k = `${site.toUpperCase().trim()}||${canonMaterialName(materialName)}`;
+      const master = resolve(materialName);
+      const uom = stockUom(master, materialName);
+      const displayName = master?.name ?? materialName;
+      const k = `${site.toUpperCase().trim()}||${canonMaterialName(displayName)}||${uom}`;
       let r = map.get(k);
-      if (!r) { r = { site, material: materialName, matched, ordered: 0, delivered: 0, deliveredAtStretch: 0, deliveredAtYard: 0, consumed: 0, lastDeliveryDate: null, densitySkips: emptyDensitySkips() }; map.set(k, r); }
+      if (!r) { r = { site, material: displayName, matched: !!master, uom, ordered: 0, delivered: 0, deliveredAtStretch: 0, deliveredAtYard: 0, consumed: 0, overConsumed: false, lastDeliveryDate: null, densitySkips: emptyDensitySkips() }; map.set(k, r); }
       return r;
     };
 
@@ -13461,21 +13546,21 @@ export class DatabaseStorage implements IStorage {
     for (const t of trips) {
       if (!t.material || !t.site) continue;
       const m = resolve(t.material);
-      const mt = toMTsafe(t.quantity ?? 0, t.uom, m?.bulkDensity ?? null);
-      if (mt == null) {
+      const converted = convertToStock(t.quantity ?? 0, t.uom, m, false);
+      if (converted == null) {
         if (needsStockDensity(t.uom, m?.bulkDensity ?? null)) {
           recordDensitySkip(bucket(t.site, m?.name ?? t.material, !!m).densitySkips, "delivered", t.quantity ?? 0, t.uom);
         }
         continue;
       }
       const row = bucket(t.site, m?.name ?? t.material, !!m);
-      row.delivered += mt;
+      row.delivered += converted;
       // 06S §7: split delivered by ORIGINAL unloading destination — purely
       // informational. rows without a value count as stretch (pre-06S default).
       // NO consumption allocation between the buckets: there is no movement
       // record, so any "stretch first" ordering would be a guess.
-      if ((t as any).unloadedAt === "yard") row.deliveredAtYard += mt;
-      else row.deliveredAtStretch += mt;
+      if ((t as any).unloadedAt === "yard") row.deliveredAtYard += converted;
+      else row.deliveredAtStretch += converted;
       // Track the most recent delivery date for this site+material bucket
       if (t.date && (!row.lastDeliveryDate || t.date > row.lastDeliveryDate)) {
         row.lastDeliveryDate = t.date;
@@ -13489,7 +13574,9 @@ export class DatabaseStorage implements IStorage {
     if (dateTo)    progConds.push(lte(dprs.date, dateTo));
     const prog = await db.select({
       site: dprs.site, boqItemId: progressEntries.boqItemId, quantity: progressEntries.quantity,
+      layerConfig: boqItems.layerConfig, itemUnit: boqItems.unit,
     }).from(progressEntries).innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
+      .leftJoin(boqItems, eq(boqItems.id, progressEntries.boqItemId))
       .where(progConds.length ? and(...progConds) : undefined);
     const boqIds = Array.from(new Set(prog.map(p => p.boqItemId).filter((x): x is number => x != null)));
     const recipes = boqIds.length
@@ -13499,19 +13586,32 @@ export class DatabaseStorage implements IStorage {
     for (const r of recipes) { const a = recipeByItem.get(r.boqItemId) ?? []; a.push(r); recipeByItem.set(r.boqItemId, a); }
     for (const p of prog) {
       if (p.boqItemId == null || !p.quantity || !p.site) continue;
-      for (const rec of recipeByItem.get(p.boqItemId) ?? []) {
+      const layer = p.layerConfig as any;
+      const layerType = String(layer?.layerType ?? "");
+      const granularSource = String(layer?.granularSource ?? "");
+      if (useSourceForLayer(layerType, granularSource) !== "DPR × recipe") continue;
+      const derived = (layerType === "earthwork" ||
+        (layerType === "granular" && granularSource !== "plant"))
+        ? deriveMaterialsFromLayerConfig(layer, String(p.itemUnit ?? "")) as any[]
+        : [];
+      const savedRecipes = recipeByItem.get(p.boqItemId) ?? [];
+      const itemRecipes = savedRecipes.length ? savedRecipes : derived;
+      for (const rec of itemRecipes) {
         if (rec.isClientSupplied) continue;
-        const reqInRecipeUom = p.quantity * (rec.qtyPerBoqUnit ?? 0) * (1 + (rec.wastagePct ?? 0) / 100);
+        const reqInRecipeUom = Number(p.quantity) * (Number(rec.qtyPerBoqUnit) || 0) *
+          (1 + (Number(rec.wastagePct) || 0) / 100);
         if (reqInRecipeUom <= 0) continue;
         const m = resolve(rec.materialName);
-        const mt = toMTsafe(reqInRecipeUom, rec.uom, m?.bulkDensity ?? null);
-        if (mt == null) {
+        const isSoilLayer = layerType === "earthwork" || /\bsoil\b|\bearth\b/i.test(String(rec.materialName));
+        const directGranular = layerType === "granular" && granularSource !== "plant";
+        const converted = convertToStock(reqInRecipeUom, rec.uom, m, isSoilLayer || directGranular);
+        if (converted == null) {
           if (needsStockDensity(rec.uom, m?.bulkDensity ?? null)) {
             recordDensitySkip(bucket(p.site, m?.name ?? rec.materialName, !!m).densitySkips, "consumed", reqInRecipeUom, rec.uom);
           }
           continue;
         }
-        bucket(p.site, m?.name ?? rec.materialName, !!m).consumed += mt;
+        bucket(p.site, m?.name ?? rec.materialName, !!m).consumed += converted;
       }
     }
 
@@ -13534,29 +13634,34 @@ export class DatabaseStorage implements IStorage {
       // Use the resolved master name when matched; otherwise fall back to the raw PI
       // description so the row is always visible (with matched=false warning badge).
       const displayName = m?.name ?? it.description;
-      const density = m?.bulkDensity ?? null;
-      const mt = toMTsafe(it.approvedQty ?? it.qty ?? 0, it.uom, density);
-      if (mt == null) {
+      const amount = Number(it.approvedQty ?? it.qty ?? 0);
+      const converted = convertToStock(amount, it.uom, m, false);
+      if (converted == null) {
+        const density = m?.bulkDensity ?? null;
         if (needsStockDensity(it.uom, density)) {
           recordDensitySkip(bucket(siteName, displayName, !!m).densitySkips, "ordered", it.approvedQty ?? it.qty ?? 0, it.uom);
         }
         continue;
       }
-      bucket(siteName, displayName, !!m).ordered += mt;
+      bucket(siteName, displayName, !!m).ordered += converted;
     }
 
     const round = (n: number) => Math.round(n * 1000) / 1000;
     return Array.from(map.values())
-      .map(r => ({
-        site: r.site, material: r.material, matched: r.matched, uom: "MT",
-        ordered: round(r.ordered), delivered: round(r.delivered),
-        deliveredAtStretch: round(r.deliveredAtStretch), deliveredAtYard: round(r.deliveredAtYard),
-        consumed: round(r.consumed),
-        toSupply: round(Math.max(r.ordered - r.delivered, 0)),
-        lying: round(r.delivered - r.consumed),
-        lastDeliveryDate: r.lastDeliveryDate,
-        densitySkips: r.densitySkips,
-      }))
+      .map(r => {
+        const balance = siteMaterialLyingBalance(r.delivered, r.consumed);
+        return {
+          site: r.site, material: r.material, matched: r.matched, uom: r.uom,
+          ordered: round(r.ordered), delivered: round(r.delivered),
+          deliveredAtStretch: round(r.deliveredAtStretch), deliveredAtYard: round(r.deliveredAtYard),
+          consumed: round(r.consumed),
+          toSupply: round(Math.max(r.ordered - r.delivered, 0)),
+          lying: round(balance.lying),
+          overConsumed: balance.overConsumed,
+          lastDeliveryDate: r.lastDeliveryDate,
+          densitySkips: r.densitySkips,
+        };
+      })
       .sort((a, b) => a.site.localeCompare(b.site) || a.material.localeCompare(b.material));
   }
 

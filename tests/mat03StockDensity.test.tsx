@@ -9,7 +9,7 @@ vi.mock("../server/db", () => ({
     select: () => {
       const result = state.results.shift() ?? [];
       const builder: any = {
-        from: () => builder, where: () => builder, innerJoin: () => builder,
+        from: () => builder, where: () => builder, innerJoin: () => builder, leftJoin: () => builder,
         then: (resolve: any, reject: any) => Promise.resolve(result).then(resolve, reject),
       };
       return builder;

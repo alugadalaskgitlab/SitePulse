@@ -88,7 +88,8 @@ import {
   materialTonnesToCft,
   normalisePlanMaterialName,
   plantMixComponentQuantities,
-  remainingMaterialToBuy,
+  reportedMaterialNeed,
+  remainingBySupplySource,
   siteReceiptAttribution,
   soilCompactedToLooseCum,
   explicitlyLinkedStoreIssue,
@@ -19476,6 +19477,15 @@ export async function registerRoutes(
         }
         return null;
       };
+      const canonicalizeMaterialRows = (rows: any[]) => rows.map((row) => {
+        const savedMasterId = Number(row.materialMasterId);
+        const master = Number.isInteger(savedMasterId) && materialById.has(savedMasterId)
+          ? materialById.get(savedMasterId)
+          : findMaterialMaster(String(row.materialName ?? ""));
+        return master
+          ? { ...row, materialName: master.name, materialMasterId: Number(master.id), materialMasterName: master.name }
+          : row;
+      });
 
       // Collect unique mix template IDs referenced by layerConfigs
       const mixTemplateIds = new Set<number>();
@@ -19659,7 +19669,7 @@ export async function registerRoutes(
 
         // P1: manual materials trusted only when not a major material-driving layer item
         if (manualMaterials.length > 0 && !materialDriving) {
-          return { ...item, materials: manualMaterials, materialSetupWarning: null, isProgrammed: barItemIds.has(item.id) };
+          return { ...item, materials: canonicalizeMaterialRows(manualMaterials), materialSetupWarning: null, isProgrammed: barItemIds.has(item.id) };
         }
 
         // P2: layerConfig derivation
@@ -20065,13 +20075,13 @@ export async function registerRoutes(
               materialMasterName: resolvedLayerMaterialMaster?.name ?? null,
               legacyLooseToCompactedProfiles: legacyReceiptProfiles,
               equipment: correctedEquipment,
-              materials: derivedRows.map(dm => ({
+              materials: canonicalizeMaterialRows(derivedRows.map(dm => ({
                 id: 0,
                 boqItemId: item.id,
                 ...dm,
                 sortOrder: 0,
                 createdAt: null,
-              })),
+              }))),
               derivedKeyMaterials: derivedRows,
               materialSetupWarning: sourceNeedsLink ? "Not linked — Link" : null,
               isProgrammed: barItemIds.has(item.id),
@@ -20115,7 +20125,7 @@ export async function registerRoutes(
           if (isRawSdbAggregateName(m.materialName) && !simpleDirect) return false;
           return true;
         });
-        return { ...item, materials: cleanedRows, materialSetupWarning: null, isProgrammed: barItemIds.has(item.id) };
+        return { ...item, materials: canonicalizeMaterialRows(cleanedRows), materialSetupWarning: null, isProgrammed: barItemIds.has(item.id) };
       });
 
       return { items, bars, project, expandedItems, allBoqItems, excludedCount: allBoqItems.length - items.length };
@@ -20190,10 +20200,11 @@ export async function registerRoutes(
         : (await storage.getSites()).find((candidate) => candidate.id === project.siteId) ?? null;
       if (!site) return res.status(400).json({ message: "This BOQ project has no linked site." });
 
-      const [arrangements, allocations, materialMasters, siteTrips, materialReceiptRows, dispatches, dprRows, storeIssueRows, templates, templateComponents] = await Promise.all([
+      const [arrangements, allocations, materialMasters, materialConversionProfiles, siteTrips, materialReceiptRows, dispatches, dprRows, storeIssueRows, templates, templateComponents, hlcPartyId] = await Promise.all([
         storage.getEarthworkArrangements(projectId),
         storage.getArrangementProgrammeAllocationsForProject(projectId),
         storage.getPlantMaterials(),
+        storage.getAllMaterialUomConversions(),
         db.select({
           date: siteMaterialTrips.date,
           site: siteMaterialTrips.site,
@@ -20294,6 +20305,7 @@ export async function registerRoutes(
           materialId: mixTemplateComponents.materialId,
           percent: mixTemplateComponents.percent,
         }).from(mixTemplateComponents),
+        storage.getHlcPartyId(),
       ]);
 
       const allocationByArrangement = new Map<number, Array<{ programmeBarId: number; boqItemId: number; qty: number }>>();
@@ -20345,8 +20357,70 @@ export async function registerRoutes(
         wastagePct: material.wastagePct == null ? null : Number(material.wastagePct),
         bulkDensity: material.bulkDensity == null ? null : Number(material.bulkDensity),
       }) : null;
+      const conversionsByMaterialId = new Map<number, any[]>();
+      for (const conversion of materialConversionProfiles) {
+        const list = conversionsByMaterialId.get(Number(conversion.materialId)) ?? [];
+        list.push(conversion);
+        conversionsByMaterialId.set(Number(conversion.materialId), list);
+      }
       const normaliseUomForMatch = (uom: string) =>
         String(uom ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const toMaterialUnit = (
+        quantity: number,
+        fromUom: string,
+        toUom: string,
+        master: any | null,
+        basis: "compacted" | "loose" = "loose",
+      ): number | null => {
+        if (normaliseUomForMatch(toUom) === "CUMLOOSE") {
+          const source = normaliseUomForMatch(fromUom);
+          if (["CUM", "M3", "CBM"].includes(source)) return quantity;
+          if (["CFT", "CUFT"].includes(source)) return quantity / 35.3147;
+        }
+        const profile = profileForMaster(master);
+        const hasCurrentProfile = basis === "compacted"
+          ? Number(profile?.rolledDensity) > 0 && Number(profile?.rollingPct) > 0
+          : Number(profile?.rolledDensity) > 0 && Number(profile?.rollingPct) > 0 && Number(profile?.looseFactor) >= 1;
+        if (hasCurrentProfile) {
+          const current = materialPlanQuantity(quantity, fromUom, toUom, profile, basis);
+          if (current != null) return current;
+        }
+        const from = normaliseUomForMatch(fromUom);
+        const to = normaliseUomForMatch(toUom);
+        const matching = (conversionsByMaterialId.get(Number(master?.id)) ?? []).filter((conversion: any) =>
+          Number(conversion.isActive) === 1 &&
+          normaliseUomForMatch(String(conversion.fromUom)) === from &&
+          normaliseUomForMatch(String(conversion.toUom)) === to &&
+          conversion.conversionType !== "loose_to_compacted",
+        );
+        if (matching.length === 1) return quantity * Number(matching[0].conversionFactor);
+        return materialPlanQuantity(quantity, fromUom, toUom, profile, basis);
+      };
+      const tonnesToCft = (quantity: number | null, master: any | null): number | null => {
+        if (quantity == null || !Number.isFinite(quantity) || quantity < 0) return null;
+        const profile = profileForMaster(master);
+        if (
+          Number(profile?.rolledDensity) > 0 &&
+          Number(profile?.rollingPct) > 0 &&
+          Number(profile?.looseFactor) >= 1
+        ) return materialTonnesToCft(quantity, profile);
+        const conversions = (conversionsByMaterialId.get(Number(master?.id)) ?? []).filter((row: any) =>
+          Number(row.isActive) === 1 &&
+          row.conversionType !== "loose_to_compacted",
+        );
+        const direct = conversions.filter((row: any) =>
+          normaliseUomForMatch(String(row.fromUom)) === "MT" &&
+          normaliseUomForMatch(String(row.toUom)) === "CFT",
+        );
+        if (direct.length === 1) return quantity * Number(direct[0].conversionFactor);
+        const inverse = conversions.filter((row: any) =>
+          normaliseUomForMatch(String(row.fromUom)) === "CFT" &&
+          normaliseUomForMatch(String(row.toUom)) === "MT" &&
+          Number(row.conversionFactor) > 0,
+        );
+        if (inverse.length === 1) return quantity / Number(inverse[0].conversionFactor);
+        return materialTonnesToCft(quantity, profile);
+      };
       const legacyFactorsFor = (item: any) =>
         (item.legacyLooseToCompactedProfiles ?? [])
           .filter((profile: any) =>
@@ -20360,15 +20434,21 @@ export async function registerRoutes(
         key: string;
         materialName: string;
         uom: string;
-        sourceType: "plant_mix" | "site";
+        sourceType: "plant_mix" | "site" | "mixed";
+        hasPlantMix: boolean;
+        hasSiteSupply: boolean;
         master: any | null;
         need: number;
+        needBySource: Record<"plant_mix" | "site", number>;
         needComplete: boolean;
+        needCompleteBySource: Record<"plant_mix" | "site", boolean>;
+        soilValuesMissingCount: number;
         monthlyNeed: Record<number, number>;
         monthlyComplete: Record<number, boolean>;
         bought: number;
         boughtComplete: boolean;
         used: number;
+        usedBySource: Record<"plant_mix" | "site", number>;
         usedComplete: boolean;
         atPlantNow: number;
         stockComplete: boolean;
@@ -20391,8 +20471,8 @@ export async function registerRoutes(
       const planRows = new Map<string, PlanRow>();
       const itemById = new Map<number, any>(bom.expandedItems.map((item: any) => [Number(item.id), item]));
       const itemMaterialsByGroup = new Map<string, Set<number>>();
-      const rowKeyFor = (name: string, sourceType: "plant_mix" | "site", uom: string) =>
-        `${normalisePlanMaterialName(name)}|${sourceType}|${uom}`;
+      const rowKeyFor = (name: string, masterId: number | null, uom: string) =>
+        `${masterId != null ? `master:${masterId}` : normalisePlanMaterialName(name)}|${uom}`;
 
       const toPlanQuantity = (
         item: any,
@@ -20415,7 +20495,7 @@ export async function registerRoutes(
         }
         const isDirectGranular = layerType === "granular" && item?.layerConfig?.granularSource !== "plant";
         const basis = isDirectGranular ? "compacted" : "loose";
-        return materialPlanQuantity(quantity, sourceRow?.uom ?? item?.unit ?? targetUom, targetUom, profile, basis);
+        return toMaterialUnit(quantity, sourceRow?.uom ?? item?.unit ?? targetUom, targetUom, master, basis);
       };
 
       for (const item of bom.expandedItems as any[]) {
@@ -20433,20 +20513,26 @@ export async function registerRoutes(
           const master = forcedMaster ?? uniqueMasterFor(demandRow.materialName);
           const materialName = String(master?.name ?? demandRow.materialName).trim();
           const sourceType = plantMix ? "plant_mix" : "site";
-          const key = rowKeyFor(materialName, sourceType, targetUom);
+          const key = rowKeyFor(materialName, master ? Number(master.id) : null, targetUom);
           const row = planRows.get(key) ?? {
             key,
             materialName,
             uom: targetUom === "CUM_LOOSE" ? "cum loose" : targetUom,
             sourceType,
+            hasPlantMix: false,
+            hasSiteSupply: false,
             master,
             need: 0,
+            needBySource: { plant_mix: 0, site: 0 },
             needComplete: true,
+            needCompleteBySource: { plant_mix: true, site: true },
+            soilValuesMissingCount: 0,
             monthlyNeed: {},
             monthlyComplete: {},
             bought: 0,
             boughtComplete: true,
             used: 0,
+            usedBySource: { plant_mix: 0, site: 0 },
             usedComplete: true,
             atPlantNow: 0,
             stockComplete: true,
@@ -20457,18 +20543,33 @@ export async function registerRoutes(
             attributions: new Set<string>(),
             needsOwnValues: false,
           } satisfies PlanRow;
+          if (plantMix) {
+            row.hasPlantMix = true;
+            row.sourceType = row.hasSiteSupply ? "mixed" : "plant_mix";
+          } else {
+            row.hasSiteSupply = true;
+            row.sourceType = row.hasPlantMix ? "mixed" : "site";
+          }
           row.master ??= master;
           row.matchNames.add(normalisePlanMaterialName(demandRow.materialName));
           row.matchNames.add(normalisePlanMaterialName(materialName));
           for (const alias of aliasesOf(master)) row.matchNames.add(normalisePlanMaterialName(alias));
 
           const need = toPlanQuantity(item, demandRow, Number(demandRow.totalQty), master, targetUom);
-          if (need == null) row.needComplete = false;
-          else row.need += need;
+          if (need == null) {
+            row.needComplete = false;
+            row.needCompleteBySource[sourceType] = false;
+            if (earthwork) row.soilValuesMissingCount += 1;
+          } else {
+            row.need += need;
+            row.needBySource[sourceType] += need;
+          }
           for (const [month, rawQuantity] of Object.entries(demandRow.monthlyQty ?? {})) {
             const monthIndex = Number(month);
             const monthly = toPlanQuantity(item, demandRow, Number(rawQuantity), master, targetUom);
-            if (monthly == null) row.monthlyComplete[monthIndex] = false;
+            if (monthly == null) {
+              if (!earthwork) row.monthlyComplete[monthIndex] = false;
+            }
             else {
               row.monthlyNeed[monthIndex] = (row.monthlyNeed[monthIndex] ?? 0) + monthly;
               if (row.monthlyComplete[monthIndex] !== false) row.monthlyComplete[monthIndex] = true;
@@ -20520,7 +20621,9 @@ export async function registerRoutes(
       }
 
       const rowsBySourceName = (name: string, sourceType: "plant_mix" | "site") => {
-        const candidates = Array.from(planRows.values()).filter((row) => row.sourceType === sourceType);
+        const candidates = Array.from(planRows.values()).filter((row) =>
+          sourceType === "plant_mix" ? row.hasPlantMix : row.hasSiteSupply,
+        );
         const normalized = normalisePlanMaterialName(name);
         let matched = candidates.filter((row) => row.matchNames.has(normalized));
         if (!matched.length) {
@@ -20540,10 +20643,9 @@ export async function registerRoutes(
         if (!attribution) continue;
         const matches = rowsBySourceName(trip.material, "site");
         for (const row of matches) {
-          const profile = profileForMaster(row.master);
           const converted = row.uom === "cum loose"
-            ? materialPlanQuantity(Number(trip.quantity), trip.uom, "CUM", profile, "loose")
-            : materialPlanQuantity(Number(trip.quantity), trip.uom, row.uom, profile, "loose");
+            ? toMaterialUnit(Number(trip.quantity), trip.uom, "CUM", row.master, "loose")
+            : toMaterialUnit(Number(trip.quantity), trip.uom, row.uom, row.master, "loose");
           if (converted == null) row.boughtComplete = false;
           else row.bought += converted;
           row.attributions.add(attribution === "by site" ? "Bought by site" : "Bought by project");
@@ -20554,11 +20656,11 @@ export async function registerRoutes(
         if (!master) continue;
         const attribution = receipt.boqProjectId === projectId ? "Bought by project" : "Bought by site";
         for (const row of rowsBySourceName(String(master.name), "site")) {
-          const converted = materialPlanQuantity(
+          const converted = toMaterialUnit(
             Number(receipt.quantity),
             String(receipt.uom),
             row.uom,
-            profileForMaster(row.master),
+            row.master,
             "loose",
           );
           if (converted == null) row.boughtComplete = false;
@@ -20593,10 +20695,13 @@ export async function registerRoutes(
         );
         for (const component of split) {
           for (const row of rowsBySourceName(component.materialName, "plant_mix")) {
-            const converted = materialPlanQuantity(component.quantityMt, "MT", row.uom, profileForMaster(row.master), "loose");
+            const converted = toMaterialUnit(component.quantityMt, "MT", row.uom, row.master, "loose");
             if (converted == null) row.usedComplete = false;
-            else row.used += converted;
-            row.attributions.add("Used by site");
+            else {
+              row.used += converted;
+              row.usedBySource.plant_mix += converted;
+            }
+            row.attributions.add("Plant dispatch — by site");
           }
         }
       }
@@ -20623,7 +20728,10 @@ export async function registerRoutes(
             const sourceRow = { uom: material.uom, isEarthworkBulkRequirement: item.layerConfig?.layerType === "earthwork" };
             const converted = toPlanQuantity(item, sourceRow, rawUse, row.master, row.uom === "cum loose" ? "CUM" : row.uom);
             if (converted == null) row.usedComplete = false;
-            else row.used += converted;
+            else {
+              row.used += converted;
+              row.usedBySource.site += converted;
+            }
           }
         }
       }
@@ -20645,14 +20753,16 @@ export async function registerRoutes(
           );
           if (converted == null) row.usedComplete = false;
           else row.used += converted;
-          row.attributions.add("Used by linked project/item");
+          row.attributions.add("Used by site (linked project/item)");
         }
       }
 
       // Plant-common balances (party_id IS NULL) are the shared HLC stock bucket
       // used by Procurement Intelligence; never include another party's stock.
       const allStockBalances = await storage.getStockBalances();
-      const hlcBalances = allStockBalances.filter((balance: any) => balance.partyId == null);
+      const hlcBalances = allStockBalances.filter((balance: any) =>
+        balance.partyId == null || (hlcPartyId != null && Number(balance.partyId) === Number(hlcPartyId)),
+      );
       const stockByMaterial = new Map<number, typeof hlcBalances>();
       for (const balance of hlcBalances) {
         const id = Number(balance.materialId);
@@ -20661,7 +20771,19 @@ export async function registerRoutes(
         stockByMaterial.set(id, list);
       }
       for (const row of Array.from(planRows.values())) {
-        if (row.sourceType !== "plant_mix") continue;
+        if (/emulsion/i.test(row.materialName) && row.uom === "MT") {
+          const hasBarrelProfile = (conversionsByMaterialId.get(Number(row.master?.id)) ?? []).some((profile: any) =>
+            Number(profile.isActive) === 1 &&
+            profile.conversionType !== "loose_to_compacted" &&
+            /BARREL/.test(normaliseUomForMatch(String(profile.fromUom)) + normaliseUomForMatch(String(profile.toUom))) &&
+            (/^MT$/.test(normaliseUomForMatch(String(profile.fromUom))) ||
+              /^MT$/.test(normaliseUomForMatch(String(profile.toUom)))),
+          );
+          if (!hasBarrelProfile && !row.sourceNotes.has("Set weight per barrel")) {
+            row.sourceNotes.add("Set weight per barrel");
+          }
+        }
+        if (!row.hasPlantMix) continue;
         if (!row.master) {
           row.stockComplete = false;
           continue;
@@ -20669,11 +20791,11 @@ export async function registerRoutes(
         const stockRows = stockByMaterial.get(Number(row.master.id)) ?? [];
         for (const balance of stockRows) {
           const stockUom = String(balance.uom ?? row.master.defaultUom ?? "");
-          const converted = materialPlanQuantity(
+          const converted = toMaterialUnit(
             Number(balance.balance),
             stockUom,
             row.uom,
-            profileForMaster(row.master),
+            row.master,
             "loose",
           );
           if (converted == null) row.stockComplete = false;
@@ -20682,22 +20804,37 @@ export async function registerRoutes(
       }
 
       const outputRows = Array.from(planRows.values()).map((row) => {
-        const need = row.needComplete ? row.need : null;
-        const bought = row.sourceType === "site" && row.boughtComplete ? row.bought : row.sourceType === "site" ? null : null;
+        const need = reportedMaterialNeed(row.need, row.needComplete, row.soilValuesMissingCount);
+        if (row.soilValuesMissingCount > 0) {
+          row.sourceNotes.add(row.master ? "Values not set — Open Soil" : "Values not set — Link Soil master");
+        }
+        const bought = row.hasSiteSupply && row.boughtComplete ? row.bought : null;
         const used = row.usedComplete ? row.used : null;
-        const atPlantNow = row.sourceType === "plant_mix" && row.stockComplete ? row.atPlantNow : null;
-        const remaining = row.sourceType === "plant_mix"
-          ? remainingMaterialToBuy(need, atPlantNow, used, true)
-          : remainingMaterialToBuy(need, bought, used, false);
+        const atPlantNow = row.hasPlantMix && row.stockComplete ? row.atPlantNow : null;
+        const balance = need == null
+          ? { remaining: null, excess: null }
+          : remainingBySupplySource({
+            siteNeed: row.needBySource.site,
+            plantNeed: row.needBySource.plant_mix,
+            bought,
+            plantUsed: row.usedComplete ? row.usedBySource.plant_mix : null,
+            atPlantNow,
+            hasSiteSupply: row.hasSiteSupply,
+            hasPlantMix: row.hasPlantMix,
+          });
+        const remaining = balance;
         const profile = profileForMaster(row.master);
+        const showCft = row.uom === "cum loose" ||
+          materialNeedsCftEquivalent(row.materialName) ||
+          /aggregate|sand|dust|filler/i.test(String(row.master?.category ?? ""));
         const cft = (quantity: number | null) => {
           if (quantity == null) return null;
           if (row.uom === "cum loose") return materialPlanQuantity(quantity, "CUM", "CFT", profile, "loose");
-          return materialNeedsCftEquivalent(row.materialName) && row.uom === "MT"
-            ? materialTonnesToCft(quantity, profile)
+          return showCft && row.uom === "MT"
+            ? tonnesToCft(quantity, row.master)
             : null;
         };
-        const setupAction = !row.master && (row.sourceType === "plant_mix" || row.needsOwnValues)
+        const setupAction = !row.master && (row.hasPlantMix || row.needsOwnValues)
           ? "link_master"
           : row.needsOwnValues
             ? "set_values"
@@ -20706,11 +20843,15 @@ export async function registerRoutes(
           materialName: row.materialName,
           forLabels: Array.from(row.forLabels),
           uom: row.uom === "CUM_LOOSE" ? "cum loose" : row.uom,
+          showCft,
           sourceType: row.sourceType,
+          hasSiteSupply: row.hasSiteSupply,
+          hasPlantMix: row.hasPlantMix,
+          soilValuesMissingCount: row.soilValuesMissingCount,
           needToBuy: need,
           needToBuyCft: cft(need),
-          boughtSoFar: row.sourceType === "site" ? bought : null,
-          boughtSoFarCft: row.sourceType === "site" ? cft(bought) : null,
+          boughtSoFar: row.hasSiteSupply ? bought : null,
+          boughtSoFarCft: row.hasSiteSupply ? cft(bought) : null,
           used,
           usedCft: cft(used),
           atPlantNow,
@@ -20730,7 +20871,7 @@ export async function registerRoutes(
           setupItemId: row.lines[0]?.boqItemId ?? null,
           materialMasterId: row.master?.id ?? null,
         };
-      }).sort((a, b) => a.materialName.localeCompare(b.materialName) || a.sourceType.localeCompare(b.sourceType));
+      }).sort((a, b) => a.materialName.localeCompare(b.materialName));
 
       res.json({
         projectId,
@@ -21598,7 +21739,7 @@ export async function registerRoutes(
       const horizonModeParam = (req.query.horizonMode as string | undefined) ?? "current_month";
       const customDateParam = req.query.customDate as string | undefined;
 
-      const [{ expandedItems, bars }, allStockBalances, allMaterialsRaw, allIndents, allIrns, materialMappings, allEarthworkArrangementsRaw, allBarAllocations] = await Promise.all([
+      const [{ expandedItems, bars }, allStockBalances, allMaterialsRaw, allIndents, allIrns, materialMappings, allEarthworkArrangementsRaw, allBarAllocations, hlcPartyId] = await Promise.all([
         computeProjectBom(projectId),
         storage.getStockBalances(),
         storage.getAllPlantMaterials(),          // active + inactive — partitioned below
@@ -21607,6 +21748,7 @@ export async function registerRoutes(
         storage.getMaterialMappings(projectId),
         storage.getEarthworkArrangements(projectId), // Instruction 023
         storage.getArrangementProgrammeAllocationsForProject(projectId), // Instruction 026
+        storage.getHlcPartyId(),
       ]);
       // Instruction 026 §9: attach programme-bar allocations for bar-level phasing.
       const allocsByArrId = new Map<number, Array<{ programmeBarId: number; boqItemId: number; qty: number }>>();
@@ -21662,7 +21804,7 @@ export async function registerRoutes(
         if (!sb.materialId) continue;
         // Instruction 020 §7: parse as Number — numeric columns may arrive as strings via pg driver
         const bal = Number(sb.balance ?? 0);
-        if (sb.partyId == null) {
+        if (sb.partyId == null || (hlcPartyId != null && Number(sb.partyId) === Number(hlcPartyId))) {
           hlcStockById.set(sb.materialId, (hlcStockById.get(sb.materialId) ?? 0) + bal);
         } else {
           elsewhereStockById.set(sb.materialId, (elsewhereStockById.get(sb.materialId) ?? 0) + bal);

@@ -277,6 +277,47 @@ export function checkMappingUomCompatibility(
   // Compute defaultCanonical early so Step 0 profile matching can use it.
   const defaultCanonical = target.defaultUom ? canonicalizeUnit(target.defaultUom) : null;
 
+  // Current material-master compacted values are authoritative for volume ↔
+  // mass conversions. They replace old saved conversion factors for these
+  // pairs; otherwise a stale density profile can silently override the values
+  // the Owner just entered.
+  const hasCompactedProfile =
+    target.rolledDensity != null && Number(target.rolledDensity) > 0 &&
+    target.rollingPct != null && Number(target.rollingPct) > 0 &&
+    target.looseFactor != null && Number(target.looseFactor) >= 1;
+  if (hasCompactedProfile && defaultCanonical) {
+    const compactedDensity = Number(target.rolledDensity) * Number(target.rollingPct) / 100;
+    const sourceIsVolume = srcCanonical === "Cum" || srcCanonical === "CFT";
+    const sourceIsMass = MASS_UNITS.has(srcCanonical);
+    const targetIsMass = MASS_UNITS.has(defaultCanonical);
+    const targetIsVolume = defaultCanonical === "Cum" || defaultCanonical === "CFT";
+    if (sourceIsVolume && targetIsMass) {
+      const mt = srcCanonical === "Cum"
+        ? compactedDensity
+        : compactedDensity / 35.3147;
+      const factor = defaultCanonical === "KG" ? mt * 1000 : mt;
+      return {
+        compatible: true,
+        mode: "compacted_loose",
+        conversionFactor: Math.round(factor * 10000) / 10000,
+        basis: `Compacted density ${compactedDensity} MT/Cum`,
+        errorCode: null,
+      };
+    }
+    if (sourceIsMass && targetIsVolume) {
+      const mt = srcCanonical === "KG" ? 1 / 1000 : 1;
+      const cum = mt / compactedDensity;
+      const factor = defaultCanonical === "CFT" ? cum * 35.3147 : cum;
+      return {
+        compatible: true,
+        mode: "compacted_loose",
+        conversionFactor: Math.round(factor * 10000) / 10000,
+        basis: `Compacted density ${compactedDensity} MT/Cum`,
+        errorCode: null,
+      };
+    }
+  }
+
   // ── Step 0: Explicit conversion profiles (highest precedence, Instruction 021) ─
   // 021A fix: require BOTH fromUom → srcCanonical AND toUom → defaultCanonical.
   // A profile for "CUM → CFT" must NOT be selected when the material's defaultUom is "MT".

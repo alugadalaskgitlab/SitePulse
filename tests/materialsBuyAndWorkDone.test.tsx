@@ -57,6 +57,7 @@ describe("MaterialsBuyAndWorkDone", () => {
       <QueryClientProvider client={queryClient}>
         <MaterialsBuyAndWorkDone
           projectId={42}
+          projectStartDate="2026-07-01"
           workRows={[]}
           workLoading={false}
           canEditDemandSource={false}
@@ -66,6 +67,7 @@ describe("MaterialsBuyAndWorkDone", () => {
     );
 
     await screen.findByTestId("buy-use-row-WMM-site");
+    expect(screen.getByLabelText("Actuals from")).toHaveValue("2026-07-01");
     expect(screen.getByTestId("table-materials-buy-use")).toBeInTheDocument();
     expect(screen.getByTestId("table-work-done")).toBeInTheDocument();
     await waitFor(() => {

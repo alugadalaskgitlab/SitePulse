@@ -8,11 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { PlanVsActualRow } from "@shared/schema";
 
-type MaterialPlanRow = {
+export type MaterialPlanRow = {
   materialName: string;
   forLabels: string[];
   uom: string;
-  sourceType: "plant_mix" | "site";
+  showCft?: boolean;
+  sourceType: "plant_mix" | "site" | "mixed";
+  hasSiteSupply?: boolean;
+  hasPlantMix?: boolean;
+  soilValuesMissingCount?: number;
   needToBuy: number | null;
   needToBuyCft: number | null;
   boughtSoFar: number | null;
@@ -43,7 +47,7 @@ type MaterialPlanRow = {
   materialMasterId: number | null;
 };
 
-type MaterialPlanResponse = {
+export type MaterialPlanResponse = {
   projectId: number;
   projectName: string;
   siteName: string;
@@ -62,7 +66,11 @@ const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 function quantity(value: number | null, uom: string, cft: number | null, showCft: boolean) {
   if (value == null || !Number.isFinite(value)) return "—";
   const primary = `${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })} ${uom}`;
-  return showCft ? `${primary} · ${cft == null ? "— CFT" : `≈ ${cft.toLocaleString("en-IN", { maximumFractionDigits: 0 })} CFT`}` : primary;
+  return showCft ? `${primary} · ${cft == null ? "—" : `≈ ${cft.toLocaleString("en-IN", { maximumFractionDigits: 0 })} CFT`}` : primary;
+}
+
+function shouldShowCft(row: MaterialPlanRow) {
+  return row.showCft ?? (/cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName));
 }
 
 function shortDescription(row: PlanVsActualRow) {
@@ -70,23 +78,26 @@ function shortDescription(row: PlanVsActualRow) {
 }
 
 function materialUseText(row: MaterialPlanRow, value: number | null) {
-  return quantity(value, row.uom, row.usedCft, /cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName));
+  return quantity(value, row.uom, row.usedCft, row.showCft ?? (/cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName)));
 }
 
 export function MaterialsBuyAndWorkDone({
   projectId,
+  projectStartDate,
   workRows,
   workLoading,
   canEditDemandSource,
   onLinkMaster,
 }: {
   projectId: number;
+  projectStartDate?: string | null;
   workRows: PlanVsActualRow[];
   workLoading: boolean;
   canEditDemandSource: boolean;
   onLinkMaster: (boqItemId: number) => void;
 }) {
-  const [from, setFrom] = useState(localDate(monthStart));
+  const [fromOverride, setFromOverride] = useState<string | null>(null);
+  const from = fromOverride ?? (projectStartDate ? projectStartDate.slice(0, 10) : localDate(monthStart));
   const [to, setTo] = useState(localDate(today));
   const [byMonth, setByMonth] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -127,15 +138,23 @@ export function MaterialsBuyAndWorkDone({
           const value = row.monthlyNeed[String(month)];
           return `P${month}: ${value == null ? "—" : quantity(value, row.uom, null, false)}`;
         }).join(" · ")
-        : quantity(row.needToBuy, row.uom, row.needToBuyCft, /cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName)),
-      [row.sourceType === "plant_mix" ? "At plant now" : "Bought so far"]: row.sourceType === "plant_mix"
-        ? quantity(row.atPlantNow, row.uom, row.atPlantNowCft, /aggregate|sand|dust|filler/i.test(row.materialName))
-        : quantity(row.boughtSoFar, row.uom, row.boughtSoFarCft, /cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName)),
+        : quantity(row.needToBuy, row.uom, row.needToBuyCft, shouldShowCft(row)),
+      "Bought so far": row.hasSiteSupply || row.sourceType === "site" || row.sourceType === "mixed"
+        ? quantity(row.boughtSoFar, row.uom, row.boughtSoFarCft, shouldShowCft(row))
+        : "—",
+      "At plant now": row.hasPlantMix || row.sourceType === "plant_mix" || row.sourceType === "mixed"
+        ? quantity(row.atPlantNow, row.uom, row.atPlantNowCft, shouldShowCft(row))
+        : "—",
       Used: materialUseText(row, row.used),
       "Still to buy": row.excess != null
-        ? `Excess ${quantity(row.excess, row.uom, row.excessCft, /cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName))}`
-        : quantity(row.stillToBuy, row.uom, row.stillToBuyCft, /cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName)),
-      Source: row.sourceNotes.join("; "),
+        ? `Excess ${quantity(row.excess, row.uom, row.excessCft, shouldShowCft(row))}`
+        : quantity(row.stillToBuy, row.uom, row.stillToBuyCft, shouldShowCft(row)),
+      Source: [
+        ...row.sourceNotes,
+        ...(row.soilValuesMissingCount
+          ? [`${row.soilValuesMissingCount} item${row.soilValuesMissingCount === 1 ? "" : "s"} need soil values`]
+          : []),
+      ].join("; "),
       Attribution: row.attributions.join(", "),
       "BOQ items": row.lines.map((line) => `${line.itemCode ? `[${line.itemCode}] ` : ""}${line.itemName || line.description} · ${line.boqQuantity} ${line.boqUom} → ${line.materialNeed == null ? "—" : `${line.materialNeed} ${row.uom}`}`).join("; "),
     }));
@@ -165,14 +184,19 @@ export function MaterialsBuyAndWorkDone({
             const value = row.monthlyNeed[String(month)];
             return `P${month}: ${value == null ? "—" : quantity(value, row.uom, null, false)}`;
           }).join("\n")
-          : quantity(row.needToBuy, row.uom, row.needToBuyCft, /cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName)),
-        row.sourceType === "plant_mix"
-          ? `At plant: ${quantity(row.atPlantNow, row.uom, row.atPlantNowCft, /aggregate|sand|dust|filler/i.test(row.materialName))}`
-          : `Bought: ${quantity(row.boughtSoFar, row.uom, row.boughtSoFarCft, /cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName))}`,
+          : quantity(row.needToBuy, row.uom, row.needToBuyCft, shouldShowCft(row)),
+        [
+          row.hasSiteSupply || row.sourceType === "site" || row.sourceType === "mixed"
+            ? `Bought: ${quantity(row.boughtSoFar, row.uom, row.boughtSoFarCft, shouldShowCft(row))}`
+            : null,
+          row.hasPlantMix || row.sourceType === "plant_mix" || row.sourceType === "mixed"
+            ? `At plant: ${quantity(row.atPlantNow, row.uom, row.atPlantNowCft, shouldShowCft(row))}`
+            : null,
+        ].filter(Boolean).join("\n"),
         materialUseText(row, row.used),
         row.excess != null
-          ? `Excess ${quantity(row.excess, row.uom, row.excessCft, /cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName))}`
-          : quantity(row.stillToBuy, row.uom, row.stillToBuyCft, /cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName)),
+          ? `Excess ${quantity(row.excess, row.uom, row.excessCft, shouldShowCft(row))}`
+          : quantity(row.stillToBuy, row.uom, row.stillToBuyCft, shouldShowCft(row)),
       ]),
       styles: { fontSize: 6.5, textColor: [40, 40, 40], lineColor: [175, 175, 175] },
       headStyles: { fillColor: [230, 230, 230], textColor: [20, 20, 20], lineColor: [145, 145, 145] },
@@ -208,7 +232,7 @@ export function MaterialsBuyAndWorkDone({
             <p className="text-xs text-slate-500">Plant stock is shared across projects and is not reserved.</p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
-            <label className="text-xs text-slate-500">Actuals from<Input aria-label="Actuals from" type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="mt-1 h-8 w-36 text-xs" /></label>
+            <label className="text-xs text-slate-500">Actuals from<Input aria-label="Actuals from" type="date" value={from} onChange={(event) => setFromOverride(event.target.value)} className="mt-1 h-8 w-36 text-xs" /></label>
             <label className="text-xs text-slate-500">To<Input aria-label="Actuals to" type="date" value={to} onChange={(event) => setTo(event.target.value)} className="mt-1 h-8 w-36 text-xs" /></label>
             <Button size="sm" variant={byMonth ? "default" : "outline"} onClick={() => setByMonth((value) => !value)} data-testid="toggle-plan-by-month">
               {byMonth ? "By month ✓" : "By month"}
@@ -230,15 +254,15 @@ export function MaterialsBuyAndWorkDone({
                 <tr>
                   <th className="sticky left-0 bg-slate-100 px-2 py-2 dark:bg-slate-800">Material</th>
                   <th className="px-2 py-2">Need to buy</th>
-                  <th className="px-2 py-2">{rows.some((row) => row.sourceType === "plant_mix") ? "Bought so far / At plant now" : "Bought so far"}</th>
+                  <th className="px-2 py-2">{rows.some((row) => row.hasPlantMix || row.sourceType === "plant_mix" || row.sourceType === "mixed") ? "Bought so far / At plant now" : "Bought so far"}</th>
                   <th className="px-2 py-2">Used</th>
                   <th className="px-2 py-2">Still to buy</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => {
-                  const isExpanded = expanded.has(row.materialName + row.sourceType);
-                  const showCft = /cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName);
+                  const isExpanded = expanded.has(row.materialName);
+                  const showCft = shouldShowCft(row);
                   const needDisplay = byMonth
                     ? months.map((month) => {
                       const value = row.monthlyNeed[String(month)];
@@ -249,17 +273,18 @@ export function MaterialsBuyAndWorkDone({
                     ? `Excess ${quantity(row.excess, row.uom, row.excessCft, showCft)}`
                     : quantity(row.stillToBuy, row.uom, row.stillToBuyCft, showCft);
                   return (
-                    <Fragment key={row.materialName + row.sourceType}>
+                    <Fragment key={`${row.materialMasterId ?? row.materialName}-${row.uom}`}>
                       <tr className="border-t align-top hover:bg-slate-50 dark:hover:bg-slate-900" data-testid={`buy-use-row-${row.materialName}-${row.sourceType}`}>
                         <td className="sticky left-0 bg-white px-2 py-2 dark:bg-slate-950">
                           <div className="flex items-start gap-1.5">
-                            <button type="button" onClick={() => toggleExpanded(row.materialName + row.sourceType)} aria-label={`${isExpanded ? "Collapse" : "Expand"} ${row.materialName}`} className="mt-0.5 text-slate-500">
+                            <button type="button" onClick={() => toggleExpanded(row.materialName)} aria-label={`${isExpanded ? "Collapse" : "Expand"} ${row.materialName}`} className="mt-0.5 text-slate-500">
                               {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                             </button>
                             <span>
                               <span className="font-medium text-slate-800 dark:text-slate-100">{row.materialName}</span>
                               {row.forLabels.length > 0 && <span className="block text-[10px] text-slate-500">for: {row.forLabels.slice(0, 3).join(", ")}</span>}
                               {row.sourceNotes.length > 0 && <span className="block text-[10px] text-slate-500">{row.sourceNotes.join(" · ")}</span>}
+                              {!!row.soilValuesMissingCount && <span className="block text-[10px] text-amber-700">{row.soilValuesMissingCount} item{row.soilValuesMissingCount === 1 ? "" : "s"} need soil values</span>}
                               {row.attributions.map((attribution) => (
                                 <span key={attribution} className="block text-[10px] text-slate-500">{attribution}</span>
                               ))}
@@ -278,11 +303,8 @@ export function MaterialsBuyAndWorkDone({
                         </td>
                         <td className="whitespace-nowrap px-2 py-2 font-mono">{needDisplay}</td>
                         <td className="whitespace-nowrap px-2 py-2 font-mono">
-                          {row.sourceType === "plant_mix"
-                            ? quantity(row.atPlantNow, row.uom, row.atPlantNowCft, showCft)
-                            : quantity(row.boughtSoFar, row.uom, row.boughtSoFarCft, showCft)}
-                          {row.sourceType === "plant_mix" && <span className="block text-[10px] text-slate-500">At plant now</span>}
-                          {row.sourceType === "site" && <span className="block text-[10px] text-slate-500">Bought so far</span>}
+                          {(row.hasSiteSupply || row.sourceType === "site" || row.sourceType === "mixed") && <span className="block">Bought: {quantity(row.boughtSoFar, row.uom, row.boughtSoFarCft, showCft)}</span>}
+                          {(row.hasPlantMix || row.sourceType === "plant_mix" || row.sourceType === "mixed") && <span className="block">At plant now: {quantity(row.atPlantNow, row.uom, row.atPlantNowCft, showCft)}</span>}
                         </td>
                         <td className="whitespace-nowrap px-2 py-2 font-mono">{quantity(row.used, row.uom, row.usedCft, showCft)}</td>
                         <td className="whitespace-nowrap px-2 py-2 font-mono font-semibold">{remainingDisplay}</td>

@@ -12,11 +12,15 @@ type Row = {
   site: string; material: string; matched: boolean; uom: string;
   ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number;
   consumed: number; toSupply: number; lying: number;
+  overConsumed?: boolean;
   lastDeliveryDate: string | null;
   densitySkips?: DensitySkips;
 };
 
 const n = (v: number) => v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const qty = (v: number, uom: string) => uom === "cum loose"
+  ? `${n(v)} cum loose · ≈ ${n(v * 35.3147)} CFT`
+  : `${n(v)} ${uom}`;
 
 const DATE_PRESETS = [
   { label: "All time",   dateFrom: "",                                                  dateTo: "" },
@@ -57,7 +61,7 @@ export default function SiteMaterialStock() {
           <Boxes className="w-5 h-5 text-emerald-600" />
           <div>
             <h1 className="text-xl font-bold leading-tight">Site Material Stock</h1>
-            <p className="text-sm text-muted-foreground">Ordered · Delivered · Consumed · Lying at site (MT)</p>
+            <p className="text-sm text-muted-foreground">Ordered · Delivered · Consumed · Lying at site (material buying unit)</p>
           </div>
         </div>
 
@@ -151,17 +155,20 @@ export default function SiteMaterialStock() {
                               <StockDensityWarning skips={r.densitySkips} matched={r.matched} />
                             </div>
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-slate-500">{n(r.ordered)}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-500">{qty(r.ordered, r.uom)}</td>
                           <td className="px-3 py-2.5 text-right font-mono text-green-700">
-                            <div>{n(r.delivered)}</div>
+                            <div>{qty(r.delivered, r.uom)}</div>
                             <div className="text-[10px] text-muted-foreground whitespace-nowrap" data-testid={`delivered-split-${site}-${r.material}`}>
-                              Of Delivered (MT): Stretch {n(r.deliveredAtStretch)} · Yard {n(r.deliveredAtYard)}
+                              Of Delivered ({r.uom}): Stretch {n(r.deliveredAtStretch)} · Yard {n(r.deliveredAtYard)}
                             </div>
                           </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-blue-700">{n(r.toSupply)}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-orange-700">{n(r.consumed)}</td>
-                          <td className={`px-3 py-2.5 text-right font-mono font-bold ${r.lying < 0 ? "text-red-600" : ""}`}>
-                            {n(r.lying)}
+                          <td className="px-3 py-2.5 text-right font-mono text-blue-700">{qty(r.toSupply, r.uom)}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-orange-700">
+                            {qty(r.consumed, r.uom)}
+                            {r.overConsumed && <span className="block text-[10px] text-red-600">Use exceeds recorded deliveries</span>}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono font-bold">
+                            {qty(r.lying, r.uom)}
                           </td>
                         </tr>
                       ))}
@@ -186,8 +193,7 @@ export default function SiteMaterialStock() {
             </span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Stock totals are in MT; skipped quantities in warnings retain their source units. <span className="text-red-600 font-medium">Negative "Lying at Site"</span> means
-            the consumption estimate exceeds recorded deliveries — check that all delivery challans are being logged.
+              Totals use each material's buying unit; soil is shown as loose cubic metres and CFT. If estimated consumption exceeds recorded deliveries, the lying balance is held at zero and flagged for review.
           </p>
           <p className="text-xs text-muted-foreground">
             The Delivered breakdown follows the existing stock reconciliation: deliveries with no unloading location recorded are included under Stretch.

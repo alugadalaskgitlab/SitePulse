@@ -34,8 +34,12 @@ function canonicalUnit(value: string): string {
 }
 
 function compactedDensity(profile: MaterialPlanDensity | null | undefined): number | null {
-  if (!profile || !hasCompleteCompactedLooseProfile(profile)) return null;
-  return profile.rolledDensity * profile.rollingPct / 100;
+  if (
+    !profile ||
+    !Number.isFinite(Number(profile.rolledDensity)) || Number(profile.rolledDensity) <= 0 ||
+    !Number.isFinite(Number(profile.rollingPct)) || Number(profile.rollingPct) <= 0
+  ) return null;
+  return Number(profile.rolledDensity) * Number(profile.rollingPct) / 100;
 }
 
 /**
@@ -159,6 +163,51 @@ export function remainingMaterialToBuy(
   return balance < 0
     ? { remaining: 0, excess: -balance }
     : { remaining: balance, excess: null };
+}
+
+export function remainingBySupplySource(input: {
+  siteNeed: number;
+  plantNeed: number;
+  bought: number | null;
+  plantUsed: number | null;
+  atPlantNow: number | null;
+  hasSiteSupply: boolean;
+  hasPlantMix: boolean;
+}): { remaining: number | null; excess: number | null } {
+  if (
+    (input.hasSiteSupply && input.bought == null) ||
+    (input.hasPlantMix && (input.plantUsed == null || input.atPlantNow == null))
+  ) return { remaining: null, excess: null };
+
+  const siteBalance = input.hasSiteSupply ? input.siteNeed - (input.bought ?? 0) : 0;
+  const plantBalance = input.hasPlantMix
+    ? input.plantNeed - (input.plantUsed ?? 0) - (input.atPlantNow ?? 0)
+    : 0;
+  const balance = siteBalance + plantBalance;
+  return balance < 0
+    ? { remaining: 0, excess: -balance }
+    : { remaining: balance, excess: null };
+}
+
+export function siteMaterialLyingBalance(
+  delivered: number,
+  consumed: number,
+): { lying: number; overConsumed: boolean } {
+  const safeDelivered = Number.isFinite(delivered) ? delivered : 0;
+  const safeConsumed = Number.isFinite(consumed) ? consumed : 0;
+  return {
+    lying: Math.max(0, safeDelivered - safeConsumed),
+    overConsumed: safeConsumed > safeDelivered,
+  };
+}
+
+export function reportedMaterialNeed(
+  need: number,
+  complete: boolean,
+  missingEarthworkValueCount = 0,
+): number | null {
+  if (complete) return need;
+  return missingEarthworkValueCount > 0 && need > 0 ? need : null;
 }
 
 export function materialNeedsCftEquivalent(name: string): boolean {
