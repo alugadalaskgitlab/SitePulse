@@ -473,11 +473,11 @@ export const plantMaterials = pgTable("plant_materials", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   category: text("category"), // Aggregate, Bitumen, Utility, etc.
-  allowedUoms: text("allowed_uoms"), // JSON array: ["Ton", "Cum", "Liters", etc.]
+  allowedUoms: text("allowed_uoms"), // JSON array: ["MT", "Cum", "Liters", etc.]
   defaultUom: text("default_uom"),
   conversionFactor: real("conversion_factor"), // Auto-derived from bulkDensity; do not set manually
   conversionFromUom: text("conversion_from_uom"), // Volume UOM used at receipt (e.g., "CFT", "Cum")
-  conversionToUom: text("conversion_to_uom"), // Always "Ton" when bulkDensity is set
+  conversionToUom: text("conversion_to_uom"), // Always "MT" when bulkDensity is set
   bulkDensity: real("bulk_density"), // MT/m³ (T/Cum); user-entered; drives conversionFactor
   rolledDensity: real("rolled_density"),
   rollingPct: real("rolling_pct"),
@@ -1295,7 +1295,7 @@ export type InsertStockReconciliationSession = z.infer<typeof insertStockReconci
 export type InsertStockReconciliationItem = z.infer<typeof insertStockReconciliationItemSchema>;
 
 // Constants for UOM options
-export const UOM_OPTIONS = ["Ton", "MT", "Cum", "Liters", "Kgs", "CFT", "Barrels", "Nos"] as const;
+export const UOM_OPTIONS = ["MT", "Cum", "Liters", "Kgs", "CFT", "Barrels", "Nos"] as const;
 export const EQUIPMENT_TYPES = ["Generator", "JCB", "Loader", "Tipper", "Truck", "Tractor"] as const;
 export const METER_TYPES = ["hour_meter", "odometer"] as const;
 export const MIX_TYPES = ["BC", "DBM"] as const;

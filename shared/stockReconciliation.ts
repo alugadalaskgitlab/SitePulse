@@ -140,7 +140,7 @@ export const STATUS_LABELS: Record<ReconciliationStatus, string> = {
 // Small, conservative alias groups. Anything not listed compares by
 // case-insensitive trimmed string only.
 const UOM_ALIASES: Record<string, string> = {
-  mt: "ton", ton: "ton", tons: "ton", tonne: "ton", tonnes: "ton", "m.t": "ton", "m.t.": "ton",
+  mt: "ton", t: "ton", ton: "ton", tons: "ton", tonne: "ton", tonnes: "ton", "m.t": "ton", "m.t.": "ton",
   l: "l", ltr: "l", ltrs: "l", litre: "l", litres: "l", liter: "l", liters: "l",
   cft: "cft", "cu.ft": "cft", "cu ft": "cft",
   cum: "cum", "m3": "cum", "m³": "cum", "cu.m": "cum",
@@ -198,7 +198,7 @@ export function uomEquivalent(a: string | null | undefined, b: string | null | u
 export interface MaterialConversionConfig {
   conversionFactor: number | null;
   conversionFromUom: string | null; // e.g. "CFT"
-  conversionToUom: string | null;   // e.g. "Ton"
+  conversionToUom: string | null;   // e.g. "MT"
 }
 
 export type ResolvedConversion =

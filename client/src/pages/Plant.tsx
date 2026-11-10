@@ -19,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION, NO_CREATE_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeWeightUnit } from "@shared/stockUnits";
 import {
   calculateCompactedLooseQuantity,
   compactedLooseProfileFromInputs,
@@ -947,8 +948,8 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
   });
 
   const dieselBalToL = (balance: number, uom: string) => {
-    const u = (uom || "").toUpperCase();
-    if (u === "MT" || u === "TON" || u === "TONS") return balance * 1000 / 0.84;
+    const u = normalizeWeightUnit(uom).toUpperCase();
+    if (u === "MT") return balance * 1000 / 0.84;
     if (u === "KG") return balance / 0.84;
     return balance;
   };
@@ -2681,7 +2682,7 @@ export function MaterialMaster() {
   const [editingMaterial, setEditingMaterial] = useState<PlantMaterial | null>(null);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
-  const [defaultUom, setDefaultUom] = useState("Ton");
+  const [defaultUom, setDefaultUom] = useState("MT");
   // 06S §1: no preselected route — the user must deliberately choose one.
   const [procurementRoute, setProcurementRoute] = useState("");
   const [bulkDensity, setBulkDensity] = useState("");
@@ -2867,7 +2868,7 @@ export function MaterialMaster() {
     setEditingMaterial(null);
     setName("");
     setCategory("");
-    setDefaultUom("Ton");
+    setDefaultUom("MT");
     setProcurementRoute("");
     setBulkDensity("");
     setVolumeUom("CFT");
@@ -2895,7 +2896,7 @@ export function MaterialMaster() {
     setEditingMaterial(material);
     setName(material.name);
     setCategory(material.category || "");
-    setDefaultUom(material.defaultUom || "Ton");
+    setDefaultUom(normalizeWeightUnit(material.defaultUom || "MT"));
     // Unconfigured stays visibly unselected — never masquerades as Stores.
     setProcurementRoute((material as any).procurementRoute || "");
     const savedBulkDensity = Object.prototype.hasOwnProperty.call(material, "savedBulkDensity")
@@ -2958,7 +2959,7 @@ export function MaterialMaster() {
       partyId: stockPartyId ? Number(stockPartyId) : null,
       isPlantCommon: 0,
       quantity: parseFloat(stockQuantity),
-      uom: selectedMaterialForStock?.defaultUom || editingOpeningStock?.uom || "Ton",
+      uom: normalizeWeightUnit(selectedMaterialForStock?.defaultUom || editingOpeningStock?.uom || "MT"),
       date: stockDate,
       tankNumber: stockTankNumber ? Number(stockTankNumber) : null,
       notes: stockNotes || undefined,
@@ -3048,7 +3049,6 @@ export function MaterialMaster() {
                     <SelectValue placeholder="Select UOM" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Ton">Ton</SelectItem>
                     <SelectItem value="MT">MT</SelectItem>
                     <SelectItem value="Cum">Cum</SelectItem>
                     <SelectItem value="Liters">Liters</SelectItem>
@@ -3392,7 +3392,7 @@ export function MaterialMaster() {
                 </div>
                 
                 <div>
-                  <Label htmlFor="stock-quantity">Quantity ({selectedMaterialForStock?.defaultUom || editingOpeningStock?.uom || "Ton"})</Label>
+                  <Label htmlFor="stock-quantity">Quantity ({normalizeWeightUnit(selectedMaterialForStock?.defaultUom || editingOpeningStock?.uom || "MT")})</Label>
                   <Input
                     id="stock-quantity"
                     type="number"

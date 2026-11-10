@@ -9,11 +9,14 @@ import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
+import { StockUnitAdminPanel } from "@/components/StockUnitAdminPanel";
 
 const LDO_FALLBACK = "PLANT OPERATOR";
 
 export default function AdminSettings() {
   const { toast } = useToast();
+  const { user } = useAuth();
   // Page-level access is enforced by <RequireAuth section="admin_settings"> in
   // App.tsx. Reaching this component implies the user can view the section.
   const authenticated = true;
@@ -298,6 +301,8 @@ export default function AdminSettings() {
       <Link href="/admin/settings/roles">
         <Button variant="outline" data-testid="button-access-roles">Access roles</Button>
       </Link>
+
+      <StockUnitAdminPanel visible={user?.isOwner === true} />
 
       <Card>
         <CardHeader>

@@ -117,10 +117,21 @@ let InvalidStockTransferQuantityError: any;
 function stubTx(balance: number | null) {
   const calls: { sqlTexts: string[]; updates: any[] } = { sqlTexts: [], updates: [] };
   const tx = {
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(async () => [{
+            defaultUom: null,
+            conversionToUom: null,
+            bulkDensity: null,
+          }]),
+        })),
+      })),
+    })),
     execute: vi.fn(async (query: any) => {
       const text = query?.queryChunks ? JSON.stringify(query.queryChunks.map((c: any) => c?.value ?? "")) : String(query);
       calls.sqlTexts.push(text);
-      return { rows: balance === null ? [] : [{ id: 1, balance, uom: "Liters" }] };
+        return { rows: balance === null ? [] : [{ id: 1, balance, uom: null }] };
     }),
     update: vi.fn(() => ({ set: (v: any) => ({ where: async () => { calls.updates.push(v); } }) })),
     insert: vi.fn(() => ({ values: (v: any) => ({ returning: async () => { calls.updates.push(v); return [{ id: 2, ...v }]; } }) })),

@@ -70,7 +70,7 @@ const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
 ];
 
-const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
+const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs"];
 
 // Base site name helper — shared with the server so filtering can't drift.
 import { getBaseSiteName } from "@shared/siteName";

@@ -23,6 +23,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { NegativeBalanceBannerMulti } from "@/components/NegativeBalanceBanner";
 import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
+import { convertStockQuantity, stockUnitForMaterial } from "@shared/stockUnits";
 
 type StockBalanceAsOf = {
   materialId: number;
@@ -272,6 +273,24 @@ export default function PlantStock() {
     queryKey: [buildLedgerUrl()],
     select: (rows) => rows.map(normLedger),
   });
+  const stockConversionWarnings = useMemo(() => {
+    if (!ledger || !materials) return [];
+    const warnings = new Set<string>();
+    for (const entry of ledger) {
+      const material = materials.find(item => item.id === entry.materialId);
+      if (!material) continue;
+      const targetUom = stockUnitForMaterial(material, entry.uom);
+      for (const quantity of [entry.quantityIn, entry.quantityOut]) {
+        if (!quantity) continue;
+        try {
+          convertStockQuantity(Number(quantity), entry.uom, targetUom, Number(material.bulkDensity) || null);
+        } catch {
+          warnings.add(`${material.name}: ${entry.uom || "unit missing"} cannot be converted to ${targetUom}.`);
+        }
+      }
+    }
+    return Array.from(warnings);
+  }, [ledger, materials]);
 
   // All-time ledger for Current Balances tab — only fetched when that tab is active
   const { data: allTimeLedger, isLoading: allTimeLedgerLoading } = useQuery<ReceiptDatedLedgerEntry[]>({
@@ -354,18 +373,22 @@ export default function PlantStock() {
       return aCreated.localeCompare(bCreated);
     });
     
-    // Helper to convert quantity based on entry UOM vs material conversion settings
+    // Convert every ledger row to the same material stock unit. Never add
+    // values whose units differ; conversion failures are surfaced above.
     const getConvertedQty = (entry: StockLedgerEntry, qty: number | null): number => {
       if (!qty) return 0;
       const material = materials?.find(m => m.id === entry.materialId);
-      if (!material?.conversionFactor || !material?.conversionFromUom || !material?.conversionToUom) {
-        return qty;
+      if (!material) return 0;
+      try {
+        return convertStockQuantity(
+          qty,
+          entry.uom,
+          stockUnitForMaterial(material, entry.uom),
+          Number(material.bulkDensity) || null,
+        );
+      } catch {
+        return 0;
       }
-      // Only convert if entry UOM matches the source UOM (e.g., CFT)
-      if (entry.uom?.toUpperCase() === material.conversionFromUom.toUpperCase()) {
-        return qty * material.conversionFactor;
-      }
-      return qty;
     };
 
     // Round to avoid floating-point accumulation errors (e.g. 1.14e-13 instead of 0)
@@ -389,10 +412,18 @@ export default function PlantStock() {
         const matKey = String(row.materialId);
         const globalKey = isAllParty ? matKey : partyKey;
         const material = materials?.find(m => m.id === row.materialId);
-        const factor = (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom &&
-          row.uom?.toUpperCase() === material.conversionFromUom.toUpperCase())
-          ? material.conversionFactor : 1;
-        const contribution = roundBalance((row.totalIn * factor) - (row.totalOut * factor));
+        const targetUom = material ? stockUnitForMaterial(material, row.uom) : row.uom;
+        const safeConvert = (quantity: number) => {
+          if (!material || !quantity) return quantity;
+          try {
+            return convertStockQuantity(quantity, row.uom, targetUom, Number(material.bulkDensity) || null);
+          } catch {
+            return 0;
+          }
+        };
+        const totalIn = safeConvert(row.totalIn);
+        const totalOut = safeConvert(row.totalOut);
+        const contribution = roundBalance(totalIn - totalOut);
         if (groupBalances[globalKey] === undefined) groupBalances[globalKey] = 0;
         groupBalances[globalKey] = roundBalance(groupBalances[globalKey] + contribution);
         // Always maintain per-party attribution (for Party Balance column in all-party mode)
@@ -403,8 +434,8 @@ export default function PlantStock() {
         // so that T1+T2 always equals Global Balance — no drift possible.
         if (t1GroupBalances[globalKey] === undefined) t1GroupBalances[globalKey] = 0;
         if (t2GroupBalances[globalKey] === undefined) t2GroupBalances[globalKey] = 0;
-        const t1Seed = roundBalance((row.t1TotalIn - row.t1TotalOut) * factor);
-        const t2Seed = roundBalance((row.t2TotalIn - row.t2TotalOut) * factor);
+        const t1Seed = roundBalance(safeConvert(row.t1TotalIn) - safeConvert(row.t1TotalOut));
+        const t2Seed = roundBalance(safeConvert(row.t2TotalIn) - safeConvert(row.t2TotalOut));
         const untaggedSeed = roundBalance(contribution - t1Seed - t2Seed);
         t1GroupBalances[globalKey] = roundBalance(t1GroupBalances[globalKey] + t1Seed + untaggedSeed / 2);
         t2GroupBalances[globalKey] = roundBalance(t2GroupBalances[globalKey] + t2Seed + untaggedSeed / 2);
@@ -420,13 +451,13 @@ export default function PlantStock() {
     if (dateFrom && balanceAsOf) {
       if (isAllParty) {
         const materialGroups = new Set(sorted.map(e => e.materialId));
-        for (const materialId of materialGroups) {
+        for (const materialId of Array.from(materialGroups)) {
           const matKey = String(materialId);
           const openingBalance = groupBalances[matKey] ?? 0;
           const t1Opening = t1GroupBalances[matKey] ?? 0;
           const t2Opening = t2GroupBalances[matKey] ?? 0;
           const material = materials?.find(m => m.id === materialId);
-          const targetUom = material?.conversionToUom || material?.defaultUom || 'Ton';
+          const targetUom = material ? stockUnitForMaterial(material) : "MT";
           syntheticRows.push({
             id: -(materialId * 10000),
             date: dateFrom,
@@ -434,10 +465,11 @@ export default function PlantStock() {
             materialId,
             transactionType: 'opening_balance',
             referenceId: null,
-            quantityIn: openingBalance >= 0 ? openingBalance : null,
-            quantityOut: openingBalance < 0 ? Math.abs(openingBalance) : null,
-            balanceAfter: openingBalance,
+            quantityIn: openingBalance >= 0 ? String(openingBalance) : null,
+            quantityOut: openingBalance < 0 ? String(Math.abs(openingBalance)) : null,
+            balanceAfter: String(openingBalance),
             uom: targetUom,
+            tankNumber: null,
             notes: `Opening balance (B/F) as of ${dateFrom} — all parties combined`,
             createdAt: null,
             calculatedBalance: openingBalance,
@@ -445,11 +477,11 @@ export default function PlantStock() {
             t1BalanceAfter: t1Opening,
             t2BalanceAfter: t2Opening,
             isSynthetic: true,
-          } as ProcessedLedgerEntry);
+          });
         }
       } else {
         const filteredGroups = new Set(sorted.map(e => `${e.materialId}-${e.partyId ?? 0}`));
-        for (const key of filteredGroups) {
+        for (const key of Array.from(filteredGroups)) {
           const [materialIdStr, partyIdStr] = key.split('-');
           const materialId = Number(materialIdStr);
           const partyId = Number(partyIdStr) === 0 ? null : Number(partyIdStr);
@@ -457,7 +489,7 @@ export default function PlantStock() {
           const t1Opening = t1GroupBalances[key] ?? 0;
           const t2Opening = t2GroupBalances[key] ?? 0;
           const material = materials?.find(m => m.id === materialId);
-          const targetUom = material?.conversionToUom || material?.defaultUom || 'Ton';
+          const targetUom = material ? stockUnitForMaterial(material) : "MT";
           syntheticRows.push({
             id: -(materialId * 10000 + (partyId ?? 0)),
             date: dateFrom,
@@ -465,10 +497,11 @@ export default function PlantStock() {
             materialId,
             transactionType: 'opening_balance',
             referenceId: null,
-            quantityIn: openingBalance >= 0 ? openingBalance : null,
-            quantityOut: openingBalance < 0 ? Math.abs(openingBalance) : null,
-            balanceAfter: openingBalance,
+            quantityIn: openingBalance >= 0 ? String(openingBalance) : null,
+            quantityOut: openingBalance < 0 ? String(Math.abs(openingBalance)) : null,
+            balanceAfter: String(openingBalance),
             uom: targetUom,
+            tankNumber: null,
             notes: `Opening balance (B/F) as of ${dateFrom}`,
             createdAt: null,
             calculatedBalance: openingBalance,
@@ -476,7 +509,7 @@ export default function PlantStock() {
             t1BalanceAfter: t1Opening,
             t2BalanceAfter: t2Opening,
             isSynthetic: true,
-          } as ProcessedLedgerEntry);
+          });
         }
       }
     }
@@ -681,16 +714,16 @@ export default function PlantStock() {
     
     return ledgerForDisplay.filter(e => e.transactionType !== 'opening_balance').reduce((acc, entry) => {
       const material = materials.find(m => m.id === entry.materialId);
-      const convFactor = material?.conversionFactor;
-      const convFromUom = material?.conversionFromUom;
-      const convToUom = material?.conversionToUom;
-      
-      // Check if this entry needs conversion (entry UOM matches source UOM like CFT)
-      const needsConversion = convFactor && convFromUom && convToUom &&
-        entry.uom?.toUpperCase() === convFromUom.toUpperCase();
-      
-      const qtyIn = needsConversion ? (entry.quantityIn || 0) * convFactor : (entry.quantityIn || 0);
-      const qtyOut = needsConversion ? (entry.quantityOut || 0) * convFactor : (entry.quantityOut || 0);
+      const convert = (quantity: number | null) => {
+        if (!quantity || !material) return 0;
+        try {
+          return convertStockQuantity(quantity, entry.uom, stockUnitForMaterial(material, entry.uom), Number(material.bulkDensity) || null);
+        } catch {
+          return 0;
+        }
+      };
+      const qtyIn = convert(entry.quantityIn);
+      const qtyOut = convert(entry.quantityOut);
       
       return {
         totalIn: acc.totalIn + qtyIn,
@@ -726,13 +759,8 @@ export default function PlantStock() {
     processedLedger.forEach((entry) => {
       const key = `${entry.materialId}-${entry.partyId ?? 0}`;
       const material = materials?.find(m => m.id === entry.materialId);
-      const convFactor = material?.conversionFactor || null;
-      const convFromUom = material?.conversionFromUom || null;
-      const convToUom = material?.conversionToUom || null;
-      
       if (!summaryMap[key]) {
-        // Use target UOM if material has conversion, otherwise use entry UOM
-        const targetUom = convToUom || entry.uom || "Ton";
+        const targetUom = material ? stockUnitForMaterial(material, entry.uom) : entry.uom || "MT";
         summaryMap[key] = {
           materialId: entry.materialId,
           materialName: getMaterialName(entry.materialId),
@@ -743,9 +771,9 @@ export default function PlantStock() {
           received: 0,
           consumed: 0,
           closing: 0,
-          conversionFactor: convFactor,
-          conversionFromUom: convFromUom,
-          conversionToUom: convToUom,
+          conversionFactor: material?.conversionFactor ?? null,
+          conversionFromUom: material?.conversionFromUom ?? null,
+          conversionToUom: material ? stockUnitForMaterial(material, entry.uom) : entry.uom,
           convertedOpening: null,
           convertedReceived: null,
           convertedConsumed: null,
@@ -753,19 +781,23 @@ export default function PlantStock() {
         };
       }
 
-      // Check if this entry needs conversion (entry UOM matches source UOM like CFT)
-      const entryNeedsConversion = convFactor && convFromUom && convToUom &&
-        entry.uom?.toUpperCase() === convFromUom.toUpperCase();
-      
-      // Get quantity, converting if needed
       const getConvertedQty = (qty: number | null) => {
-        if (!qty) return 0;
-        return entryNeedsConversion ? qty * convFactor : qty;
+        if (!qty || !material) return 0;
+        try {
+          return convertStockQuantity(
+            qty,
+            entry.uom,
+            stockUnitForMaterial(material, entry.uom),
+            Number(material.bulkDensity) || null,
+          );
+        } catch {
+          return 0;
+        }
       };
 
       // Synthetic opening balance row (B/F) prepended when date filter is active
       if (entry.transactionType === "opening_balance") {
-        const bfBalance = (entry.quantityIn || 0) - (entry.quantityOut || 0);
+        const bfBalance = getConvertedQty(entry.quantityIn) - getConvertedQty(entry.quantityOut);
         summaryMap[key].openingStock += bfBalance;
       }
       // Opening stock entries (from Masters -> Opening Stock)
@@ -781,7 +813,7 @@ export default function PlantStock() {
         summaryMap[key].received += getConvertedQty(Math.abs(entry.quantityIn || 0));
       }
       // Transfers: quantityIn = stock arriving (add to received), quantityOut = stock leaving (add to consumed)
-      else if (entry.transactionType === "transfer") {
+      else if (entry.transactionType === "transfer" || entry.transactionType === "transfer_correction") {
         if ((entry.quantityIn || 0) > 0) summaryMap[key].received += getConvertedQty(entry.quantityIn);
         if ((entry.quantityOut || 0) > 0) summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
@@ -840,13 +872,8 @@ export default function PlantStock() {
       const key = `${entry.materialId}-${entry.partyId ?? 0}`;
       // Get material conversion info
       const material = materials.find(m => m.id === entry.materialId);
-      const convFactor = material?.conversionFactor || null;
-      const convFromUom = material?.conversionFromUom || null;
-      const convToUom = material?.conversionToUom || null;
-      
       if (!summaryMap[key]) {
-        // Use target UOM if material has conversion, otherwise use entry UOM
-        const targetUom = convToUom || entry.uom || "Ton";
+        const targetUom = material ? stockUnitForMaterial(material, entry.uom) : entry.uom || "MT";
         summaryMap[key] = {
           materialId: entry.materialId,
           materialName: getMaterialName(entry.materialId),
@@ -856,21 +883,20 @@ export default function PlantStock() {
           totalReceipts: 0,
           totalIssues: 0,
           balance: 0,
-          conversionFactor: convFactor,
-          conversionFromUom: convFromUom,
-          conversionToUom: convToUom,
+          conversionFactor: material?.conversionFactor ?? null,
+          conversionFromUom: material?.conversionFromUom ?? null,
+          conversionToUom: material ? stockUnitForMaterial(material, entry.uom) : entry.uom,
           convertedBalance: null,
         };
       }
 
-      // Check if this entry needs conversion (entry UOM matches source UOM like CFT)
-      const entryNeedsConversion = convFactor && convFromUom && convToUom &&
-        entry.uom?.toUpperCase() === convFromUom.toUpperCase();
-      
-      // Get quantity, converting if needed
       const getConvertedQty = (qty: number | null) => {
-        if (!qty) return 0;
-        return entryNeedsConversion ? qty * convFactor : qty;
+        if (!qty || !material) return 0;
+        try {
+          return convertStockQuantity(qty, entry.uom, stockUnitForMaterial(material, entry.uom), Number(material.bulkDensity) || null);
+        } catch {
+          return 0;
+        }
       };
 
       // Receipts: opening, receipt, adjustment, return
@@ -882,7 +908,7 @@ export default function PlantStock() {
         summaryMap[key].totalReceipts += getConvertedQty(Math.abs(entry.quantityIn || 0));
       }
       // Transfers: quantityIn = stock arriving (add to receipts), quantityOut = stock leaving (add to issues)
-      if (entry.transactionType === "transfer") {
+      if (entry.transactionType === "transfer" || entry.transactionType === "transfer_correction") {
         if ((entry.quantityIn || 0) > 0) summaryMap[key].totalReceipts += getConvertedQty(entry.quantityIn);
         if ((entry.quantityOut || 0) > 0) summaryMap[key].totalIssues += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
@@ -961,20 +987,20 @@ export default function PlantStock() {
   // Helper to get converted quantities for export/print
   const getConvertedEntryData = (entry: typeof processedLedger[0]) => {
     const material = materials?.find(m => m.id === entry.materialId);
-    const convFactor = material?.conversionFactor;
-    const convFromUom = material?.conversionFromUom;
-    const convToUom = material?.conversionToUom;
-    const hasConversion = convFactor && convFromUom && convToUom;
-    const needsConversion = hasConversion && entry.uom?.toUpperCase() === convFromUom.toUpperCase();
-    
-    const displayIn = needsConversion ? (entry.quantityIn ?? 0) * convFactor : (entry.quantityIn ?? 0);
-    const displayOut = needsConversion ? (entry.quantityOut ?? 0) * convFactor : (entry.quantityOut ?? 0);
+    const displayUom = material ? stockUnitForMaterial(material, entry.uom) : entry.uom;
+    const convert = (quantity: number | null) => {
+      if (!quantity || !material) return 0;
+      try {
+        return convertStockQuantity(quantity, entry.uom, displayUom, Number(material.bulkDensity) || null);
+      } catch {
+        return 0;
+      }
+    };
+    const displayIn = convert(entry.quantityIn);
+    const displayOut = convert(entry.quantityOut);
     // calculatedBalance is already converted to target UOM
     const displayBalance = entry.calculatedBalance ?? 0;
-    // Use target UOM for In/Out only when converted, otherwise use entry's original UOM
-    // For balance, always use target UOM if material has conversion (since balance is accumulated in target UOM)
-    const displayUom = needsConversion ? convToUom : entry.uom;
-    const balanceUom = hasConversion ? convToUom : entry.uom;
+    const balanceUom = displayUom;
     
     return { displayIn, displayOut, displayBalance, displayUom, balanceUom };
   };
@@ -1006,7 +1032,7 @@ export default function PlantStock() {
           "Entry Time": entry.entryTime || "",
           Material: getMaterialName(entry.materialId),
           "Stock Owner": getPartyName(entry.partyId, entry.materialId),
-          Type: entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'tank_transfer' ? '→ Boiler Tank' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType === 'ldo_dip_consumption' ? 'Actual Consumption' : entry.transactionType,
+          Type: entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'tank_transfer' ? '→ Boiler Tank' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'transfer_correction' ? 'Transfer correction' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType === 'ldo_dip_consumption' ? 'Actual Consumption' : entry.transactionType,
           "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '')
             : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
@@ -1415,6 +1441,12 @@ export default function PlantStock() {
         materials={materials}
         testid="banner-negative-stock"
       />
+      {stockConversionWarnings.length > 0 && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200" role="alert" data-testid="stock-unit-conversion-warning">
+          <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4" />Some ledger rows are excluded from converted totals</div>
+          <ul className="mt-1 list-inside list-disc">{stockConversionWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
           <Link href={backLink}>

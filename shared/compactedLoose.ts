@@ -93,7 +93,7 @@ export function withEffectiveMaterialDensity<T extends MaterialDensityFields>(
     bulkDensity: derived,
     conversionFactor: conversionFromUom === "CFT" ? derived / CUBIC_FEET_PER_CUBIC_METRE : derived,
     conversionFromUom,
-    conversionToUom: "Ton",
+    conversionToUom: "MT",
   };
 }
 
@@ -178,7 +178,7 @@ export function convertMaterialQuantityToMt(
   const compactedDensity = profile.rolledDensity * profile.rollingPct / 100;
   const looseWeight = compactedDensity / profile.looseFactor;
   const unit = uom.trim().toUpperCase().replace(/M³|M3/g, "CUM");
-  if (["MT", "TON", "TONNE", "TONNES"].includes(unit)) return quantity;
+  if (["MT", "T", "TON", "TONS", "TONNE", "TONNES"].includes(unit)) return quantity;
   if (["KG", "KGS"].includes(unit)) return quantity / 1000;
   if (unit === "CUM" || unit === "M3") {
     return quantity * (basis === "loose" ? looseWeight : compactedDensity);
@@ -191,7 +191,7 @@ export function convertMaterialQuantityToMt(
 
 function canonicalVolumeMassUom(value: string): string {
   const unit = value.trim().toUpperCase().replace(/M³|M3|CUBIC\s*MET(?:RE|ER)|CUBIC\s*MET(?:RE|ER)S/g, "CUM");
-  if (["TON", "TONNE", "TONNES", "T"].includes(unit)) return "MT";
+  if (["TON", "TONS", "TONNE", "TONNES", "T"].includes(unit)) return "MT";
   if (["KG", "KGS", "KILOGRAM", "KILOGRAMS"].includes(unit)) return "KG";
   if (["CUM", "M³", "M3"].includes(unit)) return "CUM";
   if (["CFT", "CUFT", "FT³"].includes(unit)) return "CFT";

@@ -66,7 +66,7 @@ function keyOf(name: string): string {
 
 function normaliseUom(uom: string): "MT" | "CUM" | "CFT" | null {
   const key = uom.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (["MT", "TON", "TONNE", "TONNES", "T"].includes(key)) return "MT";
+  if (["MT", "TON", "TONS", "TONNE", "TONNES", "T"].includes(key)) return "MT";
   if (["CUM", "M3", "CBM", "CUBICMETRE", "CUBICMETRES"].includes(key)) return "CUM";
   if (["CFT", "CUFT", "CUBICFEET", "CUBICFOOT"].includes(key)) return "CFT";
   return null;

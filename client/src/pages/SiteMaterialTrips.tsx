@@ -1,4 +1,5 @@
 import { formatTripQuantity } from "@shared/tripQuantityDisplay";
+import { normalizeWeightUnit } from "@shared/stockUnits";
 import { classifyTripRoles, tripRolePayload, validateTripRoles, type TripTransportRole } from "@shared/tripTransportRoles";
 import { TripTransportRoleFields } from "@/components/TripTransportRoleFields";
 import { TripRoleEditDialog } from "@/components/TripRoleEditDialog";
@@ -43,7 +44,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
+const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs"];
 
 export default function SiteMaterialTrips() {
   const { toast } = useToast();
@@ -125,7 +126,7 @@ export default function SiteMaterialTrips() {
     equipmentId: null as number | null,
     vehicleManual: false,
     quantity: piParams.qty || "",
-    uom: piParams.uom || "CFT",
+    uom: normalizeWeightUnit(piParams.uom || "CFT"),
     location: "",
     receiptNumber: "",
     enteredBy: user?.fullName || "",
@@ -355,7 +356,7 @@ export default function SiteMaterialTrips() {
         time: trip.time,
         materialName: trip.material,
         quantity: trip.quantity,
-        uom: trip.uom,
+        uom: normalizeWeightUnit(trip.uom),
         site: trip.site,
         location: trip.location || trip.yardLabel,
         vehicleNumber: trip.vehicleNumber,

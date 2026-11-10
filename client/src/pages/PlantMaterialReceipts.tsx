@@ -36,6 +36,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { Party, PlantMaterial, MaterialReceipt, StockLedgerEntry } from "@shared/schema";
 import { UOM_OPTIONS } from "@shared/schema";
+import { normalizeWeightUnit } from "@shared/stockUnits";
 import { materialReceiptTransactionDate } from "@shared/materialReceiptDates";
 import { decidePiAutoSelect, submitBlockedByPi, showPiIndentBlock, showPiPendingBadge, showRegulariseIndentNotice, receiptClosureStatus } from "@shared/dieselReceiptSource";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
@@ -233,7 +234,7 @@ export default function PlantMaterialReceipts() {
   const [partyId, setPartyId] = useState<string>("");
   const [materialId, setMaterialId] = useState<string>("");
   const [quantity, setQuantity] = useState("");
-  const [uom, setUom] = useState("Ton");
+  const [uom, setUom] = useState("MT");
   const [supplier, setSupplier] = useState("");
   const [transporter, setTransporter] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
@@ -796,7 +797,7 @@ export default function PlantMaterialReceipts() {
     setPartyId("");
     setMaterialId("");
     setQuantity("");
-    setUom("Ton");
+    setUom("MT");
     setSupplier("");
     setTransporter("");
     setVehicleNumber("");
@@ -1444,7 +1445,7 @@ export default function PlantMaterialReceipts() {
 
               <div>
                 <Label>Material{linkedDieselRequirementId != null && <span className="text-muted-foreground text-sm"> (canonical Diesel source)</span>}</Label>
-                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); setTankNumber(""); setIndentRef(""); setIndentComboSearch(""); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(m.defaultUom || "Ton"); }} disabled={linkedDieselRequirementId != null}>
+                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); setTankNumber(""); setIndentRef(""); setIndentComboSearch(""); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(normalizeWeightUnit(m.defaultUom || "MT")); }} disabled={linkedDieselRequirementId != null}>
                   <SelectTrigger data-testid="select-material" aria-describedby={linkedDieselRequirementId != null ? "diesel-canonical-source" : undefined}>
                     <SelectValue placeholder="Select material" />
                   </SelectTrigger>

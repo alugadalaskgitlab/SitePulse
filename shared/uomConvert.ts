@@ -9,7 +9,7 @@ export function normalizeUom(uom?: string | null): UomKind {
   const u = uom.trim().toUpperCase();
   if (["CFT", "CU FT", "CUFT", "CU.FT"].includes(u)) return "CFT";
   if (["CUM", "CU.M", "CU M", "M3", "M³", "CBM", "CUM."].includes(u)) return "CUM";
-  if (["MT", "TON", "TONNE", "TONNES", "T", "MTON"].includes(u)) return "MT";
+  if (["MT", "TON", "TONS", "TONNE", "TONNES", "T", "MTON"].includes(u)) return "MT";
   if (["LITERS", "LITRES", "LITER", "LITRE", "LTR", "LT", "L", "LIT"].includes(u)) return "LITERS";
   if (["NOS", "NO", "NOS.", "NO.", "EACH", "EA"].includes(u)) return "NOS";
   return "OTHER";

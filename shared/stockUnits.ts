@@ -1,10 +1,14 @@
 import { convertSolidQty, normalizeUom } from "./uomConvert";
 
 const WEIGHT_UNIT_ALIASES = new Set(["T", "TON", "TONS", "TONNE", "TONNES"]);
+const KG_UNIT_ALIASES = new Set(["KG", "KGS", "KGM", "KILOGRAM", "KILOGRAMS"]);
 
 export function normalizeWeightUnit(unit: string | null | undefined): string {
   const trimmed = String(unit ?? "").trim();
-  return WEIGHT_UNIT_ALIASES.has(trimmed.toUpperCase()) ? "MT" : trimmed;
+  const upper = trimmed.toUpperCase();
+  if (WEIGHT_UNIT_ALIASES.has(upper)) return "MT";
+  if (KG_UNIT_ALIASES.has(upper)) return "KG";
+  return trimmed;
 }
 
 export function stockUnitForMaterial(
@@ -33,8 +37,8 @@ export function convertStockQuantity(
 
   const fromKind = normalizeUom(from);
   const toKind = normalizeUom(to);
-  if (fromKind === "MT" && to.trim().toUpperCase() === "KG") return quantity * 1000;
-  if (from.trim().toUpperCase() === "KG" && toKind === "MT") return quantity / 1000;
+  if (fromKind === "MT" && to === "KG") return quantity * 1000;
+  if (from === "KG" && toKind === "MT") return quantity / 1000;
 
   const converted = convertSolidQty(quantity, from, to, bulkDensity);
   if (converted == null || !Number.isFinite(converted)) {
@@ -162,7 +166,7 @@ export function buildStockBalanceRebuildPreview(input: {
     }
   }
 
-  const normalizedRows = [...rows.values()]
+  const normalizedRows = Array.from(rows.values())
     .map(row => ({
       ...row,
       before: roundStockQuantity(row.before),
@@ -171,7 +175,7 @@ export function buildStockBalanceRebuildPreview(input: {
     }))
     .sort((a, b) => a.partyName.localeCompare(b.partyName) || a.materialName.localeCompare(b.materialName));
 
-  return { rows: normalizedRows, errors: [...errors].sort(), canApply: errors.size === 0 };
+  return { rows: normalizedRows, errors: Array.from(errors).sort(), canApply: errors.size === 0 };
 }
 
 export function convertTransferQuantityBetweenBalances(

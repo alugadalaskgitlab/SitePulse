@@ -23,7 +23,7 @@ export function normalisePlanMaterialName(value: unknown): string {
 function canonicalUnit(value: string): string {
   const key = value.trim().toUpperCase().replace(/[²³]/g, (part) => part === "³" ? "3" : "2");
   const compact = key.replace(/[^A-Z0-9]/g, "");
-  if (["MT", "T", "TON", "TONNE", "TONNES"].includes(compact)) return "MT";
+  if (["MT", "T", "TON", "TONS", "TONNE", "TONNES"].includes(compact)) return "MT";
   if (["KG", "KGS", "KILOGRAM", "KILOGRAMS"].includes(compact)) return "KG";
   if (["CUM", "M3", "CBM", "CUBICMETRE", "CUBICMETRES"].includes(compact)) return "CUM";
   if (["CFT", "CUFT", "CUBICFOOT", "CUBICFEET"].includes(compact)) return "CFT";

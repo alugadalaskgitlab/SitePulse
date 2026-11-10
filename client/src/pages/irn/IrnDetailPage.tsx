@@ -20,6 +20,7 @@ import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { InternalRequisitionWithItems, InternalRequisitionItem, IrnAuditLog, StoreIssueWithItems } from "@shared/schema";
+import { normalizeWeightUnit } from "@shared/stockUnits";
 
 type StoresAction = "issue" | "procure" | "split";
 
@@ -193,7 +194,7 @@ export default function IrnDetailPage() {
     rowBalance: number, rowUom: string, requestedUom: string,
     cf?: number | null, cfFrom?: string | null, cfTo?: string | null,
   ): number | null {
-    const isTon = (u: string) => { const u2 = u.toUpperCase().trim(); return u2 === "MT" || u2 === "TON"; };
+    const isTon = (u: string) => normalizeWeightUnit(u).toUpperCase() === "MT";
     const fromU = rowUom.toUpperCase().trim();
     const reqU = requestedUom.toUpperCase().trim();
     if (fromU === reqU) return rowBalance;
@@ -247,7 +248,7 @@ export default function IrnDetailPage() {
     let totalConverted = 0;
     let hasConversionError = false;
     const sourceParts: string[] = [];
-    const isTon = (u: string) => { const u2 = u.toUpperCase().trim(); return u2 === "MT" || u2 === "TON"; };
+    const isTon = (u: string) => normalizeWeightUnit(u).toUpperCase() === "MT";
     const reqU = requestedUom.toUpperCase().trim();
 
     for (const bd of nonZero) {

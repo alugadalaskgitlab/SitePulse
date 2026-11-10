@@ -8,6 +8,7 @@
  */
 import * as XLSX from 'xlsx';
 import { db } from './db';
+import { normalizeWeightUnit } from '../shared/stockUnits';
 import {
   snlSources,
   snlItems,
@@ -154,7 +155,7 @@ export async function importSdbXlsx(
       const description = String(row.description ?? '').trim();
       if (!description) { result.errors.push(`Items row ${i + 2} (${code}): missing description`); continue; }
 
-      const unit = String(row.unit ?? 'CUM').trim();
+      const unit = normalizeWeightUnit(String(row.unit ?? 'CUM').trim());
       const itemSector = String(row.sector ?? firstSector).trim();
       const chapter = String(row.chapter ?? '').trim() || null;
       const shiftHours = num(row.shift_hours) ?? 8;
@@ -271,7 +272,7 @@ export async function importSdbXlsx(
         const matName = String(mr.material_name ?? '').trim();
         if (!matName) continue;
         const qtyPerUnit = num(mr.qty_per_item_unit);
-        const matUnit = String(mr.unit ?? unit).trim();
+        const matUnit = normalizeWeightUnit(String(mr.unit ?? unit).trim());
         const qtyPerShift = qtyPerUnit != null
           ? Math.round(qtyPerUnit * shiftOutput * 10000) / 10000
           : 0;

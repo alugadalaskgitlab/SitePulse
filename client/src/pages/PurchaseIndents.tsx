@@ -246,7 +246,7 @@ const PURPOSE_OPTIONS = [
 
 const PRIORITY_OPTIONS = ["urgent", "normal", "low"] as const;
 
-const UOM_ITEM_OPTIONS = ["NOS", "KG", "METERS", "LITERS", "SET", "PAIR", "BOX", "ROLLS", "PACKETS", "TON", "MT", "CFT", "CUM", "SQM", "RMT"] as const;
+const UOM_ITEM_OPTIONS = ["NOS", "KG", "METERS", "LITERS", "SET", "PAIR", "BOX", "ROLLS", "PACKETS", "MT", "CFT", "CUM", "SQM", "RMT"] as const;
 
 interface ItemRow {
   id?: number;
@@ -5660,7 +5660,7 @@ export default function PurchaseIndents() {
                 <Select value={addStoreItemForm.uom} onValueChange={v => setAddStoreItemForm(f => ({ ...f, uom: v }))}>
                   <SelectTrigger className="text-sm" data-testid="select-new-store-item-uom"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {["NOS", "KG", "TON", "MT", "LITERS", "CUM", "CFT", "SQM", "RMT", "METERS", "SET", "PAIR", "BOX", "ROLL", "PACK"].map(u => (
+                    {["NOS", "KG", "MT", "LITERS", "CUM", "CFT", "SQM", "RMT", "METERS", "SET", "PAIR", "BOX", "ROLL", "PACK"].map(u => (
                       <SelectItem key={u} value={u}>{u}</SelectItem>
                     ))}
                   </SelectContent>

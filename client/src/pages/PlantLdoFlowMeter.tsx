@@ -17,6 +17,7 @@ import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { normalizeWeightUnit } from "@shared/stockUnits";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
 import { format, parseISO } from "date-fns";
 import type { LdoFlowReading, LdoDipReading, TruckDispatch, Party, MixTemplate } from "@shared/schema";
@@ -203,8 +204,8 @@ export default function PlantLdoFlowMeter() {
   });
 
   const balanceToL = (balance: number, uom: string) => {
-    const u = (uom || "").toUpperCase();
-    if (u === "MT" || u === "TON" || u === "TONS") return balance * 1000 / LDO_DENSITY_KG_PER_LITER;
+    const u = normalizeWeightUnit(uom).toUpperCase();
+    if (u === "MT") return balance * 1000 / LDO_DENSITY_KG_PER_LITER;
     if (u === "KG") return balance / LDO_DENSITY_KG_PER_LITER;
     return balance; // Liters
   };

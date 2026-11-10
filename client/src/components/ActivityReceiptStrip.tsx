@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { FreeTextSuggestionInput } from "@/components/FreeTextSuggestionInput";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeWeightUnit } from "@shared/stockUnits";
 import { useUpload } from "@/hooks/use-upload";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -58,7 +59,7 @@ import {
   isArrangementOperationalAsOf,
 } from "@shared/arrangementStatusHistory";
 
-const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
+const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs"];
 const ACTIVE_ARRANGEMENT_STATUSES = new Set(["approved", "mobilisation_pending", "in_progress"]);
 
 interface ArrangementRow {
@@ -813,7 +814,7 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
     supplier: "",
     vehicleNumber: "",
     quantity: "",
-    uom: arrangement?.uom || "Cum",
+    uom: normalizeWeightUnit(arrangement?.uom || "Cum"),
     receiptNumber: "",
     location: props.locationLabel ?? "",
     notes: "",

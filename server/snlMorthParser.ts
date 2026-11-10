@@ -28,6 +28,7 @@
 
 import * as XLSX from 'xlsx';
 import { db } from './db';
+import { normalizeWeightUnit } from '../shared/stockUnits';
 import {
   snlSources,
   snlItems,
@@ -300,6 +301,7 @@ function normaliseOutputUnit(value: string): string {
   if (/^(?:sqm|sq\.?\s*m|square\s+met(?:re|er)s?)\b/.test(unit)) return "SQM";
   if (/^(?:met(?:re|er)s?|m)\b/.test(unit)) return "METRE";
   if (/^(?:nos?|numbers?)\b/.test(unit)) return "NUMBERS";
+  if (/^(?:t|tons?|tonnes?)$/i.test(unit)) return "MT";
   return value.trim().toUpperCase();
 }
 
@@ -930,7 +932,8 @@ function parseChapterSheet(
     const qty = parseQty(colF);
     if (qty === null || qty <= 0) continue;
     const rawUnit = colE || (section === 'labour' ? 'day' : section === 'equipment' ? 'hour' : activeItem.unit);
-    const unit = section === 'equipment' ? equipmentUnit(rawUnit) : rawUnit;
+    const parsedUnit = section === 'equipment' ? equipmentUnit(rawUnit) : rawUnit;
+    const unit = normalizeWeightUnit(parsedUnit);
 
     let sourceGroup: string | undefined;
     if (activeItem.code === "4.6") {

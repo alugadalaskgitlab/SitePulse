@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
 import type { Party, PlantMaterial as Material, StockLedgerEntry } from "@shared/schema";
 import { formatQty, toFiniteNumber } from "@shared/stockReconciliation";
+import { convertStockQuantity, normalizeWeightUnit, stockUnitForMaterial } from "@shared/stockUnits";
 
 type StockBalance = {
   partyId: number | null;
@@ -47,6 +48,7 @@ export default function PlantStockTransfer() {
   const [fromPartyId, setFromPartyId] = useState<string>("");
   const [toPartyId, setToPartyId] = useState<string>("");
   const [quantity, setQuantity] = useState<string>("");
+  const [quantityUom, setQuantityUom] = useState("MT");
   const [date, setDate] = useState<string>(today);
   const [notes, setNotes] = useState<string>("");
   const [saving, setSaving] = useState(false);
@@ -84,15 +86,51 @@ export default function PlantStockTransfer() {
     () => materials?.find(m => String(m.id) === materialId)?.name || "",
     [materials, materialId],
   );
-  const materialUom = useMemo(
-    () => materials?.find(m => String(m.id) === materialId)?.defaultUom || "MT",
+  const selectedMaterial = useMemo(
+    () => materials?.find(m => String(m.id) === materialId) ?? null,
     [materials, materialId],
   );
+  const materialUom = useMemo(
+    () => stockUnitForMaterial(selectedMaterial),
+    [selectedMaterial],
+  );
+  const transferUomChoices = useMemo(() => {
+    if (!selectedMaterial) return ["MT"];
+    let allowed: string[] = [];
+    try {
+      const parsed = JSON.parse(selectedMaterial.allowedUoms || "[]");
+      if (Array.isArray(parsed)) allowed = parsed.map(String);
+    } catch {
+      allowed = String(selectedMaterial.allowedUoms || "").split(",").map(value => value.trim()).filter(Boolean);
+    }
+    return Array.from(new Set([
+      ...allowed,
+      selectedMaterial.defaultUom || "",
+      selectedMaterial.conversionFromUom || "",
+      selectedMaterial.conversionToUom || "",
+      materialUom,
+    ].map(normalizeWeightUnit).filter(Boolean)));
+  }, [selectedMaterial, materialUom]);
 
   const qtyNum = parseFloat(quantity) || 0;
   // pg NUMERIC arrives as a string — normalise before comparing/formatting.
   const fromBalance = toFiniteNumber(fromPartyBalance?.balance);
-  const isOverBalance = fromBalance !== null && qtyNum > fromBalance && fromBalance >= 0;
+  let sourceQuantityInBalanceUom: number | null = null;
+  try {
+    if (selectedMaterial && qtyNum > 0) {
+      sourceQuantityInBalanceUom = convertStockQuantity(
+        qtyNum,
+        quantityUom,
+        fromPartyBalance?.uom || materialUom,
+        Number(selectedMaterial.bulkDensity) || null,
+      );
+    }
+  } catch {
+    sourceQuantityInBalanceUom = null;
+  }
+  const conversionInvalid = qtyNum > 0 && sourceQuantityInBalanceUom == null;
+  const isOverBalance = fromBalance !== null && sourceQuantityInBalanceUom !== null &&
+    sourceQuantityInBalanceUom > fromBalance && fromBalance >= 0;
   const canSave =
     canTransfer &&
     !!materialId &&
@@ -100,6 +138,7 @@ export default function PlantStockTransfer() {
     !!toPartyId &&
     fromPartyId !== toPartyId &&
     qtyNum > 0 &&
+    !conversionInvalid &&
     !!date;
 
   const handleSave = async () => {
@@ -112,6 +151,7 @@ export default function PlantStockTransfer() {
         fromPartyId: parseInt(fromPartyId),
         toPartyId: parseInt(toPartyId),
         quantity: qtyNum,
+        uom: quantityUom,
         date,
         notes: notes.trim() || undefined,
       });
@@ -121,7 +161,7 @@ export default function PlantStockTransfer() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
       toast({
         title: "Transfer recorded",
-        description: `${qtyNum} ${materialUom} of ${materialName} transferred from ${fromPartyName} to ${toPartyName}.`,
+        description: `${qtyNum} ${quantityUom} of ${materialName} transferred from ${fromPartyName} to ${toPartyName}.`,
       });
       // Reset form
       setQuantity("");
@@ -185,7 +225,13 @@ export default function PlantStockTransfer() {
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>Material</Label>
-            <Select value={materialId} onValueChange={(v) => { setMaterialId(v); setResult(null); }}>
+            <Select value={materialId} onValueChange={(v) => {
+              setMaterialId(v);
+              setResult(null);
+              const material = materials?.find(item => item.id === Number(v));
+              const unit = stockUnitForMaterial(material);
+              setQuantityUom(unit || "MT");
+            }}>
               <SelectTrigger data-testid="select-material">
                 <SelectValue placeholder="Select material" />
               </SelectTrigger>
@@ -256,21 +302,39 @@ export default function PlantStockTransfer() {
           </div>
 
           <div className="space-y-1.5">
-            <Label>Quantity ({materialUom})</Label>
-            <Input
-              type="number"
-              min="0.001"
-              step="0.001"
-              value={quantity}
-              onChange={(e) => { setQuantity(e.target.value); setResult(null); }}
-              placeholder="e.g. 2.400"
-              data-testid="input-quantity"
-            />
+            <Label>Quantity and unit</Label>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min="0.001"
+                step="0.001"
+                value={quantity}
+                onChange={(e) => { setQuantity(e.target.value); setResult(null); }}
+                placeholder="e.g. 2.400"
+                data-testid="input-quantity"
+              />
+              <Select value={quantityUom} onValueChange={setQuantityUom}>
+                <SelectTrigger className="w-32" data-testid="select-quantity-unit">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {transferUomChoices.map(unit => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            {selectedMaterial && fromPartyId && (
+              <p className="text-xs text-muted-foreground">
+                Source stock is {formatQty(fromPartyBalance?.balance ?? 0, 3)} {fromPartyBalance?.uom || materialUom}; the saved transfer will convert independently for both parties.
+              </p>
+            )}
+            {conversionInvalid && (
+              <p className="text-sm text-destructive">This unit cannot be converted to the source balance unit. Check the material density and unit settings.</p>
+            )}
             {isOverBalance && (
               <div className="flex items-center gap-1 text-sm text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                 <span>
-                  Quantity ({qtyNum.toFixed(3)}) exceeds current balance ({formatQty(fromBalance, 3)} {materialUom}).
+                  Quantity ({formatQty(sourceQuantityInBalanceUom, 3)} {fromPartyBalance?.uom || materialUom}) exceeds current balance ({formatQty(fromBalance, 3)} {fromPartyBalance?.uom || materialUom}).
                   Transfer will proceed but source party will go into negative balance.
                 </span>
               </div>

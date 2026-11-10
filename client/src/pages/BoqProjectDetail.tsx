@@ -26,6 +26,7 @@ import { BoqImportWizard } from "@/components/BoqImportWizard";
 import { BoqItemRecipeDialog } from "@/pages/BoqItemRecipes";
 import type { BoqProject, BoqItemWithCategory, BoqRevisionWithItems } from "@shared/schema";
 import { boqItemDisplayName } from "@shared/boqItemName";
+import { normalizeWeightUnit } from "@shared/stockUnits";
 import { uppercaseBusinessText } from "@shared/businessText";
 import { resolveBoqDisplayUnit, resolveBoqUomProfile } from "@shared/dprGeometry";
 import { canonicalizeUnit } from "@shared/boqNormalise";
@@ -302,7 +303,7 @@ function ItemEditDialog({
               } else if (u === "KM" || u === "KMS") {
                 suggestions.push({ label: "m → km  (÷1000)", factor: "0.001" });
                 suggestions.push({ label: "RMT → km  (÷1000)", factor: "0.001" });
-              } else if (u === "MT" || u === "TON" || u === "TONS") {
+              } else if (normalizeWeightUnit(u) === "MT") {
                 suggestions.push({ label: "kg → MT  (÷1000)", factor: "0.001" });
               } else if (u === "SQM" || u === "M2") {
                 suggestions.push({ label: "Same unit — no conversion", factor: "1" });

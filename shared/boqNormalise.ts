@@ -52,10 +52,9 @@ const CANONICAL_UNIT_MAP: Record<string, string> = {
   KILOMETERS:   "Km",    KILOMETRES:    "Km",
 
   // ── Metric tonne ─────────────────────────────────────────────────────────
-  MT:           "MT",    TON:          "MT",    TONNE:        "MT",
+  MT:           "MT",    T:            "MT",    TON:          "MT",    TONNE:        "MT",
   TONNES:       "MT",    TONS:         "MT",
   METRICTONNE:  "MT",    METRICTON:    "MT",    METRICTNS:    "MT",
-  // NOTE: bare "T" intentionally omitted — too ambiguous (could be "tonne" or "time")
 
   // ── Kilogram ─────────────────────────────────────────────────────────────
   KG:           "Kg",    KGS:          "Kg",    KGM:          "Kg",

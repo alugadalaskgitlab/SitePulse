@@ -63,7 +63,7 @@ function convertedMt(record: MaterialReceiptSlipData): string | null {
   const from = (record.conversionFromUom || "").trim().toUpperCase();
   const to = (record.conversionToUom || "").trim().toUpperCase();
   if (!Number.isFinite(factor) || factor <= 0 || !/^(CFT|CUBIC FEET)$/.test(from)) return null;
-  if (!/^(MT|TONS?|TONNES?|METRIC TONS?)$/.test(to)) return null;
+  if (!/^(MT|T|TONS?|TONNES?|METRIC TONS?)$/.test(to)) return null;
   if ((record.uom || "").trim().toUpperCase() !== from) return null;
   const mt = Number(record.quantity) * factor;
   if (!Number.isFinite(mt)) return null;

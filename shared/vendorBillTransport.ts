@@ -25,7 +25,7 @@ type Row = {
 export function quantityInMt(qty: number, unit: string): number | null {
   if (!Number.isFinite(qty) || qty < 0) return null;
   const u = unit.trim().toUpperCase();
-  if (["MT", "TON", "TONS", "TONNE", "TONNES"].includes(u)) return qty;
+  if (["MT", "T", "TON", "TONS", "TONNE", "TONNES"].includes(u)) return qty;
   if (["KG", "KGS"].includes(u)) return qty / 1000;
   return null; // Never infer density, payload, or weight from a description.
 }

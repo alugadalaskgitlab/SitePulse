@@ -35,6 +35,13 @@ import { vendorRateCardIdentity } from "../shared/vendorRateCardIdentity";
 import { receiptSlipSendWindow } from "../shared/receiptSlipStatus";
 import { resolveVendorNameMatch } from "./vendorNameResolution";
 import { isPartyNonPurchaseReceipt } from "@shared/materialReceiptParty";
+import {
+  applyStockUnitNormalization,
+  correctStockTransfer,
+  getCorrectableStockTransfers,
+  getStockTransferCorrectionHistory,
+  previewStockUnitNormalization,
+} from "./stockUnitAdmin";
 import { pipeOperatorManualPdf } from './operator-manual-pdf';
 import { pipeAdminGuidePdf } from './admin-guide-pdf';
 import { pipeEstimatorGuidePdf } from './estimator-guide-pdf';
@@ -6990,6 +6997,80 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/stock-units/preview", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+    if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can normalize stock units" });
+    try {
+      res.json(await previewStockUnitNormalization());
+    } catch (err: any) {
+      console.error("Stock unit normalization preview failed:", err);
+      res.status(500).json({ message: err?.message || "Could not preview stock unit normalization" });
+    }
+  });
+
+  app.post("/api/admin/stock-units/apply", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+    if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can normalize stock units" });
+    const parsed = z.object({ token: z.string().min(1) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "A fresh preview token is required" });
+    try {
+      const user = req.authUser;
+      const result = await applyStockUnitNormalization(parsed.data.token, {
+        userId: user.id,
+        userName: currentUserName(req),
+        userRole: "owner",
+      });
+      res.json(result);
+    } catch (err: any) {
+      const message = err?.message || "Could not apply stock unit normalization";
+      const status = /changed after preview|cannot be converted|safely/i.test(message) ? 409 : 500;
+      res.status(status).json({ message });
+    }
+  });
+
+  app.get("/api/admin/stock-transfers/correctable", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+    if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can view transfer correction history" });
+    try {
+      const [transfers, history] = await Promise.all([
+        getCorrectableStockTransfers(),
+        getStockTransferCorrectionHistory(),
+      ]);
+      res.json({ transfers, history });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Could not load correctable transfers" });
+    }
+  });
+
+  app.post("/api/admin/stock-transfers/correct", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+    if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can correct a transfer" });
+    const parsed = z.object({
+      outId: z.number().int().positive(),
+      inId: z.number().int().positive(),
+      quantity: z.number().positive(),
+      uom: z.string().trim().min(1),
+      fromPartyId: z.number().int().positive().nullable(),
+      toPartyId: z.number().int().positive().nullable(),
+      reason: z.string().trim().min(4),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0]?.message || "Invalid transfer correction" });
+    try {
+      const user = req.authUser;
+      const result = await correctStockTransfer({
+        ...parsed.data,
+        actor: {
+          userId: user.id,
+          userName: currentUserName(req),
+          userRole: "owner",
+        },
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ message: err?.message || "Could not correct this transfer" });
+    }
+  });
+
   // Physical stock correction — reconcile book stock to physical measurement
   app.post("/api/plant-module/stock-correction", async (req, res) => {
     try {
@@ -7239,6 +7320,7 @@ export async function registerRoutes(
     fromPartyId: z.number().int().positive(),
     toPartyId: z.number().int().positive(),
     quantity: z.number().positive(),
+    uom: z.string().trim().min(1).optional(),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
     notes: z.string().optional(),
   }).refine((d) => d.fromPartyId !== d.toPartyId, {
@@ -7253,13 +7335,14 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.errors[0]?.message || "Invalid request" });
       }
-      const { materialId, fromPartyId, toPartyId, quantity, date, notes } = parsed.data;
+      const { materialId, fromPartyId, toPartyId, quantity, uom, date, notes } = parsed.data;
       const actorName = currentUserName(req);
       const result = await storage.createStockTransfer({
         materialId,
         fromPartyId,
         toPartyId,
         quantity,
+        uom,
         date,
         notes,
         actorName: actorName.trim() || undefined,
@@ -19606,12 +19689,12 @@ export async function registerRoutes(
           let targetUom = String(row.uom ?? item.unit);
           let normalizedQty = qty;
           if (layerType === "concrete" && isWater) {
-             if (["L", "LITRE", "LITER", "LITRES", "LITERS", "KG", "KGS", "MT", "TON", "TONNE", "TONNES", "T", "CUM", "M3", "KL"].includes(uomKey)) {
+             if (["L", "LITRE", "LITER", "LITRES", "LITERS", "KG", "KGS", "MT", "TON", "TONS", "TONNE", "TONNES", "T", "CUM", "M3", "KL"].includes(uomKey)) {
                targetUom = "KL";
                if (["L", "LITRE", "LITER", "LITRES", "LITERS", "KG", "KGS"].includes(uomKey)) normalizedQty = qty / 1000;
              }
           } else if (solidTarget && !isAdmixture && !isWater) {
-             if (["MT", "TON", "TONNE", "TONNES", "T"].includes(uomKey)) {
+             if (["MT", "TON", "TONS", "TONNE", "TONNES", "T"].includes(uomKey)) {
                targetUom = "MT";
              } else if (["KG", "KGS"].includes(uomKey)) {
                targetUom = "MT";
@@ -27201,14 +27284,14 @@ async function seedPlantMasterData() {
     // Default materials — bulk densities per IS 2386 / IRC norms (granite/basalt; editable in Material Master)
     // conversionFactor is auto-derived from bulkDensity by storage._deriveBulkDensityConversion()
     const defaultMaterials = [
-      { name: "20MM",     category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.52, conversionFromUom: "CFT" },
-      { name: "10/12MM",  category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.55, conversionFromUom: "CFT" },
-      { name: "6MM DOWN", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.60, conversionFromUom: "CFT" },
-      { name: "DUST",     category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.65, conversionFromUom: "CFT" },
-      { name: "40MM",     category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.50, conversionFromUom: "CFT" },
-      { name: "GSB",      category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.75, conversionFromUom: "CFT" },
-      { name: "Filler",   category: "Aggregate", defaultUom: "MT",  allowedUoms: JSON.stringify(["MT", "Ton", "CFT", "Cum", "Kg"]), bulkDensity: 2.10, conversionFromUom: "CFT" },
-      { name: "BITUMEN",  category: "Bitumen",   defaultUom: "MT",  allowedUoms: JSON.stringify(["MT", "Ton", "Kg", "Barrels"]) },
+      { name: "20MM",     category: "Aggregate", defaultUom: "MT", allowedUoms: JSON.stringify(["MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.52, conversionFromUom: "CFT" },
+      { name: "10/12MM",  category: "Aggregate", defaultUom: "MT", allowedUoms: JSON.stringify(["MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.55, conversionFromUom: "CFT" },
+      { name: "6MM DOWN", category: "Aggregate", defaultUom: "MT", allowedUoms: JSON.stringify(["MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.60, conversionFromUom: "CFT" },
+      { name: "DUST",     category: "Aggregate", defaultUom: "MT", allowedUoms: JSON.stringify(["MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.65, conversionFromUom: "CFT" },
+      { name: "40MM",     category: "Aggregate", defaultUom: "MT", allowedUoms: JSON.stringify(["MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.50, conversionFromUom: "CFT" },
+      { name: "GSB",      category: "Aggregate", defaultUom: "MT", allowedUoms: JSON.stringify(["MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.75, conversionFromUom: "CFT" },
+      { name: "Filler",   category: "Aggregate", defaultUom: "MT",  allowedUoms: JSON.stringify(["MT", "CFT", "Cum", "Kg"]), bulkDensity: 2.10, conversionFromUom: "CFT" },
+      { name: "BITUMEN",  category: "Bitumen",   defaultUom: "MT",  allowedUoms: JSON.stringify(["MT", "Kg", "Barrels"]) },
       { name: "EMULSION", category: "Bitumen",   defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
       { name: "DIESEL",   category: "Utility",   defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
       { name: "LDO",      category: "Utility",   defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
