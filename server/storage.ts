@@ -13615,6 +13615,68 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // 2b) CONSUMED — only store issues tied to an exact BOQ project/item
+    // requirement count. Site-only issues are intentionally excluded, and
+    // the source rule keeps this separate from DPR × recipe consumption.
+    const linkedIssueConditions: any[] = [
+      eq(storeIssues.isCancelled, false),
+      eq(storeIssues.issuedToSection, "site"),
+      isNotNull(materialRequirements.boqProjectId),
+      isNotNull(materialRequirements.sourceBoqItemId),
+      isNotNull(boqProjects.siteId),
+    ];
+    if (dateFrom) linkedIssueConditions.push(gte(storeIssues.date, dateFrom));
+    if (dateTo) linkedIssueConditions.push(lte(storeIssues.date, dateTo));
+    if (permitted) linkedIssueConditions.push(inArray(sites.name, permitted));
+    const linkedIssues = await db.select({
+      siteName: sites.name,
+      projectSiteId: boqProjects.siteId,
+      issueSiteId: storeIssues.siteId,
+      boqProjectId: materialRequirements.boqProjectId,
+      boqItemId: materialRequirements.sourceBoqItemId,
+      layerConfig: boqItems.layerConfig,
+      materialName: storeItems.name,
+      materialText: storeIssueItems.materialText,
+      quantity: storeIssueItems.qty,
+      uom: storeIssueItems.uom,
+    }).from(storeIssues)
+      .innerJoin(storeIssueItems, eq(storeIssueItems.issueId, storeIssues.id))
+      .innerJoin(internalRequisitions, eq(internalRequisitions.id, storeIssues.irnId))
+      .innerJoin(materialRequirements, eq(materialRequirements.id, internalRequisitions.requirementId))
+      .innerJoin(boqProjects, eq(boqProjects.id, materialRequirements.boqProjectId))
+      .innerJoin(sites, eq(sites.id, boqProjects.siteId))
+      .leftJoin(boqItems, and(
+        eq(boqItems.id, materialRequirements.sourceBoqItemId),
+        eq(boqItems.boqProjectId, materialRequirements.boqProjectId),
+      ))
+      .leftJoin(storeItems, eq(storeItems.id, storeIssueItems.itemId))
+      .where(and(...linkedIssueConditions));
+    for (const issue of linkedIssues) {
+      if (
+        issue.boqProjectId == null ||
+        issue.boqItemId == null ||
+        issue.projectSiteId == null ||
+        !issue.siteName ||
+        (issue.issueSiteId != null && Number(issue.issueSiteId) !== Number(issue.projectSiteId))
+      ) continue;
+      const layer = issue.layerConfig as any;
+      if (useSourceForLayer(layer?.layerType, layer?.granularSource) !== "linked store issue") continue;
+      const materialName = String(issue.materialName ?? issue.materialText ?? "").trim();
+      if (!materialName) continue;
+      const master = resolve(materialName);
+      const quantity = Number(issue.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) continue;
+      const converted = convertToStock(quantity, issue.uom, master, false);
+      const row = bucket(issue.siteName, master?.name ?? materialName, !!master);
+      if (converted == null) {
+        if (needsStockDensity(issue.uom, master?.bulkDensity ?? null)) {
+          recordDensitySkip(row.densitySkips, "consumed", quantity, issue.uom);
+        }
+        continue;
+      }
+      row.consumed += converted;
+    }
+
     // 3) ORDERED — purchase indent items (site from indent.siteId or raisedFrom)
     // Previously unmatched PI items were silently dropped (if (!m) continue).
     // Fix: include them with matched=false so the frontend shows an "unmatched" warning

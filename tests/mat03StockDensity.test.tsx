@@ -21,15 +21,18 @@ import { storage } from "../server/storage";
 // All quantities and density in these tests are synthetic, never persisted.
 function seed(density: number | null, matched = true) {
   state.results = [
-    matched ? [{ name: "Soil", bulkDensity: density }] : [],
+    matched ? [{ name: "GSB", bulkDensity: density }] : [],
+    [],
     [
-      { site: "Synthetic site", material: "Soil", quantity: 10, uom: "Cum", unloadedAt: "yard", date: "2026-01-02" },
-      { site: "Synthetic site", material: "Soil", quantity: 5, uom: "MT", unloadedAt: null, date: "2026-01-01" },
+      { site: "Synthetic site", material: "GSB", quantity: 10, uom: "Cum", unloadedAt: "yard", date: "2026-01-02" },
+      { site: "Synthetic site", material: "GSB", quantity: 5, uom: "MT", unloadedAt: null, date: "2026-01-01" },
     ],
     [{ site: "Synthetic site", boqItemId: 1, quantity: 2 }],
-    [{ boqItemId: 1, materialName: "Soil", qtyPerBoqUnit: 3, wastagePct: 0, uom: "Cum" }],
+    [{ boqItemId: 1, materialName: "GSB", qtyPerBoqUnit: 3, wastagePct: 0, uom: "Cum" }],
+    [],
     [{ id: 1, name: "Synthetic site" }],
-    [{ siteId: 1, description: "Soil", qty: 30, approvedQty: 20, uom: "Cum" }],
+    [{ siteId: 1, description: "GSB", qty: 30, approvedQty: 20, uom: "Cum" }],
+    [],
   ];
 }
 
@@ -57,27 +60,58 @@ describe("MAT-03 Part D density omissions", () => {
     expect(renderToStaticMarkup(<StockDensityWarning skips={r.densitySkips} matched />)).toBe("");
   });
 
+  it("counts store issues only when linked to the exact project and BOQ item", async () => {
+    seed(2);
+    state.results[3] = [{
+      site: "Synthetic site",
+      boqItemId: 1,
+      quantity: 2,
+      layerConfig: { layerType: "none" },
+      itemUnit: "MT",
+    }];
+    state.results[5] = [
+      {
+        siteName: "Synthetic site", projectSiteId: 1, issueSiteId: 1,
+        boqProjectId: 9, boqItemId: 1, layerConfig: { layerType: "none" },
+        materialName: "GSB", materialText: null, quantity: 4, uom: "MT",
+      },
+      {
+        siteName: "Synthetic site", projectSiteId: 1, issueSiteId: 1,
+        boqProjectId: null, boqItemId: null, layerConfig: { layerType: "none" },
+        materialName: "GSB", materialText: null, quantity: 50, uom: "MT",
+      },
+      {
+        siteName: "Synthetic site", projectSiteId: 1, issueSiteId: 2,
+        boqProjectId: 9, boqItemId: 1, layerConfig: { layerType: "none" },
+        materialName: "GSB", materialText: null, quantity: 25, uom: "MT",
+      },
+    ];
+
+    const [row] = await storage.getSiteMaterialReconciliation();
+    expect(row.consumed).toBe(4);
+  });
+
   it("retains a missing-master material even when every record needs density", async () => {
     seed(null, false);
-    state.results[1] = (state.results[1] as any[]).slice(0, 1);
+    state.results[2] = (state.results[2] as any[]).slice(0, 1);
     const [r] = await storage.getSiteMaterialReconciliation();
-    expect(r).toMatchObject({ material: "Soil", matched: false, ordered: 0, delivered: 0, consumed: 0 });
+    expect(r).toMatchObject({ material: "GSB", matched: false, ordered: 0, delivered: 0, consumed: 0 });
     expect(r.densitySkips.delivered.count).toBe(1);
     expect(renderToStaticMarkup(<StockDensityWarning skips={r.densitySkips} matched={false} />)).toContain("Match this material");
   });
 
   it("does not mislabel unsupported units as missing density", async () => {
     seed(null);
-    state.results[1] = [{ site: "Synthetic site", material: "Soil", quantity: 4, uom: "Nos" }];
-    state.results[2] = [];
-    state.results.splice(3, 1); // No recipes query with no progress.
-    state.results[4] = [];
+    state.results[2] = [{ site: "Synthetic site", material: "GSB", quantity: 4, uom: "Nos" }];
+    state.results[3] = [];
+    state.results.splice(4, 1); // No recipes query with no progress.
+    state.results[6] = [];
     expect(await storage.getSiteMaterialReconciliation()).toEqual([]);
   });
 
   it("preserves empty permission scope", async () => {
     seed(null);
     expect(await storage.getSiteMaterialReconciliation({ permittedSiteNames: [] })).toEqual([]);
-    expect(state.results).toHaveLength(6);
+    expect(state.results).toHaveLength(9);
   });
 });

@@ -179,8 +179,8 @@ describe("06S §7 reconciliation (Tests I/J/L/K)", () => {
     storageSrc.indexOf("async getAllMaterialsReceived"),
   );
   it("Test L: reports deliveredAtStretch/deliveredAtYard as informational totals only — no consumption allocation", () => {
-    expect(recon).toContain(`if ((t as any).unloadedAt === "yard") r.deliveredAtYard += converted;`);
-    expect(recon).toContain("else r.deliveredAtStretch += converted;");
+    expect(recon).toContain(`if ((t as any).unloadedAt === "yard") row.deliveredAtYard += converted;`);
+    expect(recon).toContain("else row.deliveredAtStretch += converted;");
     // lying stays SITE-WIDE — never split between yard and stretch:
     expect(recon).toContain("siteMaterialLyingBalance(r.delivered, r.consumed)");
     expect(recon).toContain("lying: round(balance.lying)");
