@@ -139,3 +139,4 @@
 - [Estimator geometry precision](estimator-geometry-precision.md) — Geometry remains exact; acceptance lengths are not rounded inside quantity calculations.
 - [HLC receipt bill scope](hlc-receipt-bill-scope.md) — keep HLC ownership lookup limited to auto-bill types that can include plant receipts.
 - [BOM plan vs actual](bom-plan-actual.md) — one source per BOQ item, exact store-issue linkage, shared plant stock, and material-owned conversion profiles prevent double-counting.
+- [Batch report delivery](batch-report-delivery.md) — write every batch report to reports/<BATCH-NAME>.md, commit and push it, then reply with the exact one-line path confirmation.
