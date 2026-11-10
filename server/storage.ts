@@ -13657,9 +13657,9 @@ export class DatabaseStorage implements IStorage {
     // 2) CONSUMED — DPR progress × recipe norm (optionally date-filtered)
     const progConds: any[] = [
       eq(dprs.dprStatus, COUNTED_DPR_STATUS),
-      eq(dprs.isDeleted, COUNTED_DPR_FLAG),
-      eq(dprs.isCancelled, COUNTED_DPR_FLAG),
-      eq(dprs.isSuperseded, COUNTED_DPR_FLAG),
+      or(eq(dprs.isDeleted, COUNTED_DPR_FLAG), isNull(dprs.isDeleted)),
+      or(eq(dprs.isCancelled, COUNTED_DPR_FLAG), isNull(dprs.isCancelled)),
+      or(eq(dprs.isSuperseded, COUNTED_DPR_FLAG), isNull(dprs.isSuperseded)),
       or(eq(progressEntries.noSiteWork, false), isNull(progressEntries.noSiteWork)),
     ];
     if (permitted) progConds.push(inArray(dprs.site, permitted));
@@ -33675,9 +33675,9 @@ export class DatabaseStorage implements IStorage {
         JOIN boq_items bi ON bi.id = pe.boq_item_id
         WHERE pe.boq_item_id = ANY(ARRAY[${sql.raw(itemIds.join(","))}]::int[])
            AND dprs.dpr_status = ${COUNTED_DPR_STATUS}
-           AND dprs.is_deleted = ${COUNTED_DPR_FLAG}
-           AND dprs.is_cancelled = ${COUNTED_DPR_FLAG}
-           AND dprs.is_superseded = ${COUNTED_DPR_FLAG}
+           AND COALESCE(dprs.is_deleted, false) = false
+           AND COALESCE(dprs.is_cancelled, false) = false
+           AND COALESCE(dprs.is_superseded, false) = false
           AND pe.no_site_work = false
           AND pe.is_incidental = false
           ${dateFilter}
@@ -33742,9 +33742,9 @@ export class DatabaseStorage implements IStorage {
         JOIN boq_items bi ON bi.id = dsi.boq_item_id
         WHERE dsi.boq_item_id = ANY(ARRAY[${sql.raw(itemIds.join(","))}]::int[])
            AND dprs.dpr_status = ${COUNTED_DPR_STATUS}
-           AND dprs.is_deleted = ${COUNTED_DPR_FLAG}
-           AND dprs.is_cancelled = ${COUNTED_DPR_FLAG}
-           AND dprs.is_superseded = ${COUNTED_DPR_FLAG}
+           AND COALESCE(dprs.is_deleted, false) = false
+           AND COALESCE(dprs.is_cancelled, false) = false
+           AND COALESCE(dprs.is_superseded, false) = false
           ${dateFilter}
       `);
       for (const sr of rawStruct.rows as any[]) {

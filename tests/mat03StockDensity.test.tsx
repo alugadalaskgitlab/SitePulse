@@ -67,7 +67,7 @@ describe("MAT-03 Part D density omissions", () => {
     seed(2);
     state.results[3] = [{
       site: "Synthetic site", boqItemId: 1, quantity: 2, isIncidental: true,
-      dprStatus: "submitted", isDeleted: false, isCancelled: false, isSuperseded: false,
+      dprStatus: "submitted", isDeleted: null, isCancelled: null, isSuperseded: null,
     }];
     const [row] = await storage.getSiteMaterialReconciliation();
     expect(row).toMatchObject({ consumed: 12, incidentalConsumed: 12 });

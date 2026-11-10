@@ -121,7 +121,7 @@ The discrepancy is caused by the material-use DPR filter counting incidental row
 
 ### Changes
 
-- Added a shared eligibility contract: a DPR counts only when it is `submitted` and `isDeleted`, `isCancelled`, and `isSuperseded` are all false.
+- Added a shared eligibility contract: a DPR counts only when it is `submitted` and each lifecycle flag (`isDeleted`, `isCancelled`, `isSuperseded`) is false or null.
 - Applied the same eligibility checks to Plan vs Actual, Material Buy/Use, and site stock consumption. Plan vs Actual continues to exclude incidental progress; Material Buy/Use and site stock include incidental quantities in material consumption.
 - Material-use rows now show an “of which incidental” subtotal. It is also present in the site stock table and Material Buy/Use exports.
 - Direct-supply granular site stock now uses the layer’s single canonical material line and its own master values, rather than stale saved SNL fractions. Earthwork retains its saved recipe behavior.
@@ -151,3 +151,11 @@ The WMM after value is `757.5 cum × 2.205 MT/cum = 1,670.2875 MT`. Its incident
 - Production build: **passed**.
 - TypeScript check: still reports **457 project-wide diagnostics** and is not green; none are in the code sections changed for this batch.
 - The signed plant-stock display was covered by a UI test with a negative balance and the exact warning; the still-to-buy test confirms negative stock is counted as zero.
+
+### Null lifecycle flags follow-up
+
+Null values for `isDeleted`, `isCancelled`, and `isSuperseded` are now treated as false by the shared eligibility helper and by the SQL filters used for Plan vs Actual, Material Buy/Use, and site stock.
+
+A read-only query ran only against `sitelog_dev` in a read-only transaction. Among **333 submitted DPRs**, the counts with null flags were: `is_deleted` **0**, `is_cancelled` **0**, `is_superseded` **0**, and **0** DPRs with any of the three flags null. No records were changed; production and its replica were not queried.
+
+Follow-up verification: **4 focused test files passed (20 tests)**, and the production build passed. The project TypeScript check remains at 457 diagnostics, with none in the edited sections.

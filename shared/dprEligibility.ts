@@ -9,10 +9,11 @@ export interface DprEligibilityState {
 }
 
 export function isEligibleSubmittedDpr(dpr: DprEligibilityState): boolean {
+  const flagIsFalseOrMissing = (value: boolean | null | undefined) => value == null || value === COUNTED_DPR_FLAG;
   return dpr.dprStatus === COUNTED_DPR_STATUS &&
-    dpr.isDeleted === COUNTED_DPR_FLAG &&
-    dpr.isCancelled === COUNTED_DPR_FLAG &&
-    dpr.isSuperseded === COUNTED_DPR_FLAG;
+    flagIsFalseOrMissing(dpr.isDeleted) &&
+    flagIsFalseOrMissing(dpr.isCancelled) &&
+    flagIsFalseOrMissing(dpr.isSuperseded);
 }
 
 export interface DprMaterialUseRow extends DprEligibilityState {

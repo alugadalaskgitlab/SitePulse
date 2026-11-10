@@ -90,16 +90,23 @@ describe("STOCK-01 Part B development fixture", () => {
     expect(isEligibleSubmittedDpr({ ...valid, isDeleted: true })).toBe(false);
     expect(isEligibleSubmittedDpr({ ...valid, isCancelled: true })).toBe(false);
     expect(isEligibleSubmittedDpr({ ...valid, isSuperseded: true })).toBe(false);
+    expect(isEligibleSubmittedDpr({
+      dprStatus: "submitted",
+      isDeleted: null,
+      isCancelled: null,
+      isSuperseded: null,
+    })).toBe(true);
 
     const totals = aggregateSubmittedDprMaterialUse([
       { ...valid, boqItemId: 17, quantity: 100, isIncidental: false },
       { ...valid, boqItemId: 17, quantity: 25, isIncidental: true },
+      { ...valid, isDeleted: null, isCancelled: null, isSuperseded: null, boqItemId: 17, quantity: 10, isIncidental: false },
       { ...valid, dprStatus: "draft", boqItemId: 17, quantity: 50, isIncidental: false },
       { ...valid, isDeleted: true, boqItemId: 17, quantity: 10, isIncidental: true },
       { ...valid, isCancelled: true, boqItemId: 17, quantity: 10, isIncidental: false },
       { ...valid, isSuperseded: true, boqItemId: 17, quantity: 10, isIncidental: false },
     ]);
-    expect(totals.get(17)).toEqual({ quantity: 125, incidentalQuantity: 25 });
+    expect(totals.get(17)).toEqual({ quantity: 135, incidentalQuantity: 25 });
   });
 
   it("keeps negative plant stock visible but counts it as zero for still-to-buy", () => {
