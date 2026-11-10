@@ -93,6 +93,8 @@ import {
   materialNeedsCftEquivalent,
   materialPlanQuantity,
   materialTonnesToCft,
+  signedMaterialPlanQuantity,
+  signedMaterialTonnesToCft,
   normalisePlanMaterialName,
   plantMixComponentQuantities,
   reportedMaterialNeed,
@@ -102,6 +104,11 @@ import {
   explicitlyLinkedStoreIssue,
   useSourceForLayer,
 } from "@shared/bomPlanActual";
+import {
+  aggregateSubmittedDprMaterialUse,
+  COUNTED_DPR_FLAG,
+  COUNTED_DPR_STATUS,
+} from "@shared/dprEligibility";
 import {
   equipmentActivityAllocations as equipmentActivityAllocationsTable,
   equipmentActivitySegments as equipmentActivitySegmentsTable,
@@ -20364,16 +20371,21 @@ export async function registerRoutes(
         db.select({
           boqItemId: progressEntriesTable.boqItemId,
           quantity: progressEntriesTable.quantity,
+          isIncidental: progressEntriesTable.isIncidental,
+          dprStatus: dprsTable.dprStatus,
+          isDeleted: dprsTable.isDeleted,
+          isCancelled: dprsTable.isCancelled,
+          isSuperseded: dprsTable.isSuperseded,
         }).from(dprsTable)
           .innerJoin(progressEntriesTable, eq(progressEntriesTable.dprId, dprsTable.id))
           .where(and(
             eq(dprsTable.boqProjectId, projectId),
             gte(dprsTable.date, from),
             lte(dprsTable.date, to),
-            eq(dprsTable.isDeleted, false),
-            eq(dprsTable.isCancelled, false),
-            eq(dprsTable.isSuperseded, false),
-            eq(dprsTable.dprStatus, "submitted"),
+            eq(dprsTable.isDeleted, COUNTED_DPR_FLAG),
+            eq(dprsTable.isCancelled, COUNTED_DPR_FLAG),
+            eq(dprsTable.isSuperseded, COUNTED_DPR_FLAG),
+            eq(dprsTable.dprStatus, COUNTED_DPR_STATUS),
             or(eq(progressEntriesTable.noSiteWork, false), isNull(progressEntriesTable.noSiteWork)),
             isNotNull(progressEntriesTable.boqItemId),
           )),
@@ -20474,19 +20486,23 @@ export async function registerRoutes(
         toUom: string,
         master: any | null,
         basis: "compacted" | "loose" = "loose",
+        allowNegative = false,
       ): number | null => {
+        if (!Number.isFinite(quantity) || (quantity < 0 && !allowNegative)) return null;
+        const sign = quantity < 0 ? -1 : 1;
+        const magnitude = Math.abs(quantity);
         if (normaliseUomForMatch(toUom) === "CUMLOOSE") {
           const source = normaliseUomForMatch(fromUom);
-          if (["CUM", "M3", "CBM"].includes(source)) return quantity;
-          if (["CFT", "CUFT"].includes(source)) return quantity / 35.3147;
+          if (["CUM", "M3", "CBM"].includes(source)) return sign * magnitude;
+          if (["CFT", "CUFT"].includes(source)) return sign * magnitude / 35.3147;
         }
         const profile = profileForMaster(master);
         const hasCurrentProfile = basis === "compacted"
           ? Number(profile?.rolledDensity) > 0 && Number(profile?.rollingPct) > 0
           : Number(profile?.rolledDensity) > 0 && Number(profile?.rollingPct) > 0 && Number(profile?.looseFactor) >= 1;
         if (hasCurrentProfile) {
-          const current = materialPlanQuantity(quantity, fromUom, toUom, profile, basis);
-          if (current != null) return current;
+          const current = materialPlanQuantity(magnitude, fromUom, toUom, profile, basis);
+          if (current != null) return sign * current;
         }
         const from = normaliseUomForMatch(fromUom);
         const to = normaliseUomForMatch(toUom);
@@ -20496,17 +20512,20 @@ export async function registerRoutes(
           normaliseUomForMatch(String(conversion.toUom)) === to &&
           conversion.conversionType !== "loose_to_compacted",
         );
-        if (matching.length === 1) return quantity * Number(matching[0].conversionFactor);
-        return materialPlanQuantity(quantity, fromUom, toUom, profile, basis);
+        if (matching.length === 1) return sign * magnitude * Number(matching[0].conversionFactor);
+        const converted = materialPlanQuantity(magnitude, fromUom, toUom, profile, basis);
+        return converted == null ? null : sign * converted;
       };
       const tonnesToCft = (quantity: number | null, master: any | null): number | null => {
-        if (quantity == null || !Number.isFinite(quantity) || quantity < 0) return null;
+        if (quantity == null || !Number.isFinite(quantity)) return null;
+        const sign = quantity < 0 ? -1 : 1;
+        const magnitude = Math.abs(quantity);
         const profile = profileForMaster(master);
         if (
           Number(profile?.rolledDensity) > 0 &&
           Number(profile?.rollingPct) > 0 &&
           Number(profile?.looseFactor) >= 1
-        ) return materialTonnesToCft(quantity, profile);
+        ) return signedMaterialTonnesToCft(quantity, profile);
         const conversions = (conversionsByMaterialId.get(Number(master?.id)) ?? []).filter((row: any) =>
           Number(row.isActive) === 1 &&
           row.conversionType !== "loose_to_compacted",
@@ -20515,14 +20534,14 @@ export async function registerRoutes(
           normaliseUomForMatch(String(row.fromUom)) === "MT" &&
           normaliseUomForMatch(String(row.toUom)) === "CFT",
         );
-        if (direct.length === 1) return quantity * Number(direct[0].conversionFactor);
+        if (direct.length === 1) return sign * magnitude * Number(direct[0].conversionFactor);
         const inverse = conversions.filter((row: any) =>
           normaliseUomForMatch(String(row.fromUom)) === "CFT" &&
           normaliseUomForMatch(String(row.toUom)) === "MT" &&
           Number(row.conversionFactor) > 0,
         );
-        if (inverse.length === 1) return quantity / Number(inverse[0].conversionFactor);
-        return materialTonnesToCft(quantity, profile);
+        if (inverse.length === 1) return sign * magnitude / Number(inverse[0].conversionFactor);
+        return signedMaterialTonnesToCft(quantity, profile);
       };
       const legacyFactorsFor = (item: any) =>
         (item.legacyLooseToCompactedProfiles ?? [])
@@ -20553,6 +20572,8 @@ export async function registerRoutes(
         used: number;
         usedBySource: Record<"plant_mix" | "site", number>;
         usedComplete: boolean;
+        incidentalUsed: number;
+        incidentalUsedComplete: boolean;
         atPlantNow: number;
         stockComplete: boolean;
         lines: Array<{
@@ -20637,6 +20658,8 @@ export async function registerRoutes(
             used: 0,
             usedBySource: { plant_mix: 0, site: 0 },
             usedComplete: true,
+            incidentalUsed: 0,
+            incidentalUsedComplete: true,
             atPlantNow: 0,
             stockComplete: true,
             lines: [],
@@ -20809,18 +20832,14 @@ export async function registerRoutes(
         }
       }
 
-      const dprQuantityByItem = new Map<number, number>();
-      for (const entry of dprRows) {
-        if (entry.boqItemId == null) continue;
-        const itemId = Number(entry.boqItemId);
-        const quantity = Number(entry.quantity);
-        if (!Number.isFinite(quantity) || quantity < 0) continue;
-        dprQuantityByItem.set(itemId, (dprQuantityByItem.get(itemId) ?? 0) + quantity);
-      }
-      for (const [itemId, actualQuantity] of Array.from(dprQuantityByItem)) {
+      const dprQuantityByItem = aggregateSubmittedDprMaterialUse(dprRows as any[]);
+      for (const [itemId, actuals] of Array.from(dprQuantityByItem)) {
         const item = itemById.get(itemId);
         if (!item || useSourceForLayer(item.layerConfig?.layerType, item.layerConfig?.granularSource) !== "DPR × recipe") continue;
+        const actualQuantity = actuals.quantity;
+        const incidentalQuantity = actuals.incidentalQuantity;
         const convertedBoqQuantity = actualQuantity * (Number(item.dprConversionFactor) || 1);
+        const convertedIncidentalBoqQuantity = incidentalQuantity * (Number(item.dprConversionFactor) || 1);
         for (const material of item.materials ?? []) {
           if (material.isClientSupplied) continue;
           const matches = rowsBySourceName(material.materialName, "site");
@@ -20834,6 +20853,19 @@ export async function registerRoutes(
             else {
               row.used += converted;
               row.usedBySource.site += converted;
+            }
+            if (convertedIncidentalBoqQuantity > 0) {
+              const incidentalRawUse = convertedIncidentalBoqQuantity * Number(material.qtyPerBoqUnit) *
+                (1 + (Number(material.wastagePct) || 0) / 100);
+              const incidentalConverted = toPlanQuantity(
+                item,
+                sourceRow,
+                incidentalRawUse,
+                row.master,
+                row.uom === "cum loose" ? "CUM" : row.uom,
+              );
+              if (incidentalConverted == null) row.incidentalUsedComplete = false;
+              else row.incidentalUsed += incidentalConverted;
             }
           }
         }
@@ -20900,6 +20932,7 @@ export async function registerRoutes(
             row.uom,
             row.master,
             "loose",
+            true,
           );
           if (converted == null) row.stockComplete = false;
           else row.atPlantNow += converted;
@@ -20913,7 +20946,9 @@ export async function registerRoutes(
         }
         const bought = row.hasSiteSupply && row.boughtComplete ? row.bought : null;
         const used = row.usedComplete ? row.used : null;
+        const incidentalUsed = row.incidentalUsedComplete ? row.incidentalUsed : null;
         const atPlantNow = row.hasPlantMix && row.stockComplete ? row.atPlantNow : null;
+        const atPlantNowForRemaining = atPlantNow == null ? null : Math.max(0, atPlantNow);
         const balance = need == null
           ? { remaining: null, excess: null }
           : remainingBySupplySource({
@@ -20921,7 +20956,7 @@ export async function registerRoutes(
             plantNeed: row.needBySource.plant_mix,
             bought,
             plantUsed: row.usedComplete ? row.usedBySource.plant_mix : null,
-            atPlantNow,
+            atPlantNow: atPlantNowForRemaining,
             hasSiteSupply: row.hasSiteSupply,
             hasPlantMix: row.hasPlantMix,
           });
@@ -20932,7 +20967,7 @@ export async function registerRoutes(
           /aggregate|sand|dust|filler/i.test(String(row.master?.category ?? ""));
         const cft = (quantity: number | null) => {
           if (quantity == null) return null;
-          if (row.uom === "cum loose") return materialPlanQuantity(quantity, "CUM", "CFT", profile, "loose");
+          if (row.uom === "cum loose") return signedMaterialPlanQuantity(quantity, "CUM", "CFT", profile, "loose");
           return showCft && row.uom === "MT"
             ? tonnesToCft(quantity, row.master)
             : null;
@@ -20957,8 +20992,13 @@ export async function registerRoutes(
           boughtSoFarCft: row.hasSiteSupply ? cft(bought) : null,
           used,
           usedCft: cft(used),
+          incidentalUsed,
+          incidentalUsedCft: cft(incidentalUsed),
           atPlantNow,
           atPlantNowCft: cft(atPlantNow),
+          plantStockWarning: atPlantNow != null && atPlantNow < 0
+            ? "Used more than received — check receipts or mix template"
+            : null,
           stillToBuy: remaining.remaining,
           stillToBuyCft: cft(remaining.remaining),
           excess: remaining.excess,

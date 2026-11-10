@@ -19,13 +19,14 @@ describe("MAT-04 unloading display", () => {
     client.setQueryData(["/api/site-material-stock", "", ""], [{
       site: "Test site", material: "GSB", matched: true, uom: "MT",
       ordered: 40, delivered: 25, deliveredAtStretch: 5, deliveredAtYard: 20,
-      consumed: 12, toSupply: 15, lying: 13, lastDeliveryDate: null, densitySkips: skips,
+      consumed: 12, incidentalConsumed: 2, toSupply: 15, lying: 13, lastDeliveryDate: null, densitySkips: skips,
     }]);
     const html = renderToStaticMarkup(<QueryClientProvider client={client}><SiteMaterialStock /></QueryClientProvider>);
     expect(html).toContain("Of Delivered (MT): Stretch 5.00 · Yard 20.00");
     expect(html).toContain("25.00");
     expect(html).toContain("40.00");
     expect(html).toContain("12.00");
+    expect(html).toContain("of which incidental: 2.00 MT");
     expect(html).toContain("13.00");
     expect(html).toContain("MT totals incomplete");
   });

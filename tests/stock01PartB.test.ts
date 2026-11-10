@@ -4,9 +4,12 @@ import {
   materialPlanQuantity,
   reportedMaterialNeed,
   remainingBySupplySource,
+  signedMaterialPlanQuantity,
+  signedMaterialTonnesToCft,
   siteMaterialLyingBalance,
   soilCompactedToLooseCum,
 } from "../shared/bomPlanActual";
+import { aggregateSubmittedDprMaterialUse, isEligibleSubmittedDpr } from "../shared/dprEligibility";
 
 const wmmProfile = {
   rolledDensity: 2.25,
@@ -73,6 +76,44 @@ describe("STOCK-01 Part B development fixture", () => {
       hasSiteSupply: false,
       hasPlantMix: true,
     })).toEqual({ remaining: 0, excess: 200 });
+  });
+
+  it("counts only submitted, live DPRs and keeps incidental material use in a separate subtotal", () => {
+    const valid = {
+      dprStatus: "submitted",
+      isDeleted: false,
+      isCancelled: false,
+      isSuperseded: false,
+    };
+    expect(isEligibleSubmittedDpr(valid)).toBe(true);
+    expect(isEligibleSubmittedDpr({ ...valid, dprStatus: "draft" })).toBe(false);
+    expect(isEligibleSubmittedDpr({ ...valid, isDeleted: true })).toBe(false);
+    expect(isEligibleSubmittedDpr({ ...valid, isCancelled: true })).toBe(false);
+    expect(isEligibleSubmittedDpr({ ...valid, isSuperseded: true })).toBe(false);
+
+    const totals = aggregateSubmittedDprMaterialUse([
+      { ...valid, boqItemId: 17, quantity: 100, isIncidental: false },
+      { ...valid, boqItemId: 17, quantity: 25, isIncidental: true },
+      { ...valid, dprStatus: "draft", boqItemId: 17, quantity: 50, isIncidental: false },
+      { ...valid, isDeleted: true, boqItemId: 17, quantity: 10, isIncidental: true },
+      { ...valid, isCancelled: true, boqItemId: 17, quantity: 10, isIncidental: false },
+      { ...valid, isSuperseded: true, boqItemId: 17, quantity: 10, isIncidental: false },
+    ]);
+    expect(totals.get(17)).toEqual({ quantity: 125, incidentalQuantity: 25 });
+  });
+
+  it("keeps negative plant stock visible but counts it as zero for still-to-buy", () => {
+    expect(remainingBySupplySource({
+      siteNeed: 0,
+      plantNeed: 1000,
+      bought: 0,
+      plantUsed: 300,
+      atPlantNow: -200,
+      hasSiteSupply: false,
+      hasPlantMix: true,
+    })).toEqual({ remaining: 700, excess: null });
+    expect(signedMaterialPlanQuantity(-353.147, "CFT", "CUM", null, "loose")).toBeCloseTo(-10);
+    expect(signedMaterialTonnesToCft(-10, { bulkDensity: 1.8 })).toBeCloseTo(-(10 / 1.8) * 35.3147, 3);
   });
 
   it("calculates soil need and use in loose cubic metres from the material master", () => {

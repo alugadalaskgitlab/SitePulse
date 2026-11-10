@@ -23,8 +23,11 @@ export type MaterialPlanRow = {
   boughtSoFarCft: number | null;
   used: number | null;
   usedCft: number | null;
+  incidentalUsed?: number | null;
+  incidentalUsedCft?: number | null;
   atPlantNow: number | null;
   atPlantNowCft: number | null;
+  plantStockWarning?: string | null;
   stillToBuy: number | null;
   stillToBuyCft: number | null;
   excess: number | null;
@@ -78,7 +81,11 @@ function shortDescription(row: PlanVsActualRow) {
 }
 
 function materialUseText(row: MaterialPlanRow, value: number | null) {
-  return quantity(value, row.uom, row.usedCft, row.showCft ?? (/cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName)));
+  const showCft = row.showCft ?? (/cum loose/i.test(row.uom) || /aggregate|sand|dust|filler/i.test(row.materialName));
+  const used = quantity(value, row.uom, row.usedCft, showCft);
+  return row.incidentalUsed != null && row.incidentalUsed > 0
+    ? `${used}\nof which incidental: ${quantity(row.incidentalUsed, row.uom, row.incidentalUsedCft ?? null, showCft)}`
+    : used;
 }
 
 export function MaterialsBuyAndWorkDone({
@@ -146,6 +153,10 @@ export function MaterialsBuyAndWorkDone({
         ? quantity(row.atPlantNow, row.uom, row.atPlantNowCft, shouldShowCft(row))
         : "—",
       Used: materialUseText(row, row.used),
+      "Of which incidental": row.incidentalUsed != null && row.incidentalUsed > 0
+        ? quantity(row.incidentalUsed, row.uom, row.incidentalUsedCft ?? null, shouldShowCft(row))
+        : "—",
+      "At plant warning": row.plantStockWarning ?? "",
       "Still to buy": row.excess != null
         ? `Excess ${quantity(row.excess, row.uom, row.excessCft, shouldShowCft(row))}`
         : quantity(row.stillToBuy, row.uom, row.stillToBuyCft, shouldShowCft(row)),
@@ -190,7 +201,10 @@ export function MaterialsBuyAndWorkDone({
             ? `Bought: ${quantity(row.boughtSoFar, row.uom, row.boughtSoFarCft, shouldShowCft(row))}`
             : null,
           row.hasPlantMix || row.sourceType === "plant_mix" || row.sourceType === "mixed"
-            ? `At plant: ${quantity(row.atPlantNow, row.uom, row.atPlantNowCft, shouldShowCft(row))}`
+            ? [
+                `At plant: ${quantity(row.atPlantNow, row.uom, row.atPlantNowCft, shouldShowCft(row))}`,
+                row.plantStockWarning,
+              ].filter(Boolean).join("\n")
             : null,
         ].filter(Boolean).join("\n"),
         materialUseText(row, row.used),
@@ -304,9 +318,21 @@ export function MaterialsBuyAndWorkDone({
                         <td className="whitespace-nowrap px-2 py-2 font-mono">{needDisplay}</td>
                         <td className="whitespace-nowrap px-2 py-2 font-mono">
                           {(row.hasSiteSupply || row.sourceType === "site" || row.sourceType === "mixed") && <span className="block">Bought: {quantity(row.boughtSoFar, row.uom, row.boughtSoFarCft, showCft)}</span>}
-                          {(row.hasPlantMix || row.sourceType === "plant_mix" || row.sourceType === "mixed") && <span className="block">At plant now: {quantity(row.atPlantNow, row.uom, row.atPlantNowCft, showCft)}</span>}
+                          {(row.hasPlantMix || row.sourceType === "plant_mix" || row.sourceType === "mixed") && (
+                            <span className="block">
+                              <span className="block">At plant now: {quantity(row.atPlantNow, row.uom, row.atPlantNowCft, showCft)}</span>
+                              {row.plantStockWarning && <span className="block whitespace-normal text-[10px] font-normal text-amber-700">{row.plantStockWarning}</span>}
+                            </span>
+                          )}
                         </td>
-                        <td className="whitespace-nowrap px-2 py-2 font-mono">{quantity(row.used, row.uom, row.usedCft, showCft)}</td>
+                        <td className="whitespace-nowrap px-2 py-2 font-mono">
+                          <span className="block">{quantity(row.used, row.uom, row.usedCft, showCft)}</span>
+                          {row.incidentalUsed != null && row.incidentalUsed > 0 && (
+                            <span className="block text-[10px] font-normal text-slate-500">
+                              of which incidental: {quantity(row.incidentalUsed, row.uom, row.incidentalUsedCft ?? null, showCft)}
+                            </span>
+                          )}
+                        </td>
                         <td className="whitespace-nowrap px-2 py-2 font-mono font-semibold">{remainingDisplay}</td>
                       </tr>
                       {isExpanded && (

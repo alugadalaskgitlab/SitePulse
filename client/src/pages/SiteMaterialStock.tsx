@@ -11,7 +11,7 @@ import { StockDensityWarning } from "@/components/StockDensityWarning";
 type Row = {
   site: string; material: string; matched: boolean; uom: string;
   ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number;
-  consumed: number; toSupply: number; lying: number;
+  consumed: number; incidentalConsumed?: number; toSupply: number; lying: number;
   overConsumed?: boolean;
   lastDeliveryDate: string | null;
   densitySkips?: DensitySkips;
@@ -165,6 +165,11 @@ export default function SiteMaterialStock() {
                           <td className="px-3 py-2.5 text-right font-mono text-blue-700">{qty(r.toSupply, r.uom)}</td>
                           <td className="px-3 py-2.5 text-right font-mono text-orange-700">
                             {qty(r.consumed, r.uom)}
+                            {(r.incidentalConsumed ?? 0) > 0 && (
+                              <span className="block text-[10px] font-normal text-muted-foreground">
+                                of which incidental: {qty(r.incidentalConsumed!, r.uom)}
+                              </span>
+                            )}
                             {r.overConsumed && <span className="block text-[10px] text-red-600">Use exceeds recorded deliveries</span>}
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono font-bold">

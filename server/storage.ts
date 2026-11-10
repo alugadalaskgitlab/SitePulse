@@ -483,6 +483,7 @@ import { shouldCreateDprEquipmentDieselLedger } from "@shared/dprPlantLink";
 import { dprProgressReviewFactsChanged, resolveDprProgressSources } from "@shared/dprProgressIdentity";
 import { normaliseUnit, computeRequirementStatus, isContractCutToFillDescription, deriveMaterialsFromLayerConfig } from "@shared/planningEngine";
 import { materialPlanQuantity, siteMaterialLyingBalance, soilCompactedToLooseCum, useSourceForLayer } from "@shared/bomPlanActual";
+import { COUNTED_DPR_FLAG, COUNTED_DPR_STATUS, isEligibleSubmittedDpr } from "@shared/dprEligibility";
 import { convertSolidQty } from "@shared/uomConvert";
 import {
   buildStockBalanceRebuildPreview,
@@ -1461,6 +1462,7 @@ export interface IStorage {
   getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[]; dateFrom?: string; dateTo?: string }): Promise<{
     site: string; material: string; matched: boolean; uom: string;
     ordered: number; delivered: number; consumed: number; toSupply: number; lying: number;
+    incidentalConsumed: number;
     densitySkips: DensitySkips;
     lastDeliveryDate: string | null;
   }[]>;
@@ -13506,7 +13508,7 @@ export class DatabaseStorage implements IStorage {
   async getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[]; dateFrom?: string; dateTo?: string }): Promise<{
     site: string; material: string; matched: boolean; uom: string;
     ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number;
-    consumed: number; toSupply: number; lying: number; overConsumed: boolean;
+    consumed: number; incidentalConsumed: number; toSupply: number; lying: number; overConsumed: boolean;
     densitySkips: DensitySkips;
     lastDeliveryDate: string | null;
   }[]> {
@@ -13609,7 +13611,7 @@ export class DatabaseStorage implements IStorage {
       return convertSolidQty(qty, uom, "MT", master?.bulkDensity ?? null);
     };
 
-    type Row = { site: string; material: string; matched: boolean; uom: string; ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number; consumed: number; overConsumed: boolean; lastDeliveryDate: string | null; densitySkips: DensitySkips };
+    type Row = { site: string; material: string; matched: boolean; uom: string; ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number; consumed: number; incidentalConsumed: number; overConsumed: boolean; lastDeliveryDate: string | null; densitySkips: DensitySkips };
     const map = new Map<string, Row>();
     const bucket = (site: string, materialName: string, matched: boolean): Row => {
       const master = resolve(materialName);
@@ -13617,7 +13619,7 @@ export class DatabaseStorage implements IStorage {
       const displayName = master?.name ?? materialName;
       const k = `${site.toUpperCase().trim()}||${canonMaterialName(displayName)}||${uom}`;
       let r = map.get(k);
-      if (!r) { r = { site, material: displayName, matched: !!master, uom, ordered: 0, delivered: 0, deliveredAtStretch: 0, deliveredAtYard: 0, consumed: 0, overConsumed: false, lastDeliveryDate: null, densitySkips: emptyDensitySkips() }; map.set(k, r); }
+      if (!r) { r = { site, material: displayName, matched: !!master, uom, ordered: 0, delivered: 0, deliveredAtStretch: 0, deliveredAtYard: 0, consumed: 0, incidentalConsumed: 0, overConsumed: false, lastDeliveryDate: null, densitySkips: emptyDensitySkips() }; map.set(k, r); }
       return r;
     };
 
@@ -13653,12 +13655,21 @@ export class DatabaseStorage implements IStorage {
     }
 
     // 2) CONSUMED — DPR progress × recipe norm (optionally date-filtered)
-    const progConds: any[] = [];
+    const progConds: any[] = [
+      eq(dprs.dprStatus, COUNTED_DPR_STATUS),
+      eq(dprs.isDeleted, COUNTED_DPR_FLAG),
+      eq(dprs.isCancelled, COUNTED_DPR_FLAG),
+      eq(dprs.isSuperseded, COUNTED_DPR_FLAG),
+      or(eq(progressEntries.noSiteWork, false), isNull(progressEntries.noSiteWork)),
+    ];
     if (permitted) progConds.push(inArray(dprs.site, permitted));
     if (dateFrom)  progConds.push(gte(dprs.date, dateFrom));
     if (dateTo)    progConds.push(lte(dprs.date, dateTo));
     const prog = await db.select({
       site: dprs.site, boqItemId: progressEntries.boqItemId, quantity: progressEntries.quantity,
+      isIncidental: progressEntries.isIncidental,
+      dprStatus: dprs.dprStatus, isDeleted: dprs.isDeleted,
+      isCancelled: dprs.isCancelled, isSuperseded: dprs.isSuperseded,
       layerConfig: boqItems.layerConfig, itemUnit: boqItems.unit,
     }).from(progressEntries).innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
       .leftJoin(boqItems, eq(boqItems.id, progressEntries.boqItemId))
@@ -13670,17 +13681,23 @@ export class DatabaseStorage implements IStorage {
     const recipeByItem = new Map<number, typeof recipes>();
     for (const r of recipes) { const a = recipeByItem.get(r.boqItemId) ?? []; a.push(r); recipeByItem.set(r.boqItemId, a); }
     for (const p of prog) {
+      if (!isEligibleSubmittedDpr(p)) continue;
       if (p.boqItemId == null || !p.quantity || !p.site) continue;
       const layer = p.layerConfig as any;
       const layerType = String(layer?.layerType ?? "");
       const granularSource = String(layer?.granularSource ?? "");
+      const directGranular = layerType === "granular" && granularSource !== "plant";
       if (useSourceForLayer(layerType, granularSource) !== "DPR × recipe") continue;
       const derived = (layerType === "earthwork" ||
         (layerType === "granular" && granularSource !== "plant"))
         ? deriveMaterialsFromLayerConfig(layer, String(p.itemUnit ?? "")) as any[]
         : [];
       const savedRecipes = recipeByItem.get(p.boqItemId) ?? [];
-      const itemRecipes = savedRecipes.length ? savedRecipes : derived;
+      // Direct-supply granular work has one canonical material line from its
+      // layer/master, not the potentially stale fractions from an SNL recipe.
+      const itemRecipes = directGranular && derived.length
+        ? derived
+        : savedRecipes.length ? savedRecipes : derived;
       for (const rec of itemRecipes) {
         if (rec.isClientSupplied) continue;
         const reqInRecipeUom = Number(p.quantity) * (Number(rec.qtyPerBoqUnit) || 0) *
@@ -13696,7 +13713,9 @@ export class DatabaseStorage implements IStorage {
           }
           continue;
         }
-        bucket(p.site, m?.name ?? rec.materialName, !!m).consumed += converted;
+        const row = bucket(p.site, m?.name ?? rec.materialName, !!m);
+        row.consumed += converted;
+        if (p.isIncidental === true) row.incidentalConsumed += converted;
       }
     }
 
@@ -13802,6 +13821,7 @@ export class DatabaseStorage implements IStorage {
           ordered: round(r.ordered), delivered: round(r.delivered),
           deliveredAtStretch: round(r.deliveredAtStretch), deliveredAtYard: round(r.deliveredAtYard),
           consumed: round(r.consumed),
+          incidentalConsumed: round(r.incidentalConsumed),
           toSupply: round(Math.max(r.ordered - r.delivered, 0)),
           lying: round(balance.lying),
           overConsumed: balance.overConsumed,
@@ -33645,18 +33665,26 @@ export class DatabaseStorage implements IStorage {
                bi.unit as "boqUnit",
                bi.dpr_measurement_method as "measurementMethod",
                bi.dpr_conversion_factor as "conversionFactor",
-               dprs.date as "dprDate"
+                dprs.date as "dprDate",
+                dprs.dpr_status as "dprStatus",
+                dprs.is_deleted as "isDeleted",
+                dprs.is_cancelled as "isCancelled",
+                dprs.is_superseded as "isSuperseded"
         FROM progress_entries pe
         JOIN dprs ON dprs.id = pe.dpr_id
         JOIN boq_items bi ON bi.id = pe.boq_item_id
         WHERE pe.boq_item_id = ANY(ARRAY[${sql.raw(itemIds.join(","))}]::int[])
-          AND (dprs.is_superseded = false OR dprs.is_superseded IS NULL)
+           AND dprs.dpr_status = ${COUNTED_DPR_STATUS}
+           AND dprs.is_deleted = ${COUNTED_DPR_FLAG}
+           AND dprs.is_cancelled = ${COUNTED_DPR_FLAG}
+           AND dprs.is_superseded = ${COUNTED_DPR_FLAG}
           AND pe.no_site_work = false
           AND pe.is_incidental = false
           ${dateFilter}
       `);
       const actualMap = new Map<number, ActualRow>();
       for (const row of rawActuals.rows as any[]) {
+        if (!isEligibleSubmittedDpr(row)) continue;
         const id = Number(row.boqItemId);
         const entry = {
           kind: "progress",
@@ -33704,15 +33732,23 @@ export class DatabaseStorage implements IStorage {
                bi.unit as "boqUnit",
                bi.dpr_measurement_method as "measurementMethod",
                bi.dpr_conversion_factor as "conversionFactor",
-               dprs.date as "dprDate"
+                dprs.date as "dprDate",
+                dprs.dpr_status as "dprStatus",
+                dprs.is_deleted as "isDeleted",
+                dprs.is_cancelled as "isCancelled",
+                dprs.is_superseded as "isSuperseded"
         FROM dpr_structure_items dsi
         JOIN dprs ON dprs.id = dsi.dpr_id
         JOIN boq_items bi ON bi.id = dsi.boq_item_id
         WHERE dsi.boq_item_id = ANY(ARRAY[${sql.raw(itemIds.join(","))}]::int[])
-          AND (dprs.is_superseded = false OR dprs.is_superseded IS NULL)
+           AND dprs.dpr_status = ${COUNTED_DPR_STATUS}
+           AND dprs.is_deleted = ${COUNTED_DPR_FLAG}
+           AND dprs.is_cancelled = ${COUNTED_DPR_FLAG}
+           AND dprs.is_superseded = ${COUNTED_DPR_FLAG}
           ${dateFilter}
       `);
       for (const sr of rawStruct.rows as any[]) {
+        if (!isEligibleSubmittedDpr(sr)) continue;
         const id = Number(sr.boqItemId);
         const entry = {
             kind: "structure",

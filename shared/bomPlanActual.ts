@@ -98,6 +98,19 @@ export function materialPlanQuantity(
   return fromMt(asMt, to);
 }
 
+export function signedMaterialPlanQuantity(
+  quantity: number,
+  fromUom: string,
+  toUom: string,
+  profile: MaterialPlanDensity | null | undefined,
+  basis: MaterialPlanBasis = "loose",
+): number | null {
+  if (!Number.isFinite(quantity)) return null;
+  const sign = quantity < 0 ? -1 : 1;
+  const converted = materialPlanQuantity(Math.abs(quantity), fromUom, toUom, profile, basis);
+  return converted == null ? null : sign * converted;
+}
+
 export function soilCompactedToLooseCum(
   compactedCum: number,
   profile: CompactedLooseProfile | null | undefined,
@@ -181,7 +194,7 @@ export function remainingBySupplySource(input: {
 
   const siteBalance = input.hasSiteSupply ? input.siteNeed - (input.bought ?? 0) : 0;
   const plantBalance = input.hasPlantMix
-    ? input.plantNeed - (input.plantUsed ?? 0) - (input.atPlantNow ?? 0)
+    ? input.plantNeed - (input.plantUsed ?? 0) - Math.max(0, input.atPlantNow ?? 0)
     : 0;
   const balance = siteBalance + plantBalance;
   return balance < 0
@@ -247,4 +260,14 @@ export function materialTonnesToCft(
   return deliveredDensity == null
     ? null
     : tonnes / deliveredDensity * CUBIC_FEET_PER_CUBIC_METRE;
+}
+
+export function signedMaterialTonnesToCft(
+  tonnes: number | null,
+  profile: MaterialPlanDensity | null | undefined,
+): number | null {
+  if (tonnes == null || !Number.isFinite(tonnes)) return null;
+  const sign = tonnes < 0 ? -1 : 1;
+  const converted = materialTonnesToCft(Math.abs(tonnes), profile);
+  return converted == null ? null : sign * converted;
 }

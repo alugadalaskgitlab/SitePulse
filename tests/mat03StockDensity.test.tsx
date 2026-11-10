@@ -21,13 +21,16 @@ import { storage } from "../server/storage";
 // All quantities and density in these tests are synthetic, never persisted.
 function seed(density: number | null, matched = true) {
   state.results = [
-    matched ? [{ name: "GSB", bulkDensity: density }] : [],
+    matched ? [{ name: "GSB", aliases: ["GSB Material"], bulkDensity: density }] : [],
     [],
     [
       { site: "Synthetic site", material: "GSB", quantity: 10, uom: "Cum", unloadedAt: "yard", date: "2026-01-02" },
       { site: "Synthetic site", material: "GSB", quantity: 5, uom: "MT", unloadedAt: null, date: "2026-01-01" },
     ],
-    [{ site: "Synthetic site", boqItemId: 1, quantity: 2 }],
+    [{
+      site: "Synthetic site", boqItemId: 1, quantity: 2, isIncidental: false,
+      dprStatus: "submitted", isDeleted: false, isCancelled: false, isSuperseded: false,
+    }],
     [{ boqItemId: 1, materialName: "GSB", qtyPerBoqUnit: 3, wastagePct: 0, uom: "Cum" }],
     [],
     [{ id: 1, name: "Synthetic site" }],
@@ -60,12 +63,44 @@ describe("MAT-03 Part D density omissions", () => {
     expect(renderToStaticMarkup(<StockDensityWarning skips={r.densitySkips} matched />)).toBe("");
   });
 
+  it("counts incidental DPR recipe consumption in site stock and labels its subtotal", async () => {
+    seed(2);
+    state.results[3] = [{
+      site: "Synthetic site", boqItemId: 1, quantity: 2, isIncidental: true,
+      dprStatus: "submitted", isDeleted: false, isCancelled: false, isSuperseded: false,
+    }];
+    const [row] = await storage.getSiteMaterialReconciliation();
+    expect(row).toMatchObject({ consumed: 12, incidentalConsumed: 12 });
+  });
+
+  it("uses the direct-granular master line instead of stale saved norm fractions", async () => {
+    seed(2);
+    state.results[3] = [{
+      site: "Synthetic site", boqItemId: 1, quantity: 2, isIncidental: false,
+      dprStatus: "submitted", isDeleted: false, isCancelled: false, isSuperseded: false,
+      layerConfig: { layerType: "granular", granularSource: "quarry", mixType: "GSB" },
+      itemUnit: "CUM",
+    }];
+    state.results[4] = [{
+      boqItemId: 1, materialName: "Stale SNL fraction", qtyPerBoqUnit: 9,
+      wastagePct: 0, uom: "CUM", isClientSupplied: false,
+    }];
+
+    const [row] = await storage.getSiteMaterialReconciliation();
+    expect(row).toMatchObject({ material: "GSB", consumed: 4, incidentalConsumed: 0 });
+  });
+
   it("counts store issues only when linked to the exact project and BOQ item", async () => {
     seed(2);
     state.results[3] = [{
       site: "Synthetic site",
       boqItemId: 1,
       quantity: 2,
+      isIncidental: false,
+      dprStatus: "submitted",
+      isDeleted: false,
+      isCancelled: false,
+      isSuperseded: false,
       layerConfig: { layerType: "none" },
       itemUnit: "MT",
     }];

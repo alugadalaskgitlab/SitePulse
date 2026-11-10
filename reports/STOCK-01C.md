@@ -1,10 +1,10 @@
-# STOCK-01C — Part A read-only findings
+# STOCK-01C — Part A findings and Part B implementation
 
 ## Scope
 
 This is the requested read-only investigation for ALLADURG, BOQ project 2, from 15 August through 10 November 2026. Queries were run only against `sitelog_dev`, with the database name checked and each query inside a read-only transaction. Production and its replica were not queried.
 
-No application code, schema, or records were changed. No tests were run because this part was limited to read-only diagnosis.
+Part A was read-only: no application code, schema, or records were changed, and no tests were run.
 
 ## Summary
 
@@ -117,6 +117,37 @@ The discrepancy is caused by the material-use DPR filter counting incidental row
 
 `materialPlanQuantity()` returns null for any negative quantity before attempting unit conversion (`shared/bomPlanActual.ts`). When the plant-stock loop receives that null conversion, it marks the stock row incomplete (`server/routes.ts`), which makes `atPlantNow` null; the remaining-to-buy calculation then also receives a null balance. The table’s quantity formatter renders null as an em dash (`client/src/components/MaterialsBuyAndWorkDone.tsx`). The negative balance is therefore suppressed by the conversion guard rather than displayed as a negative number.
 
-## Work performed
+## Part B — Consistent DPR selection, incidental use, and negative plant stock
 
-The audit was limited to read-only SELECTs against `sitelog_dev`. No production or replica queries, data writes, schema changes, application changes, or tests were performed. This report covers Part A only.
+### Changes
+
+- Added a shared eligibility contract: a DPR counts only when it is `submitted` and `isDeleted`, `isCancelled`, and `isSuperseded` are all false.
+- Applied the same eligibility checks to Plan vs Actual, Material Buy/Use, and site stock consumption. Plan vs Actual continues to exclude incidental progress; Material Buy/Use and site stock include incidental quantities in material consumption.
+- Material-use rows now show an “of which incidental” subtotal. It is also present in the site stock table and Material Buy/Use exports.
+- Direct-supply granular site stock now uses the layer’s single canonical material line and its own master values, rather than stale saved SNL fractions. Earthwork retains its saved recipe behavior.
+- Plant balances may be negative after unit conversion. The display keeps the negative value and shows “Used more than received — check receipts or mix template”. Negative stock contributes zero available stock to Still to buy.
+- No schema or database records were changed. No data script was run. No production or production-replica data was queried.
+
+### ALLADURG before and after
+
+For WMM, the submitted, non-incidental DPR quantity is 690 cum; there are 219.375 cum in drafts and 67.5 cum incidental. For SOIL, the non-incidental submitted shoulder quantity is 915 cum; incidental shoulder entries total 1,627.5 cum, while the listed superseded entries total 652.5 cum.
+
+| Screen / material | Before | After |
+|---|---:|---:|
+| Plan vs Actual — WMM work done | 909.38 cum (included 219.375 cum in drafts) | **690.00 cum** |
+| Plan vs Actual — SOIL work done | 915 cum | **915 cum** |
+| Material Buy/Use — WMM Used | 1,670.3 MT | **1,670.3 MT**, including **148.84 MT incidental** |
+| Material Buy/Use — SOIL Used | 3,051 cum loose | **3,051 cum loose**, including **1,953 cum incidental** |
+| Site stock — WMM | No comparable WMM total: the prior calculation used saved norm fractions and included draft rows | **1,670.288 MT**, including **148.838 MT incidental** |
+| Site stock — SOIL consumed | 3,834 cum loose (included 652.5 cum of superseded DPR entries) | **3,051 cum loose**, including **1,953 cum incidental** |
+
+The Material Buy/Use totals stay the same because that endpoint already selected submitted, non-deleted, non-cancelled, non-superseded DPRs and counted incidental entries. Site stock and Plan vs Actual were the screens whose DPR selection or material-source handling differed.
+
+The WMM after value is `757.5 cum × 2.205 MT/cum = 1,670.2875 MT`. Its incidental subtotal is `67.5 cum × 2.205 = 148.8375 MT`. SOIL is `(915 + 1,627.5) cum × 1.2 = 3,051 cum loose`; its incidental subtotal is `1,627.5 × 1.2 = 1,953 cum loose`.
+
+### Verification
+
+- Focused tests: **5 files passed, 57 tests passed** (`stock01PartB`, Material Buy/Use UI, site stock density, site stock display, and DPR batch tests).
+- Production build: **passed**.
+- TypeScript check: still reports **457 project-wide diagnostics** and is not green; none are in the code sections changed for this batch.
+- The signed plant-stock display was covered by a UI test with a negative balance and the exact warning; the still-to-buy test confirms negative stock is counted as zero.

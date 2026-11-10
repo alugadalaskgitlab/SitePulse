@@ -27,14 +27,18 @@ describe("MaterialsBuyAndWorkDone", () => {
         forLabels: ["WMM layer"],
         uom: "MT",
         sourceType: "site",
+        hasPlantMix: true,
         needToBuy: 100,
         needToBuyCft: null,
         boughtSoFar: 10,
         boughtSoFarCft: null,
         used: 20,
         usedCft: null,
-        atPlantNow: null,
+        incidentalUsed: 5,
+        incidentalUsedCft: null,
+        atPlantNow: -4,
         atPlantNowCft: null,
+        plantStockWarning: "Used more than received — check receipts or mix template",
         stillToBuy: 90,
         stillToBuyCft: null,
         excess: null,
@@ -77,5 +81,7 @@ describe("MaterialsBuyAndWorkDone", () => {
       );
     });
     expect(screen.getByText("Bought by site")).toBeInTheDocument();
+    expect(screen.getByText(/of which incidental:/)).toHaveTextContent("of which incidental: 5 MT");
+    expect(screen.getByText("Used more than received — check receipts or mix template")).toBeInTheDocument();
   });
 });
