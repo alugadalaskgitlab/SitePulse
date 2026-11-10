@@ -1,16 +1,18 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { auditLogs, parties, plantMaterials, stockBalances, stockLedger } from "../shared/schema";
 import { db } from "./db";
 import {
   buildStockBalanceRebuildPreview,
   convertStockQuantity,
   convertTransferQuantityBetweenBalances,
+  normalizeAllowedWeightUoms,
   normalizeWeightUnit,
   roundStockQuantity,
   stockUnitForMaterial,
   type StockBalanceRebuildPreview,
   type StockLedgerBalanceInput,
+  type StockLedgerUnitBlocker,
 } from "../shared/stockUnits";
 
 const WEIGHT_ALIASES_SQL = "'T', 'TON', 'TONS', 'TONNE', 'TONNES'";
@@ -60,6 +62,16 @@ type StockUnitNormalizationPlan = {
   unitCells: UnitCellChange[];
   allowedUoms: AllowedUomChange[];
   balancePreview: StockBalanceRebuildPreview;
+  correctionCandidates: StockLedgerUnitBlocker[];
+  ledgerCorrections: LedgerUnitCorrection[];
+  inputFingerprint: string;
+};
+type LedgerUnitCorrectionInput = { ledgerRowId: number; uom: string; reason: string };
+type LedgerUnitCorrection = {
+  ledgerRowId: number;
+  originalUom: string | null;
+  correctedUom: string;
+  reason: string;
 };
 
 function stableHash(value: unknown): string {
@@ -71,66 +83,10 @@ function numberOrZero(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function normalizeAllowedUoms(value: string): { updated: string; aliases: string[] } {
-  let values: string[];
-  let json = false;
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return { updated: value, aliases: [] };
-    values = parsed.map(item => String(item));
-    json = true;
-  } catch {
-    values = value.split(",").map(item => item.trim()).filter(Boolean);
-  }
-
-  const aliases: string[] = [];
-  const normalized: string[] = [];
-  const seen = new Set<string>();
-  for (const item of values) {
-    const next = normalizeWeightUnit(item);
-    if (next !== item) aliases.push(item);
-    const key = next.trim().toUpperCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    normalized.push(next);
-  }
-  return {
-    updated: aliases.length ? (json ? JSON.stringify(normalized) : normalized.join(", ")) : value,
-    aliases,
-  };
-}
-
-async function readStockPlan(executor: any): Promise<StockUnitNormalizationPlan> {
-  const unitCells: UnitCellChange[] = [];
-  for (const [table, column] of UNIT_COLUMNS) {
-    const result = await executor.execute(sql.raw(
-      `SELECT id, "${column}" AS original FROM "${table}" ` +
-      `WHERE upper(trim(COALESCE("${column}", ''))) IN (${WEIGHT_ALIASES_SQL})`,
-    ));
-    for (const row of result.rows ?? []) {
-      unitCells.push({
-        table,
-        column,
-        id: Number(row.id),
-        original: String(row.original),
-      });
-    }
-  }
-
-  const allowedResult = await executor.execute(sql`
-    SELECT id, allowed_uoms AS original
-    FROM plant_materials
-    WHERE allowed_uoms IS NOT NULL
-  `);
-  const allowedUoms: AllowedUomChange[] = [];
-  for (const row of allowedResult.rows ?? []) {
-    const original = String(row.original);
-    const { updated, aliases } = normalizeAllowedUoms(original);
-    if (aliases.length) {
-      allowedUoms.push({ id: Number(row.id), original, updated, aliases });
-    }
-  }
-
+async function readStockPlan(
+  executor: any,
+  submittedCorrections: LedgerUnitCorrectionInput[] = [],
+): Promise<StockUnitNormalizationPlan> {
   const [materials, partiesRows, balances, ledger] = await Promise.all([
     executor.select().from(plantMaterials),
     executor.select().from(parties),
@@ -138,7 +94,7 @@ async function readStockPlan(executor: any): Promise<StockUnitNormalizationPlan>
     executor.select().from(stockLedger),
   ]);
 
-  const balancePreview = buildStockBalanceRebuildPreview({
+  const rebuildInput = {
     materials: materials.map((material: any) => ({
       id: Number(material.id),
       name: String(material.name),
@@ -163,11 +119,90 @@ async function readStockPlan(executor: any): Promise<StockUnitNormalizationPlan>
       quantityOut: entry.quantityOut,
       uom: entry.uom ?? null,
     })),
-  });
+  };
+  const initialBalancePreview = buildStockBalanceRebuildPreview(rebuildInput);
+  const blockersById = new Map(initialBalancePreview.blockingLedgerRows.map(row => [row.ledgerRowId, row]));
+  const seenCorrectionIds = new Set<number>();
+  const ledgerCorrections: LedgerUnitCorrection[] = [];
+  for (const submitted of submittedCorrections) {
+    const ledgerRowId = Number(submitted.ledgerRowId);
+    if (!Number.isInteger(ledgerRowId) || ledgerRowId <= 0 || seenCorrectionIds.has(ledgerRowId)) {
+      throw new Error("Each ledger unit correction must identify one unique ledger row.");
+    }
+    seenCorrectionIds.add(ledgerRowId);
+    const blocker = blockersById.get(ledgerRowId);
+    if (!blocker) {
+      throw new Error(`Ledger row #${ledgerRowId} is no longer blocking the preview. Refresh the preview.`);
+    }
+    const requestedUom = normalizeWeightUnit(String(submitted.uom ?? "").trim());
+    const reason = String(submitted.reason ?? "").trim();
+    if (!requestedUom) throw new Error(`Enter a corrected unit for ledger row #${ledgerRowId}.`);
+    if (reason.length < 4) throw new Error(`Enter a reason of at least 4 characters for ledger row #${ledgerRowId}.`);
+    const correctedUom = requestedUom.toUpperCase() === blocker.targetUom.toUpperCase()
+      ? blocker.targetUom
+      : requestedUom;
+    if (correctedUom.toUpperCase() === normalizeWeightUnit(blocker.originalUom).toUpperCase()) {
+      throw new Error(`The corrected unit for ledger row #${ledgerRowId} must differ from its current unit.`);
+    }
+    ledgerCorrections.push({
+      ledgerRowId,
+      originalUom: blocker.originalUom,
+      correctedUom,
+      reason,
+    });
+  }
+  ledgerCorrections.sort((a, b) => a.ledgerRowId - b.ledgerRowId);
+
+  const correctionIds = new Set(ledgerCorrections.map(row => row.ledgerRowId));
+  const unitCells: UnitCellChange[] = [];
+  for (const [table, column] of UNIT_COLUMNS) {
+    const result = await executor.execute(sql.raw(
+      `SELECT id, "${column}" AS original FROM "${table}" ` +
+      `WHERE upper(trim(COALESCE("${column}", ''))) IN (${WEIGHT_ALIASES_SQL})`,
+    ));
+    for (const row of result.rows ?? []) {
+      const id = Number(row.id);
+      // A row corrected to a non-tonne unit is audited as that correction,
+      // not also as a tonne-label normalization.
+      if (table === "stock_ledger" && correctionIds.has(id)) continue;
+      unitCells.push({ table, column, id, original: String(row.original) });
+    }
+  }
+
+  const allowedResult = await executor.execute(sql`
+    SELECT id, allowed_uoms AS original
+    FROM plant_materials
+    WHERE allowed_uoms IS NOT NULL
+  `);
+  const allowedUoms: AllowedUomChange[] = [];
+  for (const row of allowedResult.rows ?? []) {
+    const original = String(row.original);
+    const { updated, aliases } = normalizeAllowedWeightUoms(original);
+    if (aliases.length) {
+      allowedUoms.push({ id: Number(row.id), original, updated, aliases });
+    }
+  }
 
   unitCells.sort((a, b) => a.table.localeCompare(b.table) || a.column.localeCompare(b.column) || a.id - b.id);
   allowedUoms.sort((a, b) => a.id - b.id);
-  return { unitCells, allowedUoms, balancePreview };
+  const balancePreview = buildStockBalanceRebuildPreview({
+    ...rebuildInput,
+    ledgerUnitOverrides: Object.fromEntries(ledgerCorrections.map(row => [row.ledgerRowId, row.correctedUom])),
+  });
+  const inputFingerprint = stableHash({
+    materials: [...rebuildInput.materials].sort((a, b) => a.id - b.id),
+    parties: [...rebuildInput.parties].sort((a, b) => a.id - b.id),
+    balances: [...rebuildInput.balances].sort((a, b) => a.id - b.id),
+    ledger: [...rebuildInput.ledger].sort((a, b) => a.id - b.id),
+  });
+  return {
+    unitCells,
+    allowedUoms,
+    balancePreview,
+    correctionCandidates: initialBalancePreview.blockingLedgerRows,
+    ledgerCorrections,
+    inputFingerprint,
+  };
 }
 
 function planToken(plan: StockUnitNormalizationPlan): string {
@@ -176,6 +211,8 @@ function planToken(plan: StockUnitNormalizationPlan): string {
     allowedUoms: plan.allowedUoms,
     balanceRows: plan.balancePreview.rows,
     balanceErrors: plan.balancePreview.errors,
+    ledgerCorrections: plan.ledgerCorrections,
+    inputFingerprint: plan.inputFingerprint,
   });
 }
 
@@ -200,13 +237,15 @@ function summarizeUnitChanges(plan: StockUnitNormalizationPlan) {
     .sort((a, b) => a.table.localeCompare(b.table) || a.originalUnit.localeCompare(b.originalUnit));
 }
 
-export async function previewStockUnitNormalization() {
-  const plan = await readStockPlan(db);
+export async function previewStockUnitNormalization(corrections: LedgerUnitCorrectionInput[] = []) {
+  const plan = await readStockPlan(db, corrections);
   return {
     token: planToken(plan),
     unitChanges: summarizeUnitChanges(plan),
     balanceRows: plan.balancePreview.rows,
     errors: plan.balancePreview.errors,
+    correctionCandidates: plan.correctionCandidates,
+    ledgerCorrections: plan.ledgerCorrections,
     canApply: plan.balancePreview.canApply,
   };
 }
@@ -239,7 +278,7 @@ async function writeBalancePlan(executor: any, preview: StockBalanceRebuildPrevi
   return { updated, created };
 }
 
-export async function applyStockUnitNormalization(token: string, actor: {
+export async function applyStockUnitNormalization(token: string, corrections: LedgerUnitCorrectionInput[], actor: {
   userId: number | null;
   userName: string;
   userRole: string;
@@ -247,12 +286,38 @@ export async function applyStockUnitNormalization(token: string, actor: {
   return db.transaction(async tx => {
     await tx.execute(sql`LOCK TABLE stock_ledger IN SHARE MODE`);
     await tx.execute(sql`LOCK TABLE stock_balances IN SHARE ROW EXCLUSIVE MODE`);
-    const plan = await readStockPlan(tx);
+    const plan = await readStockPlan(tx, corrections);
     if (planToken(plan) !== token) {
       throw new Error("The data changed after preview. Refresh the preview before applying.");
     }
     if (!plan.balancePreview.canApply) {
       throw new Error("Some ledger quantities cannot be converted safely. Resolve the listed unit or density issues before applying.");
+    }
+
+    for (const correction of plan.ledgerCorrections) {
+      const updatedRows = await tx.update(stockLedger)
+        .set({ uom: correction.correctedUom })
+        .where(and(
+          eq(stockLedger.id, correction.ledgerRowId),
+          correction.originalUom == null
+            ? isNull(stockLedger.uom)
+            : eq(stockLedger.uom, correction.originalUom),
+        ))
+        .returning({ id: stockLedger.id });
+      if (updatedRows.length !== 1) {
+        throw new Error(`Ledger row #${correction.ledgerRowId} changed after preview. Refresh before applying.`);
+      }
+      await tx.insert(auditLogs).values({
+        module: "stock_unit_normalization",
+        transactionId: correction.ledgerRowId,
+        action: "edit",
+        userId: actor.userId,
+        userName: actor.userName,
+        userRole: actor.userRole,
+        oldValues: { table: "stock_ledger", column: "uom", unit: correction.originalUom },
+        newValues: { table: "stock_ledger", column: "uom", unit: correction.correctedUom },
+        reason: `Unit corrected ${correction.originalUom ?? "missing"} → ${correction.correctedUom}, row #${correction.ledgerRowId}: ${correction.reason}`,
+      });
     }
 
     for (const change of plan.unitCells) {
@@ -306,6 +371,7 @@ export async function applyStockUnitNormalization(token: string, actor: {
 
     return {
       relabelledRows: plan.unitCells.length + plan.allowedUoms.length,
+      correctedLedgerRows: plan.ledgerCorrections.length,
       balanceRowsUpdated: balances.updated,
       balanceRowsCreated: balances.created,
       balanceRows: plan.balancePreview.rows.length,

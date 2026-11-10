@@ -28,8 +28,21 @@ type NormalizationPreview = {
   unitChanges: Array<{ table: string; originalUnit: string; rowCount: number; newUnit: "MT" }>;
   balanceRows: BalanceRow[];
   errors: string[];
+  correctionCandidates: Array<{
+    ledgerRowId: number;
+    materialId: number;
+    materialName: string;
+    partyId: number | null;
+    partyName: string;
+    transactionType: string;
+    originalUom: string | null;
+    targetUom: string;
+    message: string;
+  }>;
+  ledgerCorrections: Array<{ ledgerRowId: number; originalUom: string; correctedUom: string; reason: string }>;
   canApply: boolean;
 };
+type LedgerUnitCorrection = { ledgerRowId: number; uom: string; reason: string };
 
 type CorrectableTransfer = {
   outId: number;
@@ -69,6 +82,7 @@ const fmtQty = (value: number) =>
 export function StockUnitAdminPanel({ visible }: { visible: boolean }) {
   const { toast } = useToast();
   const [preview, setPreview] = useState<NormalizationPreview | null>(null);
+  const [correctionDrafts, setCorrectionDrafts] = useState<Record<number, { uom: string; reason: string }>>({});
   const [confirmApply, setConfirmApply] = useState(false);
   const [selectedTransferId, setSelectedTransferId] = useState("");
   const [correctionQty, setCorrectionQty] = useState("");
@@ -93,31 +107,44 @@ export function StockUnitAdminPanel({ visible }: { visible: boolean }) {
   );
 
   const previewMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/admin/stock-units/preview", {});
+    mutationFn: async (corrections: LedgerUnitCorrection[] = []) => {
+      const response = await apiRequest("POST", "/api/admin/stock-units/preview", { corrections });
       if (!response.ok) throw new Error((await response.json()).message || "Could not preview unit normalization");
       return response.json() as Promise<NormalizationPreview>;
     },
-    onSuccess: data => setPreview(data),
+    onSuccess: data => {
+      setPreview(data);
+      const appliedById = new Map(data.ledgerCorrections.map(row => [row.ledgerRowId, row]));
+      setCorrectionDrafts(Object.fromEntries(data.correctionCandidates.map(row => {
+        const applied = appliedById.get(row.ledgerRowId);
+        return [row.ledgerRowId, { uom: applied?.correctedUom ?? "", reason: applied?.reason ?? "" }];
+      })));
+    },
     onError: (error: Error) => toast({ title: "Preview failed", description: error.message, variant: "destructive" }),
   });
 
   const applyMutation = useMutation({
     mutationFn: async () => {
       if (!preview?.token) throw new Error("Preview the changes before applying.");
-      const response = await apiRequest("POST", "/api/admin/stock-units/apply", { token: preview.token });
+      const corrections = preview.ledgerCorrections.map(row => ({
+        ledgerRowId: row.ledgerRowId,
+        uom: row.correctedUom,
+        reason: row.reason,
+      }));
+      const response = await apiRequest("POST", "/api/admin/stock-units/apply", { token: preview.token, corrections });
       if (!response.ok) throw new Error((await response.json()).message || "Could not apply unit normalization");
       return response.json();
     },
     onSuccess: data => {
       setConfirmApply(false);
       setPreview(null);
+      setCorrectionDrafts({});
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stock-transfers/correctable"] });
       toast({
         title: "Stock units normalized",
-        description: `${data.relabelledRows} rows relabelled; ${data.balanceRowsUpdated} balances rebuilt.`,
+        description: `${data.relabelledRows} unit labels relabelled; ${data.correctedLedgerRows} ledger units corrected; ${data.balanceRowsUpdated} balances rebuilt.`,
       });
     },
     onError: (error: Error) => toast({ title: "Apply failed", description: error.message, variant: "destructive" }),
@@ -166,6 +193,26 @@ export function StockUnitAdminPanel({ visible }: { visible: boolean }) {
     setCorrectionReason("");
   }
 
+  const draftLedgerCorrections = preview?.correctionCandidates.flatMap(row => {
+    const draft = correctionDrafts[row.ledgerRowId];
+    const uom = String(draft?.uom ?? "").trim();
+    const reason = String(draft?.reason ?? "").trim();
+    return uom && reason.length >= 4 ? [{ ledgerRowId: row.ledgerRowId, uom, reason }] : [];
+  }) ?? [];
+  const allLedgerCorrectionsComplete = Boolean(preview) && (
+    !preview!.correctionCandidates.length ||
+    preview!.correctionCandidates.every(row => {
+      const draft = correctionDrafts[row.ledgerRowId];
+      return Boolean(String(draft?.uom ?? "").trim()) && String(draft?.reason ?? "").trim().length >= 4;
+    })
+  );
+  const correctionsMatchPreview = Boolean(preview) &&
+    JSON.stringify(draftLedgerCorrections) === JSON.stringify(preview!.ledgerCorrections.map(row => ({
+      ledgerRowId: row.ledgerRowId,
+      uom: row.correctedUom,
+      reason: row.reason,
+    })));
+
   if (!visible) return null;
 
   const transferUoms = selectedTransfer
@@ -190,7 +237,7 @@ export function StockUnitAdminPanel({ visible }: { visible: boolean }) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={() => previewMutation.mutate()} disabled={previewMutation.isPending} data-testid="button-preview-stock-unit-normalization">
+            <Button onClick={() => previewMutation.mutate([])} disabled={previewMutation.isPending} data-testid="button-preview-stock-unit-normalization">
               {previewMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               Preview
             </Button>
@@ -198,7 +245,7 @@ export function StockUnitAdminPanel({ visible }: { visible: boolean }) {
               <Button
                 variant="destructive"
                 onClick={() => setConfirmApply(true)}
-                disabled={!preview.canApply || applyMutation.isPending}
+                disabled={!preview.canApply || applyMutation.isPending || !correctionsMatchPreview}
                 data-testid="button-apply-stock-unit-normalization"
               >
                 {applyMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
@@ -207,7 +254,7 @@ export function StockUnitAdminPanel({ visible }: { visible: boolean }) {
             )}
             {preview && (
               <span className="text-sm text-muted-foreground">
-                {preview.unitChanges.reduce((sum, group) => sum + group.rowCount, 0)} legacy labels · {preview.balanceRows.length} balance groups
+                {preview.unitChanges.reduce((sum, group) => sum + group.rowCount, 0)} legacy labels · {preview.correctionCandidates.length} blocking ledger rows · {preview.balanceRows.length} balance groups
               </span>
             )}
           </div>
@@ -259,6 +306,74 @@ export function StockUnitAdminPanel({ visible }: { visible: boolean }) {
                 <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
                   <div className="mb-2 flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4" />Apply is blocked; conversion needs attention</div>
                   <ul className="list-inside list-disc space-y-1">{preview.errors.map((error, index) => <li key={index}>{error}</li>)}</ul>
+                </div>
+              )}
+              {preview.correctionCandidates.length > 0 && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/20">
+                  <h3 className="mb-2 text-sm font-semibold">Correct a blocking ledger row</h3>
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    Enter the correct unit and a reason for each listed row. The quantity is unchanged. Re-run the preview to check the corrected balances before applying.
+                  </p>
+                  <div className="space-y-3">
+                    {preview.correctionCandidates.map(row => {
+                      const draft = correctionDrafts[row.ledgerRowId] ?? { uom: "", reason: "" };
+                      return (
+                        <div key={row.ledgerRowId} className="grid gap-2 rounded border bg-background p-3 md:grid-cols-[minmax(0,1.5fr)_minmax(120px,0.7fr)_minmax(180px,1fr)]">
+                          <div className="min-w-0 text-xs">
+                            <p className="font-medium">Ledger row #{row.ledgerRowId} · {row.materialName} · {row.partyName}</p>
+                            <p className="text-muted-foreground">{row.transactionType}: {row.originalUom || "unit missing"} → stock unit {row.targetUom}</p>
+                            <p className="mt-1 break-words text-destructive">{row.message}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor={`ledger-correction-uom-${row.ledgerRowId}`}>Correct unit</Label>
+                            <Input
+                              id={`ledger-correction-uom-${row.ledgerRowId}`}
+                              value={draft.uom}
+                              onChange={event => setCorrectionDrafts(current => ({
+                                ...current,
+                                [row.ledgerRowId]: { ...draft, uom: event.target.value },
+                              }))}
+                              placeholder="e.g. Liters"
+                              maxLength={32}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor={`ledger-correction-reason-${row.ledgerRowId}`}>Required reason</Label>
+                            <Input
+                              id={`ledger-correction-reason-${row.ledgerRowId}`}
+                              value={draft.reason}
+                              onChange={event => setCorrectionDrafts(current => ({
+                                ...current,
+                                [row.ledgerRowId]: { ...draft, reason: event.target.value },
+                              }))}
+                              placeholder="Why is this unit incorrect?"
+                              maxLength={500}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <Button
+                    className="mt-3"
+                    variant="outline"
+                    onClick={() => previewMutation.mutate(draftLedgerCorrections)}
+                    disabled={previewMutation.isPending || !allLedgerCorrectionsComplete || correctionsMatchPreview}
+                    data-testid="button-preview-ledger-unit-corrections"
+                  >
+                    {previewMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Re-run preview with row corrections
+                  </Button>
+                  {preview.ledgerCorrections.length > 0 && correctionsMatchPreview && (
+                    <div className="mt-3 rounded border border-green-300 bg-green-50 p-2 text-xs text-green-900 dark:border-green-900 dark:bg-green-950/20 dark:text-green-200">
+                      <p className="mb-1 font-semibold">Corrections included in this preview</p>
+                      {preview.ledgerCorrections.map(row => (
+                        <p key={row.ledgerRowId}>
+                          Row #{row.ledgerRowId}: {row.originalUom} → {row.correctedUom} · {row.reason}
+                        </p>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -374,7 +489,7 @@ export function StockUnitAdminPanel({ visible }: { visible: boolean }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Apply stock unit normalization?</AlertDialogTitle>
             <AlertDialogDescription>
-              This relabels listed tonne-unit fields as MT without changing their quantities, then rebuilds stock balances from converted ledger rows. The original ledger quantities remain unchanged. This action is recorded in the audit history.
+              This relabels listed tonne-unit fields as MT, applies any reviewed ledger-row unit corrections, and rebuilds stock balances from the ledger. Source quantities remain unchanged, and each correction is recorded with its reason.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

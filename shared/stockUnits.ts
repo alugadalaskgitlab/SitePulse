@@ -1,14 +1,47 @@
 import { convertSolidQty, normalizeUom } from "./uomConvert";
 
 const WEIGHT_UNIT_ALIASES = new Set(["T", "TON", "TONS", "TONNE", "TONNES"]);
-const KG_UNIT_ALIASES = new Set(["KG", "KGS", "KGM", "KILOGRAM", "KILOGRAMS"]);
+const KILOGRAM_UNITS = new Set(["KG", "KGS", "KGM", "KILOGRAM", "KILOGRAMS"]);
 
 export function normalizeWeightUnit(unit: string | null | undefined): string {
   const trimmed = String(unit ?? "").trim();
   const upper = trimmed.toUpperCase();
   if (WEIGHT_UNIT_ALIASES.has(upper)) return "MT";
-  if (KG_UNIT_ALIASES.has(upper)) return "KG";
   return trimmed;
+}
+
+export function normalizeAllowedWeightUoms(value: string): { updated: string; aliases: string[] } {
+  let values: string[];
+  let json = false;
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return { updated: value, aliases: [] };
+    values = parsed.map(item => String(item));
+    json = true;
+  } catch {
+    values = value.split(",").map(item => item.trim()).filter(Boolean);
+  }
+
+  const aliases: string[] = [];
+  const normalized: string[] = [];
+  const seenTonneAlias = new Set<string>();
+  for (const item of values) {
+    const next = normalizeWeightUnit(item);
+    if (next !== item) aliases.push(item);
+    const upper = item.trim().toUpperCase();
+    const isTonneAlias = WEIGHT_UNIT_ALIASES.has(upper) || upper === "MT";
+    if (isTonneAlias && seenTonneAlias.has("MT")) continue;
+    if (isTonneAlias) seenTonneAlias.add("MT");
+    normalized.push(next);
+  }
+  return {
+    updated: aliases.length ? (json ? JSON.stringify(normalized) : normalized.join(", ")) : value,
+    aliases,
+  };
+}
+
+function isKilogramUnit(unit: string): boolean {
+  return KILOGRAM_UNITS.has(unit.trim().toUpperCase());
 }
 
 export function stockUnitForMaterial(
@@ -33,12 +66,17 @@ export function convertStockQuantity(
   const from = normalizeWeightUnit(fromUom);
   const to = normalizeWeightUnit(toUom);
   if (!from || !to) throw new Error(`Cannot convert stock quantity without both units (${from || "missing"} → ${to || "missing"}).`);
-  if (from.trim().toUpperCase() === to.trim().toUpperCase()) return quantity;
+  const fromLabel = from.trim().toUpperCase();
+  const toLabel = to.trim().toUpperCase();
+  if (fromLabel === toLabel || (isKilogramUnit(from) && isKilogramUnit(to))) return quantity;
 
   const fromKind = normalizeUom(from);
   const toKind = normalizeUom(to);
-  if (fromKind === "MT" && to === "KG") return quantity * 1000;
-  if (from === "KG" && toKind === "MT") return quantity / 1000;
+  if (fromKind === "MT" && isKilogramUnit(to)) return quantity * 1000;
+  if (isKilogramUnit(from) && toKind === "MT") return quantity / 1000;
+  if (fromKind === "OTHER" && toKind === "OTHER") {
+    throw new Error(`Cannot convert ${from} to ${to}.`);
+  }
 
   const converted = convertSolidQty(quantity, from, to, bulkDensity);
   if (converted == null || !Number.isFinite(converted)) {
@@ -93,7 +131,20 @@ export interface StockBalanceRebuildRow {
 export interface StockBalanceRebuildPreview {
   rows: StockBalanceRebuildRow[];
   errors: string[];
+  blockingLedgerRows: StockLedgerUnitBlocker[];
   canApply: boolean;
+}
+
+export interface StockLedgerUnitBlocker {
+  ledgerRowId: number;
+  materialId: number;
+  materialName: string;
+  partyId: number | null;
+  partyName: string;
+  transactionType: string;
+  originalUom: string | null;
+  targetUom: string;
+  message: string;
 }
 
 export function buildStockBalanceRebuildPreview(input: {
@@ -101,11 +152,13 @@ export function buildStockBalanceRebuildPreview(input: {
   parties: Array<{ id: number; name: string }>;
   balances: StockBalanceInput[];
   ledger: StockLedgerBalanceInput[];
+  ledgerUnitOverrides?: Record<number, string>;
 }): StockBalanceRebuildPreview {
   const materials = new Map(input.materials.map(material => [material.id, material]));
   const parties = new Map(input.parties.map(party => [party.id, party.name]));
   const rows = new Map<string, StockBalanceRebuildRow>();
   const errors = new Set<string>();
+  const blockingLedgerRows: StockLedgerUnitBlocker[] = [];
   const keyOf = (materialId: number, partyId: number | null) => `${materialId}:${partyId ?? "null"}`;
 
   const ensureRow = (materialId: number, partyId: number | null, fallbackUom?: string | null) => {
@@ -157,12 +210,25 @@ export function buildStockBalanceRebuildPreview(input: {
     row.hasLedger = true;
     const quantityIn = Number(entry.quantityIn ?? 0);
     const quantityOut = Number(entry.quantityOut ?? 0);
+    const effectiveUom = input.ledgerUnitOverrides?.[entry.id] ?? entry.uom;
     try {
-      const stockIn = convertStockQuantity(quantityIn, entry.uom, row.stockUom, Number(material.bulkDensity) || null);
-      const stockOut = convertStockQuantity(quantityOut, entry.uom, row.stockUom, Number(material.bulkDensity) || null);
+      const stockIn = convertStockQuantity(quantityIn, effectiveUom, row.stockUom, Number(material.bulkDensity) || null);
+      const stockOut = convertStockQuantity(quantityOut, effectiveUom, row.stockUom, Number(material.bulkDensity) || null);
       row.after += stockIn - stockOut;
     } catch (error) {
-      errors.add(`${row.materialName} / ${row.partyName}, ledger row #${entry.id}: ${(error as Error).message}`);
+      const message = (error as Error).message;
+      errors.add(`${row.materialName} / ${row.partyName}, ledger row #${entry.id}: ${message}`);
+      blockingLedgerRows.push({
+        ledgerRowId: entry.id,
+        materialId: entry.materialId,
+        materialName: row.materialName,
+        partyId: entry.partyId,
+        partyName: row.partyName,
+        transactionType: entry.transactionType,
+        originalUom: entry.uom == null ? null : String(entry.uom),
+        targetUom: row.stockUom,
+        message,
+      });
     }
   }
 
@@ -175,7 +241,12 @@ export function buildStockBalanceRebuildPreview(input: {
     }))
     .sort((a, b) => a.partyName.localeCompare(b.partyName) || a.materialName.localeCompare(b.materialName));
 
-  return { rows: normalizedRows, errors: Array.from(errors).sort(), canApply: errors.size === 0 };
+  return {
+    rows: normalizedRows,
+    errors: Array.from(errors).sort(),
+    blockingLedgerRows: blockingLedgerRows.sort((a, b) => a.ledgerRowId - b.ledgerRowId),
+    canApply: errors.size === 0,
+  };
 }
 
 export function convertTransferQuantityBetweenBalances(

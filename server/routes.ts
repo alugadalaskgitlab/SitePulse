@@ -7000,22 +7000,40 @@ export async function registerRoutes(
   app.post("/api/admin/stock-units/preview", async (req, res) => {
     if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
     if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can normalize stock units" });
+    const correctionSchema = z.object({
+      ledgerRowId: z.number().int().positive(),
+      uom: z.string().trim().min(1).max(32),
+      reason: z.string().trim().min(4).max(500),
+    });
+    const parsed = z.object({ corrections: z.array(correctionSchema).max(200).optional().default([]) })
+      .safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: "Corrected units and a reason are required for each ledger row." });
     try {
-      res.json(await previewStockUnitNormalization());
+      res.json(await previewStockUnitNormalization(parsed.data.corrections));
     } catch (err: any) {
       console.error("Stock unit normalization preview failed:", err);
-      res.status(500).json({ message: err?.message || "Could not preview stock unit normalization" });
+      const message = err?.message || "Could not preview stock unit normalization";
+      const status = /no longer blocking|must differ|unique ledger row|corrected unit|reason of at least/i.test(message) ? 400 : 500;
+      res.status(status).json({ message });
     }
   });
 
   app.post("/api/admin/stock-units/apply", async (req, res) => {
     if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
     if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can normalize stock units" });
-    const parsed = z.object({ token: z.string().min(1) }).safeParse(req.body);
+    const correctionSchema = z.object({
+      ledgerRowId: z.number().int().positive(),
+      uom: z.string().trim().min(1).max(32),
+      reason: z.string().trim().min(4).max(500),
+    });
+    const parsed = z.object({
+      token: z.string().min(1),
+      corrections: z.array(correctionSchema).max(200).optional().default([]),
+    }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "A fresh preview token is required" });
     try {
       const user = req.authUser;
-      const result = await applyStockUnitNormalization(parsed.data.token, {
+      const result = await applyStockUnitNormalization(parsed.data.token, parsed.data.corrections, {
         userId: user.id,
         userName: currentUserName(req),
         userRole: "owner",
@@ -7023,7 +7041,9 @@ export async function registerRoutes(
       res.json(result);
     } catch (err: any) {
       const message = err?.message || "Could not apply stock unit normalization";
-      const status = /changed after preview|cannot be converted|safely/i.test(message) ? 409 : 500;
+      const status = /changed after preview|no longer blocking|cannot be converted|safely/i.test(message)
+        ? 409
+        : /must differ|unique ledger row|corrected unit|reason of at least/i.test(message) ? 400 : 500;
       res.status(status).json({ message });
     }
   });

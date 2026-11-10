@@ -3,6 +3,7 @@ import {
   buildStockBalanceRebuildPreview,
   convertStockQuantity,
   convertTransferQuantityBetweenBalances,
+  normalizeAllowedWeightUoms,
   normalizeWeightUnit,
 } from "../shared/stockUnits";
 
@@ -80,5 +81,64 @@ describe("STOCK-02 stock unit normalization and ledger rebuild", () => {
   it("converts legacy tons and metric tonnes as the same unit", () => {
     expect(convertStockQuantity(2.5, "TONNES", "MT")).toBe(2.5);
     expect(convertStockQuantity(1250, "Kgs", "MT")).toBe(1.25);
+  });
+
+  it("keeps kilogram labels out of tonne relabels and converts only by 1,000", () => {
+    for (const unit of ["Kg", "Kgs", "kg", "KGM", "kilogram"]) {
+      expect(normalizeWeightUnit(unit)).toBe(unit);
+    }
+    expect(normalizeAllowedWeightUoms(JSON.stringify(["Kg", "Kgs", "kg"]))).toEqual({
+      updated: JSON.stringify(["Kg", "Kgs", "kg"]),
+      aliases: [],
+    });
+    expect(normalizeAllowedWeightUoms(JSON.stringify(["Kg", "Ton"]))).toEqual({
+      updated: JSON.stringify(["Kg", "MT"]),
+      aliases: ["Ton"],
+    });
+    expect(convertStockQuantity(1000, "Kg", "MT")).toBe(1);
+    expect(convertStockQuantity(1, "MT", "Kgs")).toBe(1000);
+  });
+
+  it("allows a blocking diesel ledger row to be corrected in preview without changing its quantity", () => {
+    const dieselRow = {
+      id: 8380,
+      materialId: 9,
+      partyId: 2,
+      transactionType: "receipt",
+      quantityIn: 750,
+      quantityOut: 0,
+      uom: "MT",
+    };
+    const input = {
+      materials: [{
+        id: 9,
+        name: "DIESEL",
+        defaultUom: "Liters",
+        conversionToUom: "Liters",
+        bulkDensity: null,
+      }],
+      parties: [{ id: 2, name: "HIGH LANE CONSTRUCTIONS" }],
+      balances: [],
+      ledger: [dieselRow],
+    };
+
+    const blocked = buildStockBalanceRebuildPreview(input);
+    expect(blocked.canApply).toBe(false);
+    expect(blocked.blockingLedgerRows).toMatchObject([{
+      ledgerRowId: 8380,
+      materialName: "DIESEL",
+      originalUom: "MT",
+      targetUom: "Liters",
+    }]);
+    expect(blocked.errors.join(" ")).toContain("ledger row #8380");
+
+    const corrected = buildStockBalanceRebuildPreview({
+      ...input,
+      ledgerUnitOverrides: { 8380: "Liters" },
+    });
+    expect(corrected.canApply).toBe(true);
+    expect(corrected.errors).toEqual([]);
+    expect(corrected.rows[0]).toMatchObject({ stockUom: "Liters", after: 750 });
+    expect(dieselRow).toMatchObject({ quantityIn: 750, quantityOut: 0, uom: "MT" });
   });
 });
