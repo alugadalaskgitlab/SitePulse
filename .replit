@@ -46,9 +46,12 @@ args = "test"
 name = "Start application"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run dev"
+args = "env -u VAPID_PUBLIC_KEY -u VAPID_PRIVATE_KEY -u PRIVATE_OBJECT_DIR -u PUBLIC_OBJECT_SEARCH_PATHS -u DEFAULT_OBJECT_STORAGE_BUCKET_ID NODE_ENV=test DATABASE_URL=\"$DEV_DATABASE_URL\" sh -c 'echo \"NODE_ENV=$NODE_ENV\"; exec ./node_modules/.bin/tsx server/index.ts'"
 waitForPort = 5000
 
 [[workflows.workflow]]

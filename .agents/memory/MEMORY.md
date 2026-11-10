@@ -140,3 +140,4 @@
 - [HLC receipt bill scope](hlc-receipt-bill-scope.md) — keep HLC ownership lookup limited to auto-bill types that can include plant receipts.
 - [BOM plan vs actual](bom-plan-actual.md) — one source per BOQ item, exact store-issue linkage, shared plant stock, and material-owned conversion profiles prevent double-counting.
 - [Batch report delivery](batch-report-delivery.md) — write every batch report to reports/<BATCH-NAME>.md, commit and push it, then reply with the exact one-line path confirmation.
+- [Large DB copy via CodeExecution](large-db-copy-ptc.md) — source-key pagination, durable progress, bounded reads, per-table reconciliation, and current-call callbacks.
