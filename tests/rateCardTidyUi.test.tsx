@@ -71,10 +71,30 @@ const tidyPreview = {
     savedNames: ["OLD SUPPLIER"],
     rows: [{ id: 31, vendorName: "OLD SUPPLIER", vendorId: null, category: "material", itemKey: "MAT_SAND_CFT", itemLabel: "SAND", unit: "CFT", rate: 100 }],
   }],
+  billTextRows: [{
+    id: 77,
+    vendorName: "VENDOR ALPHA",
+    vendorId: 2,
+    category: "equipment",
+    itemKey: "EQ_JCB_HRS",
+    itemLabel: "JCB - DAILY HIRE | HRS DIESEL",
+    unit: "HRS",
+    rate: 950,
+    possibleMatch: { billNo: "HLC/VB/2026/0030", billDate: "2026-05-13", description: "JCB hire", unit: "HRS", rate: 950 },
+  }],
   possibleMatches: {
     11: { billNo: "HLC/VB/2026/0030", billDate: "2026-05-13", description: "20 MM", unit: "MT", rate: 390 },
+    77: { billNo: "HLC/VB/2026/0030", billDate: "2026-05-13", description: "JCB hire", unit: "HRS", rate: 950 },
   },
 };
+const historyEntries = [{
+  id: 501,
+  createdAt: "2026-11-01T10:00:00.000Z",
+  userName: "Owner User",
+  oldValues: { vendorName: "OLD SUPPLIER", itemLabel: "20 MM", itemKey: "MAT_20MM_MT", unit: "MT", rate: 390 },
+  newValues: { operation: "remove_rate_card_copies", removedRow: { rate: 390 } },
+  reason: "Removed duplicate copies",
+}];
 
 function createClient() {
   return new QueryClient({
@@ -97,6 +117,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/vendor-rate-cards/tidy-preview") return new Response(JSON.stringify(tidyPreview));
+    if (url === "/api/vendor-rate-cards/history") return new Response(JSON.stringify(historyEntries));
     if (url === "/api/vendor-master") return new Response(JSON.stringify([{ id: 2, name: "VENDOR ALPHA", isActive: true }]));
     if (url === "/api/vendor-aliases") return new Response(JSON.stringify([]));
     if (url === "/api/vendor-bills/vendor-names") return new Response(JSON.stringify(["OLD SUPPLIER"]));
@@ -116,6 +137,17 @@ afterEach(() => {
 });
 
 describe("Owner Rate Cards tidy preview", () => {
+  it("shows rate-card history with the old name, item, rates, owner, date, and reason", async () => {
+    render(<QueryClientProvider client={createClient()}><RateCards /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    const entry = await screen.findByTestId("rate-history-entry-501");
+    expect(entry).toHaveTextContent("Owner User");
+    expect(entry).toHaveTextContent("OLD SUPPLIER");
+    expect(entry).toHaveTextContent("20 MM");
+    expect(entry).toHaveTextContent("390");
+    expect(entry).toHaveTextContent("Removed duplicate copies");
+  });
+
   it("shows same-rate merges, no default conflict choice, and keeps possible bill matches as hints", async () => {
     render(<QueryClientProvider client={createClient()}><RateCards /></QueryClientProvider>);
     expect(await screen.findByTestId("unlinked-rate-name-OLD SUPPLIER")).toBeInTheDocument();
@@ -126,7 +158,7 @@ describe("Owner Rate Cards tidy preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Preview Tidy" }));
 
     expect(await screen.findByText(/Same rate — will be merged/)).toBeInTheDocument();
-    expect(screen.getByText(/Hint only; not proof of usage and not a default/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Hint only; not proof of usage and not a default/).length).toBeGreaterThan(0);
     const decision = await screen.findByTestId(`select-tidy-decision-${conflictKey}`);
     expect(decision).toHaveValue("");
     expect(screen.getByRole("button", { name: "Apply Tidy" })).toBeDisabled();
@@ -142,6 +174,7 @@ describe("Owner Rate Cards tidy preview", () => {
         previewVersion: "test-version",
         reason: "Owner reviewed duplicates",
         decisions: [{ key: conflictKey, action: "defer" }],
+        removeBillTextCardIds: [],
       }),
     })));
   });
@@ -181,6 +214,28 @@ describe("Owner Rate Cards tidy preview", () => {
         previewVersion: "test-version",
         reason: "Owner set corrected rate",
         decisions: [{ key: conflictKey, action: "custom", rate: 975 }],
+        removeBillTextCardIds: [],
+      }),
+    })));
+  });
+
+  it("leaves bill-text suggestions unchecked and removes only the Owner-ticked rows on Apply", async () => {
+    render(<QueryClientProvider client={createClient()}><RateCards /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Preview Tidy" }));
+    const checkbox = await screen.findByTestId("checkbox-remove-bill-text-77");
+    expect(checkbox).not.toBeChecked();
+    expect(screen.getByTestId("possible-match-77")).toHaveTextContent("HLC/VB/2026/0030");
+    fireEvent.click(checkbox);
+    fireEvent.change(screen.getByTestId(`select-tidy-decision-${conflictKey}`), { target: { value: "defer" } });
+    fireEvent.change(screen.getByTestId("input-rate-tidy-reason"), { target: { value: "Remove copied bill description" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply Tidy" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/vendor-rate-cards/tidy-apply", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        previewVersion: "test-version",
+        reason: "Remove copied bill description",
+        decisions: [{ key: conflictKey, action: "defer" }],
+        removeBillTextCardIds: [77],
       }),
     })));
   });

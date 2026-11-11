@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   auditLogs,
@@ -12,16 +12,19 @@ import {
 import {
   buildRateCardTidyGroups,
   buildUnlinkedRateCardGroups,
+  isRateCardBillTextRow,
   normalizeRateCardTidyUnit,
   planRateCardTidyOperations,
+  rateCardTidyIdentity,
   type RateCardTidyCard,
   type RateCardTidyDecision,
   type RateCardTidyVendor,
 } from "@shared/vendorRateCardTidy";
+import { resolveVendorNameMatch, vendorNameIdentityCondition } from "./vendorNameResolution";
 import { db } from "./db";
 
 type TidySnapshot = { cards: RateCardTidyCard[]; vendors: RateCardTidyVendor[] };
-type AuditActor = { id: number; fullName: string };
+type AuditActor = { id: number; fullName: string; role?: string };
 type TidyAudit = {
   transactionId: number;
   oldValues: unknown;
@@ -123,7 +126,7 @@ function nonNullFromKeeper(rows: RateCardTidyCard[], keeper: RateCardTidyCard, f
 
 export async function applyRateCardTidyPlan(
   repository: RateCardTidyRepository,
-  input: { previewVersion: string; reason: string; decisions: RateCardTidyDecision[] },
+  input: { previewVersion: string; reason: string; decisions: RateCardTidyDecision[]; removeBillTextCardIds?: number[] },
   actor: AuditActor,
 ) {
   const reason = input.reason.trim();
@@ -132,8 +135,17 @@ export async function applyRateCardTidyPlan(
   if (rateCardTidyVersion(snapshot) !== input.previewVersion) {
     throw new Error("Rate cards or Vendor Master changed after preview. Refresh and review again.");
   }
-  const groups = buildRateCardTidyGroups(snapshot.cards, snapshot.vendors);
-  const operations = planRateCardTidyOperations(groups, input.decisions);
+  const removeBillTextCardIds = Array.from(new Set(input.removeBillTextCardIds ?? []));
+  const billTextRows = snapshot.cards.filter(isRateCardBillTextRow);
+  const billTextIds = new Set(billTextRows.map(row => row.id));
+  if (removeBillTextCardIds.some(id => !Number.isSafeInteger(id) || !billTextIds.has(id))) {
+    throw new Error("One or more selected bill-text rows no longer match the preview. Refresh and review again.");
+  }
+  const removedIdSet = new Set(removeBillTextCardIds);
+  const groups = buildRateCardTidyGroups(snapshot.cards.filter(row => !removedIdSet.has(row.id)), snapshot.vendors);
+  const conflictKeys = new Set(groups.filter(group => !group.sameRate).map(group => group.key));
+  const applicableDecisions = input.decisions.filter(decision => conflictKeys.has(decision.key));
+  const operations = planRateCardTidyOperations(groups, applicableDecisions);
   let mergedRows = 0;
   let changedRates = 0;
   for (const operation of operations) {
@@ -186,12 +198,73 @@ export async function applyRateCardTidyPlan(
       mergedRows++;
     }
   }
+  for (const id of removeBillTextCardIds) {
+    const removed = await repository.deleteCard(id);
+    await repository.addAudit({
+      transactionId: removed.id,
+      oldValues: removed,
+      newValues: { operation: "remove_bill_text_row", removedRow: removed, selectedByOwner: true },
+      reason,
+      actor,
+    });
+  }
   return {
     mergedRows,
     mergedGroups: operations.length,
     changedRates,
-    deferredConflicts: input.decisions.filter(decision => decision.action === "defer").length,
+    deferredConflicts: applicableDecisions.filter(decision => decision.action === "defer").length,
+    removedBillTextRows: removeBillTextCardIds.length,
   };
+}
+
+export async function removeRateCardCopies(
+  id: number,
+  actor: AuditActor,
+  reason = "Removed from Rate Cards after group confirmation",
+): Promise<RateCardTidyCard[] | null> {
+  return db.transaction(async tx => {
+    const [seedRow] = await tx.select().from(vendorRateCards)
+      .where(eq(vendorRateCards.id, id)).limit(1).for("update");
+    if (!seedRow) return null;
+    const seed = asTidyCard(seedRow);
+    const [linkedVendor] = seed.vendorId == null ? [] : await tx.select({ name: vendors.name })
+      .from(vendors).where(eq(vendors.id, seed.vendorId)).limit(1);
+    const match = await resolveVendorNameMatch(linkedVendor?.name ?? seed.vendorName, tx);
+    const vendorCondition = match
+      ? vendorNameIdentityCondition(vendorRateCards.vendorName, vendorRateCards.vendorId, match)
+      : seed.vendorId != null
+        ? eq(vendorRateCards.vendorId, seed.vendorId)
+        : and(isNull(vendorRateCards.vendorId), sql`UPPER(regexp_replace(TRIM(${vendorRateCards.vendorName}), '[[:space:]]+', ' ', 'g')) = ${nameKey(seed.vendorName)}`);
+    const candidates = await tx.select().from(vendorRateCards)
+      .where(vendorCondition).orderBy(vendorRateCards.id).for("update");
+    const copies = candidates.map(asTidyCard)
+      .filter(card => rateCardTidyIdentity(card) === rateCardTidyIdentity(seed));
+    const removed: RateCardTidyCard[] = [];
+    for (const card of copies) {
+      const [deleted] = await tx.delete(vendorRateCards)
+        .where(eq(vendorRateCards.id, card.id)).returning();
+      if (!deleted) continue;
+      const oldRow = asTidyCard(deleted);
+      removed.push(oldRow);
+      await tx.insert(auditLogs).values({
+        module: "vendor_rate_card",
+        transactionId: oldRow.id,
+        action: "vendor_rate_card",
+        userId: actor.id,
+        userName: actor.fullName,
+        userRole: actor.role ?? "user",
+        oldValues: oldRow as any,
+        newValues: {
+          operation: "remove_rate_card_copies",
+          removedRow: oldRow,
+          groupIdentity: rateCardTidyIdentity(seed),
+          removedCount: copies.length,
+        } as any,
+        reason,
+      });
+    }
+    return removed;
+  });
 }
 
 function ownerOnly(req: Request, res: Response): boolean {
@@ -209,9 +282,13 @@ const applySchema = z.object({
   previewVersion: z.string().min(1),
   reason: z.string().trim().min(3).max(1000),
   decisions: decisionsSchema,
+  removeBillTextCardIds: z.array(z.number().int().positive()).optional().default([]),
 }).strict().superRefine((value, ctx) => {
   const keys = value.decisions.map(decision => decision.key);
   if (new Set(keys).size !== keys.length) ctx.addIssue({ code: "custom", message: "Duplicate conflict decisions." });
+  if (new Set(value.removeBillTextCardIds).size !== value.removeBillTextCardIds.length) {
+    ctx.addIssue({ code: "custom", message: "Duplicate bill-text row selections." });
+  }
 });
 const linkSchema = z.object({
   nameKey: z.string().trim().min(1).max(250),
@@ -279,7 +356,10 @@ function makeRepository(tx: any): RateCardTidyRepository {
   };
 }
 
-export function registerVendorRateCardTidyRoutes(app: Express) {
+export function registerVendorRateCardTidyRoutes(
+  app: Express,
+  canCancelRateCards: (req: Request, res: Response) => boolean,
+) {
   app.get("/api/vendor-rate-cards/tidy-preview", async (req, res) => {
     if (!ownerOnly(req, res)) return;
     try {
@@ -319,6 +399,10 @@ export function registerVendorRateCardTidyRoutes(app: Express) {
         conflictingGroups: groups.filter(group => !group.sameRate),
         unlinkedGroups: unlinked,
         possibleMatches,
+        billTextRows: snapshot.cards.filter(isRateCardBillTextRow).map(card => ({
+          ...card,
+          possibleMatch: possibleMatches[card.id] ?? null,
+        })),
       });
     } catch (error) {
       console.error("Error preparing vendor rate-card tidy preview:", error);
@@ -334,13 +418,45 @@ export function registerVendorRateCardTidyRoutes(app: Express) {
       const result = await db.transaction(async tx => applyRateCardTidyPlan(
         makeRepository(tx),
         parsed.data,
-        { id: Number(req.authUser!.id), fullName: req.authUser!.fullName },
+        { id: Number(req.authUser!.id), fullName: req.authUser!.fullName, role: req.authUser!.isOwner ? "owner" : "user" },
       ));
       res.json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to apply rate-card tidy.";
       const status = /changed after preview|no longer in|changed during Apply/.test(message) ? 409 : 400;
       res.status(status).json({ message });
+    }
+  });
+
+  app.delete("/api/vendor-rate-cards/:id/copies", async (req, res) => {
+    if (!canCancelRateCards(req, res)) return;
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid rate-card row." });
+    try {
+      const removedRows = await removeRateCardCopies(id, {
+        id: Number(req.authUser!.id),
+        fullName: req.authUser!.fullName,
+        role: req.authUser!.isOwner ? "owner" : "user",
+      });
+      if (removedRows === null) return res.status(404).json({ message: "Rate card not found." });
+      res.json({ removedCount: removedRows.length });
+    } catch (error) {
+      console.error("Error removing rate-card copies:", error);
+      res.status(500).json({ message: "Failed to remove rate-card copies." });
+    }
+  });
+
+  app.get("/api/vendor-rate-cards/history", async (req, res) => {
+    if (!ownerOnly(req, res)) return;
+    try {
+      const history = await db.select().from(auditLogs)
+        .where(and(eq(auditLogs.module, "vendor_rate_card"), eq(auditLogs.action, "vendor_rate_card")))
+        .orderBy(desc(auditLogs.createdAt))
+        .limit(500);
+      res.json(history);
+    } catch (error) {
+      console.error("Error loading rate-card history:", error);
+      res.status(500).json({ message: "Failed to load rate-card history." });
     }
   });
 

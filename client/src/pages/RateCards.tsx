@@ -14,9 +14,11 @@ import { useAuth } from "@/lib/auth-context";
 import { isManualVendorRateCard, MANUAL_VENDOR_RATE_CARD_NOTE } from "@shared/vendorRateCardIdentity";
 import type {
   RateCardTidyDecision,
+  RateCardTidyCard,
   RateCardTidyGroup,
   UnlinkedRateCardGroup,
 } from "@shared/vendorRateCardTidy";
+import { rateCardTidyIdentity } from "@shared/vendorRateCardTidy";
 import { SITE_MATERIAL_TRIP_MATERIAL_OPTIONS } from "@shared/siteMaterialTripMaterials";
 import type { VendorAlias } from "@shared/schema";
 import { TransportRateBasis, TransportRateSetup, hasTransportSetup } from "@/components/TransportRateSetup";
@@ -30,6 +32,8 @@ type DiscoveredItem = {
   rate: number | null;
   rateCardId: number | null;
   isManual?: boolean;
+  vendorName?: string | null;
+  updatedAt?: string | Date | null;
 };
 
 type ManualRow = {
@@ -57,6 +61,15 @@ type RateCardTidyPreview = {
   conflictingGroups: RateCardTidyGroup[];
   unlinkedGroups: UnlinkedRateCardGroup[];
   possibleMatches: Record<number, PossibleBillMatch | null>;
+  billTextRows: Array<RateCardTidyCard & { possibleMatch: PossibleBillMatch | null }>;
+};
+type RateCardHistoryEntry = {
+  id: number;
+  createdAt: string | Date;
+  userName: string | null;
+  oldValues: Record<string, any> | null;
+  newValues: Record<string, any> | null;
+  reason: string | null;
 };
 type TidyUiChoice =
   | { action: "defer" }
@@ -83,6 +96,13 @@ const TRANSPORT_MODES = [
 const LABOUR_CATEGORIES = ["SKILLED", "SEMI-SKILLED", "UNSKILLED", "SUPERVISOR"];
 const normalizeItemName = (value: string) => value.trim().toUpperCase().replace(/\s+/g, " ");
 const compactItemName = (value: string) => normalizeItemName(value).replace(/\s/g, "");
+const formatRateCardDate = (value: string | Date | null | undefined) => {
+  if (!value) return "";
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? ""
+    : parsed.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+};
 const normalizeDuplicateIdentity = (category: string, itemKey: string, unit: string) => {
   const upperCategory = category.trim().toUpperCase();
   const upperUnit = unit.trim().toUpperCase().replace(/\s+/g, "_");
@@ -132,6 +152,8 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   const [tidyBusy, setTidyBusy] = useState(false);
   const [tidyMessage, setTidyMessage] = useState("");
   const [tidyPreviewExpanded, setTidyPreviewExpanded] = useState(false);
+  const [billTextRowsSelected, setBillTextRowsSelected] = useState<Record<number, boolean>>({});
+  const [historyExpanded, setHistoryExpanded] = useState(false);
   const [linkVendorIds, setLinkVendorIds] = useState<Record<string, string>>({});
   const [linkReasons, setLinkReasons] = useState<Record<string, string>>({});
   const [linkingName, setLinkingName] = useState<string | null>(null);
@@ -174,6 +196,15 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     queryFn: async () => {
       const response = await fetch("/api/vendor-rate-cards/tidy-preview", { credentials: "include", cache: "no-store" });
       if (!response.ok) throw new Error("Couldn't load the rate-card tidy preview");
+      return response.json();
+    },
+  });
+  const rateCardHistoryQuery = useQuery<RateCardHistoryEntry[]>({
+    queryKey: ["/api/vendor-rate-cards/history"],
+    enabled: isOwner && historyExpanded,
+    queryFn: async () => {
+      const response = await fetch("/api/vendor-rate-cards/history", { credentials: "include", cache: "no-store" });
+      if (!response.ok) throw new Error("Couldn't load rate-card history");
       return response.json();
     },
   });
@@ -223,7 +254,11 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     return choice.action !== "custom" || (Number.isFinite(Number(choice.rateText)) && Number(choice.rateText) > 0);
   });
   const hasTidyOperations = (tidyPreviewQuery.data?.sameRateGroups.length ?? 0) > 0 ||
-    tidyDecisions.some(decision => decision.action !== "defer");
+    tidyDecisions.some(decision => decision.action !== "defer") ||
+    Object.keys(billTextRowsSelected).some(id => billTextRowsSelected[Number(id)]);
+  const selectedBillTextCardIds = Object.keys(billTextRowsSelected)
+    .filter(id => billTextRowsSelected[Number(id)])
+    .map(Number);
 
   const submitRateCardTidy = async () => {
     const preview = tidyPreviewQuery.data;
@@ -235,13 +270,16 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
         previewVersion: preview.previewVersion,
         reason: tidyReason.trim(),
         decisions: tidyDecisions,
+        removeBillTextCardIds: selectedBillTextCardIds,
       });
       const result = await response.json();
-      setTidyMessage(`Tidy applied: ${result.mergedRows} duplicate row(s) merged; ${result.deferredConflicts} conflict(s) left unchanged.`);
+      setTidyMessage(`Tidy applied: ${result.mergedRows} duplicate row(s) merged; ${result.removedBillTextRows} bill-text row(s) removed; ${result.deferredConflicts} conflict(s) left unchanged.`);
       setTidyChoices({});
       setTidyReason("");
+      setBillTextRowsSelected({});
       await queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/tidy-preview"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/history"] });
     } catch (error) {
       setTidyMessage(error instanceof Error ? error.message : "Tidy could not be applied.");
     } finally {
@@ -268,6 +306,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       await queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/tidy-preview"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills/vendor-names"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/history"] });
     } catch (error) {
       setTidyMessage(error instanceof Error ? error.message : "Rate cards could not be linked.");
     } finally {
@@ -292,6 +331,8 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     rate: Number(card.rate),
     rateCardId: Number(card.id),
     isManual: isManualVendorRateCard(card.notes),
+    vendorName: card.vendorName ?? null,
+    updatedAt: card.updatedAt ?? null,
   })).filter(item => item.itemKey && item.itemLabel && item.category && item.unit && Number.isFinite(item.rate) && Number.isFinite(item.rateCardId)), [allRateCards]);
 
   const { data: canonicalTypes = [] } = useQuery<string[]>({
@@ -343,22 +384,34 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   });
 
   const deleteSavedCardMutation = useMutation({
-    mutationFn: (item: DiscoveredItem) => apiRequest("DELETE", `/api/vendor-rate-cards/${item.rateCardId}`),
-    onSuccess: (_, item) => {
-      setRates(previous => ({ ...previous, [rateCardRowStateKey(item)]: "" }));
+    mutationFn: async (item: DiscoveredItem) => {
+      const response = await apiRequest("DELETE", `/api/vendor-rate-cards/${item.rateCardId}/copies`);
+      return response.json();
+    },
+    onSuccess: (result: { removedCount: number }, item) => {
+      const identity = rateCardTidyIdentity(item);
+      const stateKeys = savedItems.filter(row => rateCardTidyIdentity(row) === identity).map(rateCardRowStateKey);
+      setRates(previous => {
+        const next = { ...previous };
+        stateKeys.forEach(key => { delete next[key]; });
+        return next;
+      });
       setUnitOverrides(previous => {
         const next = { ...previous };
-        delete next[rateCardRowStateKey(item)];
+        stateKeys.forEach(key => { delete next[key]; });
         return next;
       });
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
-      toast({ title: "Saved rate card deleted. Existing bills are not affected." });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/history"] });
+      toast({ title: `Removed ${result.removedCount} saved copy/copies. Existing bills are not affected.` });
     },
     onError: (err: Error) => toast({ title: err.message || "Failed to remove saved rate", variant: "destructive" }),
   });
 
   const handleDeleteSavedCard = (item: DiscoveredItem) => {
-    if (!window.confirm(`Delete the saved rate card for "${item.itemLabel}"? Existing bills keep their saved rates and are not affected.`)) return;
+    const identity = rateCardTidyIdentity(item);
+    const copyCount = Math.max(1, savedItems.filter(row => rateCardTidyIdentity(row) === identity).length);
+    if (!window.confirm(`Remove ${item.itemLabel} (${item.unit}) — ${copyCount} saved copies? Existing bills are not affected.`)) return;
     deleteSavedCardMutation.mutate(item);
   };
 
@@ -734,9 +787,14 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   };
 
   const renderItemRow = (item: DiscoveredItem, idx: number) => (
-    <tr key={item.itemKey} className="border-t hover:bg-muted/30" data-testid={`row-discovered-item-${idx}`}>
+    <tr key={item.rateCardId ?? item.itemKey} className="border-t hover:bg-muted/30" data-testid={`row-discovered-item-${idx}`}>
       <td className="px-3 py-2">
         <div className="font-medium text-sm">{item.itemLabel}</div>
+        {item.vendorName && (
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            Saved under {item.vendorName} · ₹{Number(item.rate).toLocaleString("en-IN")} · updated {formatRateCardDate(item.updatedAt) || "date unavailable"}
+          </div>
+        )}
       </td>
       <td className="px-3 py-2">
         {item.category === "transport" && hasTransportSetup(findTransportCard(item)) ? (
@@ -851,12 +909,16 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     <tr key={row.id} className="border-t align-top">
       <td className="px-3 py-2">
         <div className="font-medium">{row.itemLabel || row.itemKey}</div>
-        <div className="text-xs text-muted-foreground">Saved row #{row.id} · {row.vendorName}</div>
+        <div className="text-xs text-muted-foreground">
+          Saved under {row.vendorName} · ₹{Number(row.rate).toLocaleString("en-IN")} · updated {formatRateCardDate(row.updatedAt) || "date unavailable"}
+        </div>
         {possibleBillHint(row.id)}
       </td>
       <td className="px-3 py-2">{row.unit}</td>
       <td className="px-3 py-2 text-right tabular-nums">₹{Number(row.rate).toLocaleString("en-IN")}</td>
-      <td className="px-3 py-2">{row.id === group.keeperId ? "Keeps this row if applied" : "Copy to merge if applied"}</td>
+      <td className="px-3 py-2">{row.id === group.keeperId
+        ? `Keep ₹${Number(row.rate).toLocaleString("en-IN")} (saved under ${row.vendorName})`
+        : "Merge into kept rate if applied"}</td>
     </tr>
   ));
 
@@ -986,7 +1048,9 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                       <tr key={row.id} className="border-t align-top">
                         <td className="py-2 pr-2">
                           <div>{row.itemLabel || row.itemKey}</div>
-                          <div className="text-xs text-muted-foreground">Row #{row.id} · {row.category}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Saved under {row.vendorName} · ₹{Number(row.rate).toLocaleString("en-IN")} · updated {formatRateCardDate(row.updatedAt) || "date unavailable"}
+                          </div>
                           {possibleBillHint(row.id)}
                         </td>
                         <td className="py-2 pr-2">{row.unit}</td>
@@ -1048,6 +1112,70 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       )}
 
       {isOwner && (
+        <Card data-testid="rate-card-history-panel">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-base">Rate card history</CardTitle>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setHistoryExpanded(value => !value)}
+                data-testid="button-toggle-rate-history"
+              >
+                {historyExpanded ? "Close history" : "History"}
+              </Button>
+            </div>
+          </CardHeader>
+          {historyExpanded && (
+            <CardContent className="space-y-3">
+              {rateCardHistoryQuery.isLoading && <p role="status">Loading rate-card history…</p>}
+              {rateCardHistoryQuery.isError && <p role="alert" className="text-sm text-destructive">{String(rateCardHistoryQuery.error)}</p>}
+              {!!rateCardHistoryQuery.data?.length && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-xs text-muted-foreground">
+                      <th className="py-1 pr-2">Date</th><th className="py-1 pr-2">Owner</th><th className="py-1 pr-2">Action</th>
+                      <th className="py-1 pr-2">Old name</th><th className="py-1 pr-2">Item</th><th className="py-1 pr-2">Unit</th>
+                      <th className="py-1 pr-2 text-right">Old rate</th><th className="py-1 pr-2 text-right">Kept rate</th><th className="py-1">Reason</th>
+                    </tr></thead>
+                    <tbody>
+                      {rateCardHistoryQuery.data.map(entry => {
+                        const oldRow = entry.oldValues ?? {};
+                        const newValues = entry.newValues ?? {};
+                        const operation = String(newValues.operation ?? "");
+                        const action = operation.includes("link") ? "Linked"
+                          : operation.includes("remove") ? "Removed"
+                            : operation.includes("merge") || operation.includes("tidy") ? "Merged"
+                              : operation || "Updated";
+                        const keptRow = newValues.keptRow ?? newValues.updatedRow ?? newValues.removedRow ?? {};
+                        const keptRate = keptRow.rate ?? newValues.selectedRate ?? null;
+                        return (
+                          <tr key={entry.id} className="border-t align-top" data-testid={`rate-history-entry-${entry.id}`}>
+                            <td className="py-2 pr-2 whitespace-nowrap">{formatRateCardDate(entry.createdAt) || "—"}</td>
+                            <td className="py-2 pr-2">{entry.userName || "—"}</td>
+                            <td className="py-2 pr-2">{action}</td>
+                            <td className="py-2 pr-2">{oldRow.vendorName || "—"}</td>
+                            <td className="py-2 pr-2">{oldRow.itemLabel || oldRow.itemKey || "—"}</td>
+                            <td className="py-2 pr-2">{oldRow.unit || "—"}</td>
+                            <td className="py-2 pr-2 text-right">{oldRow.rate == null ? "—" : `₹${Number(oldRow.rate).toLocaleString("en-IN")}`}</td>
+                            <td className="py-2 pr-2 text-right">{keptRate == null ? "—" : `₹${Number(keptRate).toLocaleString("en-IN")}`}</td>
+                            <td className="py-2">{entry.reason || "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {!rateCardHistoryQuery.isLoading && !rateCardHistoryQuery.isError && !rateCardHistoryQuery.data?.length && (
+                <p role="status" className="text-sm text-muted-foreground">No rate-card history entries yet.</p>
+              )}
+            </CardContent>
+          )}
+        </Card>
+      )}
+
+      {isOwner && (
         <Card data-testid="rate-card-tidy-panel">
           <CardHeader className="pb-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1072,7 +1200,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                       <p className="font-medium">{group.vendorName} · {group.itemLabel} · {group.unit}</p>
                       <p className="text-sm text-muted-foreground">Same saved rate: ₹{Number(group.rows[0]?.rate).toLocaleString("en-IN")}. No choice needed; the kept row will be filed under the Vendor Master.</p>
                       <div className="mt-2 overflow-x-auto"><table className="w-full text-sm">
-                        <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1">Saved row</th><th className="py-1">Unit</th><th className="py-1 text-right">Rate</th><th className="py-1">Preview action</th></tr></thead>
+                        <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1">Saved under</th><th className="py-1">Unit</th><th className="py-1 text-right">Rate</th><th className="py-1">Preview action</th></tr></thead>
                         <tbody>{renderTidyGroupRows(group)}</tbody>
                       </table></div>
                     </div>
@@ -1088,7 +1216,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                       <div key={group.key} className="rounded-md border p-3 space-y-3" data-testid={`conflicting-rate-group-${group.key}`}>
                         <p className="font-medium">{group.vendorName} · {group.itemLabel} · {group.unit}</p>
                         <div className="overflow-x-auto"><table className="w-full text-sm">
-                          <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1">Saved row</th><th className="py-1">Unit</th><th className="py-1 text-right">Rate</th><th className="py-1">Preview action</th></tr></thead>
+                          <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1">Saved under</th><th className="py-1">Unit</th><th className="py-1 text-right">Rate</th><th className="py-1">Preview action</th></tr></thead>
                           <tbody>{renderTidyGroupRows(group)}</tbody>
                         </table></div>
                         <label className="block text-sm font-medium">
@@ -1116,7 +1244,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                           >
                             <option value="">Select a decision…</option>
                             {group.rows.map(row => (
-                              <option key={row.id} value={`keep:${row.id}`}>Keep row #{row.id} at ₹{Number(row.rate).toLocaleString("en-IN")}</option>
+                              <option key={row.id} value={`keep:${row.id}`}>Keep ₹{Number(row.rate).toLocaleString("en-IN")} (saved under {row.vendorName})</option>
                             ))}
                             <option value="custom">Enter a new rate</option>
                             <option value="defer">Decide later — leave unchanged</option>
@@ -1147,6 +1275,44 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                 !tidyPreviewQuery.data?.sameRateGroups.length && !tidyPreviewQuery.data?.conflictingGroups.length && (
                   <p role="status" className="text-sm text-muted-foreground">No linked duplicate rate-card groups need tidying.</p>
                 )}
+              {!!tidyPreviewQuery.data?.billTextRows.length && (
+                <section className="space-y-2" aria-labelledby="bill-text-rate-heading" data-testid="bill-text-rate-section">
+                  <h3 id="bill-text-rate-heading" className="font-semibold">
+                    Rows that look like bill text ({tidyPreviewQuery.data.billTextRows.length})
+                  </h3>
+                  <p className="text-sm text-muted-foreground">Review these suggestions. Nothing is selected for removal by default.</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr className="text-left text-xs text-muted-foreground">
+                        <th className="py-1 pr-2">Remove</th><th className="py-1 pr-2">Item</th><th className="py-1 pr-2">Saved under</th>
+                        <th className="py-1 pr-2">Unit</th><th className="py-1 text-right">Rate</th>
+                      </tr></thead>
+                      <tbody>{tidyPreviewQuery.data.billTextRows.map(row => (
+                        <tr key={row.id} className="border-t align-top" data-testid={`bill-text-rate-row-${row.id}`}>
+                          <td className="py-2 pr-2">
+                            <input
+                              type="checkbox"
+                              aria-label={`Remove bill-text row ${row.itemLabel || row.itemKey}`}
+                              checked={billTextRowsSelected[row.id] === true}
+                              onChange={event => setBillTextRowsSelected(previous => ({ ...previous, [row.id]: event.target.checked }))}
+                              data-testid={`checkbox-remove-bill-text-${row.id}`}
+                            />
+                          </td>
+                          <td className="py-2 pr-2">
+                            <div>{row.itemLabel || row.itemKey}</div>
+                            {possibleBillHint(row.id)}
+                          </td>
+                          <td className="py-2 pr-2">
+                            Saved under {row.vendorName} · ₹{Number(row.rate).toLocaleString("en-IN")} · updated {formatRateCardDate(row.updatedAt) || "date unavailable"}
+                          </td>
+                          <td className="py-2 pr-2">{row.unit}</td>
+                          <td className="py-2 text-right">₹{Number(row.rate).toLocaleString("en-IN")}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
               <label className="block max-w-2xl text-sm font-medium">
                 Owner reason for this tidy
                 <Input value={tidyReason} onChange={event => setTidyReason(event.target.value)} placeholder="Required for audit history" data-testid="input-rate-tidy-reason" />

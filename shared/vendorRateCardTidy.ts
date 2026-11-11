@@ -130,6 +130,14 @@ export function buildUnlinkedRateCardGroups(cards: RateCardTidyCard[]): Unlinked
     .sort((a, b) => a.savedName.localeCompare(b.savedName));
 }
 
+export function isRateCardBillTextRow(card: Pick<RateCardTidyCard, "itemLabel">): boolean {
+  const label = String(card.itemLabel ?? "");
+  return label.includes("|") ||
+    (label.length > 20 && /\bHRS?\b/i.test(label)) ||
+    /\bDIESEL\b/i.test(label) ||
+    label.length > 40;
+}
+
 export type RateCardTidyDecision =
   | { key: string; action: "defer" }
   | { key: string; action: "keep"; keepCardId: number }

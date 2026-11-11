@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildRateCardTidyGroups,
   buildUnlinkedRateCardGroups,
+  isRateCardBillTextRow,
   planRateCardTidyOperations,
   type RateCardTidyCard,
 } from "@shared/vendorRateCardTidy";
@@ -92,7 +93,7 @@ describe("vendor rate-card tidy planning", () => {
       decisions: [{ key: soilConflict.key, action: "defer" }],
     }, { id: 7, fullName: "Owner Test" });
 
-    expect(result).toEqual({ mergedRows: 1, mergedGroups: 1, changedRates: 0, deferredConflicts: 1 });
+    expect(result).toEqual({ mergedRows: 1, mergedGroups: 1, changedRates: 0, deferredConflicts: 1, removedBillTextRows: 0 });
     expect(snapshot.cards.find(card => card.id === 15)).toMatchObject({
       vendorName: "G SANGANNA", vendorId: 2, leadDistanceKm: 8, ratePerKm: 125, notes: "transport note",
     });
@@ -121,5 +122,38 @@ describe("vendor rate-card tidy planning", () => {
       decisions: [],
     }, { id: 7, fullName: "Owner Test" })).rejects.toThrow(/changed after preview/);
     expect(writes).toBe(0);
+  });
+
+  it("removes only selected bill-text rows and records the removal reason", async () => {
+    const flagged = linkedCard({ id: 77, itemKey: "EQ_JCB_HRS", itemLabel: "JCB - DAILY HIRE | HRS DIESEL", category: "equipment", unit: "HRS", rate: 950 });
+    const ordinary = linkedCard({ id: 78, itemKey: "EQ_JCB_HRS", itemLabel: "JCB", category: "equipment", unit: "HRS", rate: 950 });
+    expect(isRateCardBillTextRow(flagged)).toBe(true);
+    expect(isRateCardBillTextRow(ordinary)).toBe(false);
+    const snapshot = { cards: [flagged, ordinary], vendors: [{ id: 2, name: "GANGARAM NARSIMULU", isActive: true }] };
+    const audits: any[] = [];
+    const repository: RateCardTidyRepository = {
+      loadSnapshotForUpdate: async () => snapshot,
+      updateCard: async () => { throw new Error("Unexpected update"); },
+      deleteCard: async id => {
+        const index = snapshot.cards.findIndex(card => card.id === id);
+        const [deleted] = snapshot.cards.splice(index, 1);
+        return { ...deleted };
+      },
+      addAudit: async audit => { audits.push(audit); },
+    };
+
+    const result = await applyRateCardTidyPlan(repository, {
+      previewVersion: rateCardTidyVersion(snapshot),
+      reason: "Remove copied bill description",
+      decisions: [],
+      removeBillTextCardIds: [77],
+    }, { id: 7, fullName: "Owner Test", role: "owner" });
+
+    expect(result.removedBillTextRows).toBe(1);
+    expect(snapshot.cards.map(card => card.id)).toEqual([78]);
+    expect(audits).toHaveLength(1);
+    expect(audits[0].transactionId).toBe(77);
+    expect(audits[0].reason).toBe("Remove copied bill description");
+    expect(audits[0].newValues.operation).toBe("remove_bill_text_row");
   });
 });

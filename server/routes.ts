@@ -31,7 +31,7 @@ import { getBillFinancialTotals } from "../shared/vendorBillFinancialReport";
 import { buildSavedBillPresentationRows } from "../shared/vendorBillPresentation";
 import { getBaseSiteName } from "../shared/siteName";
 import { vendorIdentityDisplayName } from "../shared/vendorIdentityDisplay";
-import { vendorRateCardIdentity } from "../shared/vendorRateCardIdentity";
+import { rateCardTidyIdentity } from "../shared/vendorRateCardTidy";
 import { receiptSlipSendWindow } from "../shared/receiptSlipStatus";
 import { resolveVendorNameMatch } from "./vendorNameResolution";
 import { isPartyNonPurchaseReceipt } from "@shared/materialReceiptParty";
@@ -823,7 +823,7 @@ export async function registerRoutes(
     );
   }
   registerVendorMasterRoutes(app, getPermittedSiteNames);
-  registerVendorRateCardTidyRoutes(app);
+  registerVendorRateCardTidyRoutes(app, (req, res) => assertFeatureAction(req, res, "rate_cards", "cancel"));
 
   // A plant name alone is not a site grant. Unmapped/shared plants are visible
   // only to all-sites users; never infer their site from a display name.
@@ -14618,9 +14618,13 @@ export async function registerRoutes(
     try {
       const body = req.body ?? {};
       const existing = await storage.getVendorRateCards(body.vendorName || undefined);
-      const identity = vendorRateCardIdentity(body.category, String(body.itemKey ?? ""), body.unit);
+      const identity = rateCardTidyIdentity({
+        category: String(body.category ?? ""),
+        itemKey: String(body.itemKey ?? ""),
+        unit: String(body.unit ?? ""),
+      });
       const isUpdate = existing.some(card =>
-        vendorRateCardIdentity(card.category, card.itemKey, card.unit) === identity,
+        rateCardTidyIdentity(card) === identity,
       );
       if (!assertFeatureAction(req, res, "rate_cards", isUpdate ? "edit" : "add")) return;
       const card = await storage.upsertVendorRateCard(req.body);
@@ -14668,9 +14672,13 @@ export async function registerRoutes(
         if (!existingByVendor.has(cacheKey)) {
           existingByVendor.set(cacheKey, await storage.getVendorRateCards(vendorName || undefined));
         }
-        const identity = vendorRateCardIdentity(item?.category, String(item?.itemKey ?? ""), item?.unit);
+        const identity = rateCardTidyIdentity({
+          category: String(item?.category ?? ""),
+          itemKey: String(item?.itemKey ?? ""),
+          unit: String(item?.unit ?? ""),
+        });
         const isUpdate = (existingByVendor.get(cacheKey) ?? []).some(card =>
-          vendorRateCardIdentity(card.category, card.itemKey, card.unit) === identity,
+          rateCardTidyIdentity(card) === identity,
         );
         if (!assertFeatureAction(req, res, "rate_cards", isUpdate ? "edit" : "add")) return;
       }

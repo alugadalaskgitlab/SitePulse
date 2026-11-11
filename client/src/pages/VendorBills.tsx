@@ -39,7 +39,7 @@ import type { VendorBillWithItems, VendorAlias, Site, AuditLog } from "@shared/s
 import { siteMatchesPermitted } from "@shared/siteName";
 import { filterFinancialBills, billPaymentPosition, getBillFinancialTotals, type BillScope } from "@shared/vendorBillFinancialReport";
 import { VendorBillTaxesSummary } from "@/components/vendor-bills/VendorBillTaxesSummary";
-import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
+import { defaultConvertedQuantity, distinctRateCardRateChoices, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
 import { autoBillItemIdentity, availableOtherBillItems, buildHireActivityDays, calculateEquipmentHireFinancials, calculateEquipmentHireFinancialsLegacy, calculateHireGroup, duplicateBillItemPayload, mergeOtherBillItems, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, sumHireTaxBases, uniqueDuplicateBillMatches, type DuplicateBillItemMatch, type HireActivity, type HireBillingBasis } from "@shared/hireBilling";
 import { calculationTermsForBill as savedCalculationTermsForBill, type BillHireTerms } from "@/components/vendor-bills/hireBillTerms";
 import type { EquipmentPerformanceReport } from "@shared/equipmentPerformance";
@@ -348,7 +348,12 @@ type BulkRateSelection = {
   leadDistance: number;
   targetUnit: string;
   unitOptions: RateCardUnitOption[];
+  rateChoices: RateCardUnitOption[];
+  rateChoiceKey?: string;
 };
+
+const bulkRateChoiceKey = (option: RateCardUnitOption) =>
+  `${normalizeRateCardPart(option.unit)}:${Number(option.rate)}`;
 
 const STATUS_ORDER = ["draft", "verified", "approved", "paid"] as const;
 
@@ -1587,6 +1592,20 @@ export default function VendorBills() {
             const item = mapped[i];
             if (item.arrangementPricing) continue;
             const priced = applyTransportCard(item, rateCards, vendorName);
+            const group = groupRateItems([item])[0];
+            const currentRateChoices = group
+              ? distinctRateCardRateChoices(group, item.unit, rateCards, vendorName)
+              : [];
+            if (currentRateChoices.length > 1) {
+              mapped[i] = {
+                ...priced,
+                rate: 0,
+                amount: 0,
+                unitRateWarning: "Two rates on the rate card — choose",
+              };
+              ambiguousConversionCount++;
+              continue;
+            }
             if (isSiteTripTransport(item)) {
               mapped[i] = priced;
               if (priced.transportPricing) appliedCount++;
@@ -1600,7 +1619,6 @@ export default function VendorBills() {
               continue;
             }
             if (item.rate === 0) {
-              const group = groupRateItems([item])[0];
               const conversion = group
                 ? selectAutoMaterialRateConversion(item, group, rateCards, vendorName)
                 : { status: "not_applicable" as const };
@@ -1619,6 +1637,7 @@ export default function VendorBills() {
                 mapped[i].amount = calcAmount(mapped[i]);
                 appliedCount++;
               } else if (conversion.status === "ambiguous") {
+                mapped[i] = { ...item, unitRateWarning: "Two rates on the rate card — choose" };
                 ambiguousConversionCount++;
               } else if (conversion.status === "manual_conversion_required") {
                 manualConversionCount++;
@@ -1635,8 +1654,8 @@ export default function VendorBills() {
           }
           if (ambiguousConversionCount > 0) {
             toast({
-              title: `Skipped automatic conversion for ${ambiguousConversionCount} row${ambiguousConversionCount === 1 ? "" : "s"}`,
-              description: "Multiple matching rate cards are available. Use Set Rates to choose the billing unit.",
+              title: "Two rates on the rate card — choose",
+              description: `${ambiguousConversionCount} row${ambiguousConversionCount === 1 ? "" : "s"} need a rate choice in Set Rates.`,
             });
           }
           if (manualConversionCount > 0) {
@@ -2308,6 +2327,14 @@ export default function VendorBills() {
       newTotal,
     }];
   }), [bulkRates, uniqueRateGroups]);
+  const pendingBulkRateChoices = uniqueRateGroups.filter(group => {
+    const selection = bulkRates[group.key];
+    if (!selection) return false;
+    const choices = selection.rateChoices.filter(option =>
+      normalizeRateCardPart(option.unit) === normalizeRateCardPart(selection.targetUnit),
+    );
+    return choices.length > 1 && !choices.some(option => bulkRateChoiceKey(option) === selection.rateChoiceKey);
+  });
 
   const openSetRatesDialog = async () => {
     const initialRates: Record<string, BulkRateSelection> = {};
@@ -2326,34 +2353,33 @@ export default function VendorBills() {
         Number(item.rate) > 0 &&
         (!group.equipmentId || item.description.includes(group.entryType)),
       );
-      const currentCards = matchingRateCardsForGroup(group, currentUnit, rateCards, vendorName, { allowVendorAliases: true });
-      const currentCard = currentCards[0] ||
-        matchingRateCardsForGroup(group, currentUnit, rateCards, vendorName, {
-          allowBlankUnitFallback: true,
-          allowVendorAliases: true,
-        })[0];
-      const currentRate = Number(existing?.rate) || Number(currentCard?.rate) || 0;
-      const candidateUnits = Array.from(new Set(
+      const rateChoices = Array.from(new Map(
         rateCards
           .filter(card => Number(card.rate) > 0)
-          .map(card => normalizeRateCardPart(card.unit))
-          .filter(unit => unit && matchingRateCardsForGroup(group, unit, rateCards, vendorName, { allowVendorAliases: true }).length > 0),
-      ));
-      const unitOptions: RateCardUnitOption[] = [
-        { unit: currentUnit, rate: currentRate, card: currentCard || {} },
-        ...candidateUnits
-          .filter(unit => unit !== currentUnit)
-          .map(unit => {
-            const card = matchingRateCardsForGroup(group, unit, rateCards, vendorName, { allowVendorAliases: true })[0];
-            return { unit, rate: Number(card?.rate) || 0, card };
-          })
-          .filter(option => option.rate > 0),
-      ];
+          .flatMap(card => distinctRateCardRateChoices(group, normalizeRateCardPart(card.unit), rateCards, vendorName))
+          .map(option => [bulkRateChoiceKey(option), option] as const),
+      ).values());
+      const candidateUnits = Array.from(new Set(rateChoices.map(option => normalizeRateCardPart(option.unit)).filter(Boolean)));
+      const rateChoicesForUnit = (unit: string) => rateChoices.filter(option =>
+        normalizeRateCardPart(option.unit) === normalizeRateCardPart(unit),
+      );
+      const currentRateOptions = rateChoicesForUnit(currentUnit);
+      const currentRate = currentRateOptions.length > 1
+        ? 0
+        : Number(existing?.rate) || Number(currentRateOptions[0]?.rate) || 0;
+      const unitOptions: RateCardUnitOption[] = Array.from(new Set([currentUnit, ...candidateUnits])).map(unit => {
+        const options = rateChoicesForUnit(unit);
+        return options.length === 1
+          ? options[0]
+          : { unit, rate: options.length > 1 ? 0 : (unit === currentUnit ? currentRate : 0), card: options[0]?.card ?? {} };
+      });
       initialRates[group.key] = {
         rate: currentRate,
         leadDistance: Number(existing?.leadDistance) || 0,
         targetUnit: currentUnit,
         unitOptions,
+        rateChoices,
+        rateChoiceKey: "",
       };
     });
     setBulkRates(initialRates);
@@ -2362,6 +2388,10 @@ export default function VendorBills() {
   };
 
   const applyBulkRates = () => {
+    if (pendingBulkRateChoices.length > 0) {
+      toast({ title: "Two rates on the rate card — choose", variant: "destructive" });
+      return;
+    }
     if (bulkUnitConversions.length > 0) {
       if (bulkUnitConversions.some(({ selection }) => selection.rate <= 0)) {
         toast({ title: "Enter a positive rate for every selected billing unit", variant: "destructive" });
@@ -4403,7 +4433,25 @@ export default function VendorBills() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {item.unitRateWarning && <p role="alert" title={item.unitRateWarning} className="mt-1 text-xs font-medium text-amber-900 dark:text-amber-200" data-testid={`warning-item-unit-${idx}`}>{item.unitRateWarning}</p>}
+                    {item.unitRateWarning && (
+                      <div className="mt-1 space-y-1">
+                        <p role="alert" title={item.unitRateWarning} className="text-xs font-medium text-amber-900 dark:text-amber-200" data-testid={`warning-item-unit-${idx}`}>
+                          {item.unitRateWarning}
+                        </p>
+                        {item.unitRateWarning === "Two rates on the rate card — choose" && (
+                          <Button
+                            type="button"
+                            variant="link"
+                            size="sm"
+                            className="h-auto p-0 text-xs"
+                            onClick={() => void openSetRatesDialog()}
+                            data-testid={`button-choose-rate-${idx}`}
+                          >
+                            Choose rate
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </td>
                   {hasLead && (
                     <td className="px-2 py-1.5">
@@ -4958,7 +5006,12 @@ export default function VendorBills() {
                       </Badge>
                       <span className="text-sm text-muted-foreground">{catGroups.length} group{catGroups.length !== 1 ? "s" : ""}</span>
                     </div>
-                    {catGroups.map(group => (
+                    {catGroups.map(group => {
+                      const selection = bulkRates[group.key];
+                      const rateChoices = selection?.rateChoices.filter(option =>
+                        normalizeRateCardPart(option.unit) === normalizeRateCardPart(selection.targetUnit),
+                      ) ?? [];
+                      return (
                       <div key={group.key} className="border rounded-md p-3 space-y-2">
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div>
@@ -4983,12 +5036,16 @@ export default function VendorBills() {
                                   const option = current.unitOptions.find(candidate =>
                                     normalizeRateCardPart(candidate.unit) === normalizedTargetUnit,
                                   );
+                                   const optionsForTarget = current.rateChoices.filter(candidate =>
+                                     normalizeRateCardPart(candidate.unit) === normalizedTargetUnit,
+                                   );
                                   return {
                                     ...prev,
                                     [group.key]: {
                                       ...current,
                                       targetUnit: option?.unit || normalizedTargetUnit,
-                                      rate: option?.rate || 0,
+                                       rate: optionsForTarget.length === 1 ? Number(optionsForTarget[0].rate) : optionsForTarget.length > 1 ? 0 : (option?.rate || 0),
+                                       rateChoiceKey: "",
                                     },
                                   };
                                 })}
@@ -4998,24 +5055,55 @@ export default function VendorBills() {
                                 </SelectTrigger>
                                 <SelectContent>
                                   {bulkRates[group.key].unitOptions.map(option => (
-                                    <SelectItem key={option.unit} value={option.unit}>{option.unit}{option.rate > 0 ? ` · ₹${formatCurrency(option.rate)}` : ""}</SelectItem>
+                                 <SelectItem key={option.unit} value={option.unit}>
+                                   {option.unit}{option.rate > 0 ? ` · ₹${formatCurrency(option.rate)}` : ""}
+                                   {selection?.rateChoices.filter(candidate => normalizeRateCardPart(candidate.unit) === normalizeRateCardPart(option.unit)).length > 1 ? " · multiple rates" : ""}
+                                 </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
                               <p className="text-[11px] text-muted-foreground mt-1">Changing unit resets each row to quantity 1; review before saving.</p>
                             </div>
                           )}
-                          <div className="flex-1 min-w-[120px]">
-                            <Label className="text-sm uppercase">Rate (₹)</Label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={bulkRates[group.key]?.rate || ""}
-                              onChange={e => setBulkRates(prev => ({ ...prev, [group.key]: { ...prev[group.key], rate: parseFloat(e.target.value) || 0 } }))}
-                              placeholder="0"
-                              data-testid={`input-bulk-rate-${group.key}`}
-                            />
-                          </div>
+                          {rateChoices.length > 1 ? (
+                            <div className="flex-1 min-w-[220px]">
+                              <Label className="text-sm">Two rates on the rate card — choose</Label>
+                              <Select
+                                value={selection?.rateChoiceKey ?? ""}
+                                onValueChange={value => {
+                                  const option = rateChoices.find(candidate => bulkRateChoiceKey(candidate) === value);
+                                  if (!option) return;
+                                  setBulkRates(previous => ({
+                                    ...previous,
+                                    [group.key]: { ...previous[group.key], rate: Number(option.rate), rateChoiceKey: value },
+                                  }));
+                                }}
+                              >
+                                <SelectTrigger className="h-8 text-sm" data-testid={`select-bulk-rate-choice-${group.key}`}>
+                                  <SelectValue placeholder="Choose a saved rate…" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {rateChoices.map(option => (
+                                    <SelectItem key={bulkRateChoiceKey(option)} value={bulkRateChoiceKey(option)}>
+                                      ₹{formatCurrency(Number(option.rate))} (saved under {option.card?.vendorName || vendorName})
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ) : (
+                            <div className="flex-1 min-w-[120px]">
+                              <Label className="text-sm uppercase">Rate (₹)</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={selection?.rate || ""}
+                                onChange={e => setBulkRates(prev => ({ ...prev, [group.key]: { ...prev[group.key], rate: parseFloat(e.target.value) || 0 } }))}
+                                placeholder="0"
+                                data-testid={`input-bulk-rate-${group.key}`}
+                              />
+                            </div>
+                          )}
                           {group.category === "transport" && (
                             <div className="flex-1 min-w-[120px]">
                               <Label className="text-sm uppercase">Lead Distance (KM)</Label>
@@ -5031,7 +5119,7 @@ export default function VendorBills() {
                           )}
                         </div>
                       </div>
-                    ))}
+                    );})}
                   </div>
                 );
               })}
@@ -5039,7 +5127,7 @@ export default function VendorBills() {
                 <Button variant="outline" onClick={() => setShowSetRatesDialog(false)} data-testid="button-cancel-rates">
                   CANCEL
                 </Button>
-                <Button onClick={applyBulkRates} data-testid="button-apply-rates">
+                <Button onClick={applyBulkRates} disabled={pendingBulkRateChoices.length > 0} data-testid="button-apply-rates">
                   <Check className="w-4 h-4 mr-1" /> APPLY RATES
                 </Button>
               </div>
