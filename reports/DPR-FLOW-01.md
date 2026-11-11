@@ -126,3 +126,21 @@ They now use one shared invalidation helper to refetch DPR list/detail and relat
 - **Full-suite status:** the configured full test workflow completed with **5 files failing and 442 passing** (2 skipped); **7 tests failed, 5,642 passed** (3 skipped). The failing files were `arrangementProcurementCorrection.test.ts`, `materialReceiptReversal06mD.test.ts`, `purchase-indent-pi01.test.ts`, `unscheduledReportCredit.test.ts`, and `vendorBillVb15Server.test.ts`. None is in the DPR workflow changes covered by this continuation.
 - **Build:** `npm run build` passed. `npm run check` remains blocked by the project-wide TypeScript diagnostics noted above; no diagnostics were reported in the newly added submit dialog or the updated Sections, Dashboard, Site Report, legacy Details, and Progress Report client code.
 - **Safety:** test data was confined to isolated test fixtures. No development operational DPR, user, or session records were changed; no production or replica access occurred; no publication was performed.
+
+## Pre-publish check
+
+Read-only comparison; no failing tests were fixed. The same five test files were run at the last published commit `dbd2b0e`, at the DPR-FLOW-01 starting commit `014bfbd`, and at the current commit `17310f1`. Each run produced the same **7 failures and 50 passes across the five files**:
+
+| Test file | Failing test(s), before → after | Error and line |
+|---|---:|---|
+| `arrangementProcurementCorrection.test.ts` | 1 → 1 | The source-text assertion expects `Material mapping required`; it is absent. Assertion at test line 108. |
+| `materialReceiptReversal06mD.test.ts` | 1 → 1 | `Cannot convert Kg to Liters without a configured material density.` `server/storage.ts:5216`; test line 216. |
+| `purchase-indent-pi01.test.ts` | 1 → 1 | `Cannot convert CUM to MT without a configured material density.` `server/storage.ts:8535`; failing test begins at line 150. |
+| `unscheduledReportCredit.test.ts` | 3 → 3 | The three assertions expect `totalActual` 6, 4800, and null but receive 0; test lines 127, 156, and 184. |
+| `vendorBillVb15Server.test.ts` | 1 → 1 | `Cannot read properties of undefined (reading 'isCancelled')` at `shared/vendorBillTripRoles.ts:16`; test line 152. |
+
+**Conclusion:** none of these failures is new in DPR-FLOW-01. All five signatures and counts already fail at `dbd2b0e`, and are unchanged at both `014bfbd` and `17310f1`.
+
+**Schema:** there are no changed schema, migration, or Drizzle files between `dbd2b0e` and `17310f1`, nor between `014bfbd` and `17310f1`. DPR-FLOW-01 adds or changes no tables or columns.
+
+The temporary comparison worktree was removed. The existing unrelated `/tmp/access02-baseline` worktree was left untouched. No application data or production/replica database was accessed or changed; nothing was published.
