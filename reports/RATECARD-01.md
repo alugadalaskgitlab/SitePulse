@@ -21,7 +21,7 @@
 | 7 | G Sanganna | 3 | G SANGANNA; SANGANNA |
 | 8 | Ramesh Mohabathpur | 1 | RAMESH MOHABATHPUR |
 | 14 | Sivakumar | 2 | SIVAKUMAR |
-| 1, 6, 9, 10, 11, 12, 13 | Saravana Metal Industries; HLC; Orsu Venkan­na; Sunilkumar; Viswanath; Ratnam-Tractor; Prabhu Patel | 0 | — |
+| 1, 6, 9, 10, 11, 12, 13 | Saravana Metal Industries; HLC; Orsu Venkanna; Sunilkumar; Viswanath; Ratnam-Tractor; Prabhu Patel | 0 | — |
 
 The zero-row masters are listed by IDs as returned by the database; some similar-looking legacy rows are not linked to those masters.
 
@@ -35,7 +35,7 @@ The count below groups linked rows across all saved vendor-name spellings, using
 | Equipment · JCB · HRS | 2: #2 NARASIMHULU; #91 GANGARAM NARSIMHULU | ₹1,000 / ₹1,000 |
 | Equipment · Tipper · DAYS | 2: #3 NARASIMHULU; #92 GANGARAM NARSIMHULU | ₹3,000 / ₹3,000 |
 | Equipment · Tipper WMM interacting, bill-text key · DAYS | 2: #15 NARASIMHULU; #102 GANGARAM NARSIMHULU | ₹5,000 / ₹5,000 |
-| Equipment · Tipper WMM interc arting, bill-text key · DAYS | 2: #12 NARASIMHULU; #103 GANGARAM NARSIMHULU | ₹5,000 / ₹5,000 |
+| Equipment · Tipper WMM intercarting, bill-text key · DAYS | 2: #12 NARASIMHULU; #103 GANGARAM NARSIMHULU | ₹5,000 / ₹5,000 |
 | Material · 20 MM · MT | 4: #51 and #4 NARASIMHULU; #93 and #94 GANGARAM NARSIMHULU | ₹390 (2 rows) / ₹600 (2 rows) |
 | Material · Dust · CFT | 2: #5 NARASIMHULU; #95 GANGARAM NARSIMHULU | ₹22 / ₹22 |
 | Material · Dust · MT | 2: #24 NARASIMHULU; #96 GANGARAM NARSIMHULU | ₹390 / ₹390 |
@@ -149,10 +149,10 @@ All 58 current bills were captured. The fingerprint covers the exact bill status
 | HLC/VB/2026/0042 | draft | 1 | 1,500 | — | adf57420f0da26a8b70ef0618ae1bd48 |
 | HLC/VB/2026/0043 | paid | 1 | 1,500 | — | a42937a815a45be42605154cddef543a |
 | HLC/VB/2026/0021 | paid | 3 | 6,701.885 | — | be404ea43f4bdbd7852ae0c1a457a425 |
-| HLC/VB/2026/0022 | paid | 1 | 18,500 | — | 67318f74aabaf146e91753c9528c7d |
+| HLC/VB/2026/0022 | paid | 1 | 18,500 | — | 67318f74aabaf146e917cb9d36da5114 |
 | HLC/VB/2026/0023 | paid | 1 | 1,002 | — | 329ad0f79a718b8e2fbc999db3850703 |
 | HLC/VB/2026/0024 | paid | 3 | 6,750 | — | 395aaea9322e30542545a14d223b3853 |
-| HLC/VB/2026/0025 | paid | 4 | 11,950 | — | 74c1a9b1779ce51cac2ee3fb47bf45c |
+| HLC/VB/2026/0025 | paid | 4 | 11,950 | — | 74c1a9b1779ce51cac2ee7caec8bf54a |
 | HLC/VB/2026/0026 | paid | 3 | 43,500 | — | bcd607d77fa14f414755a46b69091a69 |
 | HLC/VB/2026/0027 | paid | 4 | 5,000 | — | 095f8b33159ea69d525eac0ba6e5885c |
 | HLC/VB/2026/0028 | verified | 6 | 15,389.41 | — | a3d26c98b69cd64d090c8c762f78db92 |
@@ -168,7 +168,7 @@ All 58 current bills were captured. The fingerprint covers the exact bill status
 | HLC/VB/2026/0017 | paid | 3 | 12,000 | — | d5b57572f34ec1d1aecc02710acc9ad7 |
 | HLC/VB/2026/0038 | paid | 1 | 7,220 | — | c59ab9b0afea89010e3b8981d9a5e103 |
 | HLC/VB/2026/0039 | paid | 1 | 6,270 | — | 1c85b87a4383300a567c3d16f4c5854e |
-| HLC/VB/2026/0040 | paid | 1 | 7,315 | — | 400d9a94f892f1c50ae0c1a457a425 |
+| HLC/VB/2026/0040 | paid | 1 | 7,315 | — | 400d9a8b78eeccf6bb4511eb7275be3d |
 | HLC/VB/2026/0041 | paid | 1 | 6,460 | — | 2cbffdc9abe38b19c8cbef5fb104757c |
 | HLC/VB/2026/0062 | approved | 1 | 25,161.29 | 25,161.29 | 495cd4b7aa78fc3ce320639ffc2b671d |
 | HLC/VB/2026/0044 | paid | 4 | 12,960 | — | 6249179c0641509c7993753b36824a1e |
