@@ -12,6 +12,11 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { isManualVendorRateCard, MANUAL_VENDOR_RATE_CARD_NOTE } from "@shared/vendorRateCardIdentity";
+import type {
+  RateCardTidyDecision,
+  RateCardTidyGroup,
+  UnlinkedRateCardGroup,
+} from "@shared/vendorRateCardTidy";
 import { SITE_MATERIAL_TRIP_MATERIAL_OPTIONS } from "@shared/siteMaterialTripMaterials";
 import type { VendorAlias } from "@shared/schema";
 import { TransportRateBasis, TransportRateSetup, hasTransportSetup } from "@/components/TransportRateSetup";
@@ -39,6 +44,24 @@ type ManualRow = {
   isNewMaterialTransport?: boolean;
 };
 type VendorMasterOption = { id: number; name: string; isActive?: boolean };
+type PossibleBillMatch = {
+  billNo: string;
+  billDate: string | Date;
+  description: string;
+  unit: string | null;
+  rate: number;
+};
+type RateCardTidyPreview = {
+  previewVersion: string;
+  sameRateGroups: RateCardTidyGroup[];
+  conflictingGroups: RateCardTidyGroup[];
+  unlinkedGroups: UnlinkedRateCardGroup[];
+  possibleMatches: Record<number, PossibleBillMatch | null>;
+};
+type TidyUiChoice =
+  | { action: "defer" }
+  | { action: "keep"; keepCardId: number }
+  | { action: "custom"; rateText: string };
 
 const UNIT_OPTIONS = ["HRS", "DAYS", "TRIPS", "MONTHS", "TRIP", "MT", "KL", "NOS", "KGS", "LITERS", "CFT", "CUM", "KM", "HEAD-DAY"];
 
@@ -86,11 +109,12 @@ const getCategoryBadgeClass = (cat: string) => {
 
 export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendor?: string; onReturnToDraft?: () => void } = {}) {
   const { toast } = useToast();
-  const { featureCan } = useAuth();
+  const { featureCan, user } = useAuth();
   const canViewRateCards = featureCan("rate_cards", "view");
   const canAddRates = featureCan("rate_cards", "add");
   const canEditRates = featureCan("rate_cards", "edit");
   const canCancelRates = featureCan("rate_cards", "cancel");
+  const isOwner = user?.isOwner === true;
   const queryClient = useQueryClient();
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
@@ -103,6 +127,14 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   const [rates, setRates] = useState<Record<string, number | string>>({});
   const [unitOverrides, setUnitOverrides] = useState<Record<string, string>>({});
   const [searchFilter, setSearchFilter] = useState("");
+  const [tidyChoices, setTidyChoices] = useState<Record<string, TidyUiChoice>>({});
+  const [tidyReason, setTidyReason] = useState("");
+  const [tidyBusy, setTidyBusy] = useState(false);
+  const [tidyMessage, setTidyMessage] = useState("");
+  const [tidyPreviewExpanded, setTidyPreviewExpanded] = useState(false);
+  const [linkVendorIds, setLinkVendorIds] = useState<Record<string, string>>({});
+  const [linkReasons, setLinkReasons] = useState<Record<string, string>>({});
+  const [linkingName, setLinkingName] = useState<string | null>(null);
 
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [manualRows, setManualRows] = useState<ManualRow[]>([]);
@@ -136,6 +168,15 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     queryKey: ["/api/vendor-master"],
     enabled: canViewRateCards,
   });
+  const tidyPreviewQuery = useQuery<RateCardTidyPreview>({
+    queryKey: ["/api/vendor-rate-cards/tidy-preview"],
+    enabled: isOwner,
+    queryFn: async () => {
+      const response = await fetch("/api/vendor-rate-cards/tidy-preview", { credentials: "include", cache: "no-store" });
+      if (!response.ok) throw new Error("Couldn't load the rate-card tidy preview");
+      return response.json();
+    },
+  });
   const { data: vendorAliases = [] } = useQuery<VendorAlias[]>({
     queryKey: ["/api/vendor-aliases"],
     enabled: canViewRateCards,
@@ -156,6 +197,82 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     setUnitOverrides({});
     setSearchFilter("");
     setManualRows([]);
+  };
+
+  const tidyDecisions = useMemo<RateCardTidyDecision[]>(() => {
+    const groups = tidyPreviewQuery.data?.conflictingGroups ?? [];
+    return groups.reduce<RateCardTidyDecision[]>((decisions, group) => {
+      const choice = tidyChoices[group.key];
+      if (!choice) return decisions;
+      if (choice.action === "defer") {
+        decisions.push({ key: group.key, action: "defer" });
+        return decisions;
+      }
+      if (choice.action === "keep") {
+        decisions.push({ key: group.key, action: "keep", keepCardId: choice.keepCardId });
+        return decisions;
+      }
+      const rate = Number(choice.rateText);
+      if (Number.isFinite(rate) && rate > 0) decisions.push({ key: group.key, action: "custom", rate });
+      return decisions;
+    }, []);
+  }, [tidyChoices, tidyPreviewQuery.data?.conflictingGroups]);
+  const allTidyConflictsDecided = (tidyPreviewQuery.data?.conflictingGroups ?? []).every(group => {
+    const choice = tidyChoices[group.key];
+    if (!choice) return false;
+    return choice.action !== "custom" || (Number.isFinite(Number(choice.rateText)) && Number(choice.rateText) > 0);
+  });
+  const hasTidyOperations = (tidyPreviewQuery.data?.sameRateGroups.length ?? 0) > 0 ||
+    tidyDecisions.some(decision => decision.action !== "defer");
+
+  const submitRateCardTidy = async () => {
+    const preview = tidyPreviewQuery.data;
+    if (!preview || tidyBusy || !isOwner || !allTidyConflictsDecided || !hasTidyOperations || tidyReason.trim().length < 3) return;
+    setTidyBusy(true);
+    setTidyMessage("");
+    try {
+      const response = await apiRequest("POST", "/api/vendor-rate-cards/tidy-apply", {
+        previewVersion: preview.previewVersion,
+        reason: tidyReason.trim(),
+        decisions: tidyDecisions,
+      });
+      const result = await response.json();
+      setTidyMessage(`Tidy applied: ${result.mergedRows} duplicate row(s) merged; ${result.deferredConflicts} conflict(s) left unchanged.`);
+      setTidyChoices({});
+      setTidyReason("");
+      await queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/tidy-preview"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
+    } catch (error) {
+      setTidyMessage(error instanceof Error ? error.message : "Tidy could not be applied.");
+    } finally {
+      setTidyBusy(false);
+    }
+  };
+
+  const linkUnlinkedName = async (group: UnlinkedRateCardGroup) => {
+    const vendorId = Number(linkVendorIds[group.key]);
+    const reason = linkReasons[group.key]?.trim() ?? "";
+    if (!isOwner || !vendorId || reason.length < 3 || linkingName) return;
+    setLinkingName(group.key);
+    setTidyMessage("");
+    try {
+      const response = await apiRequest("POST", "/api/vendor-rate-cards/link-name", {
+        nameKey: group.key,
+        vendorId,
+        reason,
+      });
+      const result = await response.json();
+      setTidyMessage(`Linked ${result.linkedRows} saved row(s) to ${result.vendorName}. Their saved vendor names and rates were preserved.`);
+      setLinkVendorIds(previous => ({ ...previous, [group.key]: "" }));
+      setLinkReasons(previous => ({ ...previous, [group.key]: "" }));
+      await queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards/tidy-preview"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/vendor-rate-cards"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills/vendor-names"] });
+    } catch (error) {
+      setTidyMessage(error instanceof Error ? error.message : "Rate cards could not be linked.");
+    } finally {
+      setLinkingName(null);
+    }
   };
 
   const { data: allRateCards = [], isFetched: isRateCardsFetched } = useQuery<any[]>({
@@ -714,6 +831,35 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
     </tr>
   );
 
+  const possibleBillHint = (cardId: number) => {
+    const match = tidyPreviewQuery.data?.possibleMatches?.[cardId];
+    if (!match) return null;
+    const rawDate = String(match.billDate);
+    const parsedDate = new Date(`${rawDate.slice(0, 10)}T00:00:00`);
+    const billDate = Number.isNaN(parsedDate.getTime())
+      ? rawDate
+      : parsedDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+    const unit = match.unit ? ` per ${match.unit}` : "";
+    return (
+      <p className="mt-1 text-xs text-muted-foreground" data-testid={`possible-match-${cardId}`}>
+        <span className="font-medium">Possible match:</span> Similar line on {match.billNo} ({billDate}) at ₹{Number(match.rate).toLocaleString("en-IN")}{unit}. Hint only; not proof of usage and not a default.
+      </p>
+    );
+  };
+
+  const renderTidyGroupRows = (group: RateCardTidyGroup) => group.rows.map(row => (
+    <tr key={row.id} className="border-t align-top">
+      <td className="px-3 py-2">
+        <div className="font-medium">{row.itemLabel || row.itemKey}</div>
+        <div className="text-xs text-muted-foreground">Saved row #{row.id} · {row.vendorName}</div>
+        {possibleBillHint(row.id)}
+      </td>
+      <td className="px-3 py-2">{row.unit}</td>
+      <td className="px-3 py-2 text-right tabular-nums">₹{Number(row.rate).toLocaleString("en-IN")}</td>
+      <td className="px-3 py-2">{row.id === group.keeperId ? "Keeps this row if applied" : "Copy to merge if applied"}</td>
+    </tr>
+  ));
+
   const renderSectionHeader = (title: string, category: string, count: number, badgeClass: string) => (
     <div
       className="flex items-center justify-between px-3 py-2 bg-muted/60 cursor-pointer select-none"
@@ -810,6 +956,215 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
           </div>
         </CardContent>
       </Card>
+
+      {isOwner && (
+        <Card data-testid="rate-card-unlinked-panel">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Not linked to a vendor</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              These rows keep their saved supplier names until you explicitly link them. Nothing is linked or created automatically.
+            </p>
+            {tidyPreviewQuery.isLoading && <p role="status" className="text-sm">Loading unlinked rate cards…</p>}
+            {tidyPreviewQuery.isError && <p role="alert" className="text-sm text-destructive">{String(tidyPreviewQuery.error)}</p>}
+            {(tidyPreviewQuery.data?.unlinkedGroups ?? []).map(group => (
+              <div key={group.key} className="rounded-md border p-3 space-y-3" data-testid={`unlinked-rate-name-${group.key}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-semibold">{group.savedName}</h3>
+                  <Badge variant="outline">{group.rows.length} saved row(s)</Badge>
+                </div>
+                {group.savedNames.length > 1 && (
+                  <p className="text-xs text-muted-foreground">Saved spellings: {group.savedNames.join(" · ")}</p>
+                )}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-xs text-muted-foreground">
+                      <th className="py-1 pr-2">Item</th><th className="py-1 pr-2">Unit</th><th className="py-1 text-right">Rate</th>
+                    </tr></thead>
+                    <tbody>{group.rows.map(row => (
+                      <tr key={row.id} className="border-t align-top">
+                        <td className="py-2 pr-2">
+                          <div>{row.itemLabel || row.itemKey}</div>
+                          <div className="text-xs text-muted-foreground">Row #{row.id} · {row.category}</div>
+                          {possibleBillHint(row.id)}
+                        </td>
+                        <td className="py-2 pr-2">{row.unit}</td>
+                        <td className="py-2 text-right tabular-nums">₹{Number(row.rate).toLocaleString("en-IN")}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto] sm:items-end">
+                  <label className="text-xs font-medium">
+                    Link to vendor
+                    <select
+                      className="mt-1 block h-9 w-full rounded-md border bg-background px-2 text-sm"
+                      value={linkVendorIds[group.key] ?? ""}
+                      onChange={event => setLinkVendorIds(previous => ({ ...previous, [group.key]: event.target.value }))}
+                      data-testid={`select-link-rate-vendor-${group.key}`}
+                    >
+                      <option value="">Choose existing Vendor Master…</option>
+                      {vendorMasters.filter(vendor => vendor.isActive !== false).map(vendor => (
+                        <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs font-medium">
+                    Reason for linking
+                    <Input
+                      value={linkReasons[group.key] ?? ""}
+                      onChange={event => setLinkReasons(previous => ({ ...previous, [group.key]: event.target.value }))}
+                      placeholder="Required for audit history"
+                      data-testid={`input-link-rate-reason-${group.key}`}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!linkVendorIds[group.key] || (linkReasons[group.key] ?? "").trim().length < 3 || linkingName !== null}
+                    onClick={() => void linkUnlinkedName(group)}
+                    data-testid={`button-link-rate-vendor-${group.key}`}
+                  >
+                    {linkingName === group.key ? "Linking…" : "Link to vendor"}
+                  </Button>
+                </div>
+                <a
+                  className="inline-flex text-sm text-primary underline"
+                  href={`/masters/vendors?create=1&name=${encodeURIComponent(group.savedName)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid={`link-add-rate-vendor-${group.key}`}
+                >
+                  Add as new vendor
+                </a>
+              </div>
+            ))}
+            {!tidyPreviewQuery.isLoading && !tidyPreviewQuery.isError && !(tidyPreviewQuery.data?.unlinkedGroups.length) && (
+              <p role="status" className="text-sm text-muted-foreground">All saved rate-card rows are linked to a Vendor Master.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {isOwner && (
+        <Card data-testid="rate-card-tidy-panel">
+          <CardHeader className="pb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-base">Tidy duplicate rate cards</CardTitle>
+              <Button type="button" variant="outline" onClick={() => setTidyPreviewExpanded(value => !value)} data-testid="button-preview-rate-tidy">
+                {tidyPreviewExpanded ? "Close Tidy preview" : "Preview Tidy"}
+              </Button>
+            </div>
+          </CardHeader>
+          {tidyPreviewExpanded && (
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Bills and bill lines are not edited. Same-rate copies are grouped for automatic merge; conflicts have no preselected rate. “Decide later” leaves that conflict unchanged.
+              </p>
+              {tidyPreviewQuery.isError && <p role="alert" className="text-sm text-destructive">{String(tidyPreviewQuery.error)}</p>}
+              {tidyPreviewQuery.isLoading && <p role="status" className="text-sm">Preparing the read-only preview…</p>}
+              {!!tidyPreviewQuery.data?.sameRateGroups.length && (
+                <section aria-labelledby="same-rate-tidy-heading" className="space-y-2">
+                  <h3 id="same-rate-tidy-heading" className="font-semibold">Same rate — will be merged ({tidyPreviewQuery.data.sameRateGroups.length})</h3>
+                  {tidyPreviewQuery.data.sameRateGroups.map(group => (
+                    <div key={group.key} className="rounded-md border p-3" data-testid={`same-rate-group-${group.key}`}>
+                      <p className="font-medium">{group.vendorName} · {group.itemLabel} · {group.unit}</p>
+                      <p className="text-sm text-muted-foreground">Same saved rate: ₹{Number(group.rows[0]?.rate).toLocaleString("en-IN")}. No choice needed; the kept row will be filed under the Vendor Master.</p>
+                      <div className="mt-2 overflow-x-auto"><table className="w-full text-sm">
+                        <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1">Saved row</th><th className="py-1">Unit</th><th className="py-1 text-right">Rate</th><th className="py-1">Preview action</th></tr></thead>
+                        <tbody>{renderTidyGroupRows(group)}</tbody>
+                      </table></div>
+                    </div>
+                  ))}
+                </section>
+              )}
+              {!!tidyPreviewQuery.data?.conflictingGroups.length && (
+                <section aria-labelledby="conflicting-rate-tidy-heading" className="space-y-2">
+                  <h3 id="conflicting-rate-tidy-heading" className="font-semibold">Conflicting rates ({tidyPreviewQuery.data.conflictingGroups.length})</h3>
+                  {tidyPreviewQuery.data.conflictingGroups.map(group => {
+                    const choice = tidyChoices[group.key];
+                    return (
+                      <div key={group.key} className="rounded-md border p-3 space-y-3" data-testid={`conflicting-rate-group-${group.key}`}>
+                        <p className="font-medium">{group.vendorName} · {group.itemLabel} · {group.unit}</p>
+                        <div className="overflow-x-auto"><table className="w-full text-sm">
+                          <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1">Saved row</th><th className="py-1">Unit</th><th className="py-1 text-right">Rate</th><th className="py-1">Preview action</th></tr></thead>
+                          <tbody>{renderTidyGroupRows(group)}</tbody>
+                        </table></div>
+                        <label className="block text-sm font-medium">
+                          Choose one rate, enter a new rate, or defer this conflict
+                          <select
+                            className="mt-1 block h-9 w-full rounded-md border bg-background px-2"
+                            value={!choice ? "" : choice.action === "defer" ? "defer" : choice.action === "custom" ? "custom" : `keep:${choice.keepCardId}`}
+                            onChange={event => {
+                              const value = event.target.value;
+                              setTidyChoices(previous => {
+                                const next = { ...previous };
+                                if (!value) {
+                                  delete next[group.key];
+                                } else if (value === "defer") {
+                                  next[group.key] = { action: "defer" };
+                                } else if (value === "custom") {
+                                  next[group.key] = { action: "custom", rateText: "" };
+                                } else if (value.startsWith("keep:")) {
+                                  next[group.key] = { action: "keep", keepCardId: Number(value.slice(5)) };
+                                }
+                                return next;
+                              });
+                            }}
+                            data-testid={`select-tidy-decision-${group.key}`}
+                          >
+                            <option value="">Select a decision…</option>
+                            {group.rows.map(row => (
+                              <option key={row.id} value={`keep:${row.id}`}>Keep row #{row.id} at ₹{Number(row.rate).toLocaleString("en-IN")}</option>
+                            ))}
+                            <option value="custom">Enter a new rate</option>
+                            <option value="defer">Decide later — leave unchanged</option>
+                          </select>
+                        </label>
+                        {choice?.action === "custom" && (
+                          <label className="block max-w-sm text-sm font-medium">
+                            New rate (₹ per {group.unit})
+                            <Input
+                              type="number"
+                              min="0.01"
+                              step="0.01"
+                              value={choice.rateText}
+                              onChange={event => setTidyChoices(previous => ({
+                                ...previous,
+                                [group.key]: { action: "custom", rateText: event.target.value },
+                              }))}
+                              data-testid={`input-tidy-custom-rate-${group.key}`}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })}
+                </section>
+              )}
+              {!tidyPreviewQuery.isLoading && !tidyPreviewQuery.isError &&
+                !tidyPreviewQuery.data?.sameRateGroups.length && !tidyPreviewQuery.data?.conflictingGroups.length && (
+                  <p role="status" className="text-sm text-muted-foreground">No linked duplicate rate-card groups need tidying.</p>
+                )}
+              <label className="block max-w-2xl text-sm font-medium">
+                Owner reason for this tidy
+                <Input value={tidyReason} onChange={event => setTidyReason(event.target.value)} placeholder="Required for audit history" data-testid="input-rate-tidy-reason" />
+              </label>
+              <Button
+                type="button"
+                disabled={tidyBusy || tidyPreviewQuery.isLoading || tidyPreviewQuery.isError || !allTidyConflictsDecided || !hasTidyOperations || tidyReason.trim().length < 3}
+                onClick={() => void submitRateCardTidy()}
+                data-testid="button-apply-rate-tidy"
+              >
+                {tidyBusy ? "Applying…" : "Apply Tidy"}
+              </Button>
+              {tidyMessage && <p role="status" className="text-sm whitespace-pre-line">{tidyMessage}</p>}
+            </CardContent>
+          )}
+          {!tidyPreviewExpanded && tidyMessage && <CardContent><p role="status" className="text-sm whitespace-pre-line">{tidyMessage}</p></CardContent>}
+        </Card>
+      )}
 
       {selectedVendor && !isRateCardsFetched && (
         <div className="flex justify-center py-8">

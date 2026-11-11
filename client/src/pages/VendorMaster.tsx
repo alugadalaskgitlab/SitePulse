@@ -47,6 +47,12 @@ function proposalKey(p: Proposal) {
 function emptyNewVendor(name: string): Record<string, string | boolean> {
   return { ...Object.fromEntries(keys.map(key => [key, ""])), name, businessName: name, isActive: true };
 }
+function vendorDraftFromQuery(): Partial<Vendor> | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const name = params.get("name")?.trim();
+  return params.get("create") === "1" && name ? { name, businessName: name, isActive: true } : null;
+}
 function readableError(error: unknown) {
   if (!(error instanceof Error)) return "Operation failed.";
   const separator = error.message.indexOf(": ");
@@ -90,7 +96,7 @@ export default function VendorMaster() {
   const [reviewSearch, setReviewSearch] = useState("");
   const [selectedProposalKeys, setSelectedProposalKeys] = useState<string[]>([]);
   const [masterSearch, setMasterSearch] = useState("");
-  const [editing, setEditing] = useState<Partial<Vendor> | null>(null);
+  const [editing, setEditing] = useState<Partial<Vendor> | null>(vendorDraftFromQuery);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});

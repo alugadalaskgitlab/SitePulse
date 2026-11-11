@@ -66,6 +66,7 @@ import { dprCorrectionService } from "./dprCorrections";
 import { readPermissionAccessAudit } from "./permissionAccessMigration";
 import { TransportRateInputError } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
+import { registerVendorRateCardTidyRoutes } from "./vendorRateCardTidy";
 import { confirmTripHireLink, tripHireReview } from "./tripHireLink";
 import { confirmTripPartyIdentities, tripIdentityLinksInput } from "./tripIdentityLinks";
 import { equipmentVendorIdentities } from "./equipmentVendorIdentity";
@@ -822,6 +823,7 @@ export async function registerRoutes(
     );
   }
   registerVendorMasterRoutes(app, getPermittedSiteNames);
+  registerVendorRateCardTidyRoutes(app);
 
   // A plant name alone is not a site grant. Unmapped/shared plants are visible
   // only to all-sites users; never infer their site from a display name.

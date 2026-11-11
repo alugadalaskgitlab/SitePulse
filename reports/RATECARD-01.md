@@ -193,3 +193,30 @@ All 58 current bills were captured. The fingerprint covers the exact bill status
 ## Part A complete — stopped
 
 This is the read-only findings report only. No rate-card row was changed or removed; no bill, bill item, payment, vendor, alias, user or permission was changed. Waiting for the Owner’s “continue” before any build or Owner Apply action.
+
+## Part B — implemented, awaiting Owner review
+
+### Rate-card tidy preview and Apply
+
+- Added an Owner-only **Tidy duplicate rate cards** preview on Rate Cards. It groups linked rows by Vendor Master, category, normalized item identity and unit.
+- Identical-rate copies are labelled **“Same rate — will be merged”** and need no per-group choice. The preview selects a row that preserves the most existing setup data, then the canonical vendor spelling and oldest row ID as tie-breakers.
+- Conflicting-rate groups have no preselected choice. The Owner must select one saved rate, enter a positive new rate, or choose **“Decide later — leave unchanged”** for every conflict. Apply remains disabled while any conflict is undecided or a custom rate is blank/invalid.
+- Apply is atomic and checks that the preview has not gone stale. It only merges the rate-card rows selected by the preview; it does not change bills or bill items.
+- Each modified/removed row is recorded in the existing `audit_logs` with module/action `vendor_rate_card`, full old row, kept row and choice, Owner identity, reason and timestamp. Manual-row provenance and other note lines are retained.
+
+### Possible bill matches
+
+- The preview may show the closest matching bill line as **“Possible match”**, with bill number, date and rate. It is explicitly marked as a hint only—not proof that a card priced that line, not a default, and never labelled “never used.”
+
+### Unlinked saved names
+
+- The Rate Cards page groups rows with no Vendor Master link under **“Not linked to a vendor”** by their saved supplier name.
+- The Owner can leave a group untouched, explicitly link its rows to an existing active Vendor Master record (with a required reason and audit entry), or open the existing Vendor Master create form with the saved name prefilled. Linking and vendor creation are never automatic.
+
+### Verification
+
+- **Bill fingerprints:** after the tests, compared every bill against the Part A fingerprint table. **0 bills changed**: all 58 bills and 411 bill-item rows match their Part A fingerprints.
+- **Focused tests:** 9 test files passed, 62 tests passed. This includes preview decisions, same-rate grouping, explicit vendor linking, create-form prefill, and existing Rate Cards/Vendor Master/vendor-bill rate selection tests.
+- **Build:** `npm run build` passed.
+- **TypeScript check:** the repository-wide `npm run check` still reports 468 diagnostics across 61 files. A filtered check found no diagnostics in the changed Rate Cards, Vendor Master, or new tidy files; the existing `server/routes.ts` diagnostics are outside the new route registration.
+- No schema changes were made. No rate-card, vendor, bill, bill-item, payment, or other development data was changed. Nothing was published.
