@@ -196,7 +196,7 @@ import {
 import { evaluateDprSubmitReadiness, type DprReadinessIssue } from "@shared/dprSubmitReadiness";
 import { evaluateSavedDraftReadiness } from "@shared/dprDraftReadiness";
 import { collectDprBoqItemIds } from "@shared/dprBoqSelection";
-import { chainageOverlapReadinessIssues, isChainageGuardRow, unchangedChainageRowKeys, type CandidateChainageRow } from "@shared/chainageOverlap";
+import { chainageOverlapSubmitIssues, isChainageGuardRow, unchangedChainageRowKeys, type CandidateChainageRow } from "@shared/chainageOverlap";
 import { blocksExternalReceiptsForBoqItem, mergeMaterialTripLinkage, reusedExcavationConfigurationIssue } from "@shared/materialReceiptSummary";
 import { excavationMaterialOutcomeIssue } from "@shared/cutFillReconciliation";
 import { materializedEquipmentLogChanged } from "@shared/equipmentMovement";
@@ -2726,8 +2726,7 @@ export async function registerRoutes(
     const exemptRowKeys = Array.isArray(persistedProgress)
       ? unchangedChainageRowKeys(rows, toCandidateChainageRows({ progress: persistedProgress }))
       : undefined;
-    return chainageOverlapReadinessIssues(rows, priors, { exemptRowKeys })
-      .map(({ section, label, message, rowKey }) => ({ section, label, message, rowKey }));
+    return chainageOverlapSubmitIssues(rows, priors, { exemptRowKeys });
   }
 
   // ── 06X: PATCH /api/progress-entries/:id/overlap-resolution ─────────────────

@@ -164,17 +164,21 @@ export function useChainageOverlapHits(
  * the edit dialog always starts from the current value).
  */
 export function ChainageOverlapWarning({
-  hits, overrideReason, onOverrideReason, testidPrefix,
+  hits, overrideReason, onOverrideReason, testidPrefix, openReasonToken,
 }: {
   hits: ChainageOverlapHit[];
   overrideReason: string;
   onOverrideReason: (v: string) => void;
   testidPrefix: string;
+  openReasonToken?: number;
 }) {
   const [reasonOpen, setReasonOpen] = useState(false);
   const [previewDprId, setPreviewDprId] = useState<number | null>(null);
   const [previewEntryId, setPreviewEntryId] = useState<number | null>(null);
-  if (hits.length === 0) return null;
+  useEffect(() => {
+    if (openReasonToken != null) setReasonOpen(true);
+  }, [openReasonToken]);
+  if (hits.length === 0 && openReasonToken == null) return null;
   const exact = hits.some((h) => h.kind === "exact");
   const hasReason = overrideReason.trim() !== "";
   return (
@@ -184,7 +188,9 @@ export function ChainageOverlapWarning({
     >
       <p className={`font-semibold flex items-center gap-1.5 ${exact ? "text-orange-700 dark:text-orange-400" : "text-amber-700 dark:text-amber-400"}`}>
         <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-        {exact
+        {hits.length === 0
+          ? "The server found a chainage overlap for this row."
+          : exact
           ? "Progress has already been recorded for this exact chainage."
           : "Part of this chainage overlaps previously recorded progress."}
       </p>
@@ -212,6 +218,7 @@ export function ChainageOverlapWarning({
           </li>
         ))}
       </ul>
+      {hits.length === 0 && <p className="text-slate-600 dark:text-slate-400">The server found an overlap for this row. Add the reason you reviewed before submitting.</p>}
       <p className="text-slate-600 dark:text-slate-400">
         Legitimate reasons include another layer, another lift, rework, correction or a repeated operation.
       </p>

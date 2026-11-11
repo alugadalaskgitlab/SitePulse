@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAuth } from "@/lib/auth-context";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { refreshDprDerivedQueries } from "@/lib/dprQueryInvalidation";
 import { InsufficientDieselDialog, parseInsufficientPlantStock, type InsufficientPlantStockPayload } from "@/components/InsufficientDieselDialog";
 import { useToast } from "@/hooks/use-toast";
 import { DprPhotoGroups } from "@/components/DprPhotoGroups";
@@ -139,11 +140,8 @@ export default function DprDetails() {
       const response = await apiRequest("POST", `/api/dprs/${id}/clone`, {});
       return response.json();
     },
-    onSuccess: (newDpr) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
-      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
-      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/plant-module/stock-ledger") || false });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+    onSuccess: async (newDpr) => {
+      await refreshDprDerivedQueries(queryClient);
       toast({
         title: "Report Cloned",
         description: "A copy has been created for editing. Redirecting...",
@@ -165,11 +163,8 @@ export default function DprDetails() {
     mutationFn: async () => {
       await apiRequest("DELETE", `/api/dprs/${id}`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
-      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
-      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/plant-module/stock-ledger") || false });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+    onSuccess: async () => {
+      await refreshDprDerivedQueries(queryClient);
       toast({
         title: "Report Deleted",
         description: "The report has been deleted.",

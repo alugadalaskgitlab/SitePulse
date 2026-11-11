@@ -240,6 +240,40 @@ describe("DPR-13 normalized SQL section transactions", () => {
     state.admin = true;
   });
 
+  it("returns the overlapping DPR identity and segment when section submit is blocked", async () => {
+    const [site] = await state.db.insert(schema.sites).values({ name: "SYNTHETIC OVERLAP SUBMIT SITE" }).returning();
+    const [project] = await state.db.insert(schema.boqProjects).values({ name: "SYNTHETIC OVERLAP SUBMIT PROJECT", siteId: site.id }).returning();
+    const [item] = await state.db.insert(schema.boqItems).values({ boqProjectId: project.id, description: "SYNTHETIC WMM", unit: "CUM" }).returning();
+    const [prior] = await state.db.insert(schema.dprs).values({
+      site: site.name, date: "2026-09-26", engineer: "SYNTHETIC ENGINEER", workType: "road",
+      boqProjectId: project.id, dprStatus: "submitted", isDeleted: false, isCancelled: false, isSuperseded: false,
+    }).returning();
+    await state.db.insert(schema.progressEntries).values({
+      dprId: prior.id, activity: item.description, boqItemId: item.id, side: "Full Width",
+      chainageFrom: "0+380", chainageTo: "0+700", chainageFromKm: 0.38, chainageToKm: 0.7,
+      length: 320, width: 3.75, thickness: 0.15, quantity: 180, uom: "CUM", quantitySource: "calculated",
+    });
+    const ctx = normalizeDprSectionContext({ ...context, site: site.name, date: "2026-09-27", boqProjectId: project.id });
+    const draft = await save("activity", { progress: [{
+      activity: item.description, boqItemId: item.id, side: "Full Width",
+      chainageFrom: "0+280", chainageTo: "0+400", chainageFromKm: 0.28, chainageToKm: 0.4,
+      length: 120, width: 3.75, thickness: 0.15, quantity: 67.5, uom: "CUM", quantitySource: "calculated",
+    }] }, undefined, ctx);
+    const response = await request(app).post(`/api/dpr-sections/${draft.dpr.id}/submit`).send({
+      headerToken: draft.headerToken, sectionTokens: draft.sectionTokens,
+    });
+    expect(response.status).toBe(422);
+    expect(response.body.code).toBe("DPR_NOT_READY");
+    expect(response.body.mandatory).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: item.description, rowKey: 0,
+        overlaps: [expect.objectContaining({
+          withDprId: prior.id, withDprDate: "2026-09-26", segmentFromKm: 0.38, segmentToKm: 0.4,
+        })],
+      }),
+    ]));
+  });
+
   it("defers real diesel ledger/canonical usage until exactly one explicit HTTP submit", async () => {
     await state.db.insert(schema.plantMaterials).values({ name: "DIESEL", defaultUom: "L" });
     const [master] = await state.db.insert(schema.equipmentMaster).values({ name: "SYNTHETIC DIESEL ROLLER", meterType: "hour_meter" }).returning();

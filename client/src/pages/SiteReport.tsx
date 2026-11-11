@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation, useSearch } from "wouter";
 import { DPR_REGISTER_PATH, resolveReturnTo, withReturnTo } from "@/lib/progressReportNav";
+import { refreshDprDerivedQueries } from "@/lib/dprQueryInvalidation";
 import { ChevronLeft, Printer } from "lucide-react";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import CancelDialog from "@/components/CancelDialog";
@@ -52,7 +53,6 @@ export default function SiteReport() {
   const receipts = useDprMaterialReceipts(dpr?.site ?? "", dpr?.date ?? "");
   const searchString = useSearch();
   const backLink = resolveReturnTo(searchString || (typeof window !== "undefined" ? window.location.search : ""), DPR_REGISTER_PATH);
-  const reportHref = withReturnTo(`/site/report/${id}`, backLink);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -118,11 +118,8 @@ export default function SiteReport() {
   };
   const deleteMutation = useMutation({
     mutationFn: async () => { await apiRequest("DELETE", `/api/dprs/${id}`); },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
-      queryClient.invalidateQueries({ predicate: q => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
-      queryClient.invalidateQueries({ predicate: q => q.queryKey[0]?.toString().startsWith("/api/plant-module/stock-ledger") || false });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+    onSuccess: async () => {
+      await refreshDprDerivedQueries(queryClient);
       toast({ title: "Report Deleted", description: "The report has been deleted." }); setLocation(backLink);
     }, onError: () => toast({ title: "Error", description: "Failed to delete report", variant: "destructive" }),
   });
@@ -130,7 +127,7 @@ export default function SiteReport() {
     if (canEdit) {
       const role = user?.isOwner ? "admin" : "manager";
       sessionStorage.setItem(`edit_pin_${id}`, role); sessionStorage.setItem(`auth_role_${id}`, role);
-      setLocation(withReturnTo(`/site/edit/${id}`, reportHref));
+      setLocation(withReturnTo(`/site/edit/${id}`, backLink));
     }
   };
   if (isLoading) return <div className="dpr-management space-y-4" role="status" aria-label="Loading report">{[1, 2, 3].map(n => <div key={n} className="h-24 rounded bg-muted/50" />)}</div>;
@@ -250,7 +247,7 @@ export default function SiteReport() {
     </Dialog>
     <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}><DialogContent><DialogTitle>Delete report?</DialogTitle><DialogDescription>This action cannot be undone.</DialogDescription><Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button><Button variant="destructive" disabled={deleteMutation.isPending} onClick={() => { deleteMutation.mutate(); setShowDeleteConfirm(false); }}>Delete</Button></DialogContent></Dialog>
     <Dialog open={shareText != null} onOpenChange={open => { if (!open) setShareText(null); }}><DialogContent className="dpr-management-dialog"><DialogTitle>DPR summary</DialogTitle><DialogDescription>Select and copy this summary.</DialogDescription><textarea readOnly value={shareText ?? ""} className="w-full min-h-64 border p-2 text-sm" onFocus={e => e.target.select()} /></DialogContent></Dialog>
-    <CancelDialog open={showCancel} onOpenChange={setShowCancel} cancelUrl={`/api/dprs/${id}/cancel`} recordLabel={`DPR for ${dpr.site} (${dpr.date})`} invalidateQueryKeys={["/api/dprs", ["/api/dprs", id]]} />
+    <CancelDialog open={showCancel} onOpenChange={setShowCancel} cancelUrl={`/api/dprs/${id}/cancel`} recordLabel={`DPR for ${dpr.site} (${dpr.date})`} invalidateQueryKeys={[]} onCancelled={() => refreshDprDerivedQueries(queryClient)} />
     <HistoryDialog open={showHistory} onOpenChange={setShowHistory} module="dprs" transactionId={id} recordLabel={`DPR for ${dpr.site} (${dpr.date})`} />
   </article>;
 }

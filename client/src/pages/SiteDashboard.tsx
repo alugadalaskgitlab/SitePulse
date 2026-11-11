@@ -137,6 +137,10 @@ export default function SiteDashboard() {
   );
   
   const [, setLocation] = useLocation();
+  const [focusDprId] = useState<number>(() => typeof window === "undefined"
+    ? 0 : Number(new URLSearchParams(window.location.search).get("focusDpr") || 0));
+  const [focusedDprId, setFocusedDprId] = useState<number | null>(null);
+  const focusedDprHandledRef = useRef<number | null>(null);
   
   const printRef = useRef<HTMLDivElement>(null);
   const hasRestoredRef = useRef(false);
@@ -154,7 +158,7 @@ export default function SiteDashboard() {
         if (state.expandedReports && Array.isArray(state.expandedReports)) {
           setExpandedReports(new Set(state.expandedReports));
         }
-        if (state.scrollY != null) {
+        if (state.scrollY != null && !new URLSearchParams(window.location.search).has("focusDpr")) {
           setTimeout(() => window.scrollTo(0, state.scrollY), 100);
         }
         sessionStorage.removeItem("siteDashboardState");
@@ -174,9 +178,9 @@ export default function SiteDashboard() {
   // Use detailed DPR data for advanced filtering
   // Only send date filters to server; site/engineer/activity/equipment/diesel are filtered client-side
   const dateFilters = useMemo(() => ({
-    dateFrom: filters.dateFrom,
-    dateTo: filters.dateTo,
-  }), [filters.dateFrom, filters.dateTo]);
+    dateFrom: focusDprId ? "" : filters.dateFrom,
+    dateTo: focusDprId ? "" : filters.dateTo,
+  }), [focusDprId, filters.dateFrom, filters.dateTo]);
   
   const { data: dprsWithDetails, isLoading } = useQuery<any[]>({
     queryKey: ["/api/dprs/with-details", dateFilters],
@@ -206,6 +210,9 @@ export default function SiteDashboard() {
     if (!dprsWithDetails) return [];
     
     return detailedDprs.filter((dpr: any) => {
+      // Keep the just-submitted/corrected record visible even when the
+      // originating register had a client-side filter that would hide it.
+      if (focusDprId && Number(dpr.id) === focusDprId) return true;
       // Reference search always targets this exact saved row, never a
       // version/original lineage id.
       if (!dprMatchesReference(dpr.id, filters.reference)) return false;
@@ -256,7 +263,27 @@ export default function SiteDashboard() {
       
       return true;
     });
-  }, [dprsWithDetails, detailedDprs, filters]);
+  }, [dprsWithDetails, detailedDprs, filters, focusDprId]);
+
+  useEffect(() => {
+    if (!focusDprId || isLoading || focusedDprHandledRef.current === focusDprId) return;
+    let clearTimer: number | undefined;
+    const focusTimer = window.setTimeout(() => {
+      const element = document.getElementById(`dpr-card-${focusDprId}`);
+      if (!element) return;
+      focusedDprHandledRef.current = focusDprId;
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      setFocusedDprId(focusDprId);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("focusDpr");
+      window.history.replaceState(window.history.state, "", url);
+      clearTimer = window.setTimeout(() => setFocusedDprId(null), 4000);
+    }, 180);
+    return () => {
+      window.clearTimeout(focusTimer);
+      if (clearTimer != null) window.clearTimeout(clearTimer);
+    };
+  }, [dprs, focusDprId, isLoading]);
 
   const dprIdsForPhotoCounts = useMemo(() => dprs.map((d: any) => d.id).sort((a: number, b: number) => a - b), [dprs]);
 
@@ -1246,7 +1273,7 @@ export default function SiteDashboard() {
                   const blockingIssues = readinessState === "blocked" ? readiness?.mandatory ?? [] : [];
                   
                   return (
-                    <Card key={dpr.id} className={`transition-all ${isActiveDraft && readinessState === "blocked" ? 'border-amber-400 dark:border-amber-500' : ''}`} data-testid={`card-report-${dpr.id}`}>
+                    <Card id={`dpr-card-${dpr.id}`} key={dpr.id} className={`transition-all ${focusedDprId === Number(dpr.id) ? "ring-2 ring-primary ring-offset-2" : ""} ${isActiveDraft && readinessState === "blocked" ? 'border-amber-400 dark:border-amber-500' : ''}`} data-testid={`card-report-${dpr.id}`}>
                       <CardContent className="p-4">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4" data-testid={`header-report-${dpr.id}`}>
                           <div className="flex items-center gap-4 flex-1 min-w-0 w-full md:w-auto">

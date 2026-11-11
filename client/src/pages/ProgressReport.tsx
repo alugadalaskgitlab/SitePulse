@@ -40,6 +40,7 @@ import {
 import { Download, ChevronDown, ChevronRight, AlertTriangle, Layers, Loader2, ArrowUp, ArrowDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { refreshDprDerivedQueries } from "@/lib/dprQueryInvalidation";
 import { buildReason, OTHER_VALUE } from "@/lib/overlapReason";
 import {
   type ComputedEntry, type ReportBoqItem, type OverlapPair,
@@ -597,11 +598,8 @@ const INCIDENTAL_FALLBACK_DESC = "Classified as incidental during overlap review
  * Invalidate all progress-report and DPR queries after a successful
  * overlap resolution so the report data refreshes automatically.
  */
-function invalidateProgressQueries(queryClient: ReturnType<typeof useQueryClient>): void {
-  queryClient.invalidateQueries({ predicate: (q) => {
-    const key = String(q.queryKey[0] ?? "");
-    return key.startsWith("/api/reports/progress") || key.startsWith("/api/dprs");
-  }});
+async function invalidateProgressQueries(queryClient: ReturnType<typeof useQueryClient>): Promise<void> {
+  await refreshDprDerivedQueries(queryClient);
 }
 
 function OverlapPairRow({
@@ -814,8 +812,8 @@ function _LayerCorrection({
 
   const mutation = useMutation({
     mutationFn: () => patchOverlapResolution(entry.entryId, { layerNo: parsed }),
-    onSuccess: () => {
-      invalidateProgressQueries(queryClient);
+    onSuccess: async () => {
+      await invalidateProgressQueries(queryClient);
       toast({ title: "Layer updated", description: `Entry in DPR-${entry.dprId} set to layer ${parsed} — report will refresh.` });
     },
     onError: (error: unknown) => {
@@ -889,8 +887,8 @@ function _IncidentalStep({
         incidentalDescription: desc,
       });
     },
-    onSuccess: () => {
-      invalidateProgressQueries(queryClient);
+    onSuccess: async () => {
+      await invalidateProgressQueries(queryClient);
       toast({ title: "Marked as incidental", description: `Entry in DPR-${selectedEntry.dprId} updated — report will refresh.` });
       onDone();
     },
@@ -988,8 +986,8 @@ function _PayableStep({
         chainageOverrideReason: reason,
       });
     },
-    onSuccess: () => {
-      invalidateProgressQueries(queryClient);
+    onSuccess: async () => {
+      await invalidateProgressQueries(queryClient);
       toast({ title: "Reason recorded", description: `Entry in DPR-${selectedEntry.dprId} updated — report will refresh.` });
       onDone();
     },

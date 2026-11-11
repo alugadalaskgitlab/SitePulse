@@ -18,12 +18,11 @@ export interface DprSectionEditorProps {
   engineer: string;
   onSave: (data: any, engineer: string, recoveredProjectId?: number | null) => Promise<DprSectionSnapshot>;
   onReturn: () => void;
-  target?: { issue: DprReadinessIssue; token: number };
+  target?: { issue: DprReadinessIssue; token: number; action?: "chainage" | "reason" };
   onFixOtherSection?: (issue: DprReadinessIssue) => void;
 }
 import { useLocation, useSearch } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
-import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDeviceType } from "@/hooks/use-device-type";
@@ -103,7 +102,8 @@ import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { EquipmentRowRemove, committedEquipmentRemovalIndex, resolveEquipmentRemovalIndex } from "@/components/EquipmentRowRemove";
 import { EquipmentTankBalanceInputs } from "@/components/EquipmentTankBalanceInputs";
 import { aggregateStructureActualCredits, dprActualBalance, exceedsKnownActualBalance, type DprActualBalance } from "@/lib/dprActualBalance";
-import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
+import { DPR_REGISTER_PATH, resolveDprCompletionReturnTo, resolveReturnTo, withDprFocus } from "@/lib/progressReportNav";
+import { refreshDprDerivedQueries } from "@/lib/dprQueryInvalidation";
 import { withNewEquipmentWorkingDefault, meaningfulEquipmentRows, isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
@@ -319,13 +319,12 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   const [, setLocation] = useLocation();
   const searchStr = useSearch();
   const { toast } = useToast();
-  const { appendOrigin } = useOrigin();
-  // Honor ?returnTo= so SiteHome/FieldHome/SiteDashboard each get their own
-  // landing back.  Fall back to appendOrigin for portal (estimator) users.
+  // Honor ?returnTo= so the originating screen is restored after completion.
   const _urlParams = new URLSearchParams(searchStr);
   const requestedReturnTo = _urlParams.get("returnTo");
   const backLink = resolveReturnTo(searchStr, DPR_REGISTER_PATH);
   const returnTo = requestedReturnTo ? backLink : null;
+  const completionReturnTo = resolveDprCompletionReturnTo(searchStr, DPR_REGISTER_PATH);
   const [showPreview, setShowPreview] = useState(false);
   // 06M-B: structured shortage from the server's plant-stock diesel guard
   const [dieselShortage, setDieselShortage] = useState<InsufficientPlantStockPayload | null>(null);
@@ -1242,7 +1241,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   });
 
   const { confirmLeave } = useBeforeUnload(sectionEditor ? sectionDirty : isDirty);
-  const focusSectionIssue = (issue: DprReadinessIssue) => {
+  const focusSectionIssue = (issue: DprReadinessIssue, action?: "chainage" | "reason") => {
     const rowIndex = issue.rowIndex ?? (typeof issue.rowKey === "number" ? issue.rowKey : null);
     if (rowIndex == null) return;
     // Capture the current row before expansion; an intervening delete must
@@ -1263,14 +1262,14 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         || (issue.section === "equipment" && row.getAttribute("data-dpr-equipment-identity") !== equipmentIdentity)) return;
       row.scrollIntoView({ behavior: "smooth", block: "center" });
       const from = row.querySelector<HTMLInputElement>(`[data-testid="input-progress-from-${rowIndex}"]`)?.value ?? "";
-      const targetId = sectionIssueFieldTestId(issue, from);
+      const targetId = action === "reason" ? null : sectionIssueFieldTestId(issue, from);
       if (targetId) row.querySelector<HTMLElement>(`[data-testid="${targetId}"]`)?.focus({ preventScroll: true });
       scrollAndHighlightRow({ section: issue.section, rowIndex, rowKey: issue.rowKey ?? null });
     }, 80);
   };
   useEffect(() => {
     if (!sectionHydrated || !sectionEditor?.target || sectionEditor.target.issue.section !== (sectionEditor.section === "activity" ? "activities" : sectionEditor.section)) return;
-    focusSectionIssue(sectionEditor.target.issue);
+    focusSectionIssue(sectionEditor.target.issue, sectionEditor.target.action);
   }, [sectionHydrated, sectionEditor?.target?.token]);
 
   // Road-progress length is always the physical chainage span. Invalid or
@@ -1598,21 +1597,11 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         await uploadStagedPhotos(data.id);
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "dpr_progress", data.id] });
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
-      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
-      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/plant-module/stock-ledger") || false });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      await refreshDprDerivedQueries(queryClient);
       toast({
-        title: "Report Saved Successfully",
-        description: "Your site report has been submitted.",
+        title: `DPR #${data.id} submitted`,
       });
-      // Forward returnTo into SiteSuccess so its "Back to Home" button also
-      // goes to the right landing page.
-      const successBase = `/site/success/${data.id}?type=${workType}`;
-      const successUrl = returnTo
-        ? `${successBase}&returnTo=${encodeURIComponent(returnTo)}`
-        : appendOrigin(successBase);
-      setLocation(successUrl);
+      setLocation(withDprFocus(completionReturnTo, Number(data.id)));
     },
     onError: (err: any) => {
       const shortage = parseInsufficientPlantStock(err);
@@ -1871,7 +1860,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         failedPhotoCount = failed.length + Object.values(failedByEntry).reduce((n, f) => n + f.length, 0);
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "dpr_progress", data.id] });
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
+      await refreshDprDerivedQueries(queryClient);
       // Batch 06D: never exit while failed photos are still staged — leaving
       // unmounts them and silently loses the files. This screen has no PATCH
       // path for a fresh DPR, so the safe retry destination is the draft
@@ -2862,6 +2851,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                     <ChainageOverlapWarning
                       hits={overlapHits.get(idx) ?? []}
                       overrideReason={entry.chainageOverrideReason}
+                      openReasonToken={sectionEditor?.target?.action === "reason"
+                        && sectionEditor.target.issue.section === "activities"
+                        && Number(sectionEditor.target.issue.rowIndex ?? sectionEditor.target.issue.rowKey) === idx
+                        ? sectionEditor.target.token : undefined}
                       onOverrideReason={(v) => {
                         const updated = [...progress];
                         updated[idx].chainageOverrideReason = v;

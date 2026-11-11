@@ -143,6 +143,28 @@ export function resolveReturnTo(search: string, fallback: string): string {
   return fallback;
 }
 
+/** A combined editor can return to its section hub while saving, but submit to the original page. */
+export function resolveDprCompletionReturnTo(search: string, fallback = DPR_REGISTER_PATH): string {
+  const sp = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const submitReturnTo = sp.get("submitReturnTo");
+  return submitReturnTo
+    ? resolveReturnTo(`returnTo=${encodeURIComponent(submitReturnTo)}`, fallback)
+    : resolveReturnTo(search, fallback);
+}
+
+/** Return to the DPR register with the changed DPR focused; preserve other return destinations. */
+export function withDprFocus(returnTo: string, dprId: number): string {
+  if (!Number.isInteger(dprId) || dprId <= 0) return returnTo;
+  try {
+    const url = new URL(returnTo, "https://app.invalid");
+    if (url.origin !== "https://app.invalid" || url.pathname !== DPR_REGISTER_PATH) return returnTo;
+    url.searchParams.set("focusDpr", String(dprId));
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return returnTo;
+  }
+}
+
 /** Encode a navigation destination without losing query state on either URL. */
 export function withReturnTo(path: string, returnTo: string): string {
   const separator = path.includes("?") ? "&" : "?";

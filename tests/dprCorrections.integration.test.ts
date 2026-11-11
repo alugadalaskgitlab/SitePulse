@@ -63,6 +63,80 @@ const submit = async (f: any, actor = author) => {
   expect(review.blocked).toEqual([]);
   return service.submit(f.id, { form: f.form, baseHash: review.baseHash, reason: "Correct from site register", confirmImpact: true }, actor);
 };
+async function derivedGeometryFixture(copyId = 402) {
+  const f = await fixture();
+  const originalId = f.id;
+  // Isolated PGlite copy of DPR #402: same geometry and WMM quantity facts,
+  // never the development or production record.
+  await db.update(schema.dprs).set({ id: copyId }).where(eq(schema.dprs.id, originalId));
+  await db.update(schema.progressEntries).set({ dprId: copyId }).where(eq(schema.progressEntries.dprId, originalId));
+  await db.update(schema.equipmentLogs).set({ dprId: copyId }).where(eq(schema.equipmentLogs.dprId, originalId));
+  f.id = copyId;
+  await db.update(schema.progressEntries).set({
+    chainageFrom: "0+380", chainageTo: "0+700", length: 320, width: 3.75, thickness: 0.15,
+    quantity: 180, quantitySource: "calculated", uom: "CUM",
+  }).where(eq(schema.progressEntries.id, f.p.id));
+  Object.assign(f.form.progress[0], {
+    chainageFrom: "0+380", chainageTo: "0+700", length: 320, width: 3.75, thickness: 0.15,
+    quantity: 180, quantitySource: "calculated", uom: "CUM",
+  });
+  f.form.progress[0].chainageFrom = "0+400";
+  return f;
+}
+it("lets only an Owner apply a reviewed, reasoned derived-quantity correction directly", async () => {
+  const owner = { id: 3, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
+  const f = await derivedGeometryFixture();
+  const review = await service.preview(f.id, f.form, owner);
+  expect(review.requiresApproval).toBe(true);
+  expect(review.changes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ field: "length", oldValue: 320, newValue: 300, requiresApproval: true, derived: true }),
+    expect.objectContaining({ field: "quantity", oldValue: 180, newValue: 168.75, requiresApproval: true, derived: true }),
+  ]));
+  const result: any = await service.submit(f.id, {
+    form: f.form, baseHash: review.baseHash, reason: "Checked against the signed site register", confirmImpact: true,
+  }, owner);
+  expect(result.pending).toBeUndefined();
+  expect(result.progress[0]).toMatchObject({ chainageFrom: "0+400", chainageTo: "0+700", length: 300, quantity: 168.75 });
+  expect(await db.select().from(schema.editPermissionRequests).where(eq(schema.editPermissionRequests.recordId, f.id))).toEqual([]);
+  const audit = (await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.transactionId, f.id)))
+    .find((row: any) => row.action === "correction_applied");
+  expect(audit).toMatchObject({ userId: owner.id, userRole: "owner", reason: "Checked against the signed site register" });
+  expect(audit.newValues.ownerDirectCorrection).toBe(true);
+  expect(audit.newValues.changes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ field: "length", oldValue: 320, newValue: 300 }),
+    expect.objectContaining({ field: "quantity", oldValue: 180, newValue: 168.75 }),
+  ]));
+  const history: any[] = await service.list(f.id);
+  expect(history[0]).toMatchObject({ status: "owner_corrected", requestReason: "Checked against the signed site register" });
+  expect(history[0].changes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ field: "length", oldValue: 320, newValue: 300 }),
+    expect.objectContaining({ field: "quantity", oldValue: 180, newValue: 168.75 }),
+  ]));
+});
+it("keeps derived-quantity corrections by non-Owners in the existing approval flow", async () => {
+  const f = await derivedGeometryFixture(403);
+  const review = await service.preview(f.id, f.form, author);
+  expect(review.requiresApproval).toBe(true);
+  const result: any = await service.submit(f.id, {
+    form: f.form, baseHash: review.baseHash, reason: "Checked against the signed site register", confirmImpact: true,
+  }, author);
+  expect(result.pending).toBe(true);
+  const unchanged = await db.query.progressEntries.findFirst({ where: eq(schema.progressEntries.id, f.p.id) });
+  expect(unchanged).toMatchObject({ chainageFrom: "0+380", chainageTo: "0+700", length: 320, quantity: 180 });
+});
+it("does not let an Owner bypass approval for unrelated equipment corrections", async () => {
+  const owner = { id: 3, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
+  const f = await fixture();
+  f.form.equipment[0].startTime = "08:00";
+  const review = await service.preview(f.id, f.form, owner);
+  expect(review.requiresApproval).toBe(true);
+  const result: any = await service.submit(f.id, {
+    form: f.form, baseHash: review.baseHash, reason: "Checked against the equipment register", confirmImpact: true,
+  }, owner);
+  expect(result.pending).toBe(true);
+  const unchanged = await db.query.equipmentLogs.findFirst({ where: eq(schema.equipmentLogs.id, f.e.id) });
+  expect(unchanged.startTime).toBeNull();
+});
 it("saves chainage-only on any submitted DPR and preserves missing usage, tanks and equipment identity", async () => {
   const f = await fixture();
   const result = await submit(f);

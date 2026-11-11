@@ -57,6 +57,12 @@ describe("DPR correction review dialog", () => {
     expect(screen.getByRole("button", { name: "Submit for approval" })).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("recorded DPR remains unchanged");
   });
+  it("offers reviewed direct save to an Owner without changing the displayed review requirements", () => {
+    render(<DprCorrectionDialog {...props} ownerDirect review={{ ...review, requiresApproval: true }} />);
+    expect(screen.getByRole("status").textContent).toContain("recorded as Corrected by Owner");
+    expect(screen.getByRole("button", { name: "Confirm & save correction" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Submit for approval" })).toBeNull();
+  });
   it("shows the server's exact integrity restriction and cannot save a blocked row removal", () => {
     render(<DprCorrectionDialog {...props} review={{ ...review, blocked: [{ section: "equipment", rowId: 741, field: "row", message: "Equipment row #741 is referenced by paid bill #48; row deletion is blocked." }] }} />);
     expect(screen.getByRole("alert").textContent).toContain("paid bill #48");
@@ -85,6 +91,17 @@ const request: DprCorrectionRequest = {
 };
 const historyProps = { requests: [request], loading: false, canApprove: true, userId: 29, busy: false, onRetry: vi.fn(), onDecide: vi.fn().mockResolvedValue({}) };
 describe("Administrator correction decisions", () => {
+  it("labels Owner-applied corrections and expands the old/new history", () => {
+    render(<DprCorrectionHistory {...historyProps} requests={[{
+      ...request, id: "audit-88" as any, status: "owner_corrected",
+      changes: [{ ...review.changes[0], oldValue: "0+380", newValue: "0+400" }],
+    }]} />);
+    expect(screen.getByText("Corrected by Owner")).toBeTruthy();
+    const details = screen.getByTestId(`correction-request-audit-88`).querySelector("details") as HTMLDetailsElement;
+    expect(details.open).toBe(true);
+    expect(screen.getByText("0+380")).toBeTruthy();
+    expect(screen.getByText("0+400")).toBeTruthy();
+  });
   it("prevents self-approval and exposes awaiting-approval history", () => {
     render(<DprCorrectionHistory {...historyProps} userId={17} />);
     expect(screen.getByText("Awaiting approval")).toBeTruthy();

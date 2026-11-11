@@ -94,7 +94,8 @@ import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } fro
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { isMeaningfulEquipmentRow, isVisibleEquipmentRow, withNewEquipmentWorkingDefault } from "@shared/equipmentUsage";
-import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
+import { DPR_REGISTER_PATH, resolveDprCompletionReturnTo, resolveReturnTo, withDprFocus } from "@/lib/progressReportNav";
+import { refreshDprDerivedQueries } from "@/lib/dprQueryInvalidation";
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
 import { dprActualBalance, type DprActualBalance } from "@/lib/dprActualBalance";
@@ -257,6 +258,7 @@ export default function GuidedDpr() {
     };
   }));
   const returnTo = resolveReturnTo(searchStr, DPR_REGISTER_PATH);
+  const completionReturnTo = resolveDprCompletionReturnTo(searchStr, DPR_REGISTER_PATH);
   // Pre-deployment Part A: Classic → Guided keeps the SAME server draft.
   // `?draftId=` loads that draft here instead of starting a fresh one.
   const urlDraftId = (() => {
@@ -1582,8 +1584,8 @@ export default function GuidedDpr() {
         failedPhotoCount = failed.length + Object.values(failedByEntry).reduce((n, f) => n + f.length, 0);
         queryClient.invalidateQueries({ queryKey: ["/api/attachments", "dpr_progress", data.id] });
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
       if (asDraft) {
+        await refreshDprDerivedQueries(queryClient);
         const savedId = data.id ?? draftId;
         setDraftId(savedId);
         // Batch 05 (spec §10): once the server draft holds this work, the
@@ -1609,8 +1611,10 @@ export default function GuidedDpr() {
       } else {
         await autosave.clearDraft();
         if ((data.id ?? draftId) != null) await reconcileNewDprAutosaves({ draftId: data.id ?? draftId!, site: siteName, date });
-        toast({ title: "Report Saved Successfully", description: "Your site report has been submitted." });
-        setLocation(`/site/success/${data.id ?? draftId}?type=road&returnTo=${encodeURIComponent(returnTo)}`);
+        await refreshDprDerivedQueries(queryClient);
+        const submittedId = Number(data.id ?? draftId);
+        toast({ title: `DPR #${submittedId} submitted` });
+        setLocation(withDprFocus(completionReturnTo, submittedId));
       }
     },
     onError: (err: any) => {

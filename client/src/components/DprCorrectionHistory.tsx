@@ -25,13 +25,13 @@ function CorrectionRequest({ request, canApprove, userId, busy, onDecide }: {
   return <article className="rounded-lg border bg-card p-4" data-testid={`correction-request-${request.id}`}>
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h3 className="text-sm font-semibold">Correction #{request.id} · {request.requestedByName}</h3>
-      <Badge variant="outline" className={request.status === "pending" ? "border-amber-300 bg-amber-50 text-amber-900" : ""}>{request.status === "pending" ? "Awaiting approval" : request.status === "used" ? "Applied" : request.status}</Badge>
+      <Badge variant="outline" className={request.status === "pending" ? "border-amber-300 bg-amber-50 text-amber-900" : ""}>{request.status === "pending" ? "Awaiting approval" : request.status === "used" ? "Applied" : request.status === "owner_corrected" ? "Corrected by Owner" : request.status}</Badge>
     </div>
     <p className="mt-1 text-xs text-muted-foreground">{new Date(request.createdAt).toLocaleString()}</p>
     <p className="my-3 text-sm"><strong>Reason:</strong> {request.requestReason}</p>
     {request.approverName && <p className="my-2 text-sm">Reviewed by {request.approverName}{request.usedAt ? ` · ${new Date(request.usedAt).toLocaleString()}` : ""}{request.approverNote ? ` — ${request.approverNote}` : ""}</p>}
-    <details open={request.status === "pending"}><summary className="mb-3 cursor-pointer text-sm font-medium">Field changes & consequences ({request.changes.length})</summary>
-      <div className="space-y-3"><CorrectionChanges changes={request.changes} /><CorrectionImpact impact={request.impact} /></div>
+    <details open={request.status === "pending" || request.status === "owner_corrected"}><summary className="mb-3 cursor-pointer text-sm font-medium">Field changes & consequences ({request.changes.length})</summary>
+      <div className="space-y-3"><CorrectionChanges changes={request.changes} ownerDirect={request.status === "owner_corrected"} /><CorrectionImpact impact={request.impact} /></div>
     </details>
     {request.status === "pending" && Number(userId) === Number(request.requestedBy) && <p className="mt-3 text-sm text-amber-800">You requested this correction. Another authorized reviewer must review it; self-approval is not permitted.</p>}
     {allowed && <div className="mt-4 space-y-3 border-t pt-4">

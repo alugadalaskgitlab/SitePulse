@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { refreshDprDerivedQueries } from "@/lib/dprQueryInvalidation";
 import type { DprCorrectionForm, DprCorrectionRequest, DprCorrectionReview } from "@/lib/dprCorrections";
 
 export const dprCorrectionsKey = (id: number) => ["/api/dprs", id, "corrections"] as const;
@@ -16,15 +17,22 @@ export function useDprCorrections(id: number, enabled: boolean) {
   });
   const save = useMutation<{ id: number; pending?: boolean; requestId?: number }, Error, { form: DprCorrectionForm; baseHash: string; reason: string; confirmImpact: true }>({
     mutationFn: async (correction) => (await apiRequest("POST", `/api/dprs/${id}/version`, { correction })).json(),
-    onSuccess: () => { void client.invalidateQueries({ queryKey: dprCorrectionsKey(id) }); },
+    onSuccess: async () => {
+      await Promise.all([
+        refreshDprDerivedQueries(client),
+        client.invalidateQueries({ queryKey: dprCorrectionsKey(id), refetchType: "all" }),
+      ]);
+    },
   });
   const decide = useMutation<unknown, Error, { requestId: number; approve: boolean; reason: string; confirmImpact: true }>({
     mutationFn: async ({ requestId, ...decision }) =>
       (await apiRequest("POST", `/api/dprs/${id}/corrections/${requestId}`, decision)).json(),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: dprCorrectionsKey(id) });
-      void client.invalidateQueries({ queryKey: ["/api/edit-requests"] });
-      void client.invalidateQueries({ queryKey: ["/api/dprs"] });
+    onSuccess: async () => {
+      await Promise.all([
+        refreshDprDerivedQueries(client),
+        client.invalidateQueries({ queryKey: dprCorrectionsKey(id), refetchType: "all" }),
+        client.invalidateQueries({ queryKey: ["/api/edit-requests"], refetchType: "all" }),
+      ]);
       // Deliberately do not refetch/reinitialize the mounted editor: unsaved
       // user input must survive decisions as well as pending submissions.
     },

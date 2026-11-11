@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useDeviceType } from "@/hooks/use-device-type";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { refreshDprDerivedQueries } from "@/lib/dprQueryInvalidation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { format, addDays } from "date-fns";
@@ -812,6 +813,7 @@ function ReadinessSection() {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard?: () => void }) {
+  const queryClient = useQueryClient();
   const { user, sectionVisible } = useAuth();
   const deviceType = useDeviceType();
   const [, setLocation] = useLocation();
@@ -1173,7 +1175,8 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
       });
       return response.json();
     },
-    onSuccess: (draft: any) => {
+    onSuccess: async (draft: any) => {
+      await refreshDprDerivedQueries(queryClient);
       setLocation(dprWorkHubHref(draft.id));
     },
   });

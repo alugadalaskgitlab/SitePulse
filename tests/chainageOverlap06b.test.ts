@@ -16,6 +16,7 @@ import {
   findChainageOverlaps,
   findActionableChainageOverlaps,
   chainageOverlapReadinessIssues,
+  chainageOverlapSubmitIssues,
   unchangedChainageRowKeys,
   type CandidateChainageRow,
   type PriorChainageEntry,
@@ -152,6 +153,16 @@ describe("Final-Submit readiness rule (§9)", () => {
     expect(issues[0]).toMatchObject({
       section: "activities", label: "WMM",
       message: "Possible chainage overlap requires a reason before submission.",
+    });
+  });
+  it("submission issues include saved DPR and overlap segment for plain-language correction", () => {
+    const [issue] = chainageOverlapSubmitIssues(
+      [row({ rowKey: 0, label: "WET MIX MACADAM", fromKm: 0.28, toKm: 0.4, side: "Full Width" })],
+      [prior({ dprId: 402, dprDate: "2026-09-28", side: "Full Width", fromKm: 0.38, toKm: 0.7 })],
+    );
+    expect(issue).toMatchObject({
+      label: "WET MIX MACADAM", rowKey: 0,
+      overlaps: [{ withDprId: 402, withDprDate: "2026-09-28", segmentFromKm: 0.38, segmentToKm: 0.4 }],
     });
   });
   it("L/M: overlap WITH a reason → no issue (legitimate repeated work passes)", () => {

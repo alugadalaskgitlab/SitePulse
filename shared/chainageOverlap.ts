@@ -370,3 +370,16 @@ export function chainageOverlapReadinessIssues(
   }
   return issues;
 }
+
+/** Submission response with the conflicting saved rows attached for UI guidance. */
+export function chainageOverlapSubmitIssues(
+  rows: CandidateChainageRow[],
+  priors: PriorChainageEntry[],
+  options?: { exemptRowKeys?: ReadonlySet<string | number> },
+): Array<ChainageOverlapIssue & { overlaps: ChainageOverlapHit[] }> {
+  const hits = findChainageOverlaps(rows, priors);
+  return chainageOverlapReadinessIssues(rows, priors, options).map((issue) => ({
+    ...issue,
+    overlaps: hits.get(issue.rowKey) ?? [],
+  }));
+}

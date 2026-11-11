@@ -1,12 +1,12 @@
-# DPR-FLOW-01 — Part A findings
+# DPR-FLOW-01 — Part A findings and Part B implementation
 
 ## Scope and safety
 
 - All record checks used the development database `sitelog_dev`, inside read-only transactions.
 - No production database or replica was queried.
-- No DPR, user, session, or other operational record was changed. No application code was changed.
+- Part A was read-only: no DPR, user, session, other operational record, or application code changed during that investigation. Part B implementation is documented below.
 - The screen behavior below is traced from the current routes and components; I could not verify it in a signed-in browser session.
-- This is Part A only. No Part B implementation was started.
+- Part A findings are preserved here before the Part B implementation record.
 
 ## 1. Current draft-to-submit paths
 
@@ -61,7 +61,7 @@ Code- and data-derived preview, not a browser-observed result:
 - Changing only the start chainage to 0+400 leaves the end at 0+700.
 - The saved row is calculated from length 320 m × width 3.75 m × thickness 0.15 m = 180 CUM. The correction review recalculates length to 300 m and quantity to 168.75 CUM, retaining the calculated quantity source.
 - The project has a confirmed working reach from 0.0 to 1.6 km applying to item 17; the proposed range is inside it. Programme bar 924 also covers 0.0–1.6 km. The adjacent submitted interval ending at 0+400 only touches the proposed range; the overlap rule treats touching intervals as non-overlap. The draft #405 is not an eligible prior. These checks indicate no expected scope, programme-range, or overlap block from the proposed range, but the correction preview itself was not run, so no actual blocked-item/error list can be certified.
-- The derived `length` and `quantity` fields require Administrator approval under the current correction rules. The dialog would therefore be expected to show `This correction will await Administrator approval. The recorded DPR remains unchanged until approval; your entered edits stay in the editor.` Its action would be `Submit for approval`, not direct save. A different Administrator must review it; the requester cannot approve their own correction.
+- Under the pre-Part-B rules, the derived `length` and `quantity` fields required Administrator approval. The correction review recalculates length to 300 m and quantity to 168.75 CUM, retaining the calculated quantity source. The dialog would therefore have shown `This correction will await Administrator approval. The recorded DPR remains unchanged until approval; your entered edits stay in the editor.` Its action would have been `Submit for approval`, not direct save. A different Administrator had to review it; the requester could not approve their own correction.
 - The dialog also requires a correction reason and explicit impact confirmation. The correction remains unsaved until the final action, which was not taken.
 
 This requested Owner-only check remains unverified until a temporary development Owner can be accessed through normal authentication. No existing account was changed.
@@ -72,4 +72,45 @@ The Progress Report source filters to submitted DPRs that are not deleted, cance
 
 ## Part A outcome
 
-The current behavior is confirmed from the development records and code paths. The dashboard and Sections page can present #405 as ready even though final Submit will reject it for an unexplained overlap; the detailed warning exists in the activity editor, but the Sections Submit error hides its mandatory detail. The requested correction-dialog observation is blocked because no temporary development Owner login is available. No changes were applied.
+The behavior at the time of Part A was confirmed from the development records and code paths. The dashboard and Sections page could present #405 as ready even though final Submit would reject it for an unexplained overlap; the detailed warning existed in the activity editor, but the Sections Submit error hid its mandatory detail. The requested correction-dialog observation was blocked because no temporary development Owner login was available. No changes were applied during Part A.
+
+## Part B — implementation and verification
+
+### A. Owner correction of derived geometry
+
+- An Owner can save a submitted-DPR correction directly only when the approval-required changes are limited to derived progress `length` and `quantity` fields. The normal correction review, mandatory reason, and explicit impact confirmation remain required.
+- The saved audit record identifies the Owner and records the old/new values and reason. Correction history labels this result **Corrected by Owner** and shows the old/new values.
+- Other users still enter the existing approval flow. Owner status does not bypass approval for unrelated changes such as equipment corrections.
+- An isolated PGlite copy of the #402 geometry fixture previews 0+400–0+700 as 300 m / 168.75 CUM, saves with a reason, and verifies history. A separate non-Owner test confirms the same geometry correction stays pending and leaves the saved report unchanged.
+
+### B. Section-submit overlap feedback
+
+- Server submit errors now include the conflicting submitted DPR and exact overlap segment.
+- The Sections page shows each conflict in plain language, including the BOQ activity, chainage span, length, prior DPR number and date; it offers **Correct chainage** and **Give reason**.
+- Correct-chainage opens the matching activity row. Give-reason opens its existing reason dialog. The submission error is cleared while the user works on the selected issue.
+
+### C. Immediate refresh paths
+
+Before Part B, these live paths did not consistently invalidate all DPR-derived screens; they relied on the five-minute stale period or a manual Refresh:
+
+- Sections-page save and submit.
+- New and draft saves from Site Entry and Guided DPR.
+- Draft saves and submits from Site Edit.
+- Owner correction saves and non-Owner approval requests/decisions.
+- DPR cancellation and deletion, plus legacy detail-page delete/clone.
+- Today’s draft creation from Field Home and overlap-resolution changes from Progress Report.
+
+They now use one shared invalidation helper to refetch DPR list/detail and related dashboard counts, Progress Report, Plan vs Actual, site stock/purchases, and plant stock balances/ledgers. Single-section saves remain on the Sections page. Approval requests stay on the current page and retain **Sent for approval**.
+
+### D. Submit/correction return navigation
+
+- Successful final submit shows `DPR #<id> submitted`; a saved correction shows `DPR #<id> corrected`.
+- Both return to the validated `returnTo`, defaulting to `/site/dashboard`. When returning to the DPR register, the changed DPR is fetched even outside the current date filter, scrolled into view, and briefly highlighted.
+- A single-section save stays on the Sections page. A correction sent for approval stays there with **Sent for approval**.
+
+### Verification and limitations
+
+- Focused tests: **8 files passed, 104 tests passed**. Files: `dprCorrections.integration.test.ts`, `dprSections13.integration.test.ts`, `chainageOverlap06b.test.ts`, `siteEditDpr10.test.tsx`, `DprCorrectionDialog.test.tsx`, `DprSectionsSubmitIssues.test.tsx`, `dprQueryInvalidation.test.ts`, and `progressReportNav.focus.test.ts`.
+- `npm run check` remains unsuccessful: **457 TypeScript diagnostics across 59 files**. Diagnostics are project-wide and include errors outside the new code paths; this batch does not claim a clean project-wide typecheck.
+- The Owner browser correction and live no-Refresh interaction could not be exercised because development-login approval was declined. No temporary Owner user was created; no user/session or DPR record was changed, and no cleanup was needed. The correction, overlap response, refresh matching, and navigation were verified with isolated automated tests instead.
+- No production database or replica was queried. No schema or application database data was changed. Nothing was published.

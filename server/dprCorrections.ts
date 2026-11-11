@@ -222,10 +222,14 @@ export function dprCorrectionService(database: any, validate: Validate) {
     }).where(eq(dprs.id, saved.id));
     await tx.insert(auditLogs).values({
       module: "dpr", transactionId: saved.id, action: "correction_applied",
-      userId: actor.id, userName: name(actor), userRole: actor.isAdmin ? "admin" : "editor",
+      userId: actor.id, userName: name(actor), userRole: actor.isOwner ? "owner" : actor.isAdmin ? "admin" : "editor",
       reason, oldValues: { revision: review.revision, snapshot: saved },
       newValues: { revision: review.revision + 1, snapshot: review.candidate, changes: review.changes,
-        impact: review.impact, disposition: review.requiresApproval ? "separate_financial_review_required" : "no_financial_change",
+        impact: review.impact,
+        disposition: review.requiresApproval
+          ? approver ? "separate_financial_review_required" : "owner_direct_reviewed_correction"
+          : "no_financial_change",
+        ownerDirectCorrection: actor.isOwner === true && !approver && review.requiresApproval,
         approverId: approver?.id ?? null, approverName: approver ? name(approver) : null, requestId: requestId ?? null },
       stockImpact: "No postings, reversals, replacements or financial record changes.",
     });
@@ -246,7 +250,12 @@ export function dprCorrectionService(database: any, validate: Validate) {
         const reviewed = await review(tx, saved, data.form, actor);
         if (reviewed.blocked.length) correctionError(reviewed.blocked.map((b: any) => `${b.section} #${b.rowId} / ${b.field}: ${b.message}`).join("\n"));
         if (!reviewed.changes.length) correctionError("There are no changes to save.", 400);
-        if (!reviewed.requiresApproval) return apply(tx, saved, reviewed, actor, reason);
+        const ownerDerivedGeometryOnly = actor.isOwner === true && reviewed.requiresApproval
+          && reviewed.changes.some((change: any) =>
+            change.section === "progress" && change.derived === true && ["length", "quantity"].includes(change.field))
+          && reviewed.changes.filter((change: any) => change.requiresApproval).every((change: any) =>
+            change.section === "progress" && change.derived === true && ["length", "quantity"].includes(change.field));
+        if (!reviewed.requiresApproval || ownerDerivedGeometryOnly) return apply(tx, saved, reviewed, actor, reason);
         const pending = await tx.select().from(editPermissionRequests).where(and(
           eq(editPermissionRequests.recordType, "dpr_correction"), eq(editPermissionRequests.recordId, id),
           eq(editPermissionRequests.requestedBy, actor.id), eq(editPermissionRequests.status, "pending"),
@@ -276,7 +285,8 @@ export function dprCorrectionService(database: any, validate: Validate) {
       return [
         ...requests.map((r: any) => { const data: any = details.find((a: any) => a.transactionId === r.id)?.newValues; return { ...r, changes: data?.changes ?? [], impact: data?.impact ?? [] }; }),
         ...applied.filter((a: any) => !(a.newValues as any)?.requestId).map((a: any) => ({
-          id: `audit-${a.id}`, requestedBy: a.userId, requestedByName: a.userName, status: "used",
+          id: `audit-${a.id}`, requestedBy: a.userId, requestedByName: a.userName,
+          status: (a.newValues as any)?.ownerDirectCorrection === true ? "owner_corrected" : "used",
           requestReason: a.reason, createdAt: a.createdAt, changes: a.newValues?.changes ?? [], impact: a.newValues?.impact ?? [],
         })),
       ];

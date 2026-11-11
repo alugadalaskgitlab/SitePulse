@@ -115,4 +115,19 @@ describe("DPR-10 SiteEdit regressions", () => {
     expect(screen.getByTestId("progress-0-overlap-reason-needed")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Give reason" })).toBeTruthy();
   });
+
+  it("opens the existing reason editor when a submit error directs the user to Give reason", () => {
+    render(
+      <ChainageOverlapWarning
+        hits={[]}
+        overrideReason=""
+        onOverrideReason={() => {}}
+        testidPrefix="progress-0"
+        openReasonToken={1}
+      />,
+      { wrapper: queryWrapper },
+    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByText("The server found an overlap for this row. Add the reason you reviewed before submitting.")).toBeTruthy();
+  });
 });

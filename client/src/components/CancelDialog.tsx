@@ -17,7 +17,7 @@ interface CancelDialogProps {
   recordLabel: string;
   /** Query keys to invalidate after a successful cancel */
   invalidateQueryKeys: (string | (string | number)[])[];
-  onCancelled?: () => void;
+  onCancelled?: () => void | Promise<void>;
   /** Optional extra warning shown in the dialog (e.g. stock-reversal effect) */
   warningText?: string;
   actionLabel?: string;
@@ -54,7 +54,7 @@ export default function CancelDialog({
       toast({ title: actionPastTense.charAt(0).toUpperCase() + actionPastTense.slice(1), description: `${recordLabel} has been ${actionPastTense}.` });
       setReason("");
       onOpenChange(false);
-      onCancelled?.();
+      void onCancelled?.();
     },
     onError: (err: any) => {
       toast({ title: "Cancellation failed", description: err.message, variant: "destructive" });

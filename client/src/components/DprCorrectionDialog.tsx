@@ -10,23 +10,28 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { correctionCanSubmit, correctionDisposition, correctionValue, groupCorrectionChanges, type DprCorrectionChange, type DprCorrectionReview } from "@/lib/dprCorrections";
 import "./dpr-corrections.css";
 
-export function CorrectionChanges({ changes, blocked = [] }: { changes: DprCorrectionChange[]; blocked?: DprCorrectionReview["blocked"] }) {
+export function CorrectionChanges({ changes, blocked = [], ownerDirect = false }: {
+  changes: DprCorrectionChange[];
+  blocked?: DprCorrectionReview["blocked"];
+  ownerDirect?: boolean;
+}) {
   const groups = groupCorrectionChanges(changes, blocked);
+  const dispositionLabel = (value: string) => ownerDirect && value === "Requires approval" ? "Owner direct after review" : value;
   const dispositionClass = (value: string) => value === "Blocked" ? "border-destructive text-destructive"
-    : value === "Requires approval" ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900";
+    : value === "Requires approval" || value === "Owner direct after review" ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900";
   return <div className="dpr-correction-list">
     {groups.map(group => <details key={group.key} className="dpr-correction-group rounded-lg border bg-card" data-testid="correction-group">
       <summary>
         <span className="ml-1 text-sm font-semibold">{group.label}</span>
         <span className="ml-2 text-xs text-muted-foreground">{group.changes.length} change{group.changes.length === 1 ? "" : "s"} · {group.changes.filter(change => !change.derived).length} intentional · {group.changes.filter(change => change.derived).length} derived</span>
-        <Badge variant="outline" className={`ml-2 ${dispositionClass(group.disposition)}`}>{group.disposition}</Badge>
+        <Badge variant="outline" className={`ml-2 ${dispositionClass(dispositionLabel(group.disposition))}`}>{dispositionLabel(group.disposition)}</Badge>
         <span className="mt-1 block text-xs text-muted-foreground">{group.section} · Expand to review recorded and proposed facts</span>
       </summary>
       <div className="space-y-3 p-3">{group.changes.map((change, index) => <article key={`${change.field}-${index}`} className="rounded-lg border bg-card p-3" data-testid="correction-change">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-sm font-semibold">{change.field}</h4>
         <div className="flex flex-wrap gap-2"><Badge variant="outline">{change.derived ? "Automatically derived" : "Intentional change"}</Badge>
-          <Badge variant="outline" className={dispositionClass(correctionDisposition(change, blocked))}>{correctionDisposition(change, blocked)}</Badge></div>
+          <Badge variant="outline" className={dispositionClass(dispositionLabel(correctionDisposition(change, blocked)))}>{dispositionLabel(correctionDisposition(change, blocked))}</Badge></div>
       </div>
       <div className="grid gap-2 text-sm sm:grid-cols-[1fr_auto_1fr]">
         <div><p className="mb-1 text-xs text-muted-foreground">Recorded value</p><div className="dpr-correction-value rounded bg-muted/50 p-2">{correctionValue(change.oldValue)}</div></div>
@@ -46,8 +51,9 @@ export function CorrectionImpact({ impact }: { impact: string[] }) {
   </aside>;
 }
 
-export function DprCorrectionDialog({ open, dprId, review, loading, saving, error, onClose, onRetry, onSubmit }: {
+export function DprCorrectionDialog({ open, dprId, review, loading, saving, error, ownerDirect = false, onClose, onRetry, onSubmit }: {
   open: boolean; dprId: number; review: DprCorrectionReview | null; loading: boolean; saving: boolean; error?: string;
+  ownerDirect?: boolean;
   onClose: () => void; onRetry: () => void; onSubmit: (reason: string) => void;
 }) {
   const [reason, setReason] = useState("");
@@ -64,15 +70,17 @@ export function DprCorrectionDialog({ open, dprId, review, loading, saving, erro
             <p className="flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4" />Blocked · {block.section} · {block.rowId == null ? "Report" : `Row #${block.rowId}`} · {block.field}</p>
             <p className="mt-1">{block.message}</p><p className="mt-1 text-xs">Return to the editor to resolve this restriction. No entered rows have been removed.</p>
           </div>)}
-          <CorrectionChanges changes={review.changes} blocked={review.blocked} />
+          <CorrectionChanges changes={review.changes} blocked={review.blocked} ownerDirect={ownerDirect} />
           {!review.changes.length && <div className="rounded-lg border border-dashed bg-muted/30 p-5 text-sm"><h3 className="font-semibold">No persisted changes to save</h3><p className="mt-1 text-muted-foreground">Unchanged values and form defaults do not create a correction.</p></div>}
           <CorrectionImpact impact={review.impact} />
-          {review.requiresApproval && <p role="status" className="text-sm font-medium text-amber-800">This correction will await Administrator approval. The recorded DPR remains unchanged until approval; your entered edits stay in the editor.</p>}
+          {review.requiresApproval && (ownerDirect
+            ? <p role="status" className="text-sm font-medium text-amber-800">As Owner, you can save this correction after reviewing every change, entering a reason, and confirming its consequences. It will be recorded as Corrected by Owner. Existing usage, stock, diesel and bills will not be rewritten.</p>
+            : <p role="status" className="text-sm font-medium text-amber-800">This correction will await Administrator approval. The recorded DPR remains unchanged until approval; your entered edits stay in the editor.</p>)}
           <div><Label htmlFor="dpr-correction-reason">Correction reason (required)</Label><Textarea id="dpr-correction-reason" value={reason} onChange={event => setReason(event.target.value)} disabled={saving} placeholder="Explain what was corrected and the register or evidence used." className="mt-2" required /></div>
           <div className="flex items-start gap-2"><Checkbox id="dpr-correction-confirm" checked={confirmed} disabled={saving} onCheckedChange={value => setConfirmed(value === true)} /><Label htmlFor="dpr-correction-confirm" className="text-sm leading-relaxed">I have reviewed every change and its consequences, including any separate financial adjustment.</Label></div>
         </>}
       </>}
-      <DialogFooter><Button variant="outline" onClick={onClose} disabled={saving}>Back to editing</Button><Button disabled={loading || saving || !!error || !correctionCanSubmit(review, reason, confirmed)} onClick={() => onSubmit(reason.trim())}>{saving ? "Submitting correction…" : review?.requiresApproval ? "Submit for approval" : "Confirm & save correction"}</Button></DialogFooter>
+      <DialogFooter><Button variant="outline" onClick={onClose} disabled={saving}>Back to editing</Button><Button disabled={loading || saving || !!error || !correctionCanSubmit(review, reason, confirmed)} onClick={() => onSubmit(reason.trim())}>{saving ? "Submitting correction…" : review?.requiresApproval && !ownerDirect ? "Submit for approval" : "Confirm & save correction"}</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
 }

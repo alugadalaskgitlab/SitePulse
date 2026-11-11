@@ -50,7 +50,8 @@ import { layerFieldLabel } from "@shared/layerDisplay";
 import { newEntryKey, MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } from "@shared/dprPhotos";
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { parseDprError } from "@/lib/dprErrors";
-import { DPR_REGISTER_PATH, resolveReturnTo, withReturnTo } from "@/lib/progressReportNav";
+import { DPR_REGISTER_PATH, resolveDprCompletionReturnTo, resolveReturnTo, withDprFocus, withReturnTo } from "@/lib/progressReportNav";
+import { refreshDprDerivedQueries } from "@/lib/dprQueryInvalidation";
 import { BillItemPicker, type BillItem } from "@/components/BillItemPicker";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import {
@@ -1207,12 +1208,7 @@ export default function SiteEdit() {
       if (Object.values(entryPhotos).some((f) => f.length > 0)) {
         await uploadEntryPhotos(newVersion.id);
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs/:id", id] });
-      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
-      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/plant-module/stock-ledger") || false });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
-      queryClient.invalidateQueries({ predicate: (q) => { const key = q.queryKey; return Array.isArray(key) && key[0] === "/api/boq/projects" && key[2] === "plan-vs-actual"; } });
+      await refreshDprDerivedQueries(queryClient);
       toast({
         title: "New Version Created",
         description: "Your edited version has been saved successfully.",
@@ -1553,8 +1549,7 @@ export default function SiteEdit() {
         setEntryPhotos(failedByEntry);
         failedPhotoCount = failedCount;
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs/:id", id] });
+      await refreshDprDerivedQueries(queryClient);
       // Batch 06D: never exit while failed photos remain staged — leaving
       // would unmount and silently lose them. Retrying Save Progress here is
       // safe (PATCHes the same draft id).
@@ -1608,17 +1603,12 @@ export default function SiteEdit() {
       if (Object.values(entryPhotos).some((f) => f.length > 0)) {
         await uploadEntryPhotos(data.id);
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dprs/:id", id] });
-      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
-      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/plant-module/stock-ledger") || false });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
-      queryClient.invalidateQueries({ predicate: (q) => { const key = q.queryKey; return Array.isArray(key) && key[0] === "/api/boq/projects" && key[2] === "plan-vs-actual"; } });
-      toast({ title: "DPR Submitted", description: "Your daily progress report has been submitted successfully." });
-      setLocation(resolveReturnTo(
+      await refreshDprDerivedQueries(queryClient);
+      toast({ title: `DPR #${data.id} submitted` });
+      setLocation(withDprFocus(resolveDprCompletionReturnTo(
         typeof window !== "undefined" ? window.location.search : "",
         DPR_REGISTER_PATH,
-      ));
+      ), Number(data.id)));
     },
     onError: (error: any) => {
       const shortage = parseInsufficientPlantStock(error);
@@ -1760,15 +1750,16 @@ export default function SiteEdit() {
         // input, and do not upload attachments or navigate to a "saved" report.
         setPendingCorrectionId(result.requestId ?? -1);
         setCorrectionOpen(false);
-        toast({ title: "Awaiting approval", description: "Your correction was submitted for Administrator review. The recorded DPR is unchanged; your edits remain here." });
+        toast({ title: "Sent for approval", description: "Your correction was submitted for Administrator review. The recorded DPR is unchanged; your edits remain here." });
         return;
       }
       clearCredentials();
       sessionStorage.removeItem(DRAFT_KEY);
-      void queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
-      void queryClient.invalidateQueries({ queryKey: ["/api/dprs/:id", id] });
-      toast({ title: "Correction saved", description: `DPR #${result.id} has been corrected.` });
-      setLocation(withReturnTo(`/site/report/${result.id}`, _validatedReturnTo));
+      toast({ title: `DPR #${result.id} corrected` });
+      setLocation(withDprFocus(resolveDprCompletionReturnTo(
+        typeof window !== "undefined" ? window.location.search : "",
+        DPR_REGISTER_PATH,
+      ), Number(result.id)));
     } catch (error) {
       setCorrectionError(correctionErrorMessage(error));
     }
@@ -1875,7 +1866,8 @@ export default function SiteEdit() {
       {isSubmittedCorrection && <>
         <DprCorrectionDialog key={correctionOpen ? "open-review" : "closed-review"} open={correctionOpen} dprId={id}
           review={corrections.preview.data ?? null} loading={corrections.preview.isPending} saving={corrections.save.isPending}
-          error={correctionError} onClose={() => setCorrectionOpen(false)} onRetry={() => void reviewCorrection()}
+          error={correctionError} ownerDirect={authUser?.isOwner === true}
+          onClose={() => setCorrectionOpen(false)} onRetry={() => void reviewCorrection()}
           onSubmit={reason => void submitCorrection(reason)} />
         {awaitingCorrectionApproval && <aside role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" data-testid="correction-awaiting-approval">
           <h2 className="font-semibold">DPR #{id} · Awaiting approval</h2>

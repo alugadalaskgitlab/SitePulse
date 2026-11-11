@@ -11,12 +11,16 @@ import { Label } from "@/components/ui/label";
 import { useDpr } from "@/hooks/use-dprs";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import type { DprReadinessIssue } from "@shared/dprSubmitReadiness";
+import { DprSectionsSubmitIssues, type DprSubmitIssue, type DprSubmitIssueAction } from "@/components/DprSectionsSubmitIssues";
 import { evaluateSectionReadiness } from "@/lib/dprSectionReadiness";
 import { DPR_SECTIONS, normalizeDprSectionContext, type DprSection, type DprSectionContext, type DprSectionSnapshot, type DprSectionResolution } from "@shared/dprSections";
 import SiteEntry from "./SiteEntry";
 import SiteEdit from "./SiteEdit";
-import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
+import { DPR_REGISTER_PATH, resolveReturnTo, withDprFocus } from "@/lib/progressReportNav";
 import { createDprSectionSaveAttempt } from "@/lib/dprSectionSaveAttempt";
+import { refreshDprDerivedQueries } from "@/lib/dprQueryInvalidation";
+import { queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 const editorSection = (section: DprReadinessIssue["section"]): DprSection =>
   section === "activities" ? "activity" : section;
@@ -40,7 +44,13 @@ async function request<T>(url: string, method = "GET", body?: unknown): Promise<
   });
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(`${response.status === 409 ? "Conflict: this DPR changed in another session. Your local edits are retained. Reload and review before saving again. " : ""}${data.message ?? data.error ?? `Request failed (${response.status})`}`);
+    const prefix = response.status === 409
+      ? "Conflict: this DPR changed in another session. Your local edits are retained. Reload and review before saving again. "
+      : "";
+    const error = new Error(`${prefix}${data.message ?? data.error ?? `Request failed (${response.status})`}`) as Error & { status: number; data: any };
+    error.status = response.status;
+    error.data = data;
+    throw error;
   }
   return data;
 }
@@ -64,6 +74,7 @@ export function DprWorkEntry() {
 
 export default function DprSections({ initialId }: { initialId?: number } = {}) {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const search = useSearch();
   const params = new URLSearchParams(search);
   const initial = initialId ?? (Number(params.get("dprId") || params.get("draftId")) || undefined);
@@ -81,9 +92,10 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
   const [section, setSection] = useState<DprSection>();
   const [generation, setGeneration] = useState(0);
   const [review, setReview] = useState(false);
-  const [target, setTarget] = useState<{ issue: DprReadinessIssue; token: number }>();
+  const [target, setTarget] = useState<{ issue: DprReadinessIssue; token: number; action?: "chainage" | "reason" }>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [submitIssues, setSubmitIssues] = useState<DprSubmitIssue[]>([]);
   const sites = useQuery<any[]>({ queryKey: ["/api/sites"] });
   const boq = useDprBoqItems({ siteName: context.site, sites: sites.data ?? [], preferredProjectId: context.boqProjectId, recoveryEvidence: snapshot?.dpr });
   useEffect(() => {
@@ -104,8 +116,12 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
     window.history.replaceState(window.history.state, "", url);
   };
   const run = async (action: () => Promise<void>) => {
-    setBusy(true); setError("");
-    try { await action(); } catch (err) { setError((err as Error).message); }
+    setBusy(true); setError(""); setSubmitIssues([]);
+    try { await action(); } catch (err) {
+      const failure = err as Error & { data?: any };
+      setError(failure.message);
+      if (Array.isArray(failure.data?.mandatory)) setSubmitIssues(failure.data.mandatory);
+    }
     finally { setBusy(false); }
   };
   const load = async (id: number) => adopt(await request<DprSectionSnapshot>(`/api/dpr-sections/${id}`));
@@ -128,6 +144,8 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
       }, section));
       adopt(next);
       setError("");
+      setSubmitIssues([]);
+      await refreshDprDerivedQueries(queryClient);
       return next;
     } catch (err) {
       setError((err as Error).message);
@@ -141,9 +159,11 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
     && (boq.projectId == null || boq.itemsLoaded) && (context.boqProjectId == null || boq.projectId === context.boqProjectId)
     && (snapshot?.dpr.progress ?? []).every((row: any) => row.boqItemId == null || boq.items.some(item => Number(item.id) === Number(row.boqItemId)));
   const readiness = snapshot && boqReady ? evaluateSectionReadiness(snapshot.dpr, boq.items) : null;
-  const fix = (issue: DprReadinessIssue) => {
+  const fix = (issue: DprReadinessIssue, action?: DprSubmitIssueAction) => {
     setReview(false);
-    setTarget(previous => ({ issue, token: (previous?.token ?? 0) + 1 }));
+    setError("");
+    setSubmitIssues([]);
+    setTarget(previous => ({ issue, token: (previous?.token ?? 0) + 1, ...(action === "chainage" || action === "reason" ? { action } : {}) }));
     setSection(editorSection(issue.section));
   };
   const openCombined = async (guided: boolean) => {
@@ -162,6 +182,7 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
         returnTo: resolveReturnTo(search, DPR_REGISTER_PATH) })}`;
     const query = new URLSearchParams({ returnTo: back, site: routeSite, date: routeContext.date,
       type: routeContext.workType, engineer: current?.dpr.engineer ?? engineer, boqProjectId: routeContext.boqProjectId == null ? "" : String(routeContext.boqProjectId) });
+    query.set("submitReturnTo", resolveReturnTo(search, DPR_REGISTER_PATH));
     if (current) {
       query.set("draftId", String(current.dpr.id));
       query.set("combined", "1");
@@ -170,14 +191,16 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
     setLocation(`${guided ? "/site/guided/combined" : current ? `/site/edit/${current.dpr.id}` : "/site/combined"}?${query}`);
   };
   return <main className="max-w-5xl mx-auto space-y-5 pb-16">
-    {error && <div role="alert" className="border border-destructive rounded p-4 space-y-3">
-      <p>{error}</p>
+    {error && <div className="border border-destructive rounded p-4 space-y-3">
+      {submitIssues.length
+        ? <DprSectionsSubmitIssues issues={submitIssues} onAction={(issue, action) => fix(issue, action)} />
+        : <p role="alert">{error}</p>}
       <Button variant="outline" disabled={busy} onClick={() => {
         if (section && !window.confirm("Discard local changes and reload the persisted DPR for review?")) return;
         void run(async () => {
           if (snapshotRef.current) await load(snapshotRef.current.dpr.id);
           else await resolve();
-          setSection(undefined); setReview(false); setGeneration(n => n + 1);
+          setSection(undefined); setReview(false); setSubmitIssues([]); setGeneration(n => n + 1);
         });
       }}>Reload &amp; review persisted DPR</Button>
     </div>}
@@ -259,9 +282,13 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
                 sectionTokens: current.sectionTokens, headerToken: current.headerToken,
                 clientTimestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
               });
-              // The shared legacy submit handler returns a DPR; section-aware
-              // handlers may return a snapshot. Both close editing immediately.
-              adopt(next.dpr ? next : { ...current, dpr: next }); setReview(false);
+               // The submit handler returns the canonical DPR after all finalizers.
+               const submitted = next.dpr ? next.dpr : next;
+               adopt(next.dpr ? next : { ...current, dpr: next });
+               await refreshDprDerivedQueries(queryClient);
+               toast({ title: `DPR #${submitted.id} submitted` });
+               setReview(false);
+               setLocation(withDprFocus(resolveReturnTo(search, DPR_REGISTER_PATH), submitted.id));
             })}>Submit DPR</Button>
           </section>}
         </>}
