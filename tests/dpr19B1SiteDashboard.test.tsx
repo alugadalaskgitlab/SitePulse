@@ -94,6 +94,8 @@ describe("DPR19 B1 dashboard readiness", () => {
     expect(screen.getByTestId("readiness-reason-101").textContent).toContain("Select an excavation material outcome (+1 more)");
     expect(screen.queryByTestId("badge-pending-closing-101")).toBeNull();
     expect(screen.getByTestId("button-fix-101")).toBeTruthy();
+    expect(screen.queryByTestId("button-open-101")).toBeNull();
+    expect(screen.queryByTestId("button-submit-draft-101")).toBeNull();
     expect(screen.queryByTestId("button-complete-101")).toBeNull();
   });
 
@@ -151,6 +153,8 @@ describe("DPR19 B1 dashboard readiness", () => {
     for (const id of [105, 106]) {
       expect(screen.getByTestId(`badge-readiness-${id}`).textContent).toBe("Readiness unavailable");
       expect(screen.queryByTestId(`button-fix-${id}`)).toBeNull();
+      expect(screen.getByTestId(`button-open-${id}`)).toBeTruthy();
+      expect(screen.queryByTestId(`button-submit-draft-${id}`)).toBeNull();
     }
   });
 

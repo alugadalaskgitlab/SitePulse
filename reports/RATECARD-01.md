@@ -296,3 +296,24 @@ Plainly: when a draft's readiness is missing or explicitly unavailable, the dash
 - Confirmed no schema change in commits `8df36b8`, `bf4ea41`, or `c9393d5`: none changes `shared/schema.ts` or migration/drizzle files.
 - The `shared/schema.ts` blob is identical at all three commits and current `9987ea55` (`3b3c6b7b8a47fcd50b4c0e4f068d9dc28314182b`), confirming no table or column definition changes in this work.
 - No application code or database data was changed for these final checks. The temporary test worktrees were removed. No publish was performed.
+
+## Last checks
+
+### `sitelog_dev` bill comparison
+
+- Loaded the configured development connection from `.replit` without displaying or changing it. A read-only query confirmed `current_database() = sitelog_dev`.
+- The database contains **58 live bills and 411 bill-item rows**, matching the Part A counts.
+- Compared every baseline bill with the current database for the Part A table's visible summary fields: bill number, status, line count, saved total, and net payable. **All 58 summaries match; there are no missing or additional bills and no summary differences.**
+- **Full line-level fingerprint result is not certifiable from the saved report alone.** Part A retained one MD5 value per bill, but did not record the fingerprint serialization method or the raw line-level baseline values. I therefore do not label the result “0 bills changed” based only on matching summaries. No bill or line data was changed in this read-only check.
+
+### DPR dashboard readiness display
+
+- Missing or unavailable draft readiness now shows **“Readiness unavailable”**, with **Open** to the sections page and no Submit or Fix action.
+- A draft with a real blocker still shows **“Not ready”**, its reason, and **Fix**; it has no Open or Submit action.
+- Added regression assertions for unavailable, missing, and blocked readiness.
+
+### Verification
+
+- **Focused tests:** 10 files passed, **86 tests passed**, including `dpr19B1SiteDashboard.test.tsx` and the Rate Card tests.
+- **Build:** `npm run build` passed. Existing warnings noted stale Browserslist data and large client chunks.
+- No schema or database changes were made. No publish was performed.

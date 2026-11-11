@@ -1334,7 +1334,7 @@ export default function SiteDashboard() {
                                   }`} data-testid={`badge-readiness-${dpr.id}`}>
                                     {readinessState === "blocked"
                                       ? firstOverlap ? `Not ready — overlap with DPR #${firstOverlap.withDprId}` : "Not ready"
-                                      : readinessState === "ready" ? "No readiness blockers" : "Not ready"}
+                                      : readinessState === "ready" ? "No readiness blockers" : "Readiness unavailable"}
                                   </span>
                                 )}
                                 {pendingClosingCount > 0 && (
@@ -1363,7 +1363,7 @@ export default function SiteDashboard() {
                             </div>
                           </div>
                           <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 md:w-auto md:flex-nowrap" data-testid={`actions-report-${dpr.id}`}>
-                            {isActiveDraft && readinessState !== "ready" && (
+                            {isActiveDraft && readinessState === "blocked" && (
                               <div className="flex w-full min-w-0 flex-col items-start gap-1 md:w-auto md:items-end">
                                 {blockingIssues.length > 0 && (
                                   <span className="text-xs text-amber-800 dark:text-amber-400 break-words w-full md:max-w-64 md:text-right" data-testid={`readiness-reason-${dpr.id}`}>
@@ -1393,7 +1393,11 @@ export default function SiteDashboard() {
                               <Button size="sm" variant="outline" className="gap-1" data-testid={`button-open-${dpr.id}`} onClick={openDraftSections}>
                                 <ExternalLink className="w-3 h-3" />Open
                               </Button>
-                            </> : isActiveDraft ? null : (
+                            </> : isActiveDraft && readinessState === "unavailable" ? (
+                              <Button size="sm" variant="outline" className="gap-1" data-testid={`button-open-${dpr.id}`} onClick={openDraftSections}>
+                                <ExternalLink className="w-3 h-3" />Open
+                              </Button>
+                            ) : isActiveDraft ? null : (
                               <Button size="sm" variant="outline" className="gap-1" data-testid={`button-view-${dpr.id}`}
                                 onClick={() => { saveDashboardState(); setLocation(appendOrigin(`/site/report/${dpr.id}`)); }}>
                                 <ExternalLink className="w-3 h-3" />View
