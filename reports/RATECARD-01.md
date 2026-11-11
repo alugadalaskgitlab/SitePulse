@@ -264,3 +264,35 @@ Because only six baseline bills overlap and four of those have different summari
 - **Build:** `npm run build` passed.
 - The application restarted successfully in test mode; read-only startup readiness reported `ready: true`.
 - No schema changes or application data changes were made. No publish was performed.
+
+## Final checks
+
+### Part A bill fingerprints on `sitelog_dev`
+
+- **Not verified in this run.** The requested connection variable `DEV_DATABASE_URL` is not configured in this session (it is also absent from the development secrets list). The only configured database URL is not the `sitelog_dev` target for this comparison.
+- I did **not** query or compare against `heliumdb`. I cannot truthfully report “0 bills changed” or enumerate differences without the original `sitelog_dev` fingerprints being compared against that database.
+- The Part A baseline remains 58 bills and 411 bill-item lines, with its per-bill MD5 fingerprints in the table above. No bill or bill-item data was changed by this final-check work.
+
+### `dpr19B1SiteDashboard.test.tsx` comparison
+
+Ran only this test file at each requested revision. Each run had **1 failing test and 7 passing tests**:
+
+| Revision | Result |
+|---|---|
+| `17310f1` (`17310f18`) | 1 failed, 7 passed |
+| `e4f4614` (`e4f4614f`) | 1 failed, 7 passed |
+| Current (`9987ea55`) | 1 failed, 7 passed |
+
+The same failure occurs at all three revisions, so it is already present at `17310f1`; it is not newly introduced by `e4f4614` or RATECARD-01. Exact error:
+
+`tests/dpr19B1SiteDashboard.test.tsx > DPR19 B1 dashboard readiness > reports missing or unavailable readiness as unavailable, never ready or actionable`
+
+`expected 'Not ready' to be 'Readiness unavailable'` at `tests/dpr19B1SiteDashboard.test.tsx:152`.
+
+Plainly: when a draft's readiness is missing or explicitly unavailable, the dashboard currently labels it **“Not ready”** rather than **“Readiness unavailable”**; it does not show a blocker reason or Fix action for that case. The implementation and test expectation already disagree at `17310f1`, before the later DPR-FLOW comparison commits. No fix was made, as requested.
+
+### RATECARD-01 schema check
+
+- Confirmed no schema change in commits `8df36b8`, `bf4ea41`, or `c9393d5`: none changes `shared/schema.ts` or migration/drizzle files.
+- The `shared/schema.ts` blob is identical at all three commits and current `9987ea55` (`3b3c6b7b8a47fcd50b4c0e4f068d9dc28314182b`), confirming no table or column definition changes in this work.
+- No application code or database data was changed for these final checks. The temporary test worktrees were removed. No publish was performed.
