@@ -62,6 +62,7 @@ type Report = {
   defaultFromDate: string | null;
   sites: string[];
   items: ReportItem[];
+  draftOverlaps?: Array<{ boqItemId: number; dprId: number }>;
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -193,7 +194,7 @@ export default function ProgressReport() {
             <TabsTrigger value="chainage" data-testid="tab-chainage">Chainage-wise</TabsTrigger>
             <TabsTrigger value="date" data-testid="tab-date">Date-wise</TabsTrigger>
           </TabsList>
-          <TabsContent value="item"><ItemWise abstracts={abstracts} from={effFrom} to={effTo} state={linkState} update={update} /></TabsContent>
+          <TabsContent value="item"><ItemWise abstracts={abstracts} from={effFrom} to={effTo} state={linkState} update={update} draftOverlaps={report.draftOverlaps ?? []} /></TabsContent>
           <TabsContent value="chainage"><ChainageWise items={report.items} state={linkState} update={update} /></TabsContent>
           <TabsContent value="date"><DateWise items={report.items} from={effFrom} to={effTo} state={linkState} /></TabsContent>
         </Tabs>
@@ -206,7 +207,10 @@ type Nav = { state: ProgressReportState; update: (p: Partial<ProgressReportState
 
 // ── Item-wise (RA/MB register) ───────────────────────────────────────────────
 
-function ItemWise({ abstracts, from, to, state, update }: { abstracts: Array<{ it: ReportItem; abs: ReturnType<typeof computeItemAbstract> }>; from: string; to: string } & Nav) {
+function ItemWise({ abstracts, from, to, state, update, draftOverlaps }: {
+  abstracts: Array<{ it: ReportItem; abs: ReturnType<typeof computeItemAbstract> }>;
+  from: string; to: string; draftOverlaps: Array<{ boqItemId: number; dprId: number }>;
+} & Nav) {
   const openId = state.item ? Number(state.item) : null;
   const view = state.view;
 
@@ -235,6 +239,19 @@ function ItemWise({ abstracts, from, to, state, update }: { abstracts: Array<{ i
                 <tr className="border-t hover:bg-slate-50 cursor-pointer" onClick={() => update({ item: openId === it.boqItem.id ? "" : String(it.boqItem.id), overlapAnchor: "" })} data-testid={`row-item-${it.boqItem.id}`}>
                   <td className="px-3 py-2">{i + 1}</td>
                   <td className="px-3 py-2 max-w-md"><span className="font-medium">{itemLabel(it.boqItem)}</span>
+                    {(() => {
+                      const draftIds = draftOverlaps
+                        .filter(draft => draft.boqItemId === it.boqItem.id)
+                        .map(draft => draft.dprId)
+                        .filter((id, index, rows) => rows.indexOf(id) === index);
+                      return draftIds.length > 0 ? <p className="mt-1 text-xs text-amber-700" data-testid={`draft-overlap-${it.boqItem.id}`}>
+                        Drafts are not counted. {draftIds.length} {draftIds.length === 1 ? "draft" : "drafts"} with possible overlap:{" "}
+                        {draftIds.map((dprId, index) => <Fragment key={dprId}>
+                          {index > 0 && ", "}
+                          <Link className="underline" href={dprLinkWithReturn(dprId, state)}>DPR #{dprId}</Link>
+                        </Fragment>)}
+                      </p> : null;
+                    })()}
                     {abs.reviewCount > 0 && <Badge variant="outline" className="ml-2 text-amber-700 border-amber-300">{abs.reviewCount} review</Badge>}
                     {abs.overlapCount > 0 && (
                       <button

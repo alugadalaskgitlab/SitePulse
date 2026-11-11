@@ -259,6 +259,31 @@ describe("DPR-13 normalized SQL section transactions", () => {
       chainageFrom: "0+280", chainageTo: "0+400", chainageFromKm: 0.28, chainageToKm: 0.4,
       length: 120, width: 3.75, thickness: 0.15, quantity: 67.5, uom: "CUM", quantitySource: "calculated",
     }] }, undefined, ctx);
+    const beforeCounts = {
+      dprs: (await state.db.select().from(schema.dprs)).length,
+      progress: (await state.db.select().from(schema.progressEntries)).length,
+      equipment: (await state.db.select().from(schema.equipmentUsage)).length,
+      labour: (await state.db.select().from(schema.labourLogs)).length,
+      materials: (await state.db.select().from(schema.materialLogs)).length,
+      ledger: (await state.db.select().from(schema.stockLedger)).length,
+    };
+    const listed = await request(app).get("/api/dprs/with-details");
+    expect(listed.status).toBe(200);
+    const listDraft = listed.body.find((row: any) => Number(row.id) === Number(draft.dpr.id));
+    expect(listDraft.draftReadiness.state).toBe("blocked");
+    expect(listDraft.draftReadiness.mandatory).toEqual(expect.arrayContaining([
+      expect.objectContaining({ overlaps: [expect.objectContaining({ withDprId: prior.id })] }),
+    ]));
+    expect(listDraft.draftReadiness.mandatory[0].overlaps[0].withDprId).toBe(prior.id);
+    const sectionRead = await request(app).get(`/api/dpr-sections/${draft.dpr.id}`);
+    expect(sectionRead.status).toBe(200);
+    expect(sectionRead.body.chainageOverlapIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ overlaps: [expect.objectContaining({ withDprId: prior.id })] }),
+    ]));
+    expect(sectionRead.body.draftReadiness.state).toBe("blocked");
+    const progressReport = await request(app).get(`/api/reports/progress?projectId=${project.id}`);
+    expect(progressReport.status).toBe(200);
+    expect(progressReport.body.draftOverlaps).toContainEqual({ boqItemId: item.id, dprId: draft.dpr.id });
     const response = await request(app).post(`/api/dpr-sections/${draft.dpr.id}/submit`).send({
       headerToken: draft.headerToken, sectionTokens: draft.sectionTokens,
     });
@@ -272,6 +297,25 @@ describe("DPR-13 normalized SQL section transactions", () => {
         })],
       }),
     ]));
+    const corrected = await save("activity", { progress: [{
+      ...draft.dpr.progress[0], chainageFrom: "1+500", chainageTo: "1+620",
+      chainageFromKm: 1.5, chainageToKm: 1.62, length: 120, quantity: 67.5,
+    }] }, draft, ctx);
+    const correctedSnapshot = await request(app).get(`/api/dpr-sections/${draft.dpr.id}`);
+    expect(correctedSnapshot.body.chainageOverlapIssues).toEqual([]);
+    const correctedList = await request(app).get("/api/dprs/with-details");
+    expect(correctedList.body.find((row: any) => Number(row.id) === Number(draft.dpr.id)).draftReadiness.state).toBe("ready");
+    const afterCounts = {
+      dprs: (await state.db.select().from(schema.dprs)).length,
+      progress: (await state.db.select().from(schema.progressEntries)).length,
+      equipment: (await state.db.select().from(schema.equipmentUsage)).length,
+      labour: (await state.db.select().from(schema.labourLogs)).length,
+      materials: (await state.db.select().from(schema.materialLogs)).length,
+      ledger: (await state.db.select().from(schema.stockLedger)).length,
+    };
+    expect(afterCounts).toEqual(beforeCounts);
+    const reportAfterCorrection = await request(app).get(`/api/reports/progress?projectId=${project.id}`);
+    expect(reportAfterCorrection.body.draftOverlaps).not.toContainEqual({ boqItemId: item.id, dprId: draft.dpr.id });
   });
 
   it("defers real diesel ledger/canonical usage until exactly one explicit HTTP submit", async () => {

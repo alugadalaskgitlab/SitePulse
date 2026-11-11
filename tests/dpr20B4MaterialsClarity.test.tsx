@@ -201,7 +201,7 @@ describe("DPR20 B4 section hub wording does not change readiness", () => {
     expect(pickDprSectionPayload("materials", { ...state.dpr, receivedTrips: state.receipts })).toEqual({
       materials, sitePurchases: purchases,
     });
-    fireEvent.click(screen.getByRole("button", { name: "Review & Submit" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Review & Submit" }).slice(-1)[0]);
     await waitFor(() => expect(screen.getByRole("button", { name: "Submit DPR" }).hasAttribute("disabled")).toBe(!readiness.ready));
     fireEvent.click(tile);
     expect(screen.getByTestId("existing-section-editor").textContent).toBe("materials");

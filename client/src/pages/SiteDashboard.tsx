@@ -38,6 +38,8 @@ import {
   Search,
 } from "lucide-react";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { DprDraftSubmitDialog } from "@/components/DprDraftSubmitDialog";
+import { describeSubmitOverlap } from "@/components/DprSectionsSubmitIssues";
 import type { EquipmentMasterType } from "@shared/schema";
 // Batch 04: shared measurement representation — Summary must never fabricate
 // zero dimensions (e.g. "0 × 1.5 × 0" for an area row).
@@ -169,7 +171,7 @@ export default function SiteDashboard() {
   const saveDashboardState = useCallback(() => {
     try {
       sessionStorage.setItem("siteDashboardState", JSON.stringify({
-        expandedReports: [...expandedReports],
+        expandedReports: Array.from(expandedReports),
         scrollY: window.scrollY,
       }));
     } catch (_e) {}
@@ -1271,9 +1273,31 @@ export default function SiteDashboard() {
                   const readiness: DraftReadiness | undefined = dpr.draftReadiness;
                   const readinessState = readiness?.state ?? "unavailable";
                   const blockingIssues = readinessState === "blocked" ? readiness?.mandatory ?? [] : [];
+                  const openDraftSections = () => {
+                    saveDashboardState();
+                    setLocation(appendOrigin(`/site/edit/${dpr.id}`));
+                  };
+                  const overlapIssue = blockingIssues.find(issue => issue.overlaps?.some(hit => hit.withDprId != null));
+                  const firstOverlap = overlapIssue?.overlaps?.find(hit => hit.withDprId != null);
+                  const readinessReason = blockingIssues[0]
+                    ? firstOverlap
+                      ? describeSubmitOverlap(overlapIssue as any, firstOverlap)
+                      : blockingIssues[0].message
+                    : "";
                   
                   return (
-                    <Card id={`dpr-card-${dpr.id}`} key={dpr.id} className={`transition-all ${focusedDprId === Number(dpr.id) ? "ring-2 ring-primary ring-offset-2" : ""} ${isActiveDraft && readinessState === "blocked" ? 'border-amber-400 dark:border-amber-500' : ''}`} data-testid={`card-report-${dpr.id}`}>
+                    <Card id={`dpr-card-${dpr.id}`} key={dpr.id} className={`transition-all ${isActiveDraft ? "cursor-pointer" : ""} ${focusedDprId === Number(dpr.id) ? "ring-2 ring-primary ring-offset-2" : ""} ${isActiveDraft && readinessState !== "ready" ? 'border-amber-400 dark:border-amber-500' : ''}`} data-testid={`card-report-${dpr.id}`}
+                      onClick={(event: React.MouseEvent) => {
+                        if (!isActiveDraft || (event.target as HTMLElement).closest("button,a,input,select,[role=dialog]")) return;
+                        openDraftSections();
+                      }}
+                      onKeyDown={(event: React.KeyboardEvent) => {
+                        if (isActiveDraft && (event.key === "Enter" || event.key === " ")) {
+                          event.preventDefault();
+                          openDraftSections();
+                        }
+                      }}
+                      tabIndex={isActiveDraft ? 0 : undefined}>
                       <CardContent className="p-4">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4" data-testid={`header-report-${dpr.id}`}>
                           <div className="flex items-center gap-4 flex-1 min-w-0 w-full md:w-auto">
@@ -1308,7 +1332,9 @@ export default function SiteDashboard() {
                                         ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-400"
                                         : "bg-muted text-muted-foreground"
                                   }`} data-testid={`badge-readiness-${dpr.id}`}>
-                                    {readinessState === "blocked" ? "Not ready" : readinessState === "ready" ? "No readiness blockers" : "Readiness unavailable"}
+                                    {readinessState === "blocked"
+                                      ? firstOverlap ? `Not ready — overlap with DPR #${firstOverlap.withDprId}` : "Not ready"
+                                      : readinessState === "ready" ? "No readiness blockers" : "Not ready"}
                                   </span>
                                 )}
                                 {pendingClosingCount > 0 && (
@@ -1337,17 +1363,17 @@ export default function SiteDashboard() {
                             </div>
                           </div>
                           <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 md:w-auto md:flex-nowrap" data-testid={`actions-report-${dpr.id}`}>
-                            {isActiveDraft && readinessState === "blocked" && (
+                            {isActiveDraft && readinessState !== "ready" && (
                               <div className="flex w-full min-w-0 flex-col items-start gap-1 md:w-auto md:items-end">
                                 {blockingIssues.length > 0 && (
                                   <span className="text-xs text-amber-800 dark:text-amber-400 break-words w-full md:max-w-64 md:text-right" data-testid={`readiness-reason-${dpr.id}`}>
-                                    {blockingIssues[0].message}
+                                    {readinessReason}
                                     {blockingIssues.length > 1 && ` (+${blockingIssues.length - 1} more)`}
                                   </span>
                                 )}
                                 {canEdit && (
                                   <Button size="sm" variant="default" className="gap-1 bg-amber-500 hover:bg-amber-600 text-white" data-testid={`button-fix-${dpr.id}`}
-                                    onClick={() => { saveDashboardState(); setLocation(appendOrigin(`/site/edit/${dpr.id}`)); }}>
+                                    onClick={openDraftSections}>
                                     <Pencil className="w-3 h-3" />
                                     Fix
                                   </Button>
@@ -1362,11 +1388,17 @@ export default function SiteDashboard() {
                             >
                               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                             </Button>
-                            <Button size="sm" variant="outline" className="gap-1" data-testid={`button-view-${dpr.id}`}
-                              onClick={() => { saveDashboardState(); setLocation(appendOrigin(`/site/report/${dpr.id}`)); }}>
-                              <ExternalLink className="w-3 h-3" />
-                              View
-                            </Button>
+                            {isActiveDraft && readinessState === "ready" ? <>
+                              <DprDraftSubmitDialog dprId={Number(dpr.id)} returnTo="/site/dashboard" />
+                              <Button size="sm" variant="outline" className="gap-1" data-testid={`button-open-${dpr.id}`} onClick={openDraftSections}>
+                                <ExternalLink className="w-3 h-3" />Open
+                              </Button>
+                            </> : isActiveDraft ? null : (
+                              <Button size="sm" variant="outline" className="gap-1" data-testid={`button-view-${dpr.id}`}
+                                onClick={() => { saveDashboardState(); setLocation(appendOrigin(`/site/report/${dpr.id}`)); }}>
+                                <ExternalLink className="w-3 h-3" />View
+                              </Button>
+                            )}
                           </div>
                         </div>
                         

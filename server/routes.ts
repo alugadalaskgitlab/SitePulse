@@ -194,7 +194,7 @@ import {
   resolveBoqUomProfile,
 } from "@shared/dprGeometry";
 import { evaluateDprSubmitReadiness, type DprReadinessIssue } from "@shared/dprSubmitReadiness";
-import { evaluateSavedDraftReadiness } from "@shared/dprDraftReadiness";
+import { addDraftOverlapReadiness, evaluateSavedDraftReadiness } from "@shared/dprDraftReadiness";
 import { collectDprBoqItemIds } from "@shared/dprBoqSelection";
 import { chainageOverlapSubmitIssues, isChainageGuardRow, unchangedChainageRowKeys, type CandidateChainageRow } from "@shared/chainageOverlap";
 import { blocksExternalReceiptsForBoqItem, mergeMaterialTripLinkage, reusedExcavationConfigurationIssue } from "@shared/materialReceiptSummary";
@@ -975,6 +975,18 @@ export async function registerRoutes(
       const readinessItemsById = new Map(linkedBoqItems.map(item => [item.id, item]));
       const readinessProjectsById = new Map(draftProjects.map(project => [project.id, project]));
       const activeDraftIds = new Set(activeDrafts.map(d => d.id));
+      const draftChainageItemIds = Array.from(new Set(activeDrafts.flatMap(draft =>
+        (draft.progress ?? []).map((row: any) => Number(row?.boqItemId)).filter((id: number) => Number.isInteger(id) && id > 0),
+      )));
+      const submittedChainagePriors = draftChainageItemIds.length
+        ? await storage.getSubmittedChainageEntries(draftChainageItemIds, null)
+        : [];
+      const draftReadinessById = new Map<number, ReturnType<typeof evaluateSavedDraftReadiness>>();
+      for (const draft of activeDrafts) {
+        const baseReadiness = evaluateSavedDraftReadiness(draft, readinessItemsById, readinessProjectsById);
+        const overlapIssues = await evaluateChainageOverlapIssues(draft, draft.id, null, submittedChainagePriors);
+        draftReadinessById.set(draft.id, addDraftOverlapReadiness(baseReadiness, overlapIssues));
+      }
       const boqItemById = new Map(linkedBoqItems.map((item) => [item.id, {
         id: item.id,
         displayName: item.displayName,
@@ -990,7 +1002,7 @@ export async function registerRoutes(
       const response = dprs.map((dpr) => ({
         ...dpr,
         ...(activeDraftIds.has(dpr.id) ? {
-          draftReadiness: evaluateSavedDraftReadiness(dpr, readinessItemsById, readinessProjectsById),
+          draftReadiness: draftReadinessById.get(dpr.id),
         } : {}),
         progress: dpr.progress.map((entry) => ({
           ...entry,
@@ -2704,6 +2716,7 @@ export async function registerRoutes(
     input: any,
     excludeDprId?: number | null,
     persistedProgress?: any[] | null,
+    preloadedPriors?: any[],
   ): Promise<DprReadinessIssue[]> {
     const toCandidateChainageRows = (source: any): CandidateChainageRow[] => {
       const progress: any[] = Array.isArray(source?.progress) ? source.progress : [];
@@ -2722,11 +2735,40 @@ export async function registerRoutes(
     };
     const rows = toCandidateChainageRows(input);
     const itemIds = Array.from(new Set(rows.filter(isChainageGuardRow).map((r) => Number(r.boqItemId))));
-    const priors = itemIds.length > 0 ? await storage.getSubmittedChainageEntries(itemIds, excludeDprId ?? null) : [];
+    const priors = preloadedPriors
+      ? preloadedPriors.filter(prior => itemIds.indexOf(Number(prior.boqItemId)) >= 0 && Number(prior.dprId) !== Number(excludeDprId))
+      : itemIds.length > 0 ? await storage.getSubmittedChainageEntries(itemIds, excludeDprId ?? null) : [];
     const exemptRowKeys = Array.isArray(persistedProgress)
       ? unchangedChainageRowKeys(rows, toCandidateChainageRows({ progress: persistedProgress }))
       : undefined;
     return chainageOverlapSubmitIssues(rows, priors, { exemptRowKeys });
+  }
+
+  async function enrichDraftSectionSnapshot(snapshot: any) {
+    if (!snapshot || snapshot.dpr?.dprStatus !== "draft") return snapshot;
+    const dpr = snapshot.dpr;
+    const itemIds = collectDprBoqItemIds({
+      progress: dpr.progress, equipment: dpr.equipment, labour: dpr.labour, structureItems: dpr.structureItems,
+    });
+    const linkedItems = itemIds.length ? await db.select({
+      id: boqItems.id, boqProjectId: boqItems.boqProjectId, unit: boqItems.unit,
+      description: boqItems.description,
+    }).from(boqItems).where(drizzleInArray(boqItems.id, itemIds)) : [];
+    const projects = dpr.boqProjectId == null ? [] : await db.select({
+      id: boqProjectsTable.id, siteName: sitesTable.name,
+    }).from(boqProjectsTable).leftJoin(sitesTable, eq(sitesTable.id, boqProjectsTable.siteId))
+      .where(eq(boqProjectsTable.id, dpr.boqProjectId));
+    const base = evaluateSavedDraftReadiness(
+      dpr,
+      new Map(linkedItems.map(item => [item.id, item])),
+      new Map(projects.map(project => [project.id, project])),
+    );
+    const chainageOverlapIssues = await evaluateChainageOverlapIssues(dpr, dpr.id);
+    return {
+      ...snapshot,
+      chainageOverlapIssues,
+      draftReadiness: addDraftOverlapReadiness(base, chainageOverlapIssues),
+    };
   }
 
   // ── 06X: PATCH /api/progress-entries/:id/overlap-resolution ─────────────────
@@ -3133,7 +3175,7 @@ export async function registerRoutes(
       if (!snapshot) return res.status(404).json({ message: "DPR not found" });
       const permitted = await getPermittedSiteNames(req);
       if (permitted !== null && !siteMatchesPermitted(snapshot.dpr.site, permitted)) return res.status(403).json({ message: "Access denied for this site" });
-      return res.json(snapshot);
+      return res.json(await enrichDraftSectionSnapshot(snapshot));
     } catch (err) { sectionFailure(err, res); }
   });
   app.put("/api/dpr-sections/:section", async (req, res) => {
@@ -3159,7 +3201,7 @@ export async function registerRoutes(
         clientKey: z.string().min(16).max(128).optional().parse(req.body.clientKey),
         actorName: req.authUser?.fullName,
       }, req.authUser?.id ?? null, (input, id) => validateSectionAggregate(input, req, id, true), scopeToken);
-      return res.json(snapshot);
+      return res.json(await enrichDraftSectionSnapshot(snapshot));
     } catch (err) { sectionFailure(err, res); }
   });
 
@@ -19121,11 +19163,40 @@ export async function registerRoutes(
       const report = await assembleProgressReport(req, projectId, (req.query.site as string) || undefined);
       if (report === "forbidden") return res.status(403).json({ error: "forbidden" });
       if (!report) return res.status(404).json({ error: "Project not found" });
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      const selectedSite = (req.query.site as string) || "";
+      const drafts = (await storage.getDprsWithDetails()).filter((dpr: any) =>
+        Number(dpr.boqProjectId) === projectId &&
+        dpr.dprStatus === "draft" &&
+        !dpr.isDeleted && !dpr.isCancelled && !dpr.isSuperseded &&
+        (permittedSiteNames === null || siteMatchesPermitted(dpr.site, permittedSiteNames)) &&
+        (!selectedSite || progressReportEntryMatchesSite({ site: dpr.site }, selectedSite)),
+      );
+      const draftItemIds = Array.from(new Set(drafts.flatMap((draft: any) =>
+        (draft.progress ?? []).map((row: any) => Number(row?.boqItemId)).filter((id: number) => Number.isInteger(id) && id > 0),
+      )));
+      const draftPriors = draftItemIds.length
+        ? await storage.getSubmittedChainageEntries(draftItemIds, null)
+        : [];
+      const draftOverlapKeys = new Set<string>();
+      const draftOverlaps: Array<{ boqItemId: number; dprId: number }> = [];
+      for (const draft of drafts) {
+        const issues = await evaluateChainageOverlapIssues(draft, draft.id, null, draftPriors);
+        for (const issue of issues) {
+          const row = Number(issue.rowKey);
+          const activity = Number.isInteger(row) ? draft.progress?.[row] : null;
+          if (activity?.boqItemId == null || !(issue as any).overlaps?.some((hit: any) => hit.withDprId != null)) continue;
+          const key = `${Number(activity.boqItemId)}:${Number(draft.id)}`;
+          if (draftOverlapKeys.has(key)) continue;
+          draftOverlapKeys.add(key);
+          draftOverlaps.push({ boqItemId: Number(activity.boqItemId), dprId: Number(draft.id) });
+        }
+      }
       const dur = Date.now() - t0;
       if (dur > 300 || process.env.NODE_ENV !== "production") {
         console.log(`[perf] GET /api/reports/progress p${projectId} → ${report.items.length} items in ${dur}ms`);
       }
-      res.json(report);
+      res.json({ ...report, draftOverlaps });
     } catch (err) {
       console.error("GET /api/reports/progress:", err);
       res.status(500).json({ error: "Failed to build progress report" });

@@ -96,6 +96,7 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [submitIssues, setSubmitIssues] = useState<DprSubmitIssue[]>([]);
+  const initialIssueHandled = useRef(false);
   const sites = useQuery<any[]>({ queryKey: ["/api/sites"] });
   const boq = useDprBoqItems({ siteName: context.site, sites: sites.data ?? [], preferredProjectId: context.boqProjectId, recoveryEvidence: snapshot?.dpr });
   useEffect(() => {
@@ -159,6 +160,8 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
     && (boq.projectId == null || boq.itemsLoaded) && (context.boqProjectId == null || boq.projectId === context.boqProjectId)
     && (snapshot?.dpr.progress ?? []).every((row: any) => row.boqItemId == null || boq.items.some(item => Number(item.id) === Number(row.boqItemId)));
   const readiness = snapshot && boqReady ? evaluateSectionReadiness(snapshot.dpr, boq.items) : null;
+  const overlapIssues = (snapshot?.chainageOverlapIssues ?? []) as DprSubmitIssue[];
+  const readyToSubmit = !!readiness?.ready && overlapIssues.length === 0;
   const fix = (issue: DprReadinessIssue, action?: DprSubmitIssueAction) => {
     setReview(false);
     setError("");
@@ -166,6 +169,20 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
     setTarget(previous => ({ issue, token: (previous?.token ?? 0) + 1, ...(action === "chainage" || action === "reason" ? { action } : {}) }));
     setSection(editorSection(issue.section));
   };
+  useEffect(() => {
+    if (initialIssueHandled.current || !snapshot || !boqReady) return;
+    const query = new URLSearchParams(search);
+    const rowKey = query.get("issueRow");
+    const action = query.get("issueAction") as DprSubmitIssueAction | null;
+    if (rowKey == null || !action) return;
+    const issue = overlapIssues.find(candidate => String(candidate.rowKey) === rowKey)
+      ?? readiness?.mandatory.find(candidate => String(candidate.rowKey ?? candidate.rowIndex) === rowKey);
+    if (!issue) return;
+    initialIssueHandled.current = true;
+    fix(issue, action);
+  // The query is a one-shot navigation instruction; issue identity is resolved from the loaded saved snapshot.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot, boqReady, search]);
   const openCombined = async (guided: boolean) => {
     if (!resolved) {
       const result = await request<DprSectionResolution>("/api/dpr-sections/resolve", "POST", { context });
@@ -210,6 +227,8 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
     }} /> : <>
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">{context.workType === "structure" ? "Structure DPR" : "Road Works DPR"}</h1>
+        <div className="flex items-center gap-2">
+        {snapshot && !final && readyToSubmit && <Button type="button" onClick={() => setReview(true)} disabled={busy} data-testid="button-review-submit-top">Review &amp; Submit</Button>}
         {!final && !candidates && <TooltipProvider>
           <div className="flex shrink-0 items-center gap-1" role="group" aria-label="Optional combined editors">
             <Tooltip>
@@ -230,11 +249,13 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
             </Tooltip>}
           </div>
         </TooltipProvider>}
+        </div>
       </div>
       <Button variant="ghost" onClick={() => setLocation(resolveReturnTo(search, DPR_REGISTER_PATH))}>Back to DPRs</Button>
       <p className="text-muted-foreground">Save each section independently. Only Review &amp; Submit finalizes the DPR.</p>
+      {snapshot && !final && <p className="text-sm text-muted-foreground" data-testid="text-saved-sections-retained">Saved sections are kept. You do not need to save them again.</p>}
       {snapshot && !final && (readiness
-        ? <MissingItems issues={readiness.mandatory} onFix={fix} />
+        ? <MissingItems issues={readiness.mandatory.filter(issue => !overlapIssues.some(overlap => overlap.rowKey === issue.rowKey && overlap.message === issue.message))} onFix={fix} />
         : <p role="status" className="rounded border border-amber-200 p-3 text-sm">
           {boq.itemsError || boq.projectsError ? `BOQ items could not be loaded: ${String(boq.itemsError ?? boq.projectsError)}`
             : context.boqProjectId != null && boq.projectsLoaded && boq.projectId !== context.boqProjectId
@@ -243,6 +264,7 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
                 ? "A saved activity's BOQ item could not be resolved; submission readiness is unavailable."
               : "Checking submission readiness against BOQ items…"}
         </p>)}
+      {snapshot && !final && overlapIssues.length > 0 && <DprSectionsSubmitIssues issues={overlapIssues} onAction={(issue, action) => fix(issue, action)} />}
       {!resolved && !initial && <div className="grid sm:grid-cols-2 gap-4 rounded-lg border p-5">
         <div><Label htmlFor="dpr-site">Site</Label><select id="dpr-site" className="w-full border rounded p-2" value={context.site} onChange={e => setContext({ ...context, site: e.target.value, boqProjectId: null })}>
           <option value="">Choose site</option>{(sites.data ?? []).filter(s => s.isActive !== false && s.isActive !== 0).map(s => <option key={s.id} value={normalizeDprSectionContext({ site: s.name }).site}>{s.name}</option>)}
@@ -275,8 +297,10 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
           {review && snapshot && <section className="border rounded p-5 space-y-3">
             <h2 className="text-xl font-semibold">Review persisted DPR</h2>
             <p>Only saved sections are included. Submission rechecks every section version on the server.</p>
-            {readiness?.mandatory.map((issue, index) => <p key={index}>{issue.label}: {issue.message}</p>)}
-            <Button disabled={busy || !readiness?.ready} onClick={() => void run(async () => {
+            <p className="text-sm text-muted-foreground">Saved sections are kept. You do not need to save them again.</p>
+            {readiness?.mandatory.filter(issue => !overlapIssues.some(overlap => overlap.rowKey === issue.rowKey && overlap.message === issue.message)).map((issue, index) => <p key={index}>{issue.label}: {issue.message}</p>)}
+            {overlapIssues.length > 0 && <DprSectionsSubmitIssues issues={overlapIssues} onAction={(issue, action) => fix(issue, action)} />}
+            <Button disabled={busy || !readyToSubmit} onClick={() => void run(async () => {
               const current = snapshotRef.current!;
               const next = await request<DprSectionSnapshot>(`/api/dpr-sections/${current.dpr.id}/submit`, "POST", {
                 sectionTokens: current.sectionTokens, headerToken: current.headerToken,

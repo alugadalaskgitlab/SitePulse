@@ -9,6 +9,21 @@ export type DraftReadiness = {
   advisories: DprReadinessIssue[];
 };
 
+/** Combine saved-section readiness with the server's canonical chainage result. */
+export function addDraftOverlapReadiness(
+  readiness: DraftReadiness,
+  overlapIssues: DprReadinessIssue[],
+): DraftReadiness {
+  const mandatory = [...readiness.mandatory, ...overlapIssues];
+  return {
+    ...readiness,
+    mandatory,
+    state: overlapIssues.length > 0 ? "blocked"
+      : readiness.state === "unavailable" ? "unavailable"
+        : mandatory.length > 0 ? "blocked" : "ready",
+  };
+}
+
 type BoqContextItem = { id: number; boqProjectId: number; description: string; unit: string };
 type BoqContextProject = { id: number; siteName: string | null };
 type DraftAggregate = {

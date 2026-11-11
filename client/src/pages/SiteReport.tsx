@@ -26,6 +26,7 @@ import { DprEquipmentReadOnlyRow, DprEquipmentReadOnlyTable } from "@/components
 import { hasCompleteDprPerformanceContext, resolveDprActualEfficiency } from "@/lib/dprEquipmentEfficiency";
 import { useDprEquipmentPerformance } from "@/hooks/use-dpr-equipment-performance";
 import { DprActivityReadOnly } from "@/components/DprActivityReadOnly";
+import { DprDraftSubmitDialog } from "@/components/DprDraftSubmitDialog";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { getBaseSiteName } from "@shared/siteName";
@@ -63,6 +64,7 @@ export default function SiteReport() {
   const linkedUsageIds = useMemo(() => Array.from(new Set(
     (dpr?.equipment ?? []).map((row: any) => linkedUsageId(row)).filter((value): value is number => value != null),
   )), [dpr?.equipment]);
+  const isActiveDraft = dpr?.dprStatus === "draft" && !dpr.isDeleted && !dpr.isCancelled && !dpr.isSuperseded;
   const { data: lifecyclePayload } = useQuery<unknown>({
     queryKey: ["/api/equipment-usage/lifecycle", linkedUsageIds.join(",")],
     queryFn: async () => {
@@ -163,14 +165,19 @@ export default function SiteReport() {
       <div>
         <Link href={backLink} className="inline-flex items-center text-xs text-muted-foreground mb-2 print:hidden" data-testid="button-back"><ChevronLeft className="w-4 h-4" /> Back</Link>
         <h1>{dpr.site} <span className="whitespace-nowrap">· DPR #{dpr.id}</span></h1>
-        <p className="dpr-management-subtle mt-1">Daily Progress Report · {format(parseISO(dpr.date.slice(0, 10)), "EEE dd MMM yyyy")} · DPR #{dpr.id} · Engineer: {dpr.engineer} · <strong className="text-foreground">{(dpr as any).dprStatus || "Submitted"}</strong></p>
+        <p className="dpr-management-subtle mt-1">Daily Progress Report · {format(parseISO(dpr.date.slice(0, 10)), "EEE dd MMM yyyy")} · DPR #{dpr.id} · Engineer: {dpr.engineer} · <strong className="text-foreground">{isActiveDraft ? "Draft — not submitted" : (dpr as any).dprStatus || "Submitted"}</strong></p>
       </div>
       <div className="dpr-management-actions print:hidden">
         {featureCan("dpr", "export") && <>
           <Button size="sm" variant="outline" onClick={() => window.print()} data-testid="button-print"><Printer className="w-4 h-4 mr-1" />Print / PDF</Button>
           <Button size="sm" variant="outline" onClick={handleShare} data-testid="button-share-whatsapp" disabled={receipts.isPending || receipts.isError}>Share on WhatsApp</Button>
         </>}
-        {canEdit && <EditPermissionButton recordType="dpr" recordId={id} onEditGranted={handleEditClick} label="Edit" size="sm" variant="secondary" />}
+        {canEdit && isActiveDraft ? <>
+          <DprDraftSubmitDialog dprId={id} returnTo={backLink} />
+          <Button size="sm" variant="secondary" onClick={() => setLocation(withReturnTo(`/site/edit/${id}`, `/site/report/${id}?returnTo=${encodeURIComponent(backLink)}`))} data-testid="button-open-draft-sections">
+            Open sections
+          </Button>
+        </> : canEdit && <EditPermissionButton recordType="dpr" recordId={id} onEditGranted={handleEditClick} label="Edit" size="sm" variant="secondary" />}
       </div>
     </header>
     <div className="dpr-management-summary">

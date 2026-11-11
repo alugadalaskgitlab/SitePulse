@@ -2,6 +2,8 @@ import type { CreateDprRequest } from "./schema";
 import { normalizeDprSiteName } from "./dprBoqSelection";
 import { evaluateDprSubmitReadiness } from "./dprSubmitReadiness";
 import { isMeaningfulEquipmentRow } from "./equipmentUsage";
+import type { DprReadinessIssue } from "./dprSubmitReadiness";
+import type { DraftReadiness } from "./dprDraftReadiness";
 
 export const DPR_SECTIONS = ["activity", "equipment", "labour", "materials"] as const;
 export type DprSection = typeof DPR_SECTIONS[number];
@@ -23,6 +25,9 @@ export type DprSectionSnapshot = {
   sectionTokens: Record<DprSection, string>;
   headerToken: string;
   sections: Record<DprSection, DprSectionState>;
+  /** Server-enriched status shared by the list, section hub, and submit review. */
+  draftReadiness?: DraftReadiness;
+  chainageOverlapIssues?: DprReadinessIssue[];
 };
 export type DprSectionResolution = {
   kind: "new" | "existing" | "choose";

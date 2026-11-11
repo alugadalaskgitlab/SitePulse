@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useDpr } from "@/hooks/use-dprs";
-import { Link, useRoute, useLocation } from "wouter";
+import { Link, useRoute, useLocation, useSearch } from "wouter";
 import { ChevronLeft, Loader2, Printer, Edit, Trash2 } from "lucide-react";
 import { ReportHeader } from "@/components/ReportHeader";
 import { Button } from "@/components/ui/button";
@@ -27,10 +27,13 @@ import { DprMaterialsReceived } from "@/components/DprMaterialsReceived";
 import { LabourWorkerNamesReadOnly } from "@/components/LabourWorkerNames";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
 import { formatDprReference } from "@/lib/dprReference";
+import { DPR_REGISTER_PATH, resolveReturnTo, withReturnTo } from "@/lib/progressReportNav";
 
 export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
   const [, setLocation] = useLocation();
+  const search = useSearch();
+  const returnTo = resolveReturnTo(search, DPR_REGISTER_PATH);
   const id = parseInt(params?.id || "0");
   const { data: dpr, isLoading, error } = useDpr(id);
   const { featureCan, user } = useAuth();
@@ -69,6 +72,7 @@ export default function DprDetails() {
     }))),
     [dpr, linkedBreakdowns],
   );
+  const isActiveDraft = dpr?.dprStatus === "draft" && !dpr.isDeleted && !dpr.isCancelled && !dpr.isSuperseded;
 
   // BOQ item lookup for progress entries — chain: sites → boq project → items
   const { data: sites = [] } = useQuery<Site[]>({
@@ -243,7 +247,17 @@ export default function DprDetails() {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
-          {canEdit && (
+          {canEdit && isActiveDraft ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-2"
+              onClick={() => setLocation(withReturnTo(`/site/edit/${id}`, `/dpr/${id}?returnTo=${encodeURIComponent(returnTo)}`))}
+              data-testid="button-open-draft-sections"
+            >
+              Open sections
+            </Button>
+          ) : canEdit && (
             <Button
               variant="secondary"
               size="sm"

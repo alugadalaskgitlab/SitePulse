@@ -23,6 +23,7 @@ import { equipmentStatusRequiresReason } from "./equipmentStatus";
 import { isMeaningfulEquipmentRow } from "./equipmentUsage";
 import { isFilledLabourRow } from "./labourEntry";
 import { resolveEquipmentBoqHours, calculateEquipmentAllocationHours } from "./equipmentActivityAllocations";
+import type { ChainageOverlapHit } from "./chainageOverlap";
 
 export type DprReadinessSection = "activities" | "equipment" | "labour" | "materials";
 
@@ -45,6 +46,8 @@ export type DprReadinessIssue = {
    * as a rowIndex fallback by DPR forms.
    */
   rowKey?: string | number;
+  /** Included for draft-overlap blockers so every review surface can name the same prior DPR. */
+  overlaps?: ChainageOverlapHit[];
 };
 
 export type DprReadinessResult = {
