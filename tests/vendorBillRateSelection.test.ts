@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  distinctRateCardRateChoices,
   selectAutoMaterialRateConversion,
   SITE_MATERIAL_TRIP_MATERIAL_SOURCE,
   vendorBillAutoSourceIdentity,
@@ -54,33 +53,6 @@ describe("VB22 material-source pull conversion", () => {
       card({ rate: 800, updatedAt: "2026-01-01" }),
       card({ rate: 900, updatedAt: "2026-02-01" }),
     ], "MATERIALS SUPPLIER")).toEqual({ status: "ambiguous" });
-  });
-
-  it("treats equal-rate copies as one option but keeps conflicting rates explicit", () => {
-    const sameRateCopies = [
-      card({ id: 1, vendorName: "ALIAS ONE", vendorId: 22, linkedVendorName: "MATERIALS SUPPLIER", itemKey: "MAT_STONE_DUST_CFT", unit: "CFT", rate: 12 }),
-      card({ id: 2, vendorName: "MATERIALS SUPPLIER", vendorId: 22, linkedVendorName: "MATERIALS SUPPLIER", itemKey: "MAT_STONE_DUST_CFT", unit: "CFT", rate: 12 }),
-    ];
-    expect(selectAutoMaterialRateConversion(
-      { ...materialItem, unit: "CFT" },
-      group,
-      sameRateCopies,
-      "MATERIALS SUPPLIER",
-    )).toMatchObject({ status: "same_unit", rate: 12 });
-    expect(distinctRateCardRateChoices(group, "CFT", sameRateCopies, "MATERIALS SUPPLIER")).toHaveLength(1);
-
-    const conflicting = [
-      card({ id: 1, vendorName: "MATERIALS SUPPLIER", vendorId: 22, linkedVendorName: "MATERIALS SUPPLIER", itemKey: "MAT_STONE_DUST_CFT", unit: "CFT", rate: 12 }),
-      card({ id: 2, vendorName: "ALIAS ONE", vendorId: 22, linkedVendorName: "MATERIALS SUPPLIER", itemKey: "MAT_STONE_DUST_CFT", unit: "CFT", rate: 13 }),
-    ];
-    expect(selectAutoMaterialRateConversion(
-      { ...materialItem, unit: "CFT" },
-      group,
-      conflicting,
-      "MATERIALS SUPPLIER",
-    )).toEqual({ status: "ambiguous" });
-    expect(distinctRateCardRateChoices(group, "CFT", conflicting, "MATERIALS SUPPLIER").map(option => option.rate).sort())
-      .toEqual([12, 13]);
   });
 
   it("C keeps same-trip material and transporter identities independent", () => {

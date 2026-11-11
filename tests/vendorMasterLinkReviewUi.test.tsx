@@ -53,16 +53,9 @@ beforeEach(() => {
     throw new Error(`Unexpected query: ${url}`);
   } } } });
 });
-afterEach(() => { cleanup(); client.clear(); vi.unstubAllGlobals(); window.history.pushState({}, "", "/masters/vendors"); });
+afterEach(() => { cleanup(); client.clear(); vi.unstubAllGlobals(); });
 
 describe("Vendor Master persisted link views", () => {
-  it("opens the existing vendor create form with a saved rate-card name prefilled", async () => {
-    window.history.pushState({}, "", "/masters/vendors?create=1&name=OLD%20SUPPLIER");
-    render(<QueryClientProvider client={client}><VendorMaster /></QueryClientProvider>);
-    expect(screen.getByRole("heading", { name: "New vendor" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Display name *")).toHaveValue("OLD SUPPLIER");
-  });
-
   it("searches master records by name, business, GST, and phone while sorting and counting results", async () => {
     render(<QueryClientProvider client={client}><VendorMaster /></QueryClientProvider>);
     const alpha = await screen.findByText("ALPHA BUILDERS");

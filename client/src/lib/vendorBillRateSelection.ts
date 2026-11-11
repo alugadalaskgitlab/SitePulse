@@ -7,10 +7,7 @@ export type RateSelectionGroup = {
 };
 
 export type VendorRateCardRecord = {
-  id?: number;
   vendorName?: string | null;
-  vendorId?: number | null;
-  linkedVendorName?: string | null;
   category?: string | null;
   itemKey?: string | null;
   unit?: string | null;
@@ -128,47 +125,13 @@ export function matchingRateCardsForGroup(
   const exactVendor = candidates.filter(card =>
     normalizeRateCardPart(card.vendorName) === normalizeRateCardPart(selectedVendor),
   );
-  const exactVendorIds = new Set(exactVendor.map(card => Number(card.vendorId)).filter(Number.isSafeInteger));
-  const canonicalNames = new Set(exactVendor
-    .map(card => normalizeRateCardPart(card.linkedVendorName))
-    .filter(Boolean));
-  const vendorMatches = allowVendorAliases
-    ? candidates.filter(card =>
-      normalizeRateCardPart(card.vendorName) === normalizeRateCardPart(selectedVendor) ||
-      (card.vendorId != null && exactVendorIds.has(Number(card.vendorId))) ||
-      (!!card.linkedVendorName && (
-        normalizeRateCardPart(card.linkedVendorName) === normalizeRateCardPart(selectedVendor) ||
-        canonicalNames.has(normalizeRateCardPart(card.linkedVendorName))
-      )),
-    )
-    : exactVendor;
+  const vendorMatches = allowVendorAliases && !exactVendor.length ? candidates : exactVendor;
   return vendorMatches.sort((a, b) => {
-    const vendorPriority = allowVendorAliases
-      ? Number(normalizeRateCardPart(b.vendorName) === normalizeRateCardPart(selectedVendor)) -
-        Number(normalizeRateCardPart(a.vendorName) === normalizeRateCardPart(selectedVendor))
-      : 0;
     const keyDifference =
       (keyOrder.get(normalizeRateCardPart(a.itemKey)) ?? Number.MAX_SAFE_INTEGER) -
       (keyOrder.get(normalizeRateCardPart(b.itemKey)) ?? Number.MAX_SAFE_INTEGER);
-    return vendorPriority || keyDifference || String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+    return keyDifference || String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
   });
-}
-
-export function distinctRateCardRateChoices(
-  group: RateSelectionGroup,
-  unit: string,
-  rateCards: VendorRateCardRecord[],
-  selectedVendor: string,
-): RateCardUnitOption[] {
-  const matches = matchingRateCardsForGroup(group, unit, rateCards, selectedVendor, { allowVendorAliases: true })
-    .filter(card => Number(card.rate) > 0);
-  const distinct = new Map<string, RateCardUnitOption>();
-  for (const card of matches) {
-    const rate = Number(card.rate);
-    const key = `${normalizeRateCardPart(unit)}:${rate}`;
-    if (!distinct.has(key)) distinct.set(key, { unit: card.unit || unit, rate, card });
-  }
-  return Array.from(distinct.values());
 }
 
 export function defaultConvertedQuantity(_unit: string): number {
@@ -204,17 +167,15 @@ export function selectAutoMaterialRateConversion(
     currentUnit,
     rateCards,
     selectedVendor,
-    { allowVendorAliases: true },
   ).filter(card => Number(card.rate) > 0);
-  const currentRates = Array.from(new Set(currentMatches.map(card => Number(card.rate))));
-  if (currentRates.length === 1) {
+  if (currentMatches.length === 1) {
     return {
       status: "same_unit",
-      rate: currentRates[0],
+      rate: Number(currentMatches[0].rate),
       card: currentMatches[0],
     };
   }
-  if (currentRates.length > 1) return { status: "ambiguous" };
+  if (currentMatches.length > 1) return { status: "ambiguous" };
 
   const alternateUnits = Array.from(new Set(
     rateCards
@@ -223,36 +184,31 @@ export function selectAutoMaterialRateConversion(
       .filter(unit => unit && unit !== currentUnit),
   ));
   const matches = alternateUnits.flatMap(targetUnit =>
-    matchingRateCardsForGroup(group, targetUnit, rateCards, selectedVendor, { allowVendorAliases: true })
+    matchingRateCardsForGroup(group, targetUnit, rateCards, selectedVendor)
       .filter(card => Number(card.rate) > 0)
       .map(card => ({ targetUnit, card })),
   );
 
   if (matches.length === 0) return { status: "no_match" };
-  const distinctMatches = Array.from(new Map(matches.map(match => [
-    `${normalizeRateCardPart(match.targetUnit)}:${Number(match.card.rate)}`,
-    match,
-  ])).values());
-  if (distinctMatches.length !== 1) return { status: "ambiguous" };
+  if (matches.length !== 1) return { status: "ambiguous" };
 
-  const selectedMatch = distinctMatches[0];
   const isExistingMaterialSource = item.sourceType === SITE_MATERIAL_TRIP_MATERIAL_SOURCE;
   const isOneTripCommercialUnit =
     item.sourceType === "site_material_trip" &&
-    selectedMatch.targetUnit === "TRIP";
+    matches[0].targetUnit === "TRIP";
   if (!isExistingMaterialSource && !isOneTripCommercialUnit) {
     return {
       status: "manual_conversion_required",
-      targetUnit: selectedMatch.targetUnit,
-      card: selectedMatch.card,
+      targetUnit: matches[0].targetUnit,
+      card: matches[0].card,
     };
   }
 
   return {
     status: "converted",
-    targetUnit: selectedMatch.targetUnit,
-    quantity: defaultConvertedQuantity(selectedMatch.targetUnit),
-    rate: Number(selectedMatch.card.rate),
-    card: selectedMatch.card,
+    targetUnit: matches[0].targetUnit,
+    quantity: defaultConvertedQuantity(matches[0].targetUnit),
+    rate: Number(matches[0].card.rate),
+    card: matches[0].card,
   };
 }

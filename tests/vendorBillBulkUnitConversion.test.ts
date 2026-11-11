@@ -51,7 +51,7 @@ describe("vendor bill bulk billing-unit conversion", () => {
       card({ category: "transport", rate: 900 }),
       card({ itemKey: "MAT_SOIL_MIX_CFT", rate: 901 }),
       card({ vendorName: "UNRELATED VENDOR", rate: 902 }),
-      card({ vendorName: "FASIUDDIN ALIAS", linkedVendorName: "FASIUDDIN", rate: 903 }),
+      card({ vendorName: "FASIUDDIN ALIAS", rate: 903 }),
     ], "FASIUDDIN");
 
     expect(matches).toHaveLength(1);
@@ -61,7 +61,7 @@ describe("vendor bill bulk billing-unit conversion", () => {
       card({ vendorName: "FASIUDDIN ALIAS", rate: 903 }),
     ], "FASIUDDIN")).toEqual([]);
     expect(matchingRateCardsForGroup(soilGroup, "CFT", [
-      card({ vendorName: "FASIUDDIN ALIAS", linkedVendorName: "FASIUDDIN", rate: 903 }),
+      card({ vendorName: "FASIUDDIN ALIAS", rate: 903 }),
     ], "FASIUDDIN", { allowVendorAliases: true })[0]?.rate).toBe(903);
   });
 

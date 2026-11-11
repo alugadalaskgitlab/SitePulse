@@ -25,7 +25,6 @@ import { hasCumulativeVendorPayment } from "../shared/vendorBillPayment";
 import { normalizeDprSiteName } from "../shared/dprBoqSelection";
 import { hasDprBoqReferences } from "../shared/dprBoqReferences";
 import { isManualVendorRateCard, vendorRateCardIdentity } from "../shared/vendorRateCardIdentity";
-import { rateCardTidyIdentity } from "../shared/vendorRateCardTidy";
 import { vendorBillTripCandidate } from "../shared/vendorBillTripRoles";
 import { tripBillIdentity, tripBillSourcesConflict } from "../shared/vendorBillArrangement";
 import { arrangementBillValidationError } from "../shared/vendorBillArrangementValidation";
@@ -23823,7 +23822,7 @@ export class DatabaseStorage implements IStorage {
         const linkedNames = await currentVendorNamesByIds(cards.map(card => card.vendorId));
         return cards.map(card => ({
           ...card,
-          linkedVendorName: card.vendorId == null ? match.canonicalName : linkedNames.get(Number(card.vendorId)) ?? match.canonicalName,
+          linkedVendorName: card.vendorId == null ? null : linkedNames.get(Number(card.vendorId)) ?? null,
         })) as VendorRateCard[];
       }
       const variants = await this.resolveVendorAliases(vendorName);
@@ -23847,38 +23846,22 @@ export class DatabaseStorage implements IStorage {
     // Legacy/bill write-back is NEVER allowed to set or clear transport basis.
     // Keep an explicit legacy-column allowlist below, even if callers send it.
     const upperVendor = data.vendorName.toUpperCase().trim();
-    let nameMatch = data.vendorId != null
-      ? await resolveVendorNameMatchById(Number(data.vendorId))
-      : null;
-    if (data.vendorId != null && !nameMatch) {
-      throw new Error("Choose an active Vendor Master record before saving this rate card.");
-    }
-    if (nameMatch) nameMatch = await resolveVendorNameMatch(nameMatch.name);
-    else nameMatch = await resolveVendorNameMatch(data.vendorName);
-    const savedVendorName = nameMatch?.canonicalName ?? upperVendor;
-    const savedVendorId = nameMatch?.vendorId ?? null;
+    const upperKey = data.itemKey.toUpperCase().trim();
+    const upperUnit = data.unit.toUpperCase().trim();
+    const nameMatch = await resolveVendorNameMatch(data.vendorName);
     const existingIdentityCondition = nameMatch
       ? vendorNameIdentityCondition(vendorRateCards.vendorName, vendorRateCards.vendorId, nameMatch)
       : sql`UPPER(TRIM(${vendorRateCards.vendorName})) = ${upperVendor}`;
-    const targetIdentity = rateCardTidyIdentity({
-      category: data.category,
-      itemKey: data.itemKey,
-      unit: data.unit,
-    });
-    const existing = (await db.select().from(vendorRateCards)
-      .where(existingIdentityCondition))
-      .filter(card => rateCardTidyIdentity(card) === targetIdentity)
-      .sort((a, b) =>
-        Number(b.vendorId === savedVendorId) - Number(a.vendorId === savedVendorId) ||
-        Number(b.vendorName.trim().toUpperCase() === savedVendorName.trim().toUpperCase()) -
-          Number(a.vendorName.trim().toUpperCase() === savedVendorName.trim().toUpperCase()) ||
-        a.id - b.id,
-      );
+    const existing = await db.select().from(vendorRateCards)
+      .where(and(
+        existingIdentityCondition,
+        sql`UPPER(TRIM(${vendorRateCards.itemKey})) = ${upperKey}`,
+        eq(vendorRateCards.category, data.category),
+        sql`UPPER(TRIM(${vendorRateCards.unit})) = ${upperUnit}`,
+      ));
     if (existing.length > 0) {
       const [updated] = await db.update(vendorRateCards)
         .set({
-          vendorName: nameMatch?.canonicalName ?? existing[0].vendorName,
-          vendorId: savedVendorId,
           rate: data.rate,
           unit: data.unit,
           itemLabel: data.itemLabel,
@@ -23897,9 +23880,9 @@ export class DatabaseStorage implements IStorage {
       unit: data.unit,
       rate: data.rate,
       notes: data.notes,
-      vendorName: savedVendorName,
-      vendorId: savedVendorId,
-      itemKey: data.itemKey.toUpperCase().trim(),
+      vendorName: upperVendor,
+      vendorId: data.vendorId ?? nameMatch?.vendorId ?? null,
+      itemKey: upperKey,
     }).returning();
     return created;
   }

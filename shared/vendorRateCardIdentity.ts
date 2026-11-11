@@ -6,7 +6,7 @@
 export const MANUAL_VENDOR_RATE_CARD_NOTE = "RATE_CARD_MANUAL_ROW";
 
 export function isManualVendorRateCard(notes: string | null | undefined): boolean {
-  return notes?.split(/\r?\n/).some(note => note.trim() === MANUAL_VENDOR_RATE_CARD_NOTE) ?? false;
+  return notes === MANUAL_VENDOR_RATE_CARD_NOTE;
 }
 
 export function vendorRateCardIdentity(category: string | null | undefined, itemKey: string, unit: string | null | undefined): string {

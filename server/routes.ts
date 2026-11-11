@@ -31,7 +31,7 @@ import { getBillFinancialTotals } from "../shared/vendorBillFinancialReport";
 import { buildSavedBillPresentationRows } from "../shared/vendorBillPresentation";
 import { getBaseSiteName } from "../shared/siteName";
 import { vendorIdentityDisplayName } from "../shared/vendorIdentityDisplay";
-import { rateCardTidyIdentity } from "../shared/vendorRateCardTidy";
+import { vendorRateCardIdentity } from "../shared/vendorRateCardIdentity";
 import { receiptSlipSendWindow } from "../shared/receiptSlipStatus";
 import { resolveVendorNameMatch } from "./vendorNameResolution";
 import { isPartyNonPurchaseReceipt } from "@shared/materialReceiptParty";
@@ -66,7 +66,6 @@ import { dprCorrectionService } from "./dprCorrections";
 import { readPermissionAccessAudit } from "./permissionAccessMigration";
 import { TransportRateInputError } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
-import { registerVendorRateCardTidyRoutes } from "./vendorRateCardTidy";
 import { confirmTripHireLink, tripHireReview } from "./tripHireLink";
 import { confirmTripPartyIdentities, tripIdentityLinksInput } from "./tripIdentityLinks";
 import { equipmentVendorIdentities } from "./equipmentVendorIdentity";
@@ -823,7 +822,6 @@ export async function registerRoutes(
     );
   }
   registerVendorMasterRoutes(app, getPermittedSiteNames);
-  registerVendorRateCardTidyRoutes(app, (req, res) => assertFeatureAction(req, res, "rate_cards", "cancel"));
 
   // A plant name alone is not a site grant. Unmapped/shared plants are visible
   // only to all-sites users; never infer their site from a display name.
@@ -14618,13 +14616,9 @@ export async function registerRoutes(
     try {
       const body = req.body ?? {};
       const existing = await storage.getVendorRateCards(body.vendorName || undefined);
-      const identity = rateCardTidyIdentity({
-        category: String(body.category ?? ""),
-        itemKey: String(body.itemKey ?? ""),
-        unit: String(body.unit ?? ""),
-      });
+      const identity = vendorRateCardIdentity(body.category, String(body.itemKey ?? ""), body.unit);
       const isUpdate = existing.some(card =>
-        rateCardTidyIdentity(card) === identity,
+        vendorRateCardIdentity(card.category, card.itemKey, card.unit) === identity,
       );
       if (!assertFeatureAction(req, res, "rate_cards", isUpdate ? "edit" : "add")) return;
       const card = await storage.upsertVendorRateCard(req.body);
@@ -14672,13 +14666,9 @@ export async function registerRoutes(
         if (!existingByVendor.has(cacheKey)) {
           existingByVendor.set(cacheKey, await storage.getVendorRateCards(vendorName || undefined));
         }
-        const identity = rateCardTidyIdentity({
-          category: String(item?.category ?? ""),
-          itemKey: String(item?.itemKey ?? ""),
-          unit: String(item?.unit ?? ""),
-        });
+        const identity = vendorRateCardIdentity(item?.category, String(item?.itemKey ?? ""), item?.unit);
         const isUpdate = (existingByVendor.get(cacheKey) ?? []).some(card =>
-          rateCardTidyIdentity(card) === identity,
+          vendorRateCardIdentity(card.category, card.itemKey, card.unit) === identity,
         );
         if (!assertFeatureAction(req, res, "rate_cards", isUpdate ? "edit" : "add")) return;
       }
