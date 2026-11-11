@@ -23823,7 +23823,7 @@ export class DatabaseStorage implements IStorage {
         const linkedNames = await currentVendorNamesByIds(cards.map(card => card.vendorId));
         return cards.map(card => ({
           ...card,
-          linkedVendorName: card.vendorId == null ? null : linkedNames.get(Number(card.vendorId)) ?? null,
+          linkedVendorName: card.vendorId == null ? match.canonicalName : linkedNames.get(Number(card.vendorId)) ?? match.canonicalName,
         })) as VendorRateCard[];
       }
       const variants = await this.resolveVendorAliases(vendorName);
@@ -23877,7 +23877,7 @@ export class DatabaseStorage implements IStorage {
     if (existing.length > 0) {
       const [updated] = await db.update(vendorRateCards)
         .set({
-          vendorName: savedVendorName,
+          vendorName: nameMatch?.canonicalName ?? existing[0].vendorName,
           vendorId: savedVendorId,
           rate: data.rate,
           unit: data.unit,

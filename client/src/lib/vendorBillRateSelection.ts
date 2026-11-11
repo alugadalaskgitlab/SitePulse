@@ -9,6 +9,8 @@ export type RateSelectionGroup = {
 export type VendorRateCardRecord = {
   id?: number;
   vendorName?: string | null;
+  vendorId?: number | null;
+  linkedVendorName?: string | null;
   category?: string | null;
   itemKey?: string | null;
   unit?: string | null;
@@ -126,7 +128,20 @@ export function matchingRateCardsForGroup(
   const exactVendor = candidates.filter(card =>
     normalizeRateCardPart(card.vendorName) === normalizeRateCardPart(selectedVendor),
   );
-  const vendorMatches = allowVendorAliases ? candidates : exactVendor;
+  const exactVendorIds = new Set(exactVendor.map(card => Number(card.vendorId)).filter(Number.isSafeInteger));
+  const canonicalNames = new Set(exactVendor
+    .map(card => normalizeRateCardPart(card.linkedVendorName))
+    .filter(Boolean));
+  const vendorMatches = allowVendorAliases
+    ? candidates.filter(card =>
+      normalizeRateCardPart(card.vendorName) === normalizeRateCardPart(selectedVendor) ||
+      (card.vendorId != null && exactVendorIds.has(Number(card.vendorId))) ||
+      (!!card.linkedVendorName && (
+        normalizeRateCardPart(card.linkedVendorName) === normalizeRateCardPart(selectedVendor) ||
+        canonicalNames.has(normalizeRateCardPart(card.linkedVendorName))
+      )),
+    )
+    : exactVendor;
   return vendorMatches.sort((a, b) => {
     const vendorPriority = allowVendorAliases
       ? Number(normalizeRateCardPart(b.vendorName) === normalizeRateCardPart(selectedVendor)) -

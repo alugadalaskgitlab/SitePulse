@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import RateCards from "@/pages/RateCards";
 import { MANUAL_VENDOR_RATE_CARD_NOTE } from "@shared/vendorRateCardIdentity";
+import { rateCardTidyIdentity } from "@shared/vendorRateCardTidy";
 
 vi.mock("wouter", () => ({
   Link: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -14,7 +15,7 @@ vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 const access = vi.hoisted(() => ({ view: true, add: true, edit: true, cancel: true }));
 vi.mock("@/lib/auth-context", () => ({
   useAuth: () => ({
-    user: { id: 1, isOwner: false },
+    user: { id: 1, isOwner: true },
     featureCan: (feature: string, action: keyof typeof access) => feature === "rate_cards" && access[action],
   }),
 }));
@@ -44,6 +45,7 @@ let currentRows = persistedManualRows;
 let failingDeleteId: number | null = null;
 let deferDelete = false;
 let finishDeferredDelete: (() => void) | null = null;
+let deletionHistory: any[] = [];
 
 function makeClient() {
   return new QueryClient({
@@ -57,9 +59,11 @@ beforeEach(() => {
   failingDeleteId = null;
   deferDelete = false;
   finishDeferredDelete = null;
+  deletionHistory = [];
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (url === "/api/vendor-rate-cards/history") return new Response(JSON.stringify(deletionHistory));
     if (url.includes("/api/vendor-master")) return new Response(JSON.stringify([{ id: 99, name: vendorName, isActive: true }]));
     if (url.includes("/api/vendor-aliases")) return new Response(JSON.stringify([]));
     if (url.includes("/api/vendor-bills/vendor-names")) return new Response(JSON.stringify([vendorName]));
@@ -74,11 +78,24 @@ beforeEach(() => {
     if (url.includes("/api/equipment-master/canonical-types")) return new Response(JSON.stringify(["ROLLER", "HARVESTER"]));
     if (url.includes("/api/plant-module/materials")) return new Response(JSON.stringify([{ name: "SAND" }]));
     if (url.includes("/api/vendor-rate-cards/") && init?.method === "DELETE") {
-      const id = Number(url.split("/").pop());
+      const parts = url.split("/");
+      const id = Number(parts[parts.length - 1] === "copies" ? parts[parts.length - 2] : parts[parts.length - 1]);
       if (id === failingDeleteId) return new Response(JSON.stringify({ message: "delete failed" }), { status: 500 });
       const completeDelete = () => {
-        currentRows = currentRows.filter(row => row.id !== id);
-        return new Response(JSON.stringify({ success: true }));
+        const seed = currentRows.find(row => row.id === id);
+        const removedRows = seed
+          ? currentRows.filter(row => rateCardTidyIdentity(row) === rateCardTidyIdentity(seed))
+          : [];
+        currentRows = currentRows.filter(row => !removedRows.some(removed => removed.id === row.id));
+        deletionHistory = removedRows.map((row, index) => ({
+          id: index + 1,
+          createdAt: "2026-11-11T12:00:00.000Z",
+          userName: "Owner",
+          oldValues: row,
+          newValues: { operation: "remove_rate_card_copies", removedRow: row },
+          reason: "Removed from Rate Cards after group confirmation",
+        }));
+        return new Response(JSON.stringify({ success: true, removedCount: removedRows.length }));
       };
       if (deferDelete) {
         return new Promise<Response>(resolve => { finishDeferredDelete = () => resolve(completeDelete()); });
@@ -105,7 +122,7 @@ describe("Rate Cards saved-row management", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Remove saved rate for ROLLER - HOURLY HIRE" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Remove saved rate for ROLLER - HOURLY HIRE" })).toBeNull());
     expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) =>
-      String(url) === "/api/vendor-rate-cards/11" && init?.method === "DELETE")).toBe(true);
+      String(url) === "/api/vendor-rate-cards/11/copies" && init?.method === "DELETE")).toBe(true);
   });
   it("shows saved cards only and never requests historical discovery rows", async () => {
     const confirm = vi.fn();
@@ -143,9 +160,9 @@ describe("Rate Cards saved-row management", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Remove saved rate for ROLLER - HOURLY HIRE" }));
     expect(confirm).toHaveBeenCalledTimes(1);
-    expect(confirm.mock.calls[0][0]).toContain("Existing bills keep their saved rates and are not affected.");
+    expect(confirm.mock.calls[0][0]).toBe("Remove ROLLER - HOURLY HIRE (HRS) — 1 saved copies? Existing bills are not affected.");
     expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) =>
-      String(url).includes("/api/vendor-rate-cards/11") && init?.method === "DELETE",
+      String(url).includes("/api/vendor-rate-cards/11/copies") && init?.method === "DELETE",
     )).toBe(false);
 
     confirm.mockReturnValue(true);
@@ -153,13 +170,13 @@ describe("Rate Cards saved-row management", () => {
       fireEvent.click(screen.getByRole("button", { name: `Remove saved rate for ${label}` }));
       await waitFor(() => expect(screen.queryByRole("button", { name: `Remove saved rate for ${label}` })).toBeNull());
       expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) =>
-        String(url).includes(`/api/vendor-rate-cards/${id}`) && init?.method === "DELETE",
+        String(url).includes(`/api/vendor-rate-cards/${id}/copies`) && init?.method === "DELETE",
       )).toBe(true);
     }
     fireEvent.click(screen.getByRole("button", { name: "Remove saved rate for LEGACY SAND" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Remove saved rate for LEGACY SAND" })).toBeNull());
     expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) =>
-      String(url).includes("/api/vendor-rate-cards/15") && init?.method === "DELETE",
+      String(url).includes("/api/vendor-rate-cards/15/copies") && init?.method === "DELETE",
     )).toBe(true);
   });
 
@@ -202,6 +219,35 @@ describe("Rate Cards saved-row management", () => {
     await waitFor(() => expect((screen.getByTestId("button-save-all-rates") as HTMLButtonElement).disabled).toBe(true));
     expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
     finishDeferredDelete?.();
+  });
+
+  it("removes all four 20 MM · MT copies by row identity and refreshes without leaving a blank row", async () => {
+    currentRows = [390, 390, 600, 600].map((rate, index) => ({
+      id: 101 + index,
+      vendorName: ["NARASIMHULU", "NARASIMHULU", "GANGARAM NARSIMHULU", "GANGARAM NARSIMHULU"][index],
+      vendorId: 99,
+      category: "material",
+      itemKey: index % 2 ? "MAT_20_MM_MT" : "MAT_20MM_MT",
+      itemLabel: "20 MM",
+      unit: "MT",
+      rate,
+      notes: null,
+      updatedAt: "2026-11-01T00:00:00.000Z",
+    }));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<QueryClientProvider client={makeClient()}><RateCards /></QueryClientProvider>);
+    const remove = (await screen.findAllByRole("button", { name: "Remove saved rate for 20 MM" }))[0];
+    fireEvent.click(remove);
+    expect(window.confirm).toHaveBeenCalledWith(
+      "Remove 20 MM (MT) — 4 saved copies? Existing bills are not affected.",
+    );
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Remove saved rate for 20 MM" })).toBeNull());
+    expect(currentRows).toHaveLength(0);
+    expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) =>
+      String(url) === "/api/vendor-rate-cards/101/copies" && init?.method === "DELETE",
+    )).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    await waitFor(() => expect(screen.getAllByTestId(/rate-history-entry-/)).toHaveLength(4));
   });
 
 });

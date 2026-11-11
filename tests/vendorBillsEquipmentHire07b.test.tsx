@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import "@testing-library/jest-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -580,6 +581,50 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
         periodTo: "2026-09-30",
       }),
     ]));
+  });
+});
+
+describe("RATECARD-01 vendor bill rate choices", () => {
+  const soilLine = {
+    date: "2026-09-15",
+    category: "material",
+    description: "SOIL (SITE)",
+    qty: 10,
+    unit: "MT",
+    rate: 0,
+    amount: 0,
+    source: "material:1",
+    equipmentId: null,
+  };
+
+  it("leaves a conflicting pull unpriced and prompts to choose a saved rate in Set Rates", async () => {
+    rateCardsForTest = [
+      { id: 1, vendorId: 44, vendorName: "ABC EQUIPMENT", linkedVendorName: "ABC EQUIPMENT", category: "material", itemKey: "MAT_SOIL_MT", unit: "MT", rate: 100 },
+      { id: 2, vendorId: 44, vendorName: "ABC OLD", linkedVendorName: "ABC EQUIPMENT", category: "material", itemKey: "MAT_SOIL_MT", unit: "MT", rate: 125 },
+    ];
+    await openFreshPullBill([soilLine]);
+    fireEvent.click(screen.getByTestId("button-auto-populate"));
+    expect(await screen.findByTestId("warning-item-unit-0")).toHaveTextContent("Two rates on the rate card — choose");
+    expect((screen.getByTestId("input-item-rate-0") as HTMLInputElement).value).toBe("");
+    fireEvent.click(screen.getByTestId("button-choose-rate-0"));
+    expect(await screen.findByText("Two rates on the rate card — choose")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("select-bulk-rate-choice-desc_material_SOIL_MT"));
+    await screen.findAllByRole("option");
+    const choices = screen.getAllByRole("option");
+    expect(choices.some(option => option.textContent?.includes("₹100") && option.textContent.includes("ABC EQUIPMENT"))).toBe(true);
+    expect(choices.some(option => option.textContent?.includes("₹125") && option.textContent.includes("ABC OLD"))).toBe(true);
+    expect(vendorBillWrites).toHaveLength(0);
+  });
+
+  it("still fills a single matching rate during item pull", async () => {
+    rateCardsForTest = [
+      { id: 1, vendorId: 44, vendorName: "ABC EQUIPMENT", linkedVendorName: "ABC EQUIPMENT", category: "material", itemKey: "MAT_SOIL_MT", unit: "MT", rate: 100 },
+    ];
+    await openFreshPullBill([soilLine]);
+    fireEvent.click(screen.getByTestId("button-auto-populate"));
+    await waitFor(() => expect(screen.getByTestId("input-item-rate-0")).toHaveValue(100));
+    expect(screen.queryByTestId("warning-item-unit-0")).toBeNull();
+    expect(vendorBillWrites).toHaveLength(0);
   });
 });
 

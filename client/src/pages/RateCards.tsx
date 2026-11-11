@@ -787,7 +787,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   };
 
   const renderItemRow = (item: DiscoveredItem, idx: number) => (
-    <tr key={item.rateCardId ?? item.itemKey} className="border-t hover:bg-muted/30" data-testid={`row-discovered-item-${idx}`}>
+    <tr key={`rate-card-${item.rateCardId ?? idx}`} className="border-t hover:bg-muted/30" data-testid={`row-discovered-item-${idx}`}>
       <td className="px-3 py-2">
         <div className="font-medium text-sm">{item.itemLabel}</div>
         {item.vendorName && (

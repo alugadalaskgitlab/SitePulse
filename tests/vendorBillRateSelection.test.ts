@@ -58,8 +58,8 @@ describe("VB22 material-source pull conversion", () => {
 
   it("treats equal-rate copies as one option but keeps conflicting rates explicit", () => {
     const sameRateCopies = [
-      card({ id: 1, vendorName: "ALIAS ONE", itemKey: "MAT_STONE_DUST_CFT", unit: "CFT", rate: 12 }),
-      card({ id: 2, vendorName: "MATERIALS SUPPLIER", itemKey: "MAT_STONE_DUST_CFT", unit: "CFT", rate: 12 }),
+      card({ id: 1, vendorName: "ALIAS ONE", vendorId: 22, linkedVendorName: "MATERIALS SUPPLIER", itemKey: "MAT_STONE_DUST_CFT", unit: "CFT", rate: 12 }),
+      card({ id: 2, vendorName: "MATERIALS SUPPLIER", vendorId: 22, linkedVendorName: "MATERIALS SUPPLIER", itemKey: "MAT_STONE_DUST_CFT", unit: "CFT", rate: 12 }),
     ];
     expect(selectAutoMaterialRateConversion(
       { ...materialItem, unit: "CFT" },
@@ -70,8 +70,8 @@ describe("VB22 material-source pull conversion", () => {
     expect(distinctRateCardRateChoices(group, "CFT", sameRateCopies, "MATERIALS SUPPLIER")).toHaveLength(1);
 
     const conflicting = [
-      card({ id: 1, vendorName: "MATERIALS SUPPLIER", itemKey: "MAT_STONE_DUST_CFT", unit: "CFT", rate: 12 }),
-      card({ id: 2, vendorName: "ALIAS ONE", itemKey: "MAT_STONE_DUST_CFT", unit: "CFT", rate: 13 }),
+      card({ id: 1, vendorName: "MATERIALS SUPPLIER", vendorId: 22, linkedVendorName: "MATERIALS SUPPLIER", itemKey: "MAT_STONE_DUST_CFT", unit: "CFT", rate: 12 }),
+      card({ id: 2, vendorName: "ALIAS ONE", vendorId: 22, linkedVendorName: "MATERIALS SUPPLIER", itemKey: "MAT_STONE_DUST_CFT", unit: "CFT", rate: 13 }),
     ];
     expect(selectAutoMaterialRateConversion(
       { ...materialItem, unit: "CFT" },

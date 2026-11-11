@@ -215,8 +215,52 @@ This is the read-only findings report only. No rate-card row was changed or remo
 
 ### Verification
 
-- **Bill fingerprints:** after the tests, compared every bill against the Part A fingerprint table. **0 bills changed**: all 58 bills and 411 bill-item rows match their Part A fingerprints.
-- **Focused tests:** 9 test files passed, 62 tests passed. This includes preview decisions, same-rate grouping, explicit vendor linking, create-form prefill, and existing Rate Cards/Vendor Master/vendor-bill rate selection tests.
+- **Earlier bill fingerprint check:** the earlier Part B run reported 0 changes against its then-current development snapshot. A final recheck for this finish run found the development dataset has since diverged; see **Part B — finish** below. Do not treat the earlier result as confirmation of the current dataset.
+- **Focused tests at that point:** 9 test files passed, 62 tests passed. The final focused run is recorded below.
 - **Build:** `npm run build` passed.
 - **TypeScript check:** the repository-wide `npm run check` still reports 468 diagnostics across 61 files. A filtered check found no diagnostics in the changed Rate Cards, Vendor Master, or new tidy files; the existing `server/routes.ts` diagnostics are outside the new route registration.
-- No schema changes were made. No rate-card, vendor, bill, bill-item, payment, or other development data was changed. Nothing was published.
+- No schema changes were made. No rate-card, vendor, bill, bill-item, payment, or other development data was changed by the Part B actions. Nothing was published.
+
+## Part B — finish
+
+### Saved-row removal and bill-text review
+
+- Saved rate-card rows now use stable database identities in the screen rather than their list position. Removing a row under a Vendor Master removes every saved copy of that same item/unit across the vendor's saved-name aliases, after an exact confirmation that states how many copies will be removed and that existing bills are unaffected.
+- Every removed copy receives its own `vendor_rate_card` audit entry. On success, the visible list and history refresh immediately; on failure, other unsaved edits remain and the removed row is restored.
+- The Tidy preview has a separate “Rows that look like bill text” section. Its checkboxes start unchecked, each candidate shows a “Possible match” hint when available, and Apply removes only the checked rows with audit history.
+- Screen messages use the item/vendor details and do not expose internal rate-card row numbers.
+
+### Vendor Master canonical saves and bill rate choice
+
+- Single-row and bulk saves resolve selected Vendor Master names and aliases to the canonical vendor ID/name. Saving an item/unit already present under that vendor's aliases updates the existing card instead of adding a duplicate.
+- For an unlinked legacy row, an update preserves its existing saved supplier spelling; the canonical rewrite applies when a Vendor Master match exists.
+- Vendor Bills keeps a unique match as an automatic fill. If the same item/unit has conflicting rates across linked names, the item remains unpriced and shows **“Two rates on the rate card — choose”**. Set Rates presents the distinct saved choices with their saved names, does not preselect a rate, and keeps Apply disabled until each conflict is explicitly decided. Pulling or choosing a rate changes the draft form only; saved bills and lines are not edited.
+- Alias rate candidates are accepted only when the returned Vendor Master link/alias identity matches the selected vendor; unrelated vendors remain excluded. The targeted UI test covers both the conflict prompt/no default and the single-match auto-fill.
+
+### Current development bill comparison
+
+This read-only recheck used the development connection only. `current_database()` returned `heliumdb`; the current database has **7 vendor bills and 50 bill-item rows**, compared with the Part A baseline of **58 bills and 411 bill-item rows**. No bill or bill-item writes were issued by this work; the current data therefore cannot be certified as unchanged from the earlier baseline.
+
+| Bill | Part A fingerprint summary | Current development summary | Result |
+|---|---|---|---|
+| HLC/VB/2026/0001 | paid · 8 lines · ₹170,040 | draft · 8 lines · ₹169,822 | Different |
+| HLC/VB/2026/0002 | paid · 4 lines · ₹28,110 | paid · 4 lines · ₹28,110 | Summary matches; current full fingerprint not verified |
+| HLC/VB/2026/0003 | paid · 4 lines · ₹82,840 | paid · 4 lines · ₹82,840 | Summary matches; current full fingerprint not verified |
+| HLC/VB/2026/0004 | paid · 16 lines · ₹193,050 | draft · 1 line · ₹100 | Different |
+| HLC/VB/2026/0006 | paid · 4 lines · ₹40,580 | draft · 2 lines · ₹0 | Different |
+| HLC/VB/2026/0007 | paid · 2 lines · ₹66,246 | draft · 30 lines · ₹348,380 | Different |
+| HLC/VB/2026/0005 | Not in Part A baseline | draft · 1 line · ₹5,000 | Additional current bill |
+
+The other **52 baseline bills are absent** from the current development database:
+
+`HLC/VB/2026/0011, 0008, 0009, 0010, 0012, 0015, 0013, 0014, 0016, 0018, 0019, 0042, 0043, 0021, 0022, 0023, 0024, 0025, 0026, 0027, 0028, 0029, 0030, 0031, 0032, 0033, 0034, 0035, 0036, 0037, 0017, 0038, 0039, 0040, 0041, 0062, 0044, 0046, 0055, 0057, 0048, 0050, 0051, 0052, 0053, 0054, 0059, 0060, 0061, 0064, 0063, 0065`.
+
+Because only six baseline bills overlap and four of those have different summaries, the requested **“0 bills changed”** result cannot be confirmed against the current development data. This report lists the observed differences without attributing them to the Rate Cards work.
+
+### Final verification
+
+- **Focused tests:** 8 files passed, **74 tests passed**: Rate Card tidy preview/apply, bill-text and history UI, vendor rate selection, alias/bulk unit conversion, Rate Cards deletion, storage upsert, legacy transport-rate persistence, and Vendor Bills rate choice/pull behavior.
+- **Full suite:** `npm test` completed with **447 test files passed, 6 failed, 2 skipped**; **5,687 tests passed, 8 failed, 3 skipped** (455 files, 5,698 tests total). The failing files were `arrangementProcurementCorrection.test.ts` (source-text expectation), `dpr19B1SiteDashboard.test.tsx` (“Not ready” vs “Readiness unavailable”), `materialReceiptReversal06mD.test.ts` (Kg→Liters conversion lacks density), `purchase-indent-pi01.test.ts` (Cum→MT conversion lacks density), `unscheduledReportCredit.test.ts` (3 progress-quantity expectations), and `vendorBillVb15Server.test.ts` (fixture row undefined). No Rate Cards test file failed in this final full run.
+- **Build:** `npm run build` passed.
+- The application restarted successfully in test mode; read-only startup readiness reported `ready: true`.
+- No schema changes or application data changes were made. No publish was performed.
