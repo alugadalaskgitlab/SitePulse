@@ -68,7 +68,9 @@ import { TransportRateInputError } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
 import { confirmTripHireLink, tripHireReview } from "./tripHireLink";
 import { confirmTripPartyIdentities, tripIdentityLinksInput } from "./tripIdentityLinks";
-import { equipmentVendorIdentities } from "./equipmentVendorIdentity";
+import { equipmentVendorIdentities, EQUIPMENT_VENDOR_LINK, ownerNameKey } from "./equipmentVendorIdentity";
+import { buildEquipmentVendorOptions } from "./equipmentVendorOptions";
+import { equipmentHireTermsError } from "@shared/equipmentMasterRules";
 import { equipmentMaster as hireIdentityEquipment } from "@shared/schema";
 import { vendors as billingIdentityVendors } from "@shared/schema";
 import { siteMaterialTrips } from "@shared/schema";
@@ -350,6 +352,7 @@ const equipmentMasterCreateBodySchema = insertEquipmentMasterSchema
     standardOutputs: true,
     outputEfficiency: true,
   })
+  .extend({ vendorId: z.number().int().positive().optional() })
   .strict();
 
 const truckDispatchCreateBodySchema = insertTruckDispatchSchema
@@ -5166,6 +5169,20 @@ export async function registerRoutes(
       res.json({ ...await hireResponse(result.statement), vendorBill: result.bill });
     } catch (err: any) { res.status(err?.code === "NOT_FOUND" ? 404 : err?.code === "CONFLICT" ? 409 : err instanceof z.ZodError ? 400 : 500).json({ message: err?.message || "Failed to create vendor bill" }); }
   });
+  app.get("/api/plant-module/equipment-vendors", async (req, res) => {
+    if (!assertView(req, res, "master_equipment")) return;
+    try {
+      const vendorRows = await db.select({ id: vendors.id, name: vendors.name, isActive: vendors.isActive })
+        .from(vendors)
+        .orderBy(asc(vendors.name));
+      const aliases = await db.select({ alias: vendorAliases.alias, canonicalName: vendorAliases.canonicalName })
+        .from(vendorAliases);
+      res.json(buildEquipmentVendorOptions(vendorRows, aliases));
+    } catch {
+      res.status(500).json({ message: "Failed to load equipment vendors" });
+    }
+  });
+
   app.get("/api/plant-module/equipment", async (req, res) => {
     try {
       const includeInactive = req.query.includeInactive === "true";
@@ -5187,12 +5204,70 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "master_equipment")) return;
       const input = parseCreateBody(equipmentMasterCreateBodySchema, req.body, res);
       if (input === null) return;
-      const equipment = await storage.createEquipment({
-        ...input,
-        tallyCostCentreName: trimTallyMappingName(input.tallyCostCentreName),
+      const { vendorId, ...body } = input;
+      const ownership = body.ownership ?? "owned";
+      const hireError = equipmentHireTermsError({
+        ownership,
+        hireBillingBasis: body.hireBillingBasis,
+        hireRate: body.hireRate,
+        hireStartDate: body.hireStartDate,
+        hireEndDate: body.hireEndDate,
       });
+      if (hireError) return res.status(400).json({ message: hireError });
+      if (ownership === "hired" && !vendorId) {
+        return res.status(400).json({ message: "Choose a vendor from Vendor Master for hired equipment." });
+      }
+      if (ownership !== "hired" && vendorId) {
+        return res.status(400).json({ message: "A vendor can only be selected for hired equipment." });
+      }
+      if (ownership === "hired" && body.hireBillingBasis === "monthly" &&
+        body.hireMonthlyDivisorType === "custom" &&
+        (!Number.isFinite(Number(body.hireMonthlyDivisor)) || Number(body.hireMonthlyDivisor) <= 0)) {
+        return res.status(400).json({ message: "Enter a custom monthly divisor greater than zero." });
+      }
+      let vendor: { id: number; name: string } | undefined;
+      if (vendorId) {
+        [vendor] = await db.select({ id: vendors.id, name: vendors.name }).from(vendors)
+          .where(and(eq(vendors.id, vendorId), eq(vendors.isActive, true))).limit(1);
+        if (!vendor) return res.status(400).json({ message: "Choose an active Vendor Master entry." });
+      }
+      const monthlyHire = ownership === "hired" && body.hireBillingBasis === "monthly";
+      const normalizedBody: any = {
+        ...body,
+        name: body.name.trim().toUpperCase(),
+        ownership,
+        vendorName: vendor?.name ?? null,
+        hireBillingBasis: ownership === "hired" ? body.hireBillingBasis ?? null : null,
+        hireRate: monthlyHire ? body.hireRate : null,
+        hireStartDate: monthlyHire ? body.hireStartDate : null,
+        hireEndDate: monthlyHire ? body.hireEndDate ?? null : null,
+        hireDieselResponsibility: monthlyHire ? body.hireDieselResponsibility ?? null : null,
+        hireOperatorResponsibility: monthlyHire ? body.hireOperatorResponsibility ?? null : null,
+        hireAgreementRemarks: monthlyHire ? body.hireAgreementRemarks ?? null : null,
+        hireBreakdownDeductionEnabled: monthlyHire ? body.hireBreakdownDeductionEnabled ?? false : false,
+        hireMonthlyDivisorType: monthlyHire ? body.hireMonthlyDivisorType ?? "calendar" : null,
+        hireMonthlyDivisor: monthlyHire && body.hireMonthlyDivisorType === "custom" ? body.hireMonthlyDivisor : null,
+        tallyCostCentreName: trimTallyMappingName(body.tallyCostCentreName),
+      };
+      const equipment = vendor
+        ? await db.transaction(async tx => {
+          const [created] = await tx.insert(equipmentMasterTable).values(normalizedBody).returning();
+          await tx.insert(auditLogsTable).values({
+            module: "equipment_master",
+            transactionId: created.id,
+            action: EQUIPMENT_VENDOR_LINK,
+            userId: req.authUser?.id ?? null,
+            userName: req.authUser?.fullName ?? "Unknown",
+            reason: "Selected in Equipment Master create form",
+            oldValues: { vendorId: null, recordedName: null },
+            newValues: { vendorId: vendor.id, recordedName: ownerNameKey(vendor.name) },
+          });
+          return created;
+        })
+        : await storage.createEquipment(normalizedBody);
       res.status(201).json(equipment);
     } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.issues.map(issue => issue.message).join("; ") });
       res.status(500).json({ message: "Failed to create equipment" });
     }
   });
@@ -5200,7 +5275,18 @@ export async function registerRoutes(
   app.patch("/api/plant-module/equipment/:id", async (req, res) => {
     try {
       if (!assertEdit(req, res, "master_equipment")) return;
+      const id = z.coerce.number().int().positive().parse(req.params.id);
       const updates = { ...req.body };
+      let selectedVendorId: number | undefined;
+      if (Object.prototype.hasOwnProperty.call(updates, "vendorId")) {
+        selectedVendorId = z.number().int().positive().parse(updates.vendorId);
+        delete updates.vendorId;
+      }
+      delete updates.vendorName;
+      if (Object.prototype.hasOwnProperty.call(updates, "ownership") &&
+        !["owned", "hired"].includes(updates.ownership)) {
+        return res.status(400).json({ message: "Choose owned or hired equipment." });
+      }
       if (Object.prototype.hasOwnProperty.call(updates, "tallyCostCentreName")) {
         const value = updates.tallyCostCentreName;
         if (value != null && typeof value !== "string") {
@@ -5208,10 +5294,89 @@ export async function registerRoutes(
         }
         updates.tallyCostCentreName = trimTallyMappingName(value);
       }
-      const equipment = await storage.updateEquipment(Number(req.params.id), updates);
-      if (!equipment) return res.status(404).json({ message: "Equipment not found" });
-      res.json(equipment);
+      const hireFields = ["ownership", "hireBillingBasis", "hireRate", "hireStartDate", "hireEndDate"];
+      const touchesHireFields = hireFields.some(field => Object.prototype.hasOwnProperty.call(updates, field)) ||
+        selectedVendorId != null;
+      const result = await db.transaction(async tx => {
+        const [current] = await tx.select().from(equipmentMasterTable)
+          .where(eq(equipmentMasterTable.id, id)).for("update");
+        if (!current) return { notFound: true as const };
+        const effectiveOwnership = updates.ownership ?? current.ownership ?? "owned";
+        const effectiveBasis = updates.hireBillingBasis ?? current.hireBillingBasis;
+        if (touchesHireFields) {
+          const hireError = equipmentHireTermsError({
+            ownership: effectiveOwnership,
+            hireBillingBasis: effectiveBasis,
+            hireRate: updates.hireRate ?? current.hireRate,
+            hireStartDate: updates.hireStartDate ?? current.hireStartDate,
+            hireEndDate: updates.hireEndDate ?? current.hireEndDate,
+          });
+          if (hireError) return { validationError: hireError };
+          if (effectiveOwnership === "hired" && effectiveBasis === "monthly" &&
+            (updates.hireMonthlyDivisorType ?? current.hireMonthlyDivisorType) === "custom" &&
+            (!Number.isFinite(Number(updates.hireMonthlyDivisor ?? current.hireMonthlyDivisor)) ||
+              Number(updates.hireMonthlyDivisor ?? current.hireMonthlyDivisor) <= 0)) {
+            return { validationError: "Enter a custom monthly divisor greater than zero." };
+          }
+          if (updates.ownership === "owned") {
+            Object.assign(updates, {
+              hireBillingBasis: null,
+              hireRate: null,
+              hireStartDate: null,
+              hireEndDate: null,
+              hireDieselResponsibility: null,
+              hireOperatorResponsibility: null,
+              hireAgreementRemarks: null,
+              hireBreakdownDeductionEnabled: false,
+              hireMonthlyDivisorType: null,
+              hireMonthlyDivisor: null,
+            });
+          } else if (effectiveOwnership === "hired" && effectiveBasis !== "monthly") {
+            Object.assign(updates, {
+              hireRate: null,
+              hireStartDate: null,
+              hireEndDate: null,
+              hireMonthlyDivisorType: null,
+              hireMonthlyDivisor: null,
+            });
+          }
+        }
+
+        let selectedVendor: { id: number; name: string } | undefined;
+        let currentIdentity: any;
+        if (selectedVendorId) {
+          if (effectiveOwnership !== "hired") {
+            return { validationError: "A vendor can only be selected for hired equipment." };
+          }
+          [selectedVendor] = await tx.select({ id: vendors.id, name: vendors.name }).from(vendors)
+            .where(and(eq(vendors.id, selectedVendorId), eq(vendors.isActive, true))).limit(1);
+          if (!selectedVendor) return { validationError: "Choose an active Vendor Master entry." };
+          currentIdentity = (await equipmentVendorIdentities(tx, [current])).get(current.id);
+          updates.vendorName = selectedVendor.name;
+        }
+        const [saved] = await tx.update(equipmentMasterTable).set(updates).where(eq(equipmentMasterTable.id, id)).returning();
+        if (selectedVendor && (
+          currentIdentity?.vendor?.id !== selectedVendor.id ||
+          ownerNameKey(current.vendorName) !== ownerNameKey(selectedVendor.name)
+        )) {
+          await tx.insert(auditLogsTable).values({
+            module: "equipment_master",
+            transactionId: id,
+            action: EQUIPMENT_VENDOR_LINK,
+            userId: req.authUser?.id ?? null,
+            userName: req.authUser?.fullName ?? "Unknown",
+            reason: "Selected in Equipment Master edit form",
+            oldValues: { vendorId: currentIdentity?.vendor?.id ?? null, recordedName: current.vendorName },
+            newValues: { vendorId: selectedVendor.id, recordedName: ownerNameKey(selectedVendor.name) },
+          });
+        }
+        return { equipment: saved };
+      });
+      if ("notFound" in result) return res.status(404).json({ message: "Equipment not found" });
+      if ("validationError" in result) return res.status(400).json({ message: result.validationError });
+      res.json(result.equipment);
     } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.issues.map(issue => issue.message).join("; ") });
       res.status(500).json({ message: "Failed to update equipment" });
     }
   });

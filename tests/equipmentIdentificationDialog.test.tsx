@@ -172,6 +172,7 @@ describe("Equipment identification dialog orchestration", () => {
         return new Response(JSON.stringify(report(linked ? [] : [pendingRow])), { status: 200 });
       }
       if (url === "/api/plant-module/plant-settings") return new Response("[]", { status: 200 });
+      if (url === "/api/plant-module/equipment-vendors") return new Response("[]", { status: 200 });
       if (url === "/api/plant-module/equipment" && init?.method === "POST") {
         return new Response(JSON.stringify({ id: 73, ...JSON.parse(String(init.body)) }), { status: 201 });
       }
@@ -188,7 +189,6 @@ describe("Equipment identification dialog orchestration", () => {
     await screen.findByTestId("identification-row-19");
     fireEvent.click(screen.getByTestId("add-new-19"));
     expect((await screen.findByTestId("input-equipment-name") as HTMLInputElement).value).toBe("NEW ROAD ROLLER");
-    fireEvent.change(screen.getByTestId("select-equipment-type"), { target: { value: "Tractor" } });
     fireEvent.click(screen.getByTestId("button-save-equipment"));
 
     expect(await screen.findByTestId("partial-link-error")).toBeTruthy();

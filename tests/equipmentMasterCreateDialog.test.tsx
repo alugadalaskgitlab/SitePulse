@@ -12,6 +12,12 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  class ResizeObserverMock {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  vi.stubGlobal("ResizeObserver", ResizeObserverMock);
   Object.defineProperties(HTMLElement.prototype, {
     hasPointerCapture: { configurable: true, value: vi.fn(() => false) },
     setPointerCapture: { configurable: true, value: vi.fn() },
@@ -34,6 +40,9 @@ describe("EQUIP-05 shared Equipment Master creation dialog", () => {
       if (url === "/api/plant-module/plant-settings") {
         return new Response(JSON.stringify([{ id: 1, plantName: "HMP-1", siteName: null }]), { status: 200 });
       }
+      if (url === "/api/plant-module/equipment-vendors") {
+        return new Response(JSON.stringify([{ id: 1, name: "VENDOR ONE", isActive: true, aliases: ["V1"] }]), { status: 200 });
+      }
       if (url === "/api/plant-module/equipment" && init?.method === "POST") {
         const body = JSON.parse(String(init.body));
         return new Response(JSON.stringify({ id: 41, ...body, isActive: 1 }), { status: 201 });
@@ -49,7 +58,6 @@ describe("EQUIP-05 shared Equipment Master creation dialog", () => {
 
     expect((screen.getByTestId("input-equipment-name") as HTMLInputElement).value).toBe("GRADER 1");
     fireEvent.change(screen.getByTestId("input-registration-number"), { target: { value: "mh12ab1234" } });
-    fireEvent.change(screen.getByTestId("select-equipment-type"), { target: { value: "JCB" } });
     fireEvent.click(screen.getByTestId("button-save-equipment"));
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
@@ -58,7 +66,6 @@ describe("EQUIP-05 shared Equipment Master creation dialog", () => {
     expect(JSON.parse(String(post?.init?.body))).toMatchObject({
       name: "GRADER 1",
       registrationNumber: "MH12AB1234",
-      equipmentType: "JCB",
       ownership: "owned",
       meterType: "hour_meter",
       plantName: null,
@@ -82,6 +89,7 @@ describe("EQUIP-05 shared Equipment Master creation dialog", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/plant-module/plant-settings") return new Response("[]", { status: 200 });
+      if (url === "/api/plant-module/equipment-vendors") return new Response(JSON.stringify([{ id: 2, name: "VENDOR ONE", isActive: true, aliases: ["V1"] }]), { status: 200 });
       if (url === "/api/plant-module/equipment" && init?.method === "POST") {
         posted = JSON.parse(String(init.body));
         return new Response(JSON.stringify({ id: 42, ...posted }), { status: 201 });
@@ -93,15 +101,18 @@ describe("EQUIP-05 shared Equipment Master creation dialog", () => {
         <EquipmentMasterCreateDialog open initialName="hired roller" />
       </QueryClientProvider>,
     );
-    fireEvent.change(screen.getByTestId("select-equipment-type"), { target: { value: "Tractor" } });
     fireEvent.change(screen.getByTestId("select-ownership"), { target: { value: "hired" } });
-    fireEvent.change(screen.getByTestId("input-vendor-name"), { target: { value: "vendor one" } });
+    await waitFor(() => expect((screen.getByTestId("button-equipment-vendor-picker") as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByTestId("button-equipment-vendor-picker"));
+    fireEvent.change(screen.getByTestId("input-equipment-vendor-search"), { target: { value: "V1" } });
+    fireEvent.click(screen.getByTestId("option-equipment-vendor-2"));
     fireEvent.click(screen.getByTestId("button-save-equipment"));
 
     await waitFor(() => expect(posted).toBeDefined());
     expect(posted).toMatchObject({
       ownership: "hired",
       vendorName: "VENDOR ONE",
+      vendorId: 2,
       hireBillingBasis: null,
       hireRate: null,
       hireStartDate: null,

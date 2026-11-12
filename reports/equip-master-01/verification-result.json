@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "assertions": [
+    "fixture shows the real EquipmentMasterRows and EquipmentMasterCreateDialog components",
+    "Owned and Hired list, per-tab search, collapsed and expanded rows rendered",
+    "daily/hourly forms omit monthly rate and date fields; monthly form shows them",
+    "all data are local fixture values; no authenticated app or database is used"
+  ],
+  "screenshots": [
+    "/home/runner/workspace/reports/equip-master-01/01-owned-collapsed.png",
+    "/home/runner/workspace/reports/equip-master-01/02-owned-expanded.png",
+    "/home/runner/workspace/reports/equip-master-01/03-hired-owner-search.png",
+    "/home/runner/workspace/reports/equip-master-01/04-hired-daily-expanded.png",
+    "/home/runner/workspace/reports/equip-master-01/05-hired-monthly-expanded.png",
+    "/home/runner/workspace/reports/equip-master-01/06-create-hourly.png",
+    "/home/runner/workspace/reports/equip-master-01/07-create-monthly.png"
+  ]
+}

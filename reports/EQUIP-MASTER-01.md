@@ -159,4 +159,89 @@ use the existing `audit_logs` record (`confirm_vendor_identity`) with the
 selected vendor ID and recorded owner name, so the form can use that existing
 audited mechanism rather than adding a column.
 
-**Part A is complete. Part B has not started.**
+**Part A is complete. Part B is recorded below.**
+
+## Part B — Equipment Master screen and save rules
+
+### Changes
+
+- Added separate Owned and Hired tabs with their own case-insensitive search over
+  the derived machine type, name, registration number, and (for hired rows) saved
+  owner text. Inactive equipment stays hidden until “Show inactive” is selected.
+- Rows now collapse to a single summary line and expand to show equipment
+  details. The displayed Type comes from `canonicalizeMachineType(name)`, not
+  the stored `equipmentType` value. Create and Edit do not ask for a type field.
+- Monthly hired rows show their saved rate in the summary and their monthly hire
+  terms in the expanded detail. Hourly, daily, and trip hire rows show only
+  “Hourly/Daily/Trip hire — rate set when billing”; their rate/date fields are
+  hidden. Create and Edit require a positive rate and start date for monthly
+  hires, and the server enforces the same validation. On editing a non-monthly
+  hire, hidden legacy rate/date values are cleared; viewing the row does not
+  change them.
+- A name edit that changes the derived type pauses for the requested Save /
+  Cancel confirmation. Generator names are read-only with the requested
+  explanation.
+- The hired owner picker searches active Vendor Master names and aliases. It
+  requires an explicit selection for new hired equipment. A changed selection
+  stores the Vendor Master name and writes the existing
+  `audit_logs.confirm_vendor_identity` record; an unchanged or empty selection
+  does not rewrite saved owner text or create a link.
+- Added the Inactive badge and activation control inside each expanded row.
+  No existing record was changed; record #56 (JCB AP21Q7292) was not edited or
+  deactivated.
+
+No schema or database changes were made. Development data and production data
+were not queried or modified. Test records and screenshots below are isolated
+fixtures; they are not a signed-in live screen.
+
+### Screenshots
+
+These screenshots render the actual Equipment Master components with fixture
+records and no database connection.
+
+**Owned, collapsed**
+
+![Owned equipment list, collapsed](equip-master-01/01-owned-collapsed.png)
+
+**Owned, expanded**
+
+![Owned equipment details, expanded](equip-master-01/02-owned-expanded.png)
+
+**Hired search by saved owner**
+
+![Hired equipment filtered by owner text](equip-master-01/03-hired-owner-search.png)
+
+**Hired search by registration and expanded daily-hire row**
+
+![Daily hire details with no rate or date fields](equip-master-01/04-hired-daily-expanded.png)
+
+**Expanded monthly-hire row**
+
+![Monthly hire summary and details](equip-master-01/05-hired-monthly-expanded.png)
+
+**Create hired equipment — hourly**
+
+![Hourly hire form with monthly rate and date fields hidden](equip-master-01/06-create-hourly.png)
+
+**Create hired equipment — monthly**
+
+![Monthly hire form with required rate and start date](equip-master-01/07-create-monthly.png)
+
+### Tests and build
+
+- Focused Equipment Master, lifecycle, identification, and existing Vendor Master
+  identity tests: **5 test files passed, 32 tests passed**.
+- Browser fixture verification completed and wrote all seven screenshots above.
+- `npm run build`: **passed**.
+- The project test workflow also ran the full suite: **5,688 passed, 7 failed,
+  3 skipped** across 455 test files. Failures were in
+  `arrangementProcurementCorrection.test.ts`,
+  `materialReceiptReversal06mD.test.ts`,
+  `purchase-indent-pi01.test.ts`,
+  `unscheduledReportCredit.test.ts` (three tests), and
+  `vendorBillVb15Server.test.ts`; none were in the focused Equipment Master
+  tests. These failures were not changed as part of this screen-only batch.
+- `npm run check` reports 456 TypeScript diagnostics across 58 project files;
+  the production build and focused tests above pass.
+
+**Part B is complete. No publish was performed.**

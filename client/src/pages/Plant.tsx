@@ -32,12 +32,14 @@ import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, M
 import { Switch } from "@/components/ui/switch";
 import type { PlantTankConfig, SingleTankConfig, TankSlot } from "@shared/tank-calibration";
 import { generateChartPreview, parseTankConfig, getTankCapacity, TANK_SHAPE_LABELS, TANK_SLOT_LABELS } from "@shared/tank-calibration";
-import { EQUIPMENT_TYPES, METER_TYPES, PERSONNEL_ROLES } from "@shared/schema";
+import { PERSONNEL_ROLES } from "@shared/schema";
 import { computeTankStock } from "@/lib/ldoStock";
 import { format } from "date-fns";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
-import { vendorIdentityDisplayName } from "@shared/vendorIdentityDisplay";
 import { EquipmentMasterCreateDialog } from "@/components/EquipmentMasterCreateDialog";
+import { EquipmentVendorPicker, type EquipmentVendorChoice } from "@/components/EquipmentVendorPicker";
+import { EquipmentMasterRows } from "@/components/EquipmentMasterRows";
+import { equipmentHireTermsError, equipmentTypeChange, isGeneratorEquipmentName, shouldShowMonthlyHireTerms } from "@shared/equipmentMasterRules";
 import {
   EQUIPMENT_IDENTIFICATION_QUERY_KEY,
   equipmentIdentificationSourceHref,
@@ -4504,7 +4506,9 @@ export function EquipmentMasterSection() {
   const [name, setName] = useState("");
   const [registrationNumber, setRegistrationNumber] = useState("");
   const [ownership, setOwnership] = useState("owned");
-  const [vendorName, setVendorName] = useState("");
+  const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
+  const [originalSelectedVendorId, setOriginalSelectedVendorId] = useState<number | null>(null);
+  const [typeChangePromptOpen, setTypeChangePromptOpen] = useState(false);
   const [tallyCostCentreName, setTallyCostCentreName] = useState("");
   const [hireBasis, setHireBasis] = useState("");
   const [hireRate, setHireRate] = useState("");
@@ -4530,6 +4534,9 @@ export function EquipmentMasterSection() {
   const { data: allPlantSettingsForEquip = [] } = useQuery<PlantSettingsWithSite[]>({
     queryKey: ["/api/plant-module/plant-settings"],
   });
+  const vendorOptions = useQuery<EquipmentVendorChoice[]>({
+    queryKey: ["/api/plant-module/equipment-vendors"],
+  });
 
   const { data: equipment, isLoading } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment", showInactive ? "all" : "active"],
@@ -4540,11 +4547,11 @@ export function EquipmentMasterSection() {
     },
   });
 
-  const filteredEquipment = useMemo(() => {
+  const equipmentForSelectedPlant = useMemo(() => {
     if (!equipment) return [];
     if (filterPlantName === "all") return equipment;
-    if (filterPlantName === "__shared__") return equipment.filter(e => !(e as any).plantName);
-    return equipment.filter(e => (e as any).plantName === filterPlantName);
+    if (filterPlantName === "__shared__") return equipment.filter(item => !(item as any).plantName);
+    return equipment.filter(item => (item as any).plantName === filterPlantName);
   }, [equipment, filterPlantName]);
 
   const updateMutation = useMutation({
@@ -4616,7 +4623,9 @@ export function EquipmentMasterSection() {
     setName("");
     setRegistrationNumber("");
     setOwnership("owned");
-    setVendorName("");
+    setSelectedVendorId(null);
+    setOriginalSelectedVendorId(null);
+    setTypeChangePromptOpen(false);
     setTallyCostCentreName("");
     setHireBasis("");
     setHireRate("");
@@ -4641,7 +4650,8 @@ export function EquipmentMasterSection() {
     setName(equip.name);
     setRegistrationNumber((equip as any).registrationNumber || "");
     setOwnership((equip as any).ownership || "owned");
-    setVendorName((equip as any).vendorName || "");
+    setSelectedVendorId((equip as any).linkedVendorId ?? null);
+    setOriginalSelectedVendorId((equip as any).linkedVendorId ?? null);
     setTallyCostCentreName(equip.tallyCostCentreName || "");
     setHireBasis((equip as any).hireBillingBasis || "");
     setHireRate((equip as any).hireRate != null ? String((equip as any).hireRate) : "");
@@ -4669,45 +4679,30 @@ export function EquipmentMasterSection() {
     setDialogOpen(true);
   };
 
-  const handleSubmit = () => {
-    if (ownership === "hired") {
-      const hasHireTerms = Boolean(hireBasis || hireRate || hireStartDate || hireEndDate || hireRemarks || hireDeductionEnabled);
-      if (hasHireTerms && (!vendorName.trim() || !hireBasis || !hireRate || !hireStartDate)) {
-        toast({ title: "Vendor, hire basis, rate, and start date are required when adding hire terms", variant: "destructive" });
-        return;
-      }
-      if (hasHireTerms && (!Number.isFinite(Number(hireRate)) || Number(hireRate) <= 0)) {
-        toast({ title: "Hire rate must be greater than zero", variant: "destructive" });
-        return;
-      }
-      if (hireEndDate && hireEndDate < hireStartDate) {
-        toast({ title: "Hire end date cannot be before the start date", variant: "destructive" });
-        return;
-      }
-      if (hireBasis === "monthly" && monthlyDivisorType === "custom" && (!Number.isFinite(Number(monthlyDivisorCustom)) || Number(monthlyDivisorCustom) <= 0)) {
-        toast({ title: "Enter a custom monthly divisor greater than zero", variant: "destructive" });
-        return;
-      }
-    }
+  const submitUpdate = () => {
+    if (!editingEquipment) return;
     const stdOutputsArr = CANONICAL_UNITS
       .filter(u => standardOutputsMap[u] && parseFloat(standardOutputsMap[u]) > 0)
       .map(u => ({ unit: u, outputPerHr: parseFloat(standardOutputsMap[u]) }));
+    const monthlyHire = ownership === "hired" && shouldShowMonthlyHireTerms(hireBasis);
     const data = {
       name,
       registrationNumber: registrationNumber || undefined,
       ownership,
-      vendorName: ownership === "hired" ? vendorName || undefined : undefined,
+      ...(ownership === "hired" && selectedVendorId && selectedVendorId !== originalSelectedVendorId
+        ? { vendorId: selectedVendorId }
+        : {}),
       tallyCostCentreName: ownership === "hired" ? tallyCostCentreName : undefined,
-      hireBillingBasis: ownership === "hired" ? hireBasis : null,
-      hireRate: ownership === "hired" ? parseFloat(hireRate) : null,
-      hireStartDate: ownership === "hired" ? hireStartDate : null,
-      hireEndDate: ownership === "hired" ? hireEndDate || null : null,
+      hireBillingBasis: ownership === "hired" ? hireBasis || null : null,
+      hireRate: monthlyHire ? Number(hireRate) : null,
+      hireStartDate: monthlyHire ? hireStartDate : null,
+      hireEndDate: monthlyHire ? hireEndDate || null : null,
       hireDieselResponsibility: ownership === "hired" ? hireDieselResponsibility : null,
       hireOperatorResponsibility: ownership === "hired" ? hireOperatorResponsibility : null,
       hireAgreementRemarks: ownership === "hired" ? hireRemarks || null : null,
       hireBreakdownDeductionEnabled: ownership === "hired" ? hireDeductionEnabled : false,
-      hireMonthlyDivisorType: ownership === "hired" && hireBasis === "monthly" ? monthlyDivisorType : null,
-      hireMonthlyDivisor: ownership === "hired" && hireBasis === "monthly" && monthlyDivisorType === "custom" ? parseFloat(monthlyDivisorCustom) : null,
+      hireMonthlyDivisorType: monthlyHire ? monthlyDivisorType : null,
+      hireMonthlyDivisor: monthlyHire && monthlyDivisorType === "custom" ? parseFloat(monthlyDivisorCustom) : null,
       meterType,
       consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined,
       plantName: plantNameField || null,
@@ -4715,6 +4710,36 @@ export function EquipmentMasterSection() {
       outputEfficiency: outputEfficiency ? parseFloat(outputEfficiency) : null,
     };
     if (editingEquipment) updateMutation.mutate({ id: editingEquipment.id, data });
+  };
+
+  const handleSubmit = () => {
+    if (!editingEquipment) return;
+    if (ownership === "hired") {
+      if (!selectedVendorId && !String((editingEquipment as any).vendorName ?? "").trim()) {
+        toast({ title: "Choose a vendor from Vendor Master for hired equipment", variant: "destructive" });
+        return;
+      }
+      const hireError = equipmentHireTermsError({
+        ownership,
+        hireBillingBasis: hireBasis,
+        hireRate,
+        hireStartDate,
+        hireEndDate,
+      });
+      if (hireError) {
+        toast({ title: hireError, variant: "destructive" });
+        return;
+      }
+      if (shouldShowMonthlyHireTerms(hireBasis) && monthlyDivisorType === "custom" && (!Number.isFinite(Number(monthlyDivisorCustom)) || Number(monthlyDivisorCustom) <= 0)) {
+        toast({ title: "Enter a custom monthly divisor greater than zero", variant: "destructive" });
+        return;
+      }
+    }
+    if (equipmentTypeChange(editingEquipment.name, name).changed) {
+      setTypeChangePromptOpen(true);
+      return;
+    }
+    submitUpdate();
   };
 
   return (
@@ -4739,15 +4764,6 @@ export function EquipmentMasterSection() {
               ))}
             </SelectContent>
           </Select>
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="show-inactive"
-              checked={showInactive}
-              onCheckedChange={(checked) => setShowInactive(checked === true)}
-              data-testid="checkbox-show-inactive"
-            />
-            <Label htmlFor="show-inactive" className="text-sm cursor-pointer">Show Inactive</Label>
-          </div>
         {canCreate && (
           <EquipmentMasterCreateDialog
             trigger={<Button size="sm" className="gap-1" data-testid="button-add-equipment"><Plus className="w-4 h-4" /> Add Equipment</Button>}
@@ -4766,8 +4782,12 @@ export function EquipmentMasterSection() {
                   value={name}
                   onChange={(e) => setName(e.target.value.toUpperCase())}
                   placeholder="e.g., 600 KVA GENERATOR"
+                  readOnly={!!editingEquipment && isGeneratorEquipmentName(editingEquipment.name)}
                   data-testid="input-equipment-name"
                 />
+                {editingEquipment && isGeneratorEquipmentName(editingEquipment.name) && (
+                  <p className="mt-1 text-xs text-muted-foreground">Generator names are linked to plant logs and cannot be renamed here.</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="registration-number">Registration / ID Number</Label>
@@ -4800,20 +4820,49 @@ export function EquipmentMasterSection() {
                     <p className="text-xs text-muted-foreground">The exact ledger or cost centre name as Tally holds it — leave blank if not yet set up in Tally.</p>
                   </div>
                   <div>
-                    <Label htmlFor="vendor-name">Vendor / Contractor Name</Label>
-                    <Input id="vendor-name" value={vendorName} onChange={(e) => setVendorName(e.target.value.toUpperCase())} placeholder="e.g., ABC CONTRACTORS" data-testid="input-vendor-name" />
+                    <Label>Vendor / contractor</Label>
+                    <EquipmentVendorPicker
+                      vendors={vendorOptions.data ?? []}
+                      value={selectedVendorId}
+                      onChange={setSelectedVendorId}
+                      isLoading={vendorOptions.isLoading}
+                      isError={vendorOptions.isError}
+                      selectedNameFallback={(editingEquipment as any)?.linkedVendorName ?? null}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Saved owner: {(editingEquipment as any)?.vendorName || "not set"}. Leave the selection unchanged to preserve the saved owner text; choosing a vendor saves its Vendor Master name.
+                    </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><Label>Hire Basis</Label><Select value={hireBasis} onValueChange={setHireBasis}><SelectTrigger data-testid="select-hire-basis"><SelectValue placeholder="Select basis" /></SelectTrigger><SelectContent><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="daily">Daily</SelectItem><SelectItem value="hourly">Hourly</SelectItem><SelectItem value="trip">Trip</SelectItem></SelectContent></Select></div>
-                    <div><Label>Hire Rate (₹)</Label><Input type="number" min="0" step="0.01" value={hireRate} onChange={e => setHireRate(e.target.value)} data-testid="input-hire-rate" /></div>
-                    <div><Label>Hire Start Date</Label><Input type="date" value={hireStartDate} onChange={e => setHireStartDate(e.target.value)} data-testid="input-hire-start-date" /></div>
-                    <div><Label>Hire End Date <span className="text-muted-foreground">(open-ended if blank)</span></Label><Input type="date" value={hireEndDate} onChange={e => setHireEndDate(e.target.value)} data-testid="input-hire-end-date" /></div>
-                    <div><Label>Diesel Responsibility</Label><Select value={hireDieselResponsibility} onValueChange={setHireDieselResponsibility}><SelectTrigger data-testid="select-hire-diesel-responsibility"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hlc">HLC</SelectItem><SelectItem value="vendor">Vendor</SelectItem></SelectContent></Select></div>
-                    <div><Label>Operator Responsibility</Label><Select value={hireOperatorResponsibility} onValueChange={setHireOperatorResponsibility}><SelectTrigger data-testid="select-hire-operator-responsibility"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hlc">HLC</SelectItem><SelectItem value="vendor">Vendor</SelectItem></SelectContent></Select></div>
+                  <div>
+                    <Label>Hire basis <span className="text-muted-foreground">(optional)</span></Label>
+                    <Select value={hireBasis || "__none__"} onValueChange={value => setHireBasis(value === "__none__" ? "" : value)}>
+                      <SelectTrigger data-testid="select-hire-basis"><SelectValue placeholder="Select basis" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Not set</SelectItem>
+                        <SelectItem value="monthly">Monthly</SelectItem>
+                        <SelectItem value="daily">Daily</SelectItem>
+                        <SelectItem value="hourly">Hourly</SelectItem>
+                        <SelectItem value="trip">Trip</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  {hireBasis === "monthly" && <div className="grid grid-cols-2 gap-3"><div><Label>Monthly Divisor</Label><Select value={monthlyDivisorType} onValueChange={setMonthlyDivisorType}><SelectTrigger data-testid="select-monthly-divisor"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="calendar">Calendar days</SelectItem><SelectItem value="30">30 days</SelectItem><SelectItem value="custom">Custom</SelectItem></SelectContent></Select></div>{monthlyDivisorType === "custom" && <div><Label>Custom Divisor (days)</Label><Input type="number" min="1" step="1" value={monthlyDivisorCustom} onChange={e => setMonthlyDivisorCustom(e.target.value)} data-testid="input-monthly-divisor-custom" /></div>}</div>}
-                  <div className="flex items-center gap-2"><Checkbox id="hire-deduction-enabled" checked={hireDeductionEnabled} onCheckedChange={checked => setHireDeductionEnabled(checked === true)} data-testid="checkbox-hire-deduction-enabled" /><Label htmlFor="hire-deduction-enabled" className="text-sm">Allow vendor breakdown deductions</Label></div>
-                  <div><Label>Hire Remarks</Label><Textarea value={hireRemarks} onChange={e => setHireRemarks(e.target.value)} placeholder="Agreement notes (optional)" data-testid="input-hire-remarks" /></div>
+                  {shouldShowMonthlyHireTerms(hireBasis) && (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div><Label>Hire rate (₹)</Label><Input type="number" min="0" step="0.01" value={hireRate} onChange={e => setHireRate(e.target.value)} data-testid="input-hire-rate" /></div>
+                        <div><Label>Hire start date</Label><Input type="date" value={hireStartDate} onChange={e => setHireStartDate(e.target.value)} data-testid="input-hire-start-date" /></div>
+                        <div><Label>Hire end date <span className="text-muted-foreground">(optional)</span></Label><Input type="date" value={hireEndDate} onChange={e => setHireEndDate(e.target.value)} data-testid="input-hire-end-date" /></div>
+                        <div><Label>Diesel responsibility</Label><Select value={hireDieselResponsibility} onValueChange={setHireDieselResponsibility}><SelectTrigger data-testid="select-hire-diesel-responsibility"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hlc">HLC</SelectItem><SelectItem value="vendor">Vendor</SelectItem></SelectContent></Select></div>
+                        <div><Label>Operator responsibility</Label><Select value={hireOperatorResponsibility} onValueChange={setHireOperatorResponsibility}><SelectTrigger data-testid="select-hire-operator-responsibility"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hlc">HLC</SelectItem><SelectItem value="vendor">Vendor</SelectItem></SelectContent></Select></div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div><Label>Monthly divisor</Label><Select value={monthlyDivisorType} onValueChange={setMonthlyDivisorType}><SelectTrigger data-testid="select-monthly-divisor"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="calendar">Calendar days</SelectItem><SelectItem value="30">30 days</SelectItem><SelectItem value="custom">Custom</SelectItem></SelectContent></Select></div>
+                        {monthlyDivisorType === "custom" && <div><Label>Custom divisor (days)</Label><Input type="number" min="1" step="1" value={monthlyDivisorCustom} onChange={e => setMonthlyDivisorCustom(e.target.value)} data-testid="input-monthly-divisor-custom" /></div>}
+                      </div>
+                      <div className="flex items-center gap-2"><Checkbox id="hire-deduction-enabled" checked={hireDeductionEnabled} onCheckedChange={checked => setHireDeductionEnabled(checked === true)} data-testid="checkbox-hire-deduction-enabled" /><Label htmlFor="hire-deduction-enabled" className="text-sm">Allow vendor breakdown deductions</Label></div>
+                      <div><Label>Hire remarks</Label><Textarea value={hireRemarks} onChange={e => setHireRemarks(e.target.value)} placeholder="Agreement notes (optional)" data-testid="input-hire-remarks" /></div>
+                    </>
+                  )}
                 </div>
               )}
               <div>
@@ -4932,6 +4981,29 @@ export function EquipmentMasterSection() {
             </div>
           </DialogContent>
         </Dialog>
+        <AlertDialog open={typeChangePromptOpen} onOpenChange={setTypeChangePromptOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm equipment type change</AlertDialogTitle>
+              <AlertDialogDescription>
+                {editingEquipment && (() => {
+                  const change = equipmentTypeChange(editingEquipment.name, name);
+                  return `Type changes from ${change.from} to ${change.to}. New bills will use the ${change.to} rates from the rate card. Past records are not changed.`;
+                })()}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="button-cancel-equipment-type-change">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={event => { event.preventDefault(); setTypeChangePromptOpen(false); submitUpdate(); }}
+                disabled={updateMutation.isPending}
+                data-testid="button-confirm-equipment-type-change"
+              >
+                Save
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         </div>
       </CardHeader>
       <CardContent>
@@ -4941,77 +5013,21 @@ export function EquipmentMasterSection() {
           </div>
         ) : !equipment?.length ? (
           <p className="text-muted-foreground text-center py-6">No equipment added yet.</p>
-        ) : !filteredEquipment.length && equipment?.length ? (
+        ) : !equipmentForSelectedPlant.length ? (
           <p className="text-muted-foreground text-center py-6">No equipment for the selected plant filter.</p>
         ) : (
-          <div className="space-y-2">
-            {filteredEquipment.map((equip) => {
-              const isInactive = equip.isActive === 0;
-              const equippedPlantName = (equip as any).plantName as string | null;
-              const linkedVendorName = (equip as any).linkedVendorName as string | null;
-              const equipmentVendorName = vendorIdentityDisplayName({
-                recordedName: (equip as any).vendorName,
-                vendorId: (equip as any).linkedVendorId,
-                linkedVendorName,
-              });
-              return (
-              <div key={equip.id} className={`flex items-center justify-between p-3 rounded-md ${isInactive ? "bg-muted/30 opacity-60" : "bg-muted/50"}`} data-testid={`row-equipment-${equip.id}`}>
-                <div>
-                  <p className="font-medium flex items-center gap-2 flex-wrap">
-                    {formatEquipmentOptionLabel(equip)}
-                    {equippedPlantName ? (
-                      <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" data-testid={`badge-plant-${equip.id}`}>{equippedPlantName}</span>
-                    ) : (
-                      <span className="text-[12px] text-muted-foreground">Shared</span>
-                    )}
-                    {isInactive && <Badge variant="outline" className="text-sm bg-gray-100 dark:bg-gray-800 text-gray-500">Inactive</Badge>}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}
-                  </p>
-                  {equipmentVendorName && <p className="text-sm text-muted-foreground" data-testid={`equipment-vendor-${equip.id}`}>
-                    Vendor: {equipmentVendorName}
-                    {linkedVendorName && (equip as any).vendorName && (equip as any).vendorName !== linkedVendorName
-                      ? <span className="ml-1 text-xs">(recorded: {(equip as any).vendorName})</span>
-                      : null}
-                  </p>}
-                </div>
-                {(canEdit || canDelete) && (
-                  <div className="flex gap-1">
-                    {canEdit && (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => toggleActiveMutation.mutate(equip.id)}
-                          disabled={toggleActiveMutation.isPending}
-                          title={isInactive ? "Activate" : "Deactivate"}
-                          data-testid={`button-toggle-equipment-${equip.id}`}
-                        >
-                          <Power className={`w-4 h-4 ${isInactive ? "text-green-600" : "text-gray-400"}`} />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(equip)} data-testid={`button-edit-equipment-${equip.id}`}>
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                      </>
-                    )}
-                    {canDelete && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeleteEquipmentId(equip.id)}
-                        title="Delete"
-                        data-testid={`button-delete-equipment-${equip.id}`}
-                      >
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-              );
-            })}
-          </div>
+          <EquipmentMasterRows
+            equipment={equipmentForSelectedPlant}
+            showInactive={showInactive}
+            onShowInactiveChange={setShowInactive}
+            vendorMasterNames={(vendorOptions.data ?? []).map(vendor => vendor.name)}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onEdit={openEdit}
+            onToggleActive={id => toggleActiveMutation.mutate(id)}
+            onDelete={setDeleteEquipmentId}
+            togglePending={toggleActiveMutation.isPending}
+          />
         )}
       </CardContent>
 
