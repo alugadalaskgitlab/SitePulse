@@ -3593,7 +3593,7 @@ export class DatabaseStorage implements IStorage {
       if (dprData.progress?.length) {
         const progressWithPersonnel = dprData.progress.map(p => {
           const { personnelIds, persistedId: _persistedId, uomOverrideReason: _uomOverrideReason, ...progressData } = p as any;
-          return { progressData: { ...progressData, dprId, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription, incidentalDescription: progressData.incidentalDescription?.toUpperCase() || progressData.incidentalDescription }, personnelIds: personnelIds || [] };
+          return { progressData: { ...progressData, dprId, reworkNoNewMaterial: progressData.isIncidental === true && progressData.reworkNoNewMaterial === true, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription, incidentalDescription: progressData.incidentalDescription?.toUpperCase() || progressData.incidentalDescription }, personnelIds: personnelIds || [] };
         });
         insertedProgress = await tx.insert(progressEntries).values(
           progressWithPersonnel.map(p => p.progressData)
@@ -4292,7 +4292,7 @@ export class DatabaseStorage implements IStorage {
       if (dprData.progress?.length) {
         const progressWithPersonnel = dprData.progress.map(p => {
           const { personnelIds, persistedId: _persistedId, uomOverrideReason: _uomOverrideReason, ...progressData } = p as any;
-          return { progressData: { ...progressData, dprId: id, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription, incidentalDescription: progressData.incidentalDescription?.toUpperCase() || progressData.incidentalDescription }, personnelIds: personnelIds || [] };
+          return { progressData: { ...progressData, dprId: id, reworkNoNewMaterial: progressData.isIncidental === true && progressData.reworkNoNewMaterial === true, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription, incidentalDescription: progressData.incidentalDescription?.toUpperCase() || progressData.incidentalDescription }, personnelIds: personnelIds || [] };
         });
         const insertedProgress = await tx.insert(progressEntries).values(progressWithPersonnel.map(p => p.progressData)).returning();
         for (let i = 0; i < insertedProgress.length; i++) {
@@ -4602,6 +4602,7 @@ export class DatabaseStorage implements IStorage {
             // 06V: preserve incidental flag + description on clone.
             isIncidental: (p as any).isIncidental ?? false,
             incidentalDescription: (p as any).incidentalDescription != null ? ((p as any).incidentalDescription as string).toUpperCase() : null,
+            reworkNoNewMaterial: (p as any).isIncidental === true && (p as any).reworkNoNewMaterial === true,
             materialOutcome: (p as any).materialOutcome ?? null,
             reusableQty: (p as any).reusableQty ?? null,
           }))
@@ -5360,12 +5361,14 @@ export class DatabaseStorage implements IStorage {
       set = {
         isIncidental: true,
         incidentalDescription: fields.incidentalDescription,
+        reworkNoNewMaterial: false,
         chainageOverrideReason: null,
       };
     } else {
       set = {
         isIncidental: false,
         incidentalDescription: null,
+        reworkNoNewMaterial: false,
         chainageOverrideReason: fields.chainageOverrideReason,
       };
     }
@@ -13508,7 +13511,7 @@ export class DatabaseStorage implements IStorage {
   async getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[]; dateFrom?: string; dateTo?: string }): Promise<{
     site: string; material: string; matched: boolean; uom: string;
     ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number;
-    consumed: number; incidentalConsumed: number; toSupply: number; lying: number; overConsumed: boolean;
+    consumed: number; incidentalConsumed: number; toSupply: number; lying: number; overConsumed: boolean; overConsumedQty: number;
     densitySkips: DensitySkips;
     lastDeliveryDate: string | null;
   }[]> {
@@ -13667,7 +13670,8 @@ export class DatabaseStorage implements IStorage {
     if (dateTo)    progConds.push(lte(dprs.date, dateTo));
     const prog = await db.select({
       site: dprs.site, boqItemId: progressEntries.boqItemId, quantity: progressEntries.quantity,
-      isIncidental: progressEntries.isIncidental,
+       isIncidental: progressEntries.isIncidental,
+       reworkNoNewMaterial: progressEntries.reworkNoNewMaterial,
       dprStatus: dprs.dprStatus, isDeleted: dprs.isDeleted,
       isCancelled: dprs.isCancelled, isSuperseded: dprs.isSuperseded,
       layerConfig: boqItems.layerConfig, itemUnit: boqItems.unit,
@@ -13682,6 +13686,7 @@ export class DatabaseStorage implements IStorage {
     for (const r of recipes) { const a = recipeByItem.get(r.boqItemId) ?? []; a.push(r); recipeByItem.set(r.boqItemId, a); }
     for (const p of prog) {
       if (!isEligibleSubmittedDpr(p)) continue;
+      if (p.reworkNoNewMaterial === true) continue;
       if (p.boqItemId == null || !p.quantity || !p.site) continue;
       const layer = p.layerConfig as any;
       const layerType = String(layer?.layerType ?? "");
@@ -13825,6 +13830,7 @@ export class DatabaseStorage implements IStorage {
           toSupply: round(Math.max(r.ordered - r.delivered, 0)),
           lying: round(balance.lying),
           overConsumed: balance.overConsumed,
+          overConsumedQty: round(Math.max(0, r.consumed - r.delivered)),
           lastDeliveryDate: r.lastDeliveryDate,
           densitySkips: r.densitySkips,
         };

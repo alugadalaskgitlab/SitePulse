@@ -125,6 +125,7 @@ interface ProgressEntry {
   noSiteWorkDescription: string;
   isIncidental: boolean;
   incidentalDescription: string;
+  reworkNoNewMaterial: boolean;
   personnelIds: number[];
   boqItemId: number | null;
   // 030A: direct programme-bar linkage
@@ -904,7 +905,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   }, [attachPersonnelToTarget, toast]);
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
+    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", reworkNoNewMaterial: false, personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }
   ]);
 
   // Batch 06B — chainage duplicate/overlap guard (same neutral shared helper
@@ -1187,6 +1188,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     if (data.workType) setWorkType(data.workType);
     setProgress(data.progress.map((row) => ({
       ...row,
+      reworkNoNewMaterial: row.reworkNoNewMaterial === true,
       ...normalizeExcavationMaterialOutcome(row.quantity, row.materialOutcome, row.reusableQty),
     })));
     if (data.structureItems) setStructureItems(data.structureItems);
@@ -1422,7 +1424,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
 
   const addRow = (section: 'progress' | 'equipment' | 'labour' | 'materials') => {
     if (section === 'progress') {
-      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
+      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", isIncidental: false, incidentalDescription: "", reworkNoNewMaterial: false, personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", executedBy: "", layerNo: null }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, newResourceRow({ [equipmentRowToken]: Symbol("equipment row"), [newEquipmentRow]: true, machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] })]);
     } else if (section === 'labour') {
@@ -1502,6 +1504,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
       // Batch 06V: yesterday copies default to non-incidental
       isIncidental: false,
       incidentalDescription: "",
+      reworkNoNewMaterial: false,
     })));
     const blankEq = { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, openingDiesel: null, dieselBalanceInTank: null, dieselBalanceConfirmed: false, equipmentId: null, dieselSource: "", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null, plantUsageId: null, breakdowns: [] as StagedBreakdown[] };
     if (st.equipment.length > 0) setEquipment(st.equipment.map(e => ({ ...blankEq, ...e, [equipmentRowToken]: Symbol("equipment row") })) as EquipmentEntry[]);
@@ -1523,12 +1526,13 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             chainageFromKm: null, chainageToKm: null,
             quantitySource: null, quantitySourceNote: null,
             chainageOverrideReason: null, executedBy: null,
-            isIncidental: false, incidentalDescription: null,
+            isIncidental: false, incidentalDescription: null, reworkNoNewMaterial: false,
           };
         }
         const effectiveQuantity = p.quantity ?? calculateQuantity(p);
         return {
           ...p,
+          reworkNoNewMaterial: p.isIncidental ? p.reworkNoNewMaterial : false,
           length: effectiveLength,
           quantity: effectiveQuantity,
           uom: progressUom(p) ?? p.uom,
@@ -2649,6 +2653,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                           updated[idx].activity = updated[idx].activity || "NO SITE WORK";
                           // Mutually exclusive with isIncidental
                           updated[idx].isIncidental = false;
+                          updated[idx].reworkNoNewMaterial = false;
                         }
                         setProgress(updated);
                       }}
@@ -2668,7 +2673,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                           setIncidentalConfirm({ idx, qty: creditedQty, uom: entry.uom });
                         } else {
                           setProgress((prev) => prev.map((p, i) => i === idx
-                            ? { ...p, isIncidental: willCheck, noSiteWork: willCheck ? false : p.noSiteWork }
+                            ? { ...p, isIncidental: willCheck, reworkNoNewMaterial: willCheck ? p.reworkNoNewMaterial : false, noSiteWork: willCheck ? false : p.noSiteWork }
                             : p));
                         }
                       }}
@@ -2740,6 +2745,19 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                         rows={2}
                         data-testid={`input-incidental-description-${idx}`}
                       />
+                    </div>
+                    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50/60 p-2">
+                      <Checkbox
+                        id={`rework-no-material-${idx}`}
+                        checked={entry.reworkNoNewMaterial}
+                        onCheckedChange={checked => setProgress(prev => prev.map((row, rowIndex) => rowIndex === idx
+                          ? { ...row, reworkNoNewMaterial: checked === true }
+                          : row))}
+                        data-testid={`checkbox-rework-no-material-${idx}`}
+                      />
+                      <Label htmlFor={`rework-no-material-${idx}`} className="cursor-pointer text-sm">
+                        Rework — no new material used
+                      </Label>
                     </div>
                   </div>
                 )}
@@ -4129,7 +4147,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 if (!incidentalConfirm) return;
                 const idx = incidentalConfirm.idx;
                 setProgress((prev) => prev.map((p, i) => i === idx
-                  ? { ...p, isIncidental: true, noSiteWork: false }
+                  ? { ...p, isIncidental: true, reworkNoNewMaterial: false, noSiteWork: false }
                   : p));
                 setIncidentalConfirm(null);
               }}

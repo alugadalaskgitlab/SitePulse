@@ -100,6 +100,7 @@ describe("STOCK-01 Part B development fixture", () => {
     const totals = aggregateSubmittedDprMaterialUse([
       { ...valid, boqItemId: 17, quantity: 100, isIncidental: false },
       { ...valid, boqItemId: 17, quantity: 25, isIncidental: true },
+      { ...valid, boqItemId: 17, quantity: 40, isIncidental: true, reworkNoNewMaterial: true },
       { ...valid, isDeleted: null, isCancelled: null, isSuperseded: null, boqItemId: 17, quantity: 10, isIncidental: false },
       { ...valid, dprStatus: "draft", boqItemId: 17, quantity: 50, isIncidental: false },
       { ...valid, isDeleted: true, boqItemId: 17, quantity: 10, isIncidental: true },

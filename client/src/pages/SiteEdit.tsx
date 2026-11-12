@@ -126,6 +126,7 @@ interface ProgressEntry {
   // Batch 06V: Incidental / Non-BOQ — recorded but earns no BOQ credit.
   isIncidental: boolean;
   incidentalDescription: string;
+  reworkNoNewMaterial: boolean;
   materialOutcome?: string | null;
   reusableQty?: number | null;
   allocations?: Array<{ sourceEntryKey?: string | null; openingBalanceId?: number | null; quantity: number }>;
@@ -306,10 +307,11 @@ export function mapDprToFormState(dpr: any) {
         layerNo: p.layerNo != null ? Number(p.layerNo) : null,
         isIncidental: !!p.isIncidental,
         incidentalDescription: p.incidentalDescription || "",
+        reworkNoNewMaterial: p.reworkNoNewMaterial === true,
         ...normalizeExcavationMaterialOutcome(p.quantity, p.materialOutcome, p.reusableQty),
         allocations: [],
       }))
-      : [{ entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", lengthOverrideReason: "", uomOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "", materialOutcome: null, reusableQty: null, allocations: [] }];
+      : [{ entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", lengthOverrideReason: "", uomOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "", reworkNoNewMaterial: false, materialOutcome: null, reusableQty: null, allocations: [] }];
 
   const equipment: EquipmentEntry[] = dpr.equipment?.length
     ? dpr.equipment.map((e: any) => ({
@@ -475,7 +477,11 @@ export default function SiteEdit() {
   const correctionFormRef = useRef<DprCorrectionForm | null>(null);
   const [correctionError, setCorrectionError] = useState("");
   const [pendingCorrectionId, setPendingCorrectionId] = useState<number | null>(null);
-  const correctionBusy = corrections.preview.isPending || corrections.save.isPending;
+  const [splitProgress, setSplitProgress] = useState<{
+    sourcePersistedId: number; splitAt: string; secondIsIncidental: boolean;
+    secondIncidentalDescription: string; secondReworkNoNewMaterial: boolean;
+  } | null>(null);
+  const correctionBusy = corrections.preview.isPending || corrections.save.isPending || corrections.withdraw.isPending;
   const pendingOwnCorrection = corrections.history.data?.find(request =>
     request.status === "pending" && Number(request.requestedBy) === Number(authUser?.id));
   const awaitingCorrectionApproval = pendingOwnCorrection != null || pendingCorrectionId != null;
@@ -659,7 +665,7 @@ export default function SiteEdit() {
   });
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", lengthOverrideReason: "", uomOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }
+    { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", lengthOverrideReason: "", uomOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "", reworkNoNewMaterial: false }
   ]);
   const isDraftDpr = (dpr as any)?.dprStatus === "draft" || draftSnapshotHydratedRef.current;
 
@@ -941,6 +947,7 @@ export default function SiteEdit() {
               ...p,
               noSiteWorkDescription: p.noSiteWorkDescription ?? "",
               isIncidental: p.isIncidental ?? false,
+              reworkNoNewMaterial: p.reworkNoNewMaterial ?? false,
               incidentalDescription: p.incidentalDescription ?? "",
               ...normalizeExcavationMaterialOutcome(p.quantity, p.materialOutcome, p.reusableQty),
             })),
@@ -1330,7 +1337,7 @@ export default function SiteEdit() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour') => {
     if (section === 'progress') {
-      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", lengthOverrideReason: "", uomOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "" }]);
+      setProgress([...progress, { entryKey: newEntryKey(), activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null, programmeBarId: null, earthworkArrangementId: null, quantitySource: "", quantitySourceNote: "", chainageOverrideReason: "", lengthOverrideReason: "", uomOverrideReason: "", executedBy: "", layerNo: null, isIncidental: false, incidentalDescription: "", reworkNoNewMaterial: false }]);
     } else if (section === 'equipment') {
       // 06Q: rows added during the edit session are flagged isNew — they get
       // opening-reading continuity when equipment is selected.
@@ -1443,7 +1450,7 @@ export default function SiteEdit() {
           chainageFromKm: null, chainageToKm: null,
           quantitySource: null, quantitySourceNote: null,
           chainageOverrideReason: null, lengthOverrideReason: null, uomOverrideReason: null, executedBy: null,
-          isIncidental: false, incidentalDescription: null,
+          isIncidental: false, incidentalDescription: null, reworkNoNewMaterial: false,
         });
       }
       const effectiveLength = canOverrideGeometry
@@ -1467,6 +1474,7 @@ export default function SiteEdit() {
         // Batch 06V: incidental fields
         isIncidental: p.isIncidental,
         incidentalDescription: p.isIncidental ? (p.incidentalDescription?.trim() || null) : null,
+        reworkNoNewMaterial: p.isIncidental ? p.reworkNoNewMaterial : false,
         ...normalizeExcavationMaterialOutcome(effectiveQuantity, p.materialOutcome, p.reusableQty),
       });
     }) : [],
@@ -1697,6 +1705,7 @@ export default function SiteEdit() {
       correctionFormRef.current = snapshotCorrectionForm({
         header: { ...header, boqProjectId: savedDprBoqProjectId ?? null },
         workType, progress, equipment, labour, materials, sitePurchases,
+        splitProgress,
         structureItems: workType === "structure" || dpr?.structureItems?.length ? structureItems : [],
       });
       setCorrectionOpen(true);
@@ -1754,6 +1763,7 @@ export default function SiteEdit() {
         return;
       }
       clearCredentials();
+      setSplitProgress(null);
       sessionStorage.removeItem(DRAFT_KEY);
       toast({ title: `DPR #${result.id} corrected` });
       setLocation(withDprFocus(resolveDprCompletionReturnTo(
@@ -1866,7 +1876,7 @@ export default function SiteEdit() {
       {isSubmittedCorrection && <>
         <DprCorrectionDialog key={correctionOpen ? "open-review" : "closed-review"} open={correctionOpen} dprId={id}
           review={corrections.preview.data ?? null} loading={corrections.preview.isPending} saving={corrections.save.isPending}
-          error={correctionError} ownerDirect={authUser?.isOwner === true}
+          error={correctionError} ownerDirect={corrections.preview.data?.ownerDirectAllowed === true}
           onClose={() => setCorrectionOpen(false)} onRetry={() => void reviewCorrection()}
           onSubmit={reason => void submitCorrection(reason)} />
         {awaitingCorrectionApproval && <aside role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" data-testid="correction-awaiting-approval">
@@ -1874,11 +1884,16 @@ export default function SiteEdit() {
           <p className="mt-1">The correction request is pending, not saved. The recorded report remains unchanged. Your entered edits are retained below; another authorized reviewer must review the consequences.</p>
         </aside>}
         <DprCorrectionHistory requests={corrections.history.data ?? []} loading={corrections.history.isLoading}
-          error={corrections.history.error?.message} canApprove={canApproveDprCorrections} userId={authUser?.id} busy={corrections.decide.isPending}
+          error={corrections.history.error?.message} canApprove={canApproveDprCorrections} userId={authUser?.id} busy={corrections.decide.isPending || corrections.withdraw.isPending}
           onRetry={() => void corrections.history.refetch()}
           onDecide={async (requestId, approve, reason) => {
             await corrections.decide.mutateAsync({ requestId, approve, reason, confirmImpact: true });
             toast({ title: approve ? "Correction approved" : "Correction denied", description: "Decision recorded. Current entered edits have been retained; open the report to see recorded facts." });
+           }}
+          onWithdraw={async requestId => {
+            await corrections.withdraw.mutateAsync({ requestId });
+            setPendingCorrectionId(null);
+            toast({ title: "Correction request withdrawn", description: "The saved DPR was not changed." });
           }} />
       </>}
       {!isSubmittedCorrection && (liveReadiness ? liveReadiness.mandatory.length > 0 && (
@@ -2294,6 +2309,7 @@ export default function SiteEdit() {
                           updated[idx].activity = updated[idx].activity || "NO SITE WORK";
                           // Mutually exclusive with isIncidental
                           updated[idx].isIncidental = false;
+                          updated[idx].reworkNoNewMaterial = false;
                         }
                         setProgress(updated);
                       }}
@@ -2313,7 +2329,7 @@ export default function SiteEdit() {
                           setIncidentalConfirm({ idx, qty: creditedQty, uom: entry.uom });
                         } else {
                           setProgress((prev) => prev.map((p, i) => i === idx
-                            ? { ...p, isIncidental: willCheck, noSiteWork: willCheck ? false : p.noSiteWork }
+                            ? { ...p, isIncidental: willCheck, reworkNoNewMaterial: willCheck ? p.reworkNoNewMaterial : false, noSiteWork: willCheck ? false : p.noSiteWork }
                             : p));
                         }
                       }}
@@ -2326,7 +2342,7 @@ export default function SiteEdit() {
                   size="icon" 
                   variant="ghost" 
                   onClick={() => removeRow('progress', idx)}
-                  disabled={progress.length === 1}
+                  disabled={isSubmittedCorrection || progress.length === 1}
                   data-testid={`button-remove-progress-${idx}`}
                 >
                   <Trash2 className="w-4 h-4 text-destructive" />
@@ -2386,6 +2402,95 @@ export default function SiteEdit() {
                         data-testid={`input-incidental-description-${idx}`}
                       />
                     </div>
+                    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50/60 p-2">
+                      <Checkbox
+                        id={`rework-no-material-${idx}`}
+                        checked={entry.reworkNoNewMaterial}
+                        onCheckedChange={checked => setProgress(prev => prev.map((row, rowIndex) => rowIndex === idx
+                          ? { ...row, reworkNoNewMaterial: checked === true }
+                          : row))}
+                        data-testid={`checkbox-rework-no-material-${idx}`}
+                      />
+                      <Label htmlFor={`rework-no-material-${idx}`} className="cursor-pointer text-sm">
+                        Rework — no new material used
+                      </Label>
+                    </div>
+                  </div>
+                )}
+                {isSubmittedCorrection && authUser?.isOwner === true && entry.persistedId != null && (
+                  <div className="space-y-3 rounded-md border border-indigo-200 bg-indigo-50/40 p-3" data-testid={`owner-split-progress-${idx}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">Split this saved line into two chainage ranges. Quantity is divided proportionally; no stock or financial posting is made.</p>
+                      <Button type="button" size="sm" variant="outline" onClick={() => setSplitProgress(current =>
+                        current?.sourcePersistedId === entry.persistedId
+                          ? null
+                          : {
+                              sourcePersistedId: Number(entry.persistedId),
+                              splitAt: "",
+                              secondIsIncidental: false,
+                              secondIncidentalDescription: "",
+                              secondReworkNoNewMaterial: false,
+                            },
+                      )}>
+                        {splitProgress?.sourcePersistedId === entry.persistedId ? "Cancel split" : "Split this line"}
+                      </Button>
+                    </div>
+                    {splitProgress?.sourcePersistedId === entry.persistedId && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label htmlFor={`split-chainage-${idx}`} className="text-xs">Split chainage</Label>
+                          <Input
+                            id={`split-chainage-${idx}`}
+                            value={splitProgress.splitAt}
+                            onChange={event => setSplitProgress(current => current?.sourcePersistedId === entry.persistedId
+                              ? { ...current, splitAt: event.target.value }
+                              : current)}
+                            placeholder="e.g. 1+450"
+                            data-testid={`input-split-chainage-${idx}`}
+                          />
+                        </div>
+                        <div className="flex items-start gap-2 pt-5">
+                          <Checkbox
+                            id={`split-incidental-${idx}`}
+                            checked={splitProgress.secondIsIncidental}
+                            onCheckedChange={checked => setSplitProgress(current => current?.sourcePersistedId === entry.persistedId
+                              ? {
+                                  ...current,
+                                  secondIsIncidental: checked === true,
+                                  secondReworkNoNewMaterial: false,
+                                  secondIncidentalDescription: checked ? current.secondIncidentalDescription : "",
+                                }
+                              : current)}
+                          />
+                          <Label htmlFor={`split-incidental-${idx}`} className="cursor-pointer text-xs">Second line is incidental / Non-BOQ</Label>
+                        </div>
+                        {splitProgress.secondIsIncidental && (
+                          <>
+                            <div>
+                              <Label htmlFor={`split-incidental-description-${idx}`} className="text-xs">Second line description</Label>
+                              <Textarea
+                                id={`split-incidental-description-${idx}`}
+                                value={splitProgress.secondIncidentalDescription}
+                                onChange={event => setSplitProgress(current => current?.sourcePersistedId === entry.persistedId
+                                  ? { ...current, secondIncidentalDescription: event.target.value }
+                                  : current)}
+                                rows={2}
+                              />
+                            </div>
+                            <div className="flex items-start gap-2 pt-5">
+                              <Checkbox
+                                id={`split-rework-${idx}`}
+                                checked={splitProgress.secondReworkNoNewMaterial}
+                                onCheckedChange={checked => setSplitProgress(current => current?.sourcePersistedId === entry.persistedId
+                                  ? { ...current, secondReworkNoNewMaterial: checked === true }
+                                  : current)}
+                              />
+                              <Label htmlFor={`split-rework-${idx}`} className="cursor-pointer text-xs">Rework — no new material used</Label>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3" data-testid={`activity-identity-block-${idx}`}>
@@ -3782,7 +3887,7 @@ export default function SiteEdit() {
                 if (!incidentalConfirm) return;
                 const idx = incidentalConfirm.idx;
                 setProgress((prev) => prev.map((p, i) => i === idx
-                  ? { ...p, isIncidental: true, noSiteWork: false }
+                  ? { ...p, isIncidental: true, reworkNoNewMaterial: false, noSiteWork: false }
                   : p));
                 setIncidentalConfirm(null);
               }}

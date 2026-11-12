@@ -37,5 +37,12 @@ export function useDprCorrections(id: number, enabled: boolean) {
       // user input must survive decisions as well as pending submissions.
     },
   });
-  return { history, preview, save, decide };
+  const withdraw = useMutation<unknown, Error, { requestId: number }>({
+    mutationFn: async ({ requestId }) =>
+      (await apiRequest("POST", `/api/dprs/${id}/corrections/${requestId}/withdraw`, {})).json(),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: dprCorrectionsKey(id), refetchType: "all" });
+    },
+  });
+  return { history, preview, save, decide, withdraw };
 }

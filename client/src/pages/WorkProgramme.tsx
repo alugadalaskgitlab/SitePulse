@@ -68,6 +68,7 @@ import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { boqDisplaySourceKey, buildBoqDisplayHierarchy } from "@shared/boqDisplayOrder";
 import { shortItemName, boqItemDisplayName } from "@/lib/itemName";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
+import { WorkValueTable } from "@/components/WorkValueTable";
 import type {
   BoqProject,
   BoqItemWithCategory,
@@ -5200,6 +5201,9 @@ export default function WorkProgramme() {
             <TabsTrigger value="pva" className="flex items-center gap-1.5" data-testid="tab-pva">
               <ArrowLeftRight className="w-3.5 h-3.5" /> Plan vs Actual
             </TabsTrigger>
+            <TabsTrigger value="work-value" className="flex items-center gap-1.5" data-testid="tab-work-value">
+              <TableProperties className="w-3.5 h-3.5" /> Work value
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="gantt">
@@ -5232,6 +5236,9 @@ export default function WorkProgramme() {
 
           <TabsContent value="pva">
             <PlanVsActualTable projectId={projectId} />
+          </TabsContent>
+          <TabsContent value="work-value">
+            <WorkValueTable projectId={projectId} />
           </TabsContent>
         </Tabs>
       )}

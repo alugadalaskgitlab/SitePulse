@@ -23,6 +23,12 @@ export type MaterialPlanRow = {
   boughtSoFarCft: number | null;
   used: number | null;
   usedCft: number | null;
+  lyingAtSite?: number | null;
+  lyingAtSiteCft?: number | null;
+  siteStockWarning?: string | null;
+  balanceWorkNeeds?: number | null;
+  balanceWorkNeedsCft?: number | null;
+  valueOfBalanceWork?: number | null;
   incidentalUsed?: number | null;
   incidentalUsedCft?: number | null;
   atPlantNow: number | null;
@@ -40,7 +46,10 @@ export type MaterialPlanRow = {
     itemName: string | null;
     boqQuantity: number;
     boqUom: string;
+    reachQuantities?: Array<{ reachId: number | null; label: string; quantity: number; effectiveLengthKm: number }>;
+    notNeededQuantity?: number;
     materialNeed: number | null;
+    valueOfBalanceWork?: number | null;
     sourceNote: string | null;
   }>;
   sourceNotes: string[];
@@ -86,6 +95,18 @@ function materialUseText(row: MaterialPlanRow, value: number | null) {
   return row.incidentalUsed != null && row.incidentalUsed > 0
     ? `${used}\nof which incidental: ${quantity(row.incidentalUsed, row.uom, row.incidentalUsedCft ?? null, showCft)}`
     : used;
+}
+function workNeedText(row: MaterialPlanRow) {
+  return row.lines.map(line => {
+    const reaches = (line.reachQuantities ?? []).map(reach =>
+      `${reach.label}: ${reach.quantity.toLocaleString("en-IN", { maximumFractionDigits: 2 })} ${line.boqUom}`,
+    );
+    if ((line.notNeededQuantity ?? 0) > 0) reaches.push(`No-scope: ${Number(line.notNeededQuantity).toLocaleString("en-IN", { maximumFractionDigits: 2 })} ${line.boqUom}`);
+    return `${line.itemCode ? `[${line.itemCode}] ` : ""}${line.itemName || line.description}${reaches.length ? `\n${reaches.join(" · ")}` : ""}`;
+  }).join("\n") || "—";
+}
+function moneyText(value: number | null | undefined) {
+  return value == null ? "—" : `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
 
 export function MaterialsBuyAndWorkDone({
@@ -140,6 +161,7 @@ export function MaterialsBuyAndWorkDone({
       Material: row.materialName,
       For: row.forLabels.join(", "),
       Unit: row.uom,
+      "Need for working reaches": workNeedText(row),
       "Need to buy": byMonth
         ? months.map((month) => {
           const value = row.monthlyNeed[String(month)];
@@ -153,6 +175,11 @@ export function MaterialsBuyAndWorkDone({
         ? quantity(row.atPlantNow, row.uom, row.atPlantNowCft, shouldShowCft(row))
         : "—",
       Used: materialUseText(row, row.used),
+      "Lying at site": row.hasSiteSupply
+        ? row.siteStockWarning ?? quantity(row.lyingAtSite ?? null, row.uom, row.lyingAtSiteCft ?? null, shouldShowCft(row))
+        : "—",
+      "Balance work needs": quantity(row.balanceWorkNeeds ?? null, row.uom, row.balanceWorkNeedsCft ?? null, shouldShowCft(row)),
+      "Value of balance work": moneyText(row.valueOfBalanceWork),
       "Of which incidental": row.incidentalUsed != null && row.incidentalUsed > 0
         ? quantity(row.incidentalUsed, row.uom, row.incidentalUsedCft ?? null, shouldShowCft(row))
         : "—",
@@ -185,11 +212,10 @@ export function MaterialsBuyAndWorkDone({
     doc.text(`Actuals ${from}–${to} · Plant stock is shared across projects and is not reserved.`, 12, 20);
     autoTable(doc, {
       startY: 24,
-      head: [["Material", "For", "Attribution", byMonth ? "Need by programme month" : "Need to buy", "Bought so far / At plant now", "Used", "Still to buy"]],
+      head: [["Material", "Need for working reaches", byMonth ? "Need as bought by month" : "Need as bought", "Bought / At plant now", "Used", "Lying at site", "Balance work needs", "Still to buy", "Value of balance work"]],
       body: rows.map((row) => [
         row.materialName,
-        row.forLabels.join(", "),
-        row.attributions.join(", "),
+        workNeedText(row),
         byMonth
           ? months.map((month) => {
             const value = row.monthlyNeed[String(month)];
@@ -208,9 +234,14 @@ export function MaterialsBuyAndWorkDone({
             : null,
         ].filter(Boolean).join("\n"),
         materialUseText(row, row.used),
+        row.hasSiteSupply
+          ? row.siteStockWarning ?? quantity(row.lyingAtSite ?? null, row.uom, row.lyingAtSiteCft ?? null, shouldShowCft(row))
+          : row.hasPlantMix ? `At plant: ${quantity(row.atPlantNow, row.uom, row.atPlantNowCft, shouldShowCft(row))}` : "—",
+        quantity(row.balanceWorkNeeds ?? null, row.uom, row.balanceWorkNeedsCft ?? null, shouldShowCft(row)),
         row.excess != null
           ? `Excess ${quantity(row.excess, row.uom, row.excessCft, shouldShowCft(row))}`
           : quantity(row.stillToBuy, row.uom, row.stillToBuyCft, shouldShowCft(row)),
+        moneyText(row.valueOfBalanceWork),
       ]),
       styles: { fontSize: 6.5, textColor: [40, 40, 40], lineColor: [175, 175, 175] },
       headStyles: { fillColor: [230, 230, 230], textColor: [20, 20, 20], lineColor: [145, 145, 145] },
@@ -263,14 +294,18 @@ export function MaterialsBuyAndWorkDone({
         {reportQuery.isError && <p className="py-3 text-sm text-red-700">{(reportQuery.error as Error).message}</p>}
         {reportQuery.data && (
           <div className="mt-3 overflow-auto rounded-md border">
-            <table className="min-w-[920px] w-full text-xs" data-testid="table-materials-buy-use">
+            <table className="min-w-[1450px] w-full text-xs" data-testid="table-materials-buy-use">
               <thead className="bg-slate-100 text-left dark:bg-slate-800">
                 <tr>
                   <th className="sticky left-0 bg-slate-100 px-2 py-2 dark:bg-slate-800">Material</th>
-                  <th className="px-2 py-2">Need to buy</th>
-                  <th className="px-2 py-2">{rows.some((row) => row.hasPlantMix || row.sourceType === "plant_mix" || row.sourceType === "mixed") ? "Bought so far / At plant now" : "Bought so far"}</th>
+                  <th className="px-2 py-2">Need for working reaches</th>
+                  <th className="px-2 py-2">Need as bought</th>
+                  <th className="px-2 py-2">Bought / At plant now</th>
                   <th className="px-2 py-2">Used</th>
+                  <th className="px-2 py-2">Lying at site</th>
+                  <th className="px-2 py-2">Balance work needs</th>
                   <th className="px-2 py-2">Still to buy</th>
+                  <th className="px-2 py-2">Value of balance work</th>
                 </tr>
               </thead>
               <tbody>
@@ -315,12 +350,13 @@ export function MaterialsBuyAndWorkDone({
                             </span>
                           </div>
                         </td>
-                        <td className="whitespace-nowrap px-2 py-2 font-mono">{needDisplay}</td>
+                         <td className="max-w-56 whitespace-pre-line px-2 py-2 font-mono text-[10px]">{workNeedText(row)}</td>
+                         <td className="whitespace-nowrap px-2 py-2 font-mono">{needDisplay}</td>
                         <td className="whitespace-nowrap px-2 py-2 font-mono">
-                          {(row.hasSiteSupply || row.sourceType === "site" || row.sourceType === "mixed") && <span className="block">Bought: {quantity(row.boughtSoFar, row.uom, row.boughtSoFarCft, showCft)}</span>}
+                           {(row.hasSiteSupply || row.sourceType === "site" || row.sourceType === "mixed") && <span className="block">Bought: {quantity(row.boughtSoFar, row.uom, row.boughtSoFarCft, showCft)}</span>}
                           {(row.hasPlantMix || row.sourceType === "plant_mix" || row.sourceType === "mixed") && (
                             <span className="block">
-                              <span className="block">At plant now: {quantity(row.atPlantNow, row.uom, row.atPlantNowCft, showCft)}</span>
+                               <span className="block">At plant now: {quantity(row.atPlantNow, row.uom, row.atPlantNowCft, showCft)}</span>
                               {row.plantStockWarning && <span className="block whitespace-normal text-[10px] font-normal text-amber-700">{row.plantStockWarning}</span>}
                             </span>
                           )}
@@ -333,16 +369,24 @@ export function MaterialsBuyAndWorkDone({
                             </span>
                           )}
                         </td>
+                         <td className="whitespace-nowrap px-2 py-2 font-mono">
+                           {row.hasSiteSupply
+                             ? row.siteStockWarning ?? quantity(row.lyingAtSite ?? null, row.uom, row.lyingAtSiteCft ?? null, showCft)
+                             : "—"}
+                         </td>
+                         <td className="whitespace-nowrap px-2 py-2 font-mono">{quantity(row.balanceWorkNeeds ?? null, row.uom, row.balanceWorkNeedsCft ?? null, showCft)}</td>
                         <td className="whitespace-nowrap px-2 py-2 font-mono font-semibold">{remainingDisplay}</td>
+                         <td className="whitespace-nowrap px-2 py-2 text-right font-mono">{moneyText(row.valueOfBalanceWork)}</td>
                       </tr>
                       {isExpanded && (
                         <tr className="border-t bg-teal-50/40 dark:bg-teal-950/20">
-                          <td colSpan={5} className="px-4 py-2">
+                           <td colSpan={9} className="px-4 py-2">
                             <div className="space-y-1">
                               {row.lines.map((line, index) => (
                                 <p key={`${line.boqItemId}-${index}`} className="text-[11px] text-slate-700 dark:text-slate-300">
-                                  {line.itemCode ? `[${line.itemCode}] ` : ""}{line.itemName || line.description} · {line.boqQuantity.toLocaleString("en-IN", { maximumFractionDigits: 2 })} {line.boqUom} → {line.materialNeed == null ? "—" : `${line.materialNeed.toLocaleString("en-IN", { maximumFractionDigits: 2 })} ${row.uom}`}
+                                   {line.itemCode ? `[${line.itemCode}] ` : ""}{line.itemName || line.description} · working-reach share {line.boqQuantity.toLocaleString("en-IN", { maximumFractionDigits: 2 })} {line.boqUom} → {line.materialNeed == null ? "—" : `${line.materialNeed.toLocaleString("en-IN", { maximumFractionDigits: 2 })} ${row.uom}`}
                                   {line.sourceNote && <span className="ml-1 text-slate-500">· {line.sourceNote}</span>}
+                                   {line.valueOfBalanceWork != null && <span className="ml-1 text-slate-500">· work value balance {moneyText(line.valueOfBalanceWork)}</span>}
                                 </p>
                               ))}
                             </div>

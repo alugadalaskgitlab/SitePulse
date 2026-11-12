@@ -20,6 +20,7 @@ export interface DprMaterialUseRow extends DprEligibilityState {
   boqItemId: number | null;
   quantity: number | null;
   isIncidental?: boolean | null;
+  reworkNoNewMaterial?: boolean | null;
 }
 
 export interface DprMaterialUseTotal {
@@ -32,7 +33,7 @@ export function aggregateSubmittedDprMaterialUse(
 ): Map<number, DprMaterialUseTotal> {
   const totals = new Map<number, DprMaterialUseTotal>();
   for (const row of rows) {
-    if (!isEligibleSubmittedDpr(row) || row.boqItemId == null || row.quantity == null) continue;
+    if (!isEligibleSubmittedDpr(row) || row.reworkNoNewMaterial === true || row.boqItemId == null || row.quantity == null) continue;
     const itemId = Number(row.boqItemId);
     const quantity = Number(row.quantity);
     if (!Number.isSafeInteger(itemId) || itemId <= 0 || !Number.isFinite(quantity) || quantity < 0) continue;

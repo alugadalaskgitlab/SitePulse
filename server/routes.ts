@@ -205,6 +205,7 @@ import { materializedEquipmentLogChanged } from "@shared/equipmentMovement";
 import { hasDprBoqReferences, hasPreservedDprBoqReferences } from "@shared/dprBoqReferences";
 import { isEvidenceBasedDprNullProjectRecovery, normalizeDprSiteName } from "@shared/dprBoqSelection";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
+import { allocateBoqQuantityToWorkingReaches, quantityForWorkingReach } from "@shared/workingReachValue";
 import { dprSaveErrorMetadata } from "./dprSaveError";
 import { boqConversionConfigError } from "./boqConversionConfig";
 import {
@@ -2986,6 +2987,7 @@ export async function registerRoutes(
       const oldValues = {
         isIncidental: entry.isIncidental ?? false,
         incidentalDescription: entry.incidentalDescription ?? null,
+        reworkNoNewMaterial: entry.reworkNoNewMaterial ?? false,
         chainageOverrideReason: entry.chainageOverrideReason ?? null,
       };
 
@@ -2996,6 +2998,7 @@ export async function registerRoutes(
       const newValues = {
         isIncidental: updated.isIncidental ?? false,
         incidentalDescription: updated.incidentalDescription ?? null,
+        reworkNoNewMaterial: updated.reworkNoNewMaterial ?? false,
         chainageOverrideReason: updated.chainageOverrideReason ?? null,
       };
 
@@ -3955,8 +3958,21 @@ export async function registerRoutes(
       correctionSection: "progress", correctionRowId: changed[0]?.id, correctionField: "chainageOverrideReason",
     });
     // Use the existing project-link validator, inside the correction transaction.
+    const splitRows = (candidate.progress ?? []).filter((row: any) => row.id == null);
+    for (const row of splitRows) {
+      const validating = { ...candidate, progress: [row] };
+      const fail = (message: string | null | undefined, field: string) => {
+        if (message) throw Object.assign(new Error(message), { correctionSection: "progress", correctionRowId: null, correctionField: field });
+      };
+      fail(await validateVersionProgressGeometry(validating, { allowLengthOverride: true, allowUomOverride: true, sourceProgress: original.progress }), "geometry");
+      fail(await validateProgressProgrammeLinks(validating), "programmeBarId");
+      fail(await validateProgressQuantitySources(validating), "quantity");
+      fail(await validateProgressMaterialOutcomes(validating), "materialOutcome");
+      fail((await validateProgressScope(validating, { authUser: actor }))?.error, "chainageFrom");
+    }
     const changedLinks = (section: string) => (candidate[section] ?? []).filter((row: any) =>
-      changes.some(c => c.section === section && c.rowId === row.id && ["boqItemId", "structureId", "programmeBarId"].includes(c.field)));
+      section === "progress" && row.id == null
+        || changes.some(c => c.section === section && c.rowId === row.id && ["boqItemId", "structureId", "programmeBarId"].includes(c.field)));
     await (storage as any).assertDprProjectLinksTx(tx, original.id, original.boqProjectId,
       { ...candidate, progress: changedLinks("progress"), labour: changedLinks("labour"),
         materials: changedLinks("materials"), structureItems: changedLinks("structureItems") },
@@ -3992,6 +4008,12 @@ export async function registerRoutes(
     try {
       if (!await correctionAccess(req, res, "approve")) return;
       res.json(await corrections.decide(Number(req.params.id), Number(req.params.requestId), req.body, req.authUser!));
+    } catch (error) { correctionFailure(res, error); }
+  });
+  app.post("/api/dprs/:id/corrections/:requestId/withdraw", async (req, res) => {
+    try {
+      if (!await correctionAccess(req, res, "edit")) return;
+      res.json(await corrections.withdraw(Number(req.params.id), Number(req.params.requestId), req.authUser!));
     } catch (error) { correctionFailure(res, error); }
   });
 
@@ -19754,7 +19776,7 @@ export async function registerRoutes(
   // P1→P4 source priority. Used by BOTH /bom and /shortage-check so the two endpoints
   // can never drift apart. (Previously /shortage-check referenced an `expandedItems`
   // that only existed inside /bom → ReferenceError → empty Procurement Intelligence.)
-  async function computeProjectBom(projectId: number) {
+  async function computeProjectBom(projectId: number, includeAllItems = false) {
       const [allBoqItems, bars, project, allMaterials, rmcDesigns, allMixTemplates, projectMaterialMappings, legacyLooseProfiles] = await Promise.all([
         storage.getBoqItemsWithRecipes(projectId),
         storage.getWorkProgramBars(projectId),
@@ -19770,7 +19792,9 @@ export async function registerRoutes(
       ]);
 
       // Filter to items included in planning (excluded items stay in BOQ for billing only)
-      const items = allBoqItems.filter(it => it.includedInPlanning !== false);
+      const items = includeAllItems
+        ? allBoqItems
+        : allBoqItems.filter(it => it.includedInPlanning !== false);
 
       // Build materialId → name map for resolving mix template component names
       const matNameById = new Map(allMaterials.map(m => [m.id, m.name]));
@@ -20537,8 +20561,13 @@ export async function registerRoutes(
         ? null
         : (await storage.getSites()).find((candidate) => candidate.id === project.siteId) ?? null;
       if (!site) return res.status(400).json({ message: "This BOQ project has no linked site." });
+      const scopeSegments = (await storage.getProjectScopeSegments(projectId)).map((segment: any) => ({
+        ...segment,
+        categoryIds: safeIdList(segment.categoryIds),
+        itemIds: safeIdList(segment.itemIds),
+      })) as ScopeSegmentLike[];
 
-      const [arrangements, allocations, materialMasters, materialConversionProfiles, siteTrips, materialReceiptRows, dispatches, dprRows, storeIssueRows, templates, templateComponents, hlcPartyId] = await Promise.all([
+      const [arrangements, allocations, materialMasters, materialConversionProfiles, siteTrips, materialReceiptRows, dispatches, dprRows, storeIssueRows, templates, templateComponents, hlcPartyId, siteStockRows] = await Promise.all([
         storage.getEarthworkArrangements(projectId),
         storage.getArrangementProgrammeAllocationsForProject(projectId),
         storage.getPlantMaterials(),
@@ -20600,6 +20629,7 @@ export async function registerRoutes(
           boqItemId: progressEntriesTable.boqItemId,
           quantity: progressEntriesTable.quantity,
           isIncidental: progressEntriesTable.isIncidental,
+          reworkNoNewMaterial: progressEntriesTable.reworkNoNewMaterial,
           dprStatus: dprsTable.dprStatus,
           isDeleted: dprsTable.isDeleted,
           isCancelled: dprsTable.isCancelled,
@@ -20649,6 +20679,7 @@ export async function registerRoutes(
           percent: mixTemplateComponents.percent,
         }).from(mixTemplateComponents),
         storage.getHlcPartyId(),
+        storage.getSiteMaterialReconciliation({ permittedSiteNames: [site.name] }),
       ]);
 
       const allocationByArrangement = new Map<number, Array<{ programmeBarId: number; boqItemId: number; qty: number }>>();
@@ -20802,6 +20833,11 @@ export async function registerRoutes(
         usedComplete: boolean;
         incidentalUsed: number;
         incidentalUsedComplete: boolean;
+        lyingAtSite: number | null;
+        siteStockComplete: boolean;
+        siteOverConsumedQty: number;
+        balanceWorkNeed: number;
+        valueBalanceWork: number | null;
         atPlantNow: number;
         stockComplete: boolean;
         lines: Array<{
@@ -20811,7 +20847,10 @@ export async function registerRoutes(
           itemName: string | null;
           boqQuantity: number;
           boqUom: string;
+          reachQuantities: Array<{ reachId: number | null; label: string; quantity: number; effectiveLengthKm: number }>;
+          notNeededQuantity: number;
           materialNeed: number | null;
+          valueOfBalanceWork: number | null;
           sourceNote: string | null;
         }>;
         matchNames: Set<string>;
@@ -20851,8 +20890,43 @@ export async function registerRoutes(
       };
 
       for (const item of bom.expandedItems as any[]) {
-        const itemBars = barsByItem.get(Number(item.id)) ?? [];
-        const itemDemand = calculateBomDemand([item], itemBars as any, totalMonths, { arrangements: demandArrangements });
+        const itemId = Number(item.id);
+        const itemQty = Number(item.currentQty) || 0;
+        const scopeAllocation = allocateBoqQuantityToWorkingReaches({
+          boqItemId: itemId,
+          categoryId: item.categoryId == null ? null : Number(item.categoryId),
+          isLinear: !["structure", "non_linear"].includes(String(item.layerConfig?.layerType ?? item.workCategory ?? "").toLowerCase()),
+          currentQty: itemQty,
+        }, scopeSegments);
+        const scopedItem = { ...item, currentQty: scopeAllocation.workingQuantity };
+        const scopeRatio = itemQty > 0 ? scopeAllocation.workingQuantity / itemQty : 0;
+        const itemScopedArrangements = demandArrangements.map((arrangement: any) => {
+          const linked = (arrangement.programmeAllocations ?? [])
+            .filter((allocation: any) => Number(allocation.boqItemId) === itemId)
+            .reduce((sum: number, allocation: any) => sum + (Number(allocation.qty) || 0), 0);
+          const explicit = (arrangement.boqItemAllocations ?? [])
+            .filter((allocation: any) => Number(allocation.boqItemId) === itemId)
+            .reduce((sum: number, allocation: any) => sum + (Number(allocation.qty) || 0), 0);
+          const unlinked = Number(arrangement.boqItemId) === itemId ? Number(arrangement.allocatedQty) || 0 : 0;
+          const scopedQty = Math.max(linked || explicit || unlinked, 0) * scopeRatio;
+          if (scopedQty <= 0) return null;
+          return {
+            ...arrangement,
+            boqItemId: itemId,
+            allocatedQty: scopedQty,
+            boqItemAllocations: [{ boqItemId: itemId, qty: scopedQty }],
+            programmeAllocations: [],
+          };
+        }).filter(Boolean);
+        const itemBars = barsByItem.get(itemId) ?? [];
+        const programmeQty = itemBars.reduce((sum: number, bar: any) => sum + Math.max(0, Number(bar.plannedQty) || 0), 0);
+        const demandBars = programmeQty > 0
+          ? itemBars.map((bar: any) => ({
+              ...bar,
+              plannedQty: Math.max(0, Number(bar.plannedQty) || 0) * scopeAllocation.workingQuantity / programmeQty,
+            }))
+          : [];
+        const itemDemand = calculateBomDemand([scopedItem], demandBars as any, totalMonths, { arrangements: itemScopedArrangements as any[] });
         for (const demandRow of itemDemand.materials) {
           const breakdown = demandRow.breakdown?.[0];
           const layerType = String(item.layerConfig?.layerType ?? "");
@@ -20888,6 +20962,11 @@ export async function registerRoutes(
             usedComplete: true,
             incidentalUsed: 0,
             incidentalUsedComplete: true,
+            lyingAtSite: null,
+            siteStockComplete: true,
+            siteOverConsumedQty: 0,
+            balanceWorkNeed: 0,
+            valueBalanceWork: 0,
             atPlantNow: 0,
             stockComplete: true,
             lines: [],
@@ -20936,9 +21015,14 @@ export async function registerRoutes(
             itemCode: item.itemCode ?? null,
             description: String(item.description ?? ""),
             itemName: item.itemName ?? null,
-            boqQuantity: Number(breakdown?.workQty ?? item.currentQty) || 0,
+            boqQuantity: scopeAllocation.workingQuantity,
             boqUom: String(item.canonicalUnit ?? item.unit ?? ""),
+            reachQuantities: scopeAllocation.shares.map(share => ({
+              reachId: share.reachId, label: share.label, quantity: share.quantity, effectiveLengthKm: share.effectiveLengthKm,
+            })),
+            notNeededQuantity: scopeAllocation.notNeededQuantity,
             materialNeed: need,
+            valueOfBalanceWork: null,
             sourceNote: lineSourceNote,
           });
           const workLabel = String(item.layerConfig?.mixType ?? item.workCategory ?? item.itemName ?? item.description ?? "")
@@ -21061,6 +21145,20 @@ export async function registerRoutes(
       }
 
       const dprQuantityByItem = aggregateSubmittedDprMaterialUse(dprRows as any[]);
+      for (const row of planRows.values()) {
+        for (const line of row.lines) {
+          const item = itemById.get(line.boqItemId);
+          const actuals = dprQuantityByItem.get(line.boqItemId);
+          const factor = Number(item?.dprConversionFactor) || 1;
+          const billableDone = Math.max(0, Number(actuals?.quantity ?? 0) - Number(actuals?.incidentalQuantity ?? 0)) * factor;
+          const rate = Number(item?.clientRate);
+          line.valueOfBalanceWork = Number.isFinite(rate)
+            ? Math.max(0, line.boqQuantity - billableDone) * rate
+            : null;
+          if (line.valueOfBalanceWork == null) row.valueBalanceWork = null;
+          else if (row.valueBalanceWork != null) row.valueBalanceWork += line.valueOfBalanceWork;
+        }
+      }
       for (const [itemId, actuals] of Array.from(dprQuantityByItem)) {
         const item = itemById.get(itemId);
         if (!item || useSourceForLayer(item.layerConfig?.layerType, item.layerConfig?.granularSource) !== "DPR × recipe") continue;
@@ -21167,6 +21265,25 @@ export async function registerRoutes(
         }
       }
 
+      for (const row of planRows.values()) {
+        if (!row.hasSiteSupply) continue;
+        const matching = (siteStockRows as any[]).filter(stock =>
+          normalisePlanMaterialName(stock.material) === normalisePlanMaterialName(row.materialName),
+        );
+        row.lyingAtSite = 0;
+        row.siteOverConsumedQty = 0;
+        for (const stock of matching) {
+          const lying = toMaterialUnit(Number(stock.lying) || 0, String(stock.uom ?? row.uom), row.uom, row.master, "loose", true);
+          const over = toMaterialUnit(Number(stock.overConsumedQty) || 0, String(stock.uom ?? row.uom), row.uom, row.master, "loose", true);
+          if (lying == null || over == null) {
+            row.siteStockComplete = false;
+            continue;
+          }
+          row.lyingAtSite += lying;
+          row.siteOverConsumedQty += over;
+        }
+      }
+
       const outputRows = Array.from(planRows.values()).map((row) => {
         const need = reportedMaterialNeed(row.need, row.needComplete, row.soilValuesMissingCount);
         if (row.soilValuesMissingCount > 0) {
@@ -21175,15 +21292,20 @@ export async function registerRoutes(
         const bought = row.hasSiteSupply && row.boughtComplete ? row.bought : null;
         const used = row.usedComplete ? row.used : null;
         const incidentalUsed = row.incidentalUsedComplete ? row.incidentalUsed : null;
+        const lyingAtSite = row.hasSiteSupply && row.siteStockComplete ? row.lyingAtSite : null;
+        const siteOverConsumedQty = row.hasSiteSupply ? row.siteOverConsumedQty : 0;
         const atPlantNow = row.hasPlantMix && row.stockComplete ? row.atPlantNow : null;
         const atPlantNowForRemaining = atPlantNow == null ? null : Math.max(0, atPlantNow);
+        const siteBalanceWork = Math.max(0, row.needBySource.site - (row.usedComplete ? row.usedBySource.site : 0));
+        const plantBalanceWork = Math.max(0, row.needBySource.plant_mix - (row.usedComplete ? row.usedBySource.plant_mix : 0));
+        row.balanceWorkNeed = siteBalanceWork + plantBalanceWork;
         const balance = need == null
           ? { remaining: null, excess: null }
           : remainingBySupplySource({
-            siteNeed: row.needBySource.site,
-            plantNeed: row.needBySource.plant_mix,
-            bought,
-            plantUsed: row.usedComplete ? row.usedBySource.plant_mix : null,
+            siteNeed: siteBalanceWork,
+            plantNeed: plantBalanceWork,
+            bought: lyingAtSite,
+            plantUsed: row.hasPlantMix ? 0 : null,
             atPlantNow: atPlantNowForRemaining,
             hasSiteSupply: row.hasSiteSupply,
             hasPlantMix: row.hasPlantMix,
@@ -21220,6 +21342,14 @@ export async function registerRoutes(
           boughtSoFarCft: row.hasSiteSupply ? cft(bought) : null,
           used,
           usedCft: cft(used),
+          lyingAtSite,
+          lyingAtSiteCft: cft(lyingAtSite),
+          siteStockWarning: siteOverConsumedQty > 0
+            ? `Used more than received: ${siteOverConsumedQty.toLocaleString("en-IN", { maximumFractionDigits: 2 })} ${row.uom}`
+            : null,
+          balanceWorkNeeds: row.usedComplete ? row.balanceWorkNeed : null,
+          balanceWorkNeedsCft: cft(row.usedComplete ? row.balanceWorkNeed : null),
+          valueOfBalanceWork: row.valueBalanceWork,
           incidentalUsed,
           incidentalUsedCft: cft(incidentalUsed),
           atPlantNow,
@@ -21260,6 +21390,216 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/boq/projects/:id/work-value", async (req, res) => {
+    try {
+      if (!assertView(req, res, "work_programme_review")) return;
+      const projectId = Number(req.params.id);
+      if (!Number.isSafeInteger(projectId) || projectId <= 0) {
+        return res.status(400).json({ message: "A BOQ project is required." });
+      }
+      if (!(await assertOutcomeProjectScope(req, res, projectId))) return;
+      const bom = await computeProjectBom(projectId, true);
+      const project = bom.project;
+      if (!project) return res.status(404).json({ message: "BOQ project not found." });
+      const site = project.siteId == null
+        ? null
+        : (await storage.getSites()).find((candidate) => candidate.id === project.siteId) ?? null;
+      if (!site) return res.status(400).json({ message: "This BOQ project has no linked site." });
+      const scopeSegments = (await storage.getProjectScopeSegments(projectId)).map((segment: any) => ({
+        ...segment,
+        categoryIds: safeIdList(segment.categoryIds),
+        itemIds: safeIdList(segment.itemIds),
+      })) as ScopeSegmentLike[];
+      const progressRows = await db.select({
+        id: progressEntriesTable.id,
+        boqItemId: progressEntriesTable.boqItemId,
+        programmeBarId: progressEntriesTable.programmeBarId,
+        activity: progressEntriesTable.activity,
+        quantity: progressEntriesTable.quantity,
+        side: progressEntriesTable.side,
+        chainageFrom: progressEntriesTable.chainageFrom,
+        chainageTo: progressEntriesTable.chainageTo,
+        chainageFromKm: progressEntriesTable.chainageFromKm,
+        chainageToKm: progressEntriesTable.chainageToKm,
+        isIncidental: progressEntriesTable.isIncidental,
+        reworkNoNewMaterial: progressEntriesTable.reworkNoNewMaterial,
+        noSiteWork: progressEntriesTable.noSiteWork,
+        chainageReviewStatus: progressEntriesTable.chainageReviewStatus,
+        dprStatus: dprsTable.dprStatus,
+        isDeleted: dprsTable.isDeleted,
+        isCancelled: dprsTable.isCancelled,
+        isSuperseded: dprsTable.isSuperseded,
+      }).from(progressEntriesTable)
+        .innerJoin(dprsTable, eq(progressEntriesTable.dprId, dprsTable.id))
+        .where(and(
+          eq(dprsTable.boqProjectId, projectId),
+          eq(dprsTable.dprStatus, COUNTED_DPR_STATUS),
+          or(eq(dprsTable.isDeleted, COUNTED_DPR_FLAG), isNull(dprsTable.isDeleted)),
+          or(eq(dprsTable.isCancelled, COUNTED_DPR_FLAG), isNull(dprsTable.isCancelled)),
+          or(eq(dprsTable.isSuperseded, COUNTED_DPR_FLAG), isNull(dprsTable.isSuperseded)),
+          or(eq(progressEntriesTable.noSiteWork, false), isNull(progressEntriesTable.noSiteWork)),
+          isNotNull(progressEntriesTable.boqItemId),
+        ));
+      const itemById = new Map<number, any>((bom.expandedItems as any[]).map(item => [Number(item.id), item]));
+      const barById = new Map<number, any>((bom.bars as any[]).map((bar: any) => [Number(bar.id), bar]));
+      type ValueRow = {
+        boqItemId: number; itemCode: string | null; description: string; unit: string;
+        reachId: number | null; reachLabel: string; chainageFrom: number | null; chainageTo: number | null;
+        scopeQuantity: number; doneQuantity: number; incidentalQuantity: number; reworkQuantity: number;
+        balanceQuantity: number; overQuantity: number; rate: number | null;
+        valueDone: number | null; valueBalance: number | null; overValue: number | null;
+        rowType: "working_reach" | "no_scope";
+      };
+      const valueRows: ValueRow[] = [];
+      const unassignedByItem = new Map<number, number>();
+      const money = (qty: number, rate: number | null) => rate == null ? null : qty * rate;
+
+      for (const item of bom.expandedItems as any[]) {
+        const itemId = Number(item.id);
+        const allocation = allocateBoqQuantityToWorkingReaches({
+          boqItemId: itemId,
+          categoryId: item.categoryId == null ? null : Number(item.categoryId),
+          isLinear: !["structure", "non_linear"].includes(String(item.layerConfig?.layerType ?? item.workCategory ?? "").toLowerCase()),
+          currentQty: Number(item.currentQty) || 0,
+        }, scopeSegments);
+        const rateValue = item.clientRate == null ? null : Number(item.clientRate);
+        const rate = rateValue != null && Number.isFinite(rateValue) ? rateValue : null;
+        const rowsForItem = progressRows.filter(row => Number(row.boqItemId) === itemId && row.chainageReviewStatus !== "review_required");
+        const states = new Map<string, ValueRow>();
+        for (const share of allocation.shares) {
+          const key = `${itemId}:${share.reachId ?? "full"}`;
+          states.set(key, {
+            boqItemId: itemId,
+            itemCode: item.itemCode ?? null,
+            description: String(item.itemName || item.description || ""),
+            unit: String(item.canonicalUnit ?? item.unit ?? ""),
+            reachId: share.reachId,
+            reachLabel: share.label,
+            chainageFrom: share.chainageFrom,
+            chainageTo: share.chainageTo,
+            scopeQuantity: share.quantity,
+            doneQuantity: 0,
+            incidentalQuantity: 0,
+            reworkQuantity: 0,
+            balanceQuantity: share.quantity,
+            overQuantity: 0,
+            rate,
+            valueDone: 0,
+            valueBalance: 0,
+            overValue: 0,
+            rowType: "working_reach",
+          });
+        }
+        for (const sourceRow of rowsForItem) {
+          const itemFactor = Number(item.dprConversionFactor) || 1;
+          const bar = sourceRow.programmeBarId == null ? null : barById.get(Number(sourceRow.programmeBarId));
+          const rowForAllocation: any = {
+            ...sourceRow,
+            quantity: Number(sourceRow.quantity),
+            dprConversionFactor: itemFactor,
+            chainageFrom: sourceRow.chainageFrom || bar?.chainageFrom || null,
+            chainageTo: sourceRow.chainageTo || bar?.chainageTo || null,
+            chainageFromKm: sourceRow.chainageFromKm ?? bar?.chainageFrom ?? null,
+            chainageToKm: sourceRow.chainageToKm ?? bar?.chainageTo ?? null,
+          };
+          const totalPhysical = Number(sourceRow.quantity) * itemFactor;
+          if (!Number.isFinite(totalPhysical) || totalPhysical < 0) continue;
+
+          const shares = allocation.shares;
+          const rawFrom = rowForAllocation.chainageFromKm ?? parseChainageKm(rowForAllocation.chainageFrom);
+          const rawTo = rowForAllocation.chainageToKm ?? parseChainageKm(rowForAllocation.chainageTo);
+          if ((rawFrom == null || rawTo == null || rawTo <= rawFrom) && shares.length !== 1) {
+            unassignedByItem.set(itemId, (unassignedByItem.get(itemId) ?? 0) + totalPhysical);
+            continue;
+          }
+          let assigned = 0;
+          for (const share of shares) {
+            const reach = share.reachId == null ? null : scopeSegments.find(segment => Number(segment.id) === share.reachId) ?? null;
+            const portion = quantityForWorkingReach(
+              rowForAllocation,
+              reach
+                ? { chainageFrom: reach.chainageFrom, chainageTo: reach.chainageTo, side: reach.side }
+                : { chainageFrom: -Number.MAX_SAFE_INTEGER, chainageTo: Number.MAX_SAFE_INTEGER, side: null },
+              shares.length,
+            );
+            if (portion == null) continue;
+            assigned += portion;
+            const state = states.get(`${itemId}:${share.reachId ?? "full"}`)!;
+            if (sourceRow.isIncidental === true) state.incidentalQuantity += portion;
+            else if (sourceRow.reworkNoNewMaterial === true) state.reworkQuantity += portion;
+            else state.doneQuantity += portion;
+          }
+          if (assigned + 0.000001 < totalPhysical) {
+            unassignedByItem.set(itemId, (unassignedByItem.get(itemId) ?? 0) + Math.max(0, totalPhysical - assigned));
+          }
+        }
+        for (const state of states.values()) {
+          state.balanceQuantity = Math.max(0, state.scopeQuantity - state.doneQuantity);
+          state.overQuantity = Math.max(0, state.doneQuantity - state.scopeQuantity);
+          state.valueDone = money(Math.min(state.doneQuantity, state.scopeQuantity), rate);
+          state.valueBalance = money(state.balanceQuantity, rate);
+          state.overValue = money(state.overQuantity, rate);
+          valueRows.push(state);
+        }
+        if (allocation.notNeededQuantity > 0) {
+          valueRows.push({
+            boqItemId: itemId, itemCode: item.itemCode ?? null,
+            description: String(item.itemName || item.description || ""),
+            unit: String(item.canonicalUnit ?? item.unit ?? ""),
+            reachId: null, reachLabel: "BOQ not needed (no-scope portion)",
+            chainageFrom: null, chainageTo: null,
+            scopeQuantity: allocation.notNeededQuantity,
+            doneQuantity: 0, incidentalQuantity: 0, reworkQuantity: 0,
+            balanceQuantity: allocation.notNeededQuantity, overQuantity: 0, rate,
+            valueDone: 0, valueBalance: money(allocation.notNeededQuantity, rate), overValue: 0,
+            rowType: "no_scope",
+          });
+        }
+      }
+      const workingRows = valueRows.filter(row => row.rowType === "working_reach");
+      const sumKnown = (field: "valueDone" | "valueBalance" | "overValue") =>
+        workingRows.reduce((sum, row) => sum + (row[field] ?? 0), 0);
+      const corridorEnd = scopeSegments
+        .filter(segment => (segment.status ?? "confirmed") === "confirmed" && ["working_reach", "no_scope", "withdrawn"].includes(segment.segmentType))
+        .reduce((max, segment) => Math.max(max, Number(segment.chainageTo) || 0), 0);
+      const barsBeyondCorridor = (bom.bars as any[])
+        .filter((bar: any) => Number(bar.chainageTo) > corridorEnd + 0.0005)
+        .map((bar: any) => ({
+          barId: Number(bar.id), boqItemId: Number(bar.boqItemId),
+          itemCode: itemById.get(Number(bar.boqItemId))?.itemCode ?? null,
+          description: itemById.get(Number(bar.boqItemId))?.itemName ?? itemById.get(Number(bar.boqItemId))?.description ?? "",
+          label: bar.label ?? null,
+          chainageFrom: bar.chainageFrom ?? null,
+          chainageTo: bar.chainageTo ?? null,
+          corridorEnd,
+        }));
+      const notNeededValue = valueRows.filter(row => row.rowType === "no_scope").reduce((sum, row) => sum + (row.valueBalance ?? 0), 0);
+      const incompleteValueRows = workingRows.filter(row => row.rate == null).length;
+      res.json({
+        projectId, projectName: project.name, siteName: site.name,
+        scopeBasis: "Confirmed working reaches and no-scope/withdrawn corridor length; programme bars do not determine BOQ shares.",
+        rows: valueRows,
+        totals: {
+          billEstimateWithinBoq: sumKnown("valueDone"),
+          overBoqValue: sumKnown("overValue"),
+          valueBalance: sumKnown("valueBalance"),
+          boqNotNeededValue: notNeededValue,
+          incompleteValueRows,
+        },
+        unassignedDone: Array.from(unassignedByItem, ([boqItemId, quantity]) => ({
+          boqItemId, itemCode: itemById.get(boqItemId)?.itemCode ?? null,
+          description: itemById.get(boqItemId)?.itemName ?? itemById.get(boqItemId)?.description ?? "",
+          quantity,
+          reason: "No chainage match to a working reach; not included in reach value totals.",
+        })),
+        barsBeyondCorridor,
+      });
+    } catch (error) {
+      console.error("GET /api/boq/projects/:id/work-value:", error);
+      res.status(500).json({ message: "Could not load the working-reach value report." });
+    }
+  });
+
   app.get("/api/reports/material-balance", async (req, res) => {
     try {
       if (!assertView(req, res, "work_programme_review")) return;
@@ -21279,6 +21619,11 @@ export async function registerRoutes(
         ? null
         : (await storage.getSites()).find((candidate) => candidate.id === project.siteId) ?? null;
       if (!site) return res.status(400).json({ message: "This BOQ project has no linked site." });
+      const scopeSegments = (await storage.getProjectScopeSegments(projectId)).map((segment: any) => ({
+        ...segment,
+        categoryIds: safeIdList(segment.categoryIds),
+        itemIds: safeIdList(segment.itemIds),
+      })) as ScopeSegmentLike[];
 
       const [bom, materialMasters, trips, plantReceipts, dispatches, components, storeRows, dprRows] = await Promise.all([
         computeProjectBom(projectId),
@@ -21361,15 +21706,16 @@ export async function registerRoutes(
           quantity: progressEntriesTable.quantity,
           uom: progressEntriesTable.uom,
           noSiteWork: progressEntriesTable.noSiteWork,
+          reworkNoNewMaterial: progressEntriesTable.reworkNoNewMaterial,
         }).from(dprsTable)
           .innerJoin(progressEntriesTable, eq(progressEntriesTable.dprId, dprsTable.id))
           .where(and(
             eq(dprsTable.boqProjectId, projectId),
             gte(dprsTable.date, from),
             lte(dprsTable.date, to),
-            eq(dprsTable.isDeleted, false),
-            eq(dprsTable.isCancelled, false),
-            eq(dprsTable.isSuperseded, false),
+            or(eq(dprsTable.isDeleted, false), isNull(dprsTable.isDeleted)),
+            or(eq(dprsTable.isCancelled, false), isNull(dprsTable.isCancelled)),
+            or(eq(dprsTable.isSuperseded, false), isNull(dprsTable.isSuperseded)),
             eq(dprsTable.dprStatus, "submitted"),
             or(eq(progressEntriesTable.noSiteWork, false), isNull(progressEntriesTable.noSiteWork)),
             isNotNull(progressEntriesTable.boqItemId),
@@ -21407,6 +21753,12 @@ export async function registerRoutes(
       const materialsByItem = new Map<number, Array<{ name: string; qtyPerBoqUnit: number; uom: string; profile: any; wastagePct: number }>>();
       for (const item of bom.expandedItems ?? []) {
         const itemId = Number(item.id);
+        const scopeAllocation = allocateBoqQuantityToWorkingReaches({
+          boqItemId: itemId,
+          categoryId: (item as any).categoryId == null ? null : Number((item as any).categoryId),
+          isLinear: !["structure", "non_linear"].includes(String((item as any).layerConfig?.layerType ?? (item as any).workCategory ?? "").toLowerCase()),
+          currentQty: Number(item.currentQty) || 0,
+        }, scopeSegments);
         const materials: Array<{ name: string; qtyPerBoqUnit: number; uom: string; profile: any; wastagePct: number }> = [];
         for (const rawRow of item.materials ?? []) {
           const row = rawRow as any;
@@ -21421,7 +21773,7 @@ export async function registerRoutes(
           materials.push({ name, qtyPerBoqUnit: perUnit, uom: materialUom, profile, wastagePct });
           requirements.push({
             materialName: name,
-            quantity: (Number(item.currentQty) || 0) * perUnit,
+            quantity: scopeAllocation.workingQuantity * perUnit,
             uom: materialUom,
             profile,
             legacyLooseToCompactedProfiles: itemData.legacyLooseToCompactedProfiles ?? [],
@@ -21491,7 +21843,7 @@ export async function registerRoutes(
       }
       const itemById = new Map((bom.expandedItems ?? []).map((item: any) => [Number(item.id), item]));
       for (const entry of dprRows) {
-        if (entry.boqItemId == null) continue;
+        if (entry.boqItemId == null || entry.reworkNoNewMaterial === true) continue;
         const item = itemById.get(entry.boqItemId) as any;
         const itemMaterials = materialsByItem.get(entry.boqItemId) ?? [];
         if (!item || !itemMaterials.length) continue;

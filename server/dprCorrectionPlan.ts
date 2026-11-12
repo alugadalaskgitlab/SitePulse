@@ -8,7 +8,7 @@ import { calculateLengthFromChainage } from "../shared/dprGeometry";
 
 export const correctionFields: Record<string, string[]> = Object.fromEntries(Object.entries({
   header: "date site engineer remarks boqProjectId",
-  progress: "activity side chainageFrom chainageTo length width thickness quantity uom noSiteWork noSiteWorkDescription personnelIds boqItemId programmeBarId earthworkArrangementId quantitySource quantitySourceNote chainageOverrideReason lengthOverrideReason uomOverrideReason executedBy layerNo isIncidental incidentalDescription materialOutcome reusableQty",
+  progress: "activity side chainageFrom chainageTo length width thickness quantity uom noSiteWork noSiteWorkDescription personnelIds boqItemId programmeBarId earthworkArrangementId quantitySource quantitySourceNote chainageOverrideReason lengthOverrideReason uomOverrideReason executedBy layerNo isIncidental incidentalDescription reworkNoNewMaterial materialOutcome reusableQty",
   equipment: "machine vehicleNo operator task entryType startTime endTime openingReading closingReading diesel openingDiesel dieselBalanceInTank dieselBalanceConfirmed dieselNorm expectedDiesel hoursWorked equipmentId plantUsageId usageStatus usageStatusReason dieselSource fuelStation billNumber amountPaid numberOfTrips tripDistance totalKm waterQuantity boqItemId resourceScope structureId",
   labour: "category gender count hours task contractor boqItemId resourceScope structureId workerNames",
   materials: "type material quantity uom vehicleNumber supplier location receiptNumber boqItemId resourceScope structureId",
@@ -18,7 +18,7 @@ export const correctionFields: Record<string, string[]> = Object.fromEntries(Obj
 
 export const correctionSections = Object.keys(correctionFields).filter(s => s !== "header");
 const numeric = new Set("length width thickness quantity layerNo reusableQty openingReading closingReading diesel openingDiesel dieselBalanceInTank dieselNorm expectedDiesel hoursWorked amountPaid numberOfTrips tripDistance totalKm waterQuantity count hours amount dprConversionFactor".split(" "));
-const booleans = new Set(["noSiteWork", "isIncidental"]);
+const booleans = new Set(["noSiteWork", "isIncidental", "reworkNoNewMaterial"]);
 const defaults: Record<string, any> = {
   "equipment.entryType": "time_meter", "labour.category": "Skilled", "labour.gender": "Male",
   "materials.type": "Received", "progress.uom": "SQM",
@@ -50,7 +50,7 @@ export function needsApproval(section: string, field: string) {
   if (section === "equipment") return !["operator", "task", "usageStatusReason"].includes(field);
   if (["materials", "sitePurchases", "structureItems"].includes(section)) return true;
   if (section === "labour") return !["task", "workerNames"].includes(field);
-  if (section === "progress") return ["length", "width", "thickness", "quantity", "uom", "boqItemId", "programmeBarId", "materialOutcome", "reusableQty", "earthworkArrangementId", "lengthOverrideReason", "uomOverrideReason", "noSiteWork", "isIncidental", "executedBy", "side", "layerNo"].includes(field);
+  if (section === "progress") return ["chainageFrom", "chainageTo", "length", "width", "thickness", "quantity", "uom", "boqItemId", "programmeBarId", "materialOutcome", "reusableQty", "earthworkArrangementId", "lengthOverrideReason", "uomOverrideReason", "noSiteWork", "isIncidental", "reworkNoNewMaterial", "executedBy", "side", "layerNo", "split"].includes(field);
   return false;
 }
 
@@ -65,7 +65,7 @@ export function planDprCorrection(saved: any, form: any) {
     correctionError("Only the current, active submitted DPR can be corrected. Open its latest version.");
   }
   if (!form || typeof form !== "object") correctionError("A complete correction form is required.", 400);
-  const topKeys = new Set(["header", "workType", ...correctionSections, "baselineProgress"]);
+  const topKeys = new Set(["header", "workType", ...correctionSections, "baselineProgress", "splitProgress"]);
   for (const key of Object.keys(form)) if (!topKeys.has(key)) block("header", saved.id, key, "Unexpected form field; reload the current editor.");
   if (form.workType !== saved.workType) block("header", saved.id, "workType", "Changing road/structure classification requires a separately reviewed report, not relabelling existing evidence.");
 

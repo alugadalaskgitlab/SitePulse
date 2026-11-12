@@ -158,6 +158,7 @@ interface GuidedEntry {
   // Batch 06V: Incidental / Non-BOQ work
   isIncidental: boolean;
   incidentalDescription: string;
+  reworkNoNewMaterial: boolean;
   materialOutcome?: string | null;
   reusableQty?: number | null;
   allocations?: Array<{ sourceEntryKey?: string | null; openingBalanceId?: number | null; quantity: number }>;
@@ -461,6 +462,7 @@ export default function GuidedDpr() {
         layerNo: p.layerNo != null ? Number(p.layerNo) : null,
         isIncidental: !!p.isIncidental,
         incidentalDescription: p.incidentalDescription || "",
+        reworkNoNewMaterial: p.reworkNoNewMaterial === true,
          ...normalizeExcavationMaterialOutcome(p.quantity, p.materialOutcome, p.reusableQty),
          allocations: [],
       })), urlDraftDpr.cutFillConsumptions));
@@ -885,6 +887,7 @@ export default function GuidedDpr() {
         noSiteWorkDescription: e.noSiteWorkDescription ?? "",
         isIncidental: e.isIncidental ?? false,
         incidentalDescription: e.incidentalDescription ?? "",
+        reworkNoNewMaterial: e.reworkNoNewMaterial ?? false,
         ...normalizeExcavationMaterialOutcome(e.quantity, e.materialOutcome, e.reusableQty),
         allocations: e.allocations ?? [],
       })));
@@ -1046,6 +1049,7 @@ export default function GuidedDpr() {
       layerNo: null,
       isIncidental: false,
       incidentalDescription: "",
+      reworkNoNewMaterial: false,
     }]);
   };
 
@@ -1078,6 +1082,7 @@ export default function GuidedDpr() {
       layerNo: null,
       isIncidental: false,
       incidentalDescription: "",
+      reworkNoNewMaterial: false,
     }]);
     if (step === 2) setStep(3);
   };
@@ -1191,7 +1196,7 @@ export default function GuidedDpr() {
       if (checked) {
         return {
           ...e, noSiteWork: true,
-          isIncidental: false, incidentalDescription: "",
+          isIncidental: false, incidentalDescription: "", reworkNoNewMaterial: false,
         };
       }
       return { ...e, noSiteWork: false };
@@ -1205,8 +1210,8 @@ export default function GuidedDpr() {
   const setIncidental = (idx: number, checked: boolean) =>
     setEntries((prev) => prev.map((e, i) => {
       if (i !== idx) return e;
-      if (checked) return { ...e, isIncidental: true, noSiteWork: false };
-      return { ...e, isIncidental: false };
+      if (checked) return { ...e, isIncidental: true, reworkNoNewMaterial: false, noSiteWork: false };
+      return { ...e, isIncidental: false, reworkNoNewMaterial: false };
     }));
 
   // ── Same as yesterday (structure-only copy, always previewed) ─────────────
@@ -1241,6 +1246,7 @@ export default function GuidedDpr() {
       layerNo: null,
       isIncidental: false,
       incidentalDescription: "",
+      reworkNoNewMaterial: false,
     })));
     // Yesterday copy is structure-only: seeds carry the 4 edited fields and an
     // empty passthrough (no readings/times are ever copied across days).
@@ -1372,6 +1378,7 @@ export default function GuidedDpr() {
           noSiteWorkDescription: e.noSiteWorkDescription,
           isIncidental: false,
           incidentalDescription: null,
+          reworkNoNewMaterial: false,
           personnelIds: e.personnelIds ?? [],
           boqItemId: e.boqItemId,
           programmeBarId: e.programmeBarId,
@@ -1409,6 +1416,7 @@ export default function GuidedDpr() {
         noSiteWorkDescription: "",
         isIncidental: e.isIncidental,
         incidentalDescription: e.isIncidental ? (e.incidentalDescription.trim() || null) : null,
+        reworkNoNewMaterial: e.isIncidental ? e.reworkNoNewMaterial : false,
         personnelIds: e.personnelIds ?? [],
         lengthOverrideReason: e.lengthOverrideReason ?? null,
         scopeOverrideReason: e.scopeOverrideReason ?? null,
@@ -2070,6 +2078,17 @@ export default function GuidedDpr() {
                   {e.incidentalDescription.trim() === "" && (
                     <p className="text-xs text-destructive mt-0.5">Required before submitting.</p>
                   )}
+                </div>
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50/60 p-2">
+                  <Checkbox
+                    id={`guided-rework-no-material-${idx}`}
+                    checked={e.reworkNoNewMaterial}
+                    onCheckedChange={checked => updateEntry(idx, { reworkNoNewMaterial: checked === true })}
+                    data-testid={`checkbox-rework-no-material-${idx}`}
+                  />
+                  <Label htmlFor={`guided-rework-no-material-${idx}`} className="cursor-pointer text-xs">
+                    Rework — no new material used
+                  </Label>
                 </div>
               </div>
             )}

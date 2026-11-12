@@ -12,7 +12,7 @@ type Row = {
   site: string; material: string; matched: boolean; uom: string;
   ordered: number; delivered: number; deliveredAtStretch: number; deliveredAtYard: number;
   consumed: number; incidentalConsumed?: number; toSupply: number; lying: number;
-  overConsumed?: boolean;
+  overConsumed?: boolean; overConsumedQty?: number;
   lastDeliveryDate: string | null;
   densitySkips?: DensitySkips;
 };
@@ -170,10 +170,11 @@ export default function SiteMaterialStock() {
                                 of which incidental: {qty(r.incidentalConsumed!, r.uom)}
                               </span>
                             )}
-                            {r.overConsumed && <span className="block text-[10px] text-red-600">Use exceeds recorded deliveries</span>}
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono font-bold">
-                            {qty(r.lying, r.uom)}
+                            {r.overConsumed && (r.overConsumedQty ?? 0) > 0
+                              ? <span className="text-red-700">Used more than received: {qty(r.overConsumedQty!, r.uom)}</span>
+                              : qty(r.lying, r.uom)}
                           </td>
                         </tr>
                       ))}

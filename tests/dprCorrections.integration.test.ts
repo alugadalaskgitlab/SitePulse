@@ -87,6 +87,7 @@ it("lets only an Owner apply a reviewed, reasoned derived-quantity correction di
   const owner = { id: 3, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
   const f = await derivedGeometryFixture();
   const review = await service.preview(f.id, f.form, owner);
+  console.log("SPLIT REVIEW", review.ownerDirectAllowed, review.changes.filter((change: any) => change.requiresApproval).map((change: any) => [change.field, change.derived, change.rowId]));
   expect(review.requiresApproval).toBe(true);
   expect(review.changes).toEqual(expect.arrayContaining([
     expect.objectContaining({ field: "length", oldValue: 320, newValue: 300, requiresApproval: true, derived: true }),
@@ -112,6 +113,72 @@ it("lets only an Owner apply a reviewed, reasoned derived-quantity correction di
     expect.objectContaining({ field: "length", oldValue: 320, newValue: 300 }),
     expect.objectContaining({ field: "quantity", oldValue: 180, newValue: 168.75 }),
   ]));
+});
+it("lets the Owner directly correct an incidental rework flag and BOQ link after review", async () => {
+  const owner = { id: 3, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
+  const f = await fixture();
+  Object.assign(f.form.progress[0], {
+    boqItemId: 701,
+    isIncidental: true,
+    incidentalDescription: "Rework of the shoulder",
+    reworkNoNewMaterial: true,
+  });
+  const beforeStock = await db.select().from(schema.stockLedger);
+  const review = await service.preview(f.id, f.form, owner);
+  expect(review.blocked).toEqual([]);
+  const result: any = await service.submit(f.id, {
+    form: f.form, baseHash: review.baseHash, reason: "Checked against the signed field register", confirmImpact: true,
+  }, owner);
+  expect(result.pending).toBeUndefined();
+  expect(await db.query.progressEntries.findFirst({ where: eq(schema.progressEntries.id, f.p.id) }))
+    .toMatchObject({ boqItemId: 701, isIncidental: true, reworkNoNewMaterial: true });
+  expect(await db.select().from(schema.stockLedger)).toEqual(beforeStock);
+  expect((await service.list(f.id))[0]).toMatchObject({ status: "owner_corrected", requestedByName: "Fixture Owner" });
+});
+
+it("keeps the Owner split as two chainage rows with divided quantity and no postings", async () => {
+  const owner = { id: 3, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
+  const f = await fixture();
+  f.form.splitProgress = {
+    sourcePersistedId: f.p.id,
+    splitAt: "1+150",
+    secondIsIncidental: true,
+    secondIncidentalDescription: "Incidental shoulder cleanup",
+    secondReworkNoNewMaterial: true,
+  };
+  const stockBefore = await db.select().from(schema.stockLedger);
+  const materialBefore = await db.select().from(schema.materialLogs);
+  const review = await service.preview(f.id, f.form, owner);
+  expect(review.blocked).toEqual([]);
+  expect(review.changes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ field: "split", requiresApproval: true }),
+  ]));
+  const result: any = await service.submit(f.id, {
+    form: f.form, baseHash: review.baseHash, reason: "Split from the measured chainage register", confirmImpact: true,
+  }, owner);
+  expect(result.pending).toBeUndefined();
+  const rows = await db.select().from(schema.progressEntries).where(eq(schema.progressEntries.dprId, f.id));
+  expect(rows).toHaveLength(2);
+  expect(rows.map((row: any) => [row.chainageFrom, row.chainageTo]).sort()).toEqual([
+    ["1+100", "1+150"], ["1+150", "1+200"],
+  ]);
+  expect(rows.reduce((sum: number, row: any) => sum + Number(row.quantity), 0)).toBeCloseTo(100);
+  expect(rows).toEqual(expect.arrayContaining([
+    expect.objectContaining({ isIncidental: true, reworkNoNewMaterial: true, incidentalDescription: "Incidental shoulder cleanup" }),
+  ]));
+  expect(await db.select().from(schema.stockLedger)).toEqual(stockBefore);
+  expect(await db.select().from(schema.materialLogs)).toEqual(materialBefore);
+});
+
+it("lets a requester withdraw a pending correction without changing the DPR", async () => {
+  const f = await fixture();
+  const result: any = await submit(f);
+  expect(result.pending).toBe(true);
+  await service.withdraw(f.id, result.requestId, author);
+  expect((await db.select().from(schema.editPermissionRequests).where(eq(schema.editPermissionRequests.id, result.requestId)))[0].status)
+    .toBe("withdrawn");
+  expect(await db.query.progressEntries.findFirst({ where: eq(schema.progressEntries.id, f.p.id) }))
+    .toMatchObject({ chainageFrom: "1+000", chainageTo: "1+100", quantity: 100 });
 });
 it("keeps derived-quantity corrections by non-Owners in the existing approval flow", async () => {
   const f = await derivedGeometryFixture(403);
@@ -139,7 +206,8 @@ it("does not let an Owner bypass approval for unrelated equipment corrections", 
 });
 it("saves chainage-only on any submitted DPR and preserves missing usage, tanks and equipment identity", async () => {
   const f = await fixture();
-  const result = await submit(f);
+  const owner = { id: 3, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
+  const result = await submit(f, owner);
   expect(result.id).toBe(f.id);
   const [row] = await db.select().from(schema.equipmentLogs).where(eq(schema.equipmentLogs.id, f.e.id));
   expect(row).toEqual(f.e);
@@ -237,13 +305,14 @@ it("executes real SiteEdit hydration and accepts empty labour placeholders, raw 
   const review = await service.preview(f.id, JSON.parse(JSON.stringify(form)), author);
   expect(review.blocked).toEqual([]);
   expect(review.changes.every(c => c.section === "progress")).toBe(true);
-  expect(review.requiresApproval).toBe(false);
+  expect(review.requiresApproval).toBe(true);
 });
 it("rolls back correction and retains all evidence if its audit cannot be inserted", async () => {
   const f = await fixture();
   const before = await db.select().from(schema.progressEntries).where(eq(schema.progressEntries.id, f.p.id));
   await pg.exec("ALTER TABLE audit_logs ADD CONSTRAINT fail_correction_audit CHECK (action <> 'correction_applied') NOT VALID");
-  try { await expect(submit(f)).rejects.toThrow(); }
+  const owner = { id: 3, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
+  try { await expect(submit(f, owner)).rejects.toThrow(); }
   finally { await pg.exec("ALTER TABLE audit_logs DROP CONSTRAINT fail_correction_audit"); }
   expect(await db.select().from(schema.progressEntries).where(eq(schema.progressEntries.id, f.p.id))).toEqual(before);
 });

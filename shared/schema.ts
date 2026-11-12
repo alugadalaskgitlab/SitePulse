@@ -173,6 +173,9 @@ export const progressEntries = pgTable("progress_entries", {
   // intentionally never alter the progress row's BOQ-credited quantity.
   materialOutcome: text("material_outcome"), // fully_reusable | partly_reusable | unsuitable
   reusableQty: real("reusable_qty"),
+  // SOIL-VALUE-01: a rework row records work already carried out but must not
+  // consume new material. Nullable for legacy rows; NULL means not rework.
+  reworkNoNewMaterial: boolean("rework_no_new_material"),
 });
 
 // Structure DPR Items (for workType = "structure")

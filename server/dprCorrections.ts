@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createInsertSchema } from "drizzle-zod";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
@@ -10,6 +10,7 @@ import {
 import { readWorkerNames, replaceLabourWorkers } from "./labourWorkers";
 import { correctionError, correctionFields, needsApproval, planDprCorrection } from "./dprCorrectionPlan";
 import { calculateLengthFromChainage, geometryQtyForRow } from "../shared/dprGeometry";
+import { parseChainageKm } from "../shared/barSide";
 
 const tables: Record<string, any> = { header: dprs, progress: progressEntries, equipment: equipmentLogs, labour: labourLogs, materials: materialLogs, sitePurchases, structureItems: dprStructureItems };
 export const correctionHash = (value: any) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -21,6 +22,17 @@ const reasonText = (value: any) => {
   return value.trim();
 };
 const checkActor = (actor: Actor) => { if (!Number.isInteger(actor?.id)) correctionError("Authentication required.", 401); };
+const ownerDirectProgressFields = new Set([
+  "chainageFrom", "chainageTo", "side", "width", "thickness", "length", "quantity",
+  "boqItemId", "isIncidental", "reworkNoNewMaterial", "split",
+]);
+const ownerCanApplyDirectly = (actor: Actor, review: any) => actor.isOwner === true
+  && review.requiresApproval
+  && review.changes.filter((change: any) => change.requiresApproval).every((change: any) =>
+    change.section === "progress" && (
+      ownerDirectProgressFields.has(change.field)
+      || change.derived === true && ["length", "quantity", "quantitySource"].includes(change.field)
+    ));
 
 /** Extends submitted-DPR editing using existing edit requests and audit history.
  * No new tables, migration, financial writers or equipment finalizer. */
@@ -105,6 +117,106 @@ export function dprCorrectionService(database: any, validate: Validate) {
         setDerived(row, "quantitySource", "calculated");
       }
     }
+    const splitSpec = form.splitProgress;
+    if (splitSpec != null) {
+      const sourceId = Number(splitSpec.sourcePersistedId);
+      const source = plan.candidate.progress.find((row: any) => Number(row.id) === sourceId);
+      const original = saved.progress.find((row: any) => Number(row.id) === sourceId);
+      if (actor.isOwner !== true) {
+        plan.blocked.push({ section: "progress", rowId: sourceId, field: "split", message: "Only the Owner can split a submitted DPR line directly." });
+      } else if (!source || !original || typeof splitSpec.splitAt !== "string") {
+        plan.blocked.push({ section: "progress", rowId: sourceId, field: "split", message: "Choose a saved work line and enter a split chainage." });
+      } else if ([...saved.correctionCutFillLinks, ...saved.correctionCutFillSourceLinks]
+        .some((link: any) => link.fillProgressEntryId === sourceId || link.sourceProgressEntryId === sourceId)) {
+        plan.blocked.push({ section: "progress", rowId: sourceId, field: "split", message: "This line is linked to the cut/fill ledger and cannot be split here." });
+      } else {
+        const from = parseChainageKm(source.chainageFrom);
+        const to = parseChainageKm(source.chainageTo);
+        const splitAt = parseChainageKm(splitSpec.splitAt);
+        if (from == null || to == null || splitAt == null || splitAt <= from || splitAt >= to) {
+          plan.blocked.push({ section: "progress", rowId: sourceId, field: "split", message: "Split chainage must be strictly inside the saved line's chainage range." });
+        } else {
+          const oldTo = source.chainageTo;
+          const oldLength = Number(source.length);
+          const totalQty = Number(source.quantity);
+          const splitText = splitSpec.splitAt.trim();
+          const firstLength = calculateLengthFromChainage(source.chainageFrom ?? "", splitText);
+          source.chainageTo = splitText;
+          source.chainageToKm = splitAt;
+          source.length = firstLength ?? (Number.isFinite(oldLength) ? oldLength * (splitAt - from) / (to - from) : null);
+          const item = source.boqItemId == null
+            ? undefined
+            : (await tx.select().from(boqItems).where(eq(boqItems.id, source.boqItemId)))[0];
+          const calculatedQty = source.quantitySource === "manual" ? null : geometryQtyForRow(source, item ?? { unit: source.uom });
+          const firstQty = calculatedQty ?? (Number.isFinite(totalQty) ? totalQty * (splitAt - from) / (to - from) : null);
+          const secondLength = Number.isFinite(oldLength) && source.length != null
+            ? Math.max(0, oldLength - Number(source.length))
+            : calculateLengthFromChainage(splitText, oldTo ?? "");
+          const secondQty = Number.isFinite(totalQty) && firstQty != null
+            ? Math.max(0, totalQty - firstQty)
+            : null;
+          if (firstQty == null || secondQty == null) {
+            plan.blocked.push({ section: "progress", rowId: sourceId, field: "split", message: "The line quantity cannot be divided safely; enter valid chainage or quantity first." });
+          } else {
+            source.quantity = firstQty;
+            const newRow: any = { ...source };
+            delete newRow.id;
+            delete newRow.persistedId;
+            delete newRow.allocations;
+            newRow.entryKey = randomUUID();
+            newRow.chainageFrom = splitText;
+            newRow.chainageFromKm = splitAt;
+            newRow.chainageTo = oldTo;
+            newRow.chainageToKm = parseChainageKm(oldTo);
+            newRow.length = secondLength;
+            newRow.quantity = secondQty;
+            newRow.noSiteWork = false;
+            newRow.noSiteWorkDescription = null;
+            newRow.isIncidental = splitSpec.secondIsIncidental === true;
+            newRow.incidentalDescription = newRow.isIncidental
+              ? String(splitSpec.secondIncidentalDescription ?? "").trim()
+              : null;
+            newRow.reworkNoNewMaterial = newRow.isIncidental && splitSpec.secondReworkNoNewMaterial === true;
+            if (newRow.isIncidental && !newRow.incidentalDescription) {
+              plan.blocked.push({ section: "progress", rowId: sourceId, field: "split", message: "Enter a description for the second line marked incidental." });
+            }
+            const sourceValues = { chainageTo: splitText, chainageToKm: splitAt, length: source.length, quantity: firstQty };
+            const sourcePatch = plan.patches.progress.find((patch: any) => patch.id === sourceId)
+              ?? { id: sourceId, values: {} };
+            Object.assign(sourcePatch.values, sourceValues);
+            if (!plan.patches.progress.includes(sourcePatch)) plan.patches.progress.push(sourcePatch);
+            for (const [field, value] of Object.entries(sourceValues)) {
+              const oldValue = (original as any)[field] ?? null;
+              if (JSON.stringify(oldValue) === JSON.stringify(value)) continue;
+              const existing = plan.changes.find(change => change.section === "progress" && change.rowId === sourceId && change.field === field);
+              if (existing) { existing.newValue = value; existing.derived = true; }
+              else plan.changes.push({
+                section: "progress", rowId: sourceId, field, oldValue, newValue: value,
+                requiresApproval: true, derived: true,
+              });
+            }
+            plan.candidate.progress.push(newRow);
+            const insertValues = Object.fromEntries(
+              correctionFields.progress.filter((field: string) => field in newRow).map((field: string) => [field, newRow[field]]),
+            );
+            plan.patches.progress.push({ id: null, values: insertValues });
+            plan.changes.push({
+              section: "progress", rowId: sourceId, field: "split",
+              oldValue: null,
+              newValue: {
+                chainage: splitText,
+                newEntryKey: newRow.entryKey,
+                quantity: secondQty,
+                isIncidental: newRow.isIncidental,
+                incidentalDescription: newRow.incidentalDescription,
+                reworkNoNewMaterial: newRow.reworkNoNewMaterial,
+              },
+              requiresApproval: true,
+            });
+          }
+        }
+      }
+    }
     for (const patch of plan.patches.equipment) {
       if (!Object.hasOwn(patch.values, "activitySegments")) continue;
       for (const segment of patch.values.activitySegments) {
@@ -184,17 +296,25 @@ export function dprCorrectionService(database: any, validate: Validate) {
         for (const bill of bills) impact.push(`Bill #${bill.id} (${bill.status}): existing quantity ${bill.qty}, amount ${bill.amount} remains unchanged. Review any required adjustment separately.`);
       }
     } else impact.push("Only the displayed operational fields change. No equipment usage, stock, diesel, hire or billing postings are generated.");
-    return { ...plan, baseHash: correctionHash(saved), revision: saved.correctionRevision, impact };
+    return {
+      ...plan,
+      baseHash: correctionHash(saved),
+      revision: saved.correctionRevision,
+      impact,
+      ownerDirectAllowed: ownerCanApplyDirectly(actor, plan),
+    };
   }
   const publicReview = (r: any) => ({
     baseHash: r.baseHash, revision: r.revision, changes: r.changes,
     blocked: r.blocked, requiresApproval: r.requiresApproval, impact: r.impact,
+    ownerDirectAllowed: r.ownerDirectAllowed,
   });
   async function apply(tx: any, saved: any, review: any, actor: Actor, reason: string, approver?: Actor, requestId?: number) {
     // Server validation can enrich progress review/source facts; carry only
     // these explicit fields beyond the authored diff.
     for (const patch of review.patches.progress) {
       const candidate = review.candidate.progress.find((p: any) => p.id === patch.id);
+      if (!candidate) continue;
       for (const field of ["quantitySource", "chainageReviewStatus", "linkReviewRequired", "scopeWarningType", "scopeOverrideReason", "scopeOverrideBy", "scopeOverrideAt"]) {
         if (candidate[field] !== undefined) patch.values[field] = candidate[field];
       }
@@ -202,6 +322,14 @@ export function dprCorrectionService(database: any, validate: Validate) {
     for (const [section, patches] of Object.entries(review.patches) as [string, any[]][]) {
       for (const patch of patches) {
         const { workerNames, activitySegments, ...values } = patch.values;
+        if (section === "progress" && patch.id == null) {
+          const [inserted] = await tx.insert(progressEntries).values({ ...values, dprId: saved.id }).returning();
+          const candidate = review.candidate.progress.find((row: any) => row.entryKey === values.entryKey);
+          if (candidate) candidate.id = inserted.id;
+          const splitChange = review.changes.find((change: any) => change.section === "progress" && change.field === "split");
+          if (splitChange?.newValue?.newEntryKey === values.entryKey) splitChange.newValue.persistedId = inserted.id;
+          continue;
+        }
         if (section === "equipment" && activitySegments !== undefined) {
           const previous = await tx.select({ id: equipmentActivitySegments.id }).from(equipmentActivitySegments).where(eq(equipmentActivitySegments.equipmentLogId, patch.id));
           if (previous.length) await tx.delete(equipmentActivitySegmentBoqItems).where(inArray(equipmentActivitySegmentBoqItems.segmentId, previous.map((s: any) => s.id)));
@@ -250,12 +378,8 @@ export function dprCorrectionService(database: any, validate: Validate) {
         const reviewed = await review(tx, saved, data.form, actor);
         if (reviewed.blocked.length) correctionError(reviewed.blocked.map((b: any) => `${b.section} #${b.rowId} / ${b.field}: ${b.message}`).join("\n"));
         if (!reviewed.changes.length) correctionError("There are no changes to save.", 400);
-        const ownerDerivedGeometryOnly = actor.isOwner === true && reviewed.requiresApproval
-          && reviewed.changes.some((change: any) =>
-            change.section === "progress" && change.derived === true && ["length", "quantity"].includes(change.field))
-          && reviewed.changes.filter((change: any) => change.requiresApproval).every((change: any) =>
-            change.section === "progress" && change.derived === true && ["length", "quantity"].includes(change.field));
-        if (!reviewed.requiresApproval || ownerDerivedGeometryOnly) return apply(tx, saved, reviewed, actor, reason);
+        const ownerDirectCorrection = ownerCanApplyDirectly(actor, reviewed);
+        if (!reviewed.requiresApproval || ownerDirectCorrection) return apply(tx, saved, reviewed, actor, reason);
         const pending = await tx.select().from(editPermissionRequests).where(and(
           eq(editPermissionRequests.recordType, "dpr_correction"), eq(editPermissionRequests.recordId, id),
           eq(editPermissionRequests.requestedBy, actor.id), eq(editPermissionRequests.status, "pending"),
@@ -324,6 +448,28 @@ export function dprCorrectionService(database: any, validate: Validate) {
           newValues: { dprId: id, requestId, requesterId: request.requestedBy }, stockImpact: "No financial postings.",
         });
         return result;
+      });
+    },
+    async withdraw(id: number, requestId: number, actor: Actor) {
+      checkActor(actor);
+      return database.transaction(async (tx: any) => {
+        await load(tx, id, true);
+        const [request] = await tx.select().from(editPermissionRequests).where(and(
+          eq(editPermissionRequests.id, requestId),
+          eq(editPermissionRequests.recordType, "dpr_correction"),
+          eq(editPermissionRequests.recordId, id),
+        )).for("update");
+        if (!request || request.status !== "pending") correctionError("This correction request is no longer pending.");
+        if (Number(request.requestedBy) !== Number(actor.id)) correctionError("Only the requester can withdraw this pending correction.", 403);
+        await tx.update(editPermissionRequests).set({ status: "withdrawn" }).where(eq(editPermissionRequests.id, requestId));
+        await tx.insert(auditLogs).values({
+          module: "dpr_correction_request", transactionId: requestId, action: "withdrawn",
+          userId: actor.id, userName: name(actor), userRole: actor.isOwner ? "owner" : actor.isAdmin ? "admin" : "editor",
+          reason: "Requester withdrew the pending correction.",
+          newValues: { dprId: id, requestId, requesterId: actor.id },
+          stockImpact: "No operational or financial records changed.",
+        });
+        return { id, requestId, withdrawn: true };
       });
     },
   };

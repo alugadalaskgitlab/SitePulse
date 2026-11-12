@@ -20,6 +20,7 @@ export interface DprCorrectionReview {
   blocked: Array<{ section: string; rowId: string | number | null; field: string; message: string }>;
   requiresApproval: boolean;
   impact: string[];
+  ownerDirectAllowed?: boolean;
 }
 
 export interface DprCorrectionRequest {
@@ -45,6 +46,13 @@ export type DprCorrectionForm = {
   labour: unknown[];
   materials: unknown[];
   sitePurchases: unknown[];
+  splitProgress?: {
+    sourcePersistedId: number;
+    splitAt: string;
+    secondIsIncidental: boolean;
+    secondIncidentalDescription: string;
+    secondReworkNoNewMaterial: boolean;
+  } | null;
 };
 
 /** Preserve the raw editor state, including row identities, blanks and zeroes.
