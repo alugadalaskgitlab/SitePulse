@@ -87,7 +87,6 @@ it("lets only an Owner apply a reviewed, reasoned derived-quantity correction di
   const owner = { id: 3, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
   const f = await derivedGeometryFixture();
   const review = await service.preview(f.id, f.form, owner);
-  console.log("SPLIT REVIEW", review.ownerDirectAllowed, review.changes.filter((change: any) => change.requiresApproval).map((change: any) => [change.field, change.derived, change.rowId]));
   expect(review.requiresApproval).toBe(true);
   expect(review.changes).toEqual(expect.arrayContaining([
     expect.objectContaining({ field: "length", oldValue: 320, newValue: 300, requiresApproval: true, derived: true }),
@@ -134,6 +133,45 @@ it("lets the Owner directly correct an incidental rework flag and BOQ link after
     .toMatchObject({ boqItemId: 701, isIncidental: true, reworkNoNewMaterial: true });
   expect(await db.select().from(schema.stockLedger)).toEqual(beforeStock);
   expect((await service.list(f.id))[0]).toMatchObject({ status: "owner_corrected", requestedByName: "Fixture Owner" });
+});
+
+async function thicknessCorrectionFixture() {
+  const f = await fixture();
+  await db.update(schema.progressEntries).set({
+    chainageFrom: "1+000", chainageTo: "1+300", length: 300,
+    width: 3.5, thickness: 0.175, quantity: 183.75, quantitySource: "calculated",
+  }).where(eq(schema.progressEntries.id, f.p.id));
+  Object.assign(f.form.progress[0], {
+    chainageFrom: "1+000", chainageTo: "1+300", length: 300,
+    width: 3.5, thickness: 0.15, quantity: 183.75, quantitySource: "calculated",
+  });
+  return f;
+}
+
+it("saves the Owner's reviewed 0.175 m to 0.15 m thickness correction directly at 157.5 cum", async () => {
+  const owner = { id: 3, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
+  const f = await thicknessCorrectionFixture();
+  const review = await service.preview(f.id, f.form, owner);
+  expect(review.blocked).toEqual([]);
+  expect(review.ownerDirectAllowed).toBe(true);
+  const result: any = await service.submit(f.id, {
+    form: f.form, baseHash: review.baseHash, reason: "Checked against the approved cross section", confirmImpact: true,
+  }, owner);
+  expect(result.pending).toBeUndefined();
+  expect(await db.query.progressEntries.findFirst({ where: eq(schema.progressEntries.id, f.p.id) }))
+    .toMatchObject({ thickness: 0.15, quantity: 157.5, quantitySource: "calculated" });
+  expect((await service.list(f.id))[0]).toMatchObject({ status: "owner_corrected", requestedByName: "Fixture Owner" });
+});
+
+it("sends the same reviewed thickness correction by a non-Owner through approval", async () => {
+  const f = await thicknessCorrectionFixture();
+  const review = await service.preview(f.id, f.form, author);
+  const result: any = await service.submit(f.id, {
+    form: f.form, baseHash: review.baseHash, reason: "Checked against the approved cross section", confirmImpact: true,
+  }, author);
+  expect(result.pending).toBe(true);
+  expect(await db.query.progressEntries.findFirst({ where: eq(schema.progressEntries.id, f.p.id) }))
+    .toMatchObject({ thickness: 0.175, quantity: 183.75 });
 });
 
 it("keeps the Owner split as two chainage rows with divided quantity and no postings", async () => {

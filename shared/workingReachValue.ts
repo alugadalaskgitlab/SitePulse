@@ -83,6 +83,19 @@ export function allocateBoqQuantityToWorkingReaches(
   );
   const currentQty = Number.isFinite(Number(item.currentQty)) ? Math.max(0, Number(item.currentQty)) : 0;
   if (denominatorKm <= 0) {
+    const hasLinearScope = item.isLinear && segments.some(segment =>
+      ["working_reach", "no_scope", "withdrawn"].includes(segment.segmentType),
+    );
+    if (hasLinearScope) {
+      return {
+        denominatorKm: 0,
+        workingLengthKm: 0,
+        workingQuantity: 0,
+        notNeededQuantity: currentQty,
+        scoped: true,
+        shares: [],
+      };
+    }
     return {
       denominatorKm: 0,
       workingLengthKm: 0,
@@ -139,6 +152,13 @@ export interface ProgressWorkForReach {
   chainageFromKm?: number | string | null;
   chainageToKm?: number | string | null;
   isIncidental?: boolean | null;
+  reworkNoNewMaterial?: boolean | null;
+}
+
+export function workingValueCategory(row: Pick<ProgressWorkForReach, "isIncidental" | "reworkNoNewMaterial">) {
+  if (row.reworkNoNewMaterial === true) return "rework" as const;
+  if (row.isIncidental === true) return "incidental" as const;
+  return "billable" as const;
 }
 
 function numericChainage(raw: string | null | undefined, value: number | string | null | undefined): number | null {

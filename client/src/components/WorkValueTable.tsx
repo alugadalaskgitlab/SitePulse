@@ -29,6 +29,11 @@ type WorkValueResponse = {
   siteName: string;
   scopeBasis: string;
   rows: WorkValueRow[];
+  reachTotals: Array<{
+    reachId: number | null; reachLabel: string; chainageFrom: number | null; chainageTo: number | null;
+    scopeQuantity: number; doneQuantity: number; balanceQuantity: number; overQuantity: number;
+    valueDone: number; valueBalance: number; overValue: number; incompleteValueRows: number;
+  }>;
   totals: {
     billEstimateWithinBoq: number;
     overBoqValue: number;
@@ -94,6 +99,21 @@ export function WorkValueTable({ projectId }: { projectId: number }) {
         <p className="text-xs text-amber-800 print:text-black">
           {data.totals.incompleteValueRows} reach/item row{data.totals.incompleteValueRows === 1 ? "" : "s"} has no saved BOQ rate; its values are not included in the totals.
         </p>
+      )}
+
+      {data.reachTotals.length > 0 && (
+        <section className="rounded border p-3 print:border-black" data-testid="work-value-reach-totals">
+          <h3 className="mb-2 text-sm font-semibold">Totals by reach</h3>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {data.reachTotals.map((reach, index) => (
+              <div key={`${reach.reachId ?? "full"}-${index}`} className="rounded border bg-white p-2 print:border-black">
+                <p className="text-xs font-semibold">{reach.reachLabel}{reach.chainageFrom != null && reach.chainageTo != null ? ` · Ch ${ch(reach.chainageFrom)}–${ch(reach.chainageTo)}` : ""}</p>
+                <p className="mt-1 text-[11px]">Value done: {money(reach.valueDone)} · Over BOQ — needs variation: {money(reach.overValue)} · Value balance: {money(reach.valueBalance)}</p>
+                {reach.incompleteValueRows > 0 && <p className="text-[10px]">{reach.incompleteValueRows} item rows have no saved BOQ rate.</p>}
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
       <div className="overflow-x-auto rounded border print:border-black">

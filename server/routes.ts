@@ -205,7 +205,7 @@ import { materializedEquipmentLogChanged } from "@shared/equipmentMovement";
 import { hasDprBoqReferences, hasPreservedDprBoqReferences } from "@shared/dprBoqReferences";
 import { isEvidenceBasedDprNullProjectRecovery, normalizeDprSiteName } from "@shared/dprBoqSelection";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
-import { allocateBoqQuantityToWorkingReaches, quantityForWorkingReach } from "@shared/workingReachValue";
+import { allocateBoqQuantityToWorkingReaches, quantityForWorkingReach, workingValueCategory } from "@shared/workingReachValue";
 import { dprSaveErrorMetadata } from "./dprSaveError";
 import { boqConversionConfigError } from "./boqConversionConfig";
 import {
@@ -20627,9 +20627,16 @@ export async function registerRoutes(
         )),
         db.select({
           boqItemId: progressEntriesTable.boqItemId,
+          programmeBarId: progressEntriesTable.programmeBarId,
           quantity: progressEntriesTable.quantity,
+          side: progressEntriesTable.side,
+          chainageFrom: progressEntriesTable.chainageFrom,
+          chainageTo: progressEntriesTable.chainageTo,
+          chainageFromKm: progressEntriesTable.chainageFromKm,
+          chainageToKm: progressEntriesTable.chainageToKm,
           isIncidental: progressEntriesTable.isIncidental,
           reworkNoNewMaterial: progressEntriesTable.reworkNoNewMaterial,
+          chainageReviewStatus: progressEntriesTable.chainageReviewStatus,
           dprStatus: dprsTable.dprStatus,
           isDeleted: dprsTable.isDeleted,
           isCancelled: dprsTable.isCancelled,
@@ -20889,6 +20896,7 @@ export async function registerRoutes(
         return toMaterialUnit(quantity, sourceRow?.uom ?? item?.unit ?? targetUom, targetUom, master, basis);
       };
 
+      const scopeAllocationByItem = new Map<number, ReturnType<typeof allocateBoqQuantityToWorkingReaches>>();
       for (const item of bom.expandedItems as any[]) {
         const itemId = Number(item.id);
         const itemQty = Number(item.currentQty) || 0;
@@ -20898,6 +20906,7 @@ export async function registerRoutes(
           isLinear: !["structure", "non_linear"].includes(String(item.layerConfig?.layerType ?? item.workCategory ?? "").toLowerCase()),
           currentQty: itemQty,
         }, scopeSegments);
+        scopeAllocationByItem.set(itemId, scopeAllocation);
         const scopedItem = { ...item, currentQty: scopeAllocation.workingQuantity };
         const scopeRatio = itemQty > 0 ? scopeAllocation.workingQuantity / itemQty : 0;
         const itemScopedArrangements = demandArrangements.map((arrangement: any) => {
@@ -21145,12 +21154,42 @@ export async function registerRoutes(
       }
 
       const dprQuantityByItem = aggregateSubmittedDprMaterialUse(dprRows as any[]);
+      const billableScopedDoneByItem = new Map<number, number>();
+      const barsByIdForValue = new Map<number, any>((bom.bars as any[]).map((bar: any) => [Number(bar.id), bar]));
+      for (const sourceRow of dprRows as any[]) {
+        if (sourceRow.isIncidental === true || sourceRow.reworkNoNewMaterial === true ||
+            sourceRow.chainageReviewStatus === "review_required" || sourceRow.boqItemId == null) continue;
+        const itemId = Number(sourceRow.boqItemId);
+        const item = itemById.get(itemId);
+        const allocation = scopeAllocationByItem.get(itemId);
+        if (!item || !allocation) continue;
+        const itemFactor = item.dprConversionFactor == null ? 1 : Number(item.dprConversionFactor);
+        const bar = sourceRow.programmeBarId == null ? null : barsByIdForValue.get(Number(sourceRow.programmeBarId));
+        const workRow = {
+          ...sourceRow,
+          quantity: Number(sourceRow.quantity),
+          dprConversionFactor: itemFactor,
+          chainageFrom: sourceRow.chainageFrom || bar?.chainageFrom || null,
+          chainageTo: sourceRow.chainageTo || bar?.chainageTo || null,
+          chainageFromKm: sourceRow.chainageFromKm ?? bar?.chainageFrom ?? null,
+          chainageToKm: sourceRow.chainageToKm ?? bar?.chainageTo ?? null,
+        };
+        for (const share of allocation.shares) {
+          const reach = share.reachId == null ? null : scopeSegments.find(segment => Number(segment.id) === share.reachId) ?? null;
+          const portion = quantityForWorkingReach(
+            workRow,
+            reach
+              ? { chainageFrom: reach.chainageFrom, chainageTo: reach.chainageTo, side: reach.side }
+              : { chainageFrom: -Number.MAX_SAFE_INTEGER, chainageTo: Number.MAX_SAFE_INTEGER, side: null },
+            allocation.shares.length,
+          );
+          if (portion != null) billableScopedDoneByItem.set(itemId, (billableScopedDoneByItem.get(itemId) ?? 0) + portion);
+        }
+      }
       for (const row of planRows.values()) {
         for (const line of row.lines) {
           const item = itemById.get(line.boqItemId);
-          const actuals = dprQuantityByItem.get(line.boqItemId);
-          const factor = Number(item?.dprConversionFactor) || 1;
-          const billableDone = Math.max(0, Number(actuals?.quantity ?? 0) - Number(actuals?.incidentalQuantity ?? 0)) * factor;
+          const billableDone = billableScopedDoneByItem.get(line.boqItemId) ?? 0;
           const rate = Number(item?.clientRate);
           line.valueOfBalanceWork = Number.isFinite(rate)
             ? Math.max(0, line.boqQuantity - billableDone) * rate
@@ -21525,8 +21564,9 @@ export async function registerRoutes(
             if (portion == null) continue;
             assigned += portion;
             const state = states.get(`${itemId}:${share.reachId ?? "full"}`)!;
-            if (sourceRow.isIncidental === true) state.incidentalQuantity += portion;
-            else if (sourceRow.reworkNoNewMaterial === true) state.reworkQuantity += portion;
+            const category = workingValueCategory(sourceRow);
+            if (category === "rework") state.reworkQuantity += portion;
+            else if (category === "incidental") state.incidentalQuantity += portion;
             else state.doneQuantity += portion;
           }
           if (assigned + 0.000001 < totalPhysical) {
@@ -21559,6 +21599,27 @@ export async function registerRoutes(
       const workingRows = valueRows.filter(row => row.rowType === "working_reach");
       const sumKnown = (field: "valueDone" | "valueBalance" | "overValue") =>
         workingRows.reduce((sum, row) => sum + (row[field] ?? 0), 0);
+      const reachTotals = Array.from(
+        workingRows.reduce((totals, row) => {
+          const key = `${row.reachId ?? "full"}:${row.reachLabel}`;
+          const total = totals.get(key) ?? {
+            reachId: row.reachId, reachLabel: row.reachLabel,
+            chainageFrom: row.chainageFrom, chainageTo: row.chainageTo,
+            scopeQuantity: 0, doneQuantity: 0, balanceQuantity: 0, overQuantity: 0,
+            valueDone: 0, valueBalance: 0, overValue: 0, incompleteValueRows: 0,
+          };
+          total.scopeQuantity += row.scopeQuantity;
+          total.doneQuantity += row.doneQuantity;
+          total.balanceQuantity += row.balanceQuantity;
+          total.overQuantity += row.overQuantity;
+          total.valueDone += row.valueDone ?? 0;
+          total.valueBalance += row.valueBalance ?? 0;
+          total.overValue += row.overValue ?? 0;
+          if (row.rate == null) total.incompleteValueRows += 1;
+          totals.set(key, total);
+          return totals;
+        }, new Map<string, any>()),
+      ).map(([, total]) => total);
       const corridorEnd = scopeSegments
         .filter(segment => (segment.status ?? "confirmed") === "confirmed" && ["working_reach", "no_scope", "withdrawn"].includes(segment.segmentType))
         .reduce((max, segment) => Math.max(max, Number(segment.chainageTo) || 0), 0);
@@ -21579,6 +21640,7 @@ export async function registerRoutes(
         projectId, projectName: project.name, siteName: site.name,
         scopeBasis: "Confirmed working reaches and no-scope/withdrawn corridor length; programme bars do not determine BOQ shares.",
         rows: valueRows,
+        reachTotals,
         totals: {
           billEstimateWithinBoq: sumKnown("valueDone"),
           overBoqValue: sumKnown("overValue"),

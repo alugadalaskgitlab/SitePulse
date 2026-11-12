@@ -31,7 +31,7 @@ const ownerCanApplyDirectly = (actor: Actor, review: any) => actor.isOwner === t
   && review.changes.filter((change: any) => change.requiresApproval).every((change: any) =>
     change.section === "progress" && (
       ownerDirectProgressFields.has(change.field)
-      || change.derived === true && ["length", "quantity", "quantitySource"].includes(change.field)
+      || change.derived === true && ["chainageToKm", "length", "quantity", "quantitySource"].includes(change.field)
     ));
 
 /** Extends submitted-DPR editing using existing edit requests and audit history.

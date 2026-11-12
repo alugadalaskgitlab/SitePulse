@@ -144,3 +144,111 @@ development schema change must be applied only to the two development
 databases, not production.
 
 **Part A complete. Stopped here pending the Owner’s “continue”.**
+
+## Part B — implemented and verified
+
+### Schema and data safety
+
+Added exactly one nullable column:
+
+- `progress_entries.rework_no_new_material boolean NULL` (`NULL` means the row
+  is not marked as rework).
+
+The same additive column is present in the two development databases:
+`sitelog_dev` and the Publish-facing development database `heliumdb`. Both were
+checked by database name and column metadata. No production database or replica
+was queried. No other schema object was added or changed.
+
+The `sitelog_dev` verification found 475 progress rows and **0 non-null
+rework flags**. No existing DPR or progress row was edited. Table counts still
+match the recorded development baseline:
+
+| Development table | Count |
+|---|---:|
+| DPRs | 359 |
+| Progress entries | 475 |
+| Site material trips | 735 |
+| Stock ledger rows | 848 |
+| Vendor bills | 58 |
+
+No trips, receipts, stock ledger rows, bills, BOQ items, rates, scope records,
+or programme bars were changed. No data script was run, and nothing was
+published.
+
+### Rework, material use, and value
+
+- Detailed and Guided DPRs now offer **“Rework — no new material used”** on an
+  incidental progress line. Clearing Incidental also clears the rework choice.
+- The same flag is available in submitted-DPR correction. The server only
+  retains the flag when the line is incidental; existing NULL values remain
+  unmarked.
+- Rework quantities remain in the DPR and progress record. They are excluded
+  from material use in Material Buy/Use, Site Material Stock consumption and
+  Material Balance. Incidental non-rework rows continue to use materials and
+  remain separately identified.
+- The Work value tab shows incidental and rework quantities in separate
+  no-value columns. Neither contributes to billable progress or value.
+
+### ALLADURG result
+
+The following “after” values are the calculation when the specified incidental
+rows are marked as rework. The live DPR rows were deliberately left unchanged,
+so the live reports continue to show the “before” values until an Owner saves
+those corrections through the correction screen.
+
+| Material | Before | After the requested rework marks | Working-reach need |
+|---|---:|---:|---:|
+| WMM used | 1,670.29 MT (about 1,670.3) | 1,521.45 MT; excludes DPR 423’s 67.5 Cum × 2.205 MT/Cum = 148.84 MT | BOQ 1,631.25 Cum × 2.6/2.9 = 1,462.50 Cum; 3,224.81 MT |
+| Soil used | 3,051 cum loose | 1,098 cum loose; excludes 1,627.5 Cum shoulder rework × 1.2 | BOQ 1,305 Cum × 2.6/2.9 = 1,170 Cum compacted, or 1,404 cum loose |
+
+Soil received remains 68,300 CFT = **1,934.04 cum loose**. After the stated
+rework marks, estimated lying at site is **836.04 cum loose** (received minus
+1,098 used). The scoped soil need after billable use is 306 cum loose, so
+still-to-buy is **0** after available lying stock is applied. WMM remains
+calculated from the WMM master at 2.205 MT/Cum; its balance and still-to-buy
+figures use the current site receipts/stock.
+
+With negative plant stock, Plan vs Actual now shows the negative amount and
+“Used more than received — check receipts or mix template”. For still-to-buy,
+negative plant stock counts as zero.
+
+### Working-reach scope and Work value
+
+Material need is now allocated to confirmed working reaches by item
+applicability and corridor length; programme bars do not determine the BOQ
+share. The Material Balance demand uses the same working-reach allocation.
+Material use remains based on actual submitted work and its existing material
+source; only the rework exclusion changes which rows consume material.
+
+The new **Work value** tab reports each BOQ item by working reach, including
+scope share, billable done, balance, value done, value balance, incidental and
+rework quantities, and over-BOQ quantities/value. It shows project totals,
+per-reach totals, unassigned work, and the value of the no-scope BOQ portion.
+Chainage matching is used for DPR actuals; bars are only listed as warnings.
+ALLADURG’s Reach 3 soil and WMM bars that end at **3+200** are reported because
+the corridor ends at **2+900**. They were not changed.
+
+For a DPR with an explicit BOQ item link, the Owner can now directly save the
+reviewed measurement fields requested in Part B, including chainage, side,
+width, thickness, length, quantity, BOQ item, Incidental, and Rework. The Owner
+can split one saved line at a chosen chainage; the two quantities are
+proportioned by length, and each part can be classified independently. These
+actions are recorded as **“Corrected by Owner”** with old/new values and a
+reason. Other users still use the approval flow. A pending request can be
+withdrawn by its requester. The tests cover the Owner correction and split in
+isolated fixtures; DPRs 388, 389, 394, 395, 403, 413, 423, and 381 were not
+edited.
+
+### Tests and preview
+
+Focused verification passed: **7 test files, 65 tests** covering working-reach
+allocation, DPR eligibility/rework use, material-plan and Work value rendering,
+Material Balance, site-stock reconciliation, Owner correction, non-Owner
+approval, split-line behavior, and request withdrawal. `npm run build` passed.
+The application restarted successfully; startup readiness reported `ready:
+true`.
+
+The requested signed-in screenshots are not included. The preview screenshot
+browser is unauthenticated and redirected to the login/loading screen (401);
+no account was created or auth bypassed. The Work value and material-plan
+states were verified by component tests instead.
