@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { CorrectionChanges, DprCorrectionDialog } from "./DprCorrectionDialog";
 import { DprCorrectionHistory } from "./DprCorrectionHistory";
 import type { DprCorrectionRequest, DprCorrectionReview } from "@/lib/dprCorrections";
@@ -127,5 +127,32 @@ describe("Administrator correction decisions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Approve correction" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("no longer pending"));
     expect((screen.getByLabelText("Approval decision reason (required)") as HTMLTextAreaElement).value).toBe("Register checked");
+  });
+
+  it("shows pending and Owner-corrected history on DPR edit and lets its requester withdraw", async () => {
+    const onWithdraw = vi.fn().mockResolvedValue({});
+    const ownerCorrected: DprCorrectionRequest = {
+      ...request,
+      id: 84,
+      requestedBy: 29,
+      requestedByName: "Owner",
+      status: "owner_corrected",
+      approverName: "Owner",
+      approverNote: "Matched to the signed site register",
+    };
+
+    render(<DprCorrectionHistory
+      {...historyProps}
+      requests={[request, ownerCorrected]}
+      canApprove={false}
+      userId={17}
+      onWithdraw={onWithdraw}
+    />);
+
+    expect(screen.getByText("Awaiting approval")).toBeTruthy();
+    expect(screen.getByText("Corrected by Owner")).toBeTruthy();
+    const pendingCard = within(screen.getByTestId("correction-request-83"));
+    fireEvent.click(pendingCard.getByRole("button", { name: "Withdraw request" }));
+    await waitFor(() => expect(onWithdraw).toHaveBeenCalledWith(83));
   });
 });

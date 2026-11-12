@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { AppErrorBoundary, AppUpdateNotice } from "./AppRecovery";
+import { AppErrorBoundary, AppUpdateNotice, handleVitePreloadError } from "./AppRecovery";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  sessionStorage.removeItem("sp_chunk_reload_at");
+});
 
 describe("app recovery", () => {
   it("shows a friendly reload fallback when a route throws during render", () => {
@@ -24,11 +27,30 @@ describe("app recovery", () => {
     consoleError.mockRestore();
   });
 
-  it("shows the quiet refresh prompt when Vite reports a failed chunk preload", () => {
+  it("automatically reloads once on a failed lazy chunk and respects the one-minute guard", () => {
+    const reload = vi.fn();
     render(<AppUpdateNotice />);
-    act(() => window.dispatchEvent(new Event("vite:preloadError")));
+    const firstFailure = new Event("vite:preloadError", { cancelable: true });
+    act(() => handleVitePreloadError(firstFailure, reload));
+    expect(firstFailure.defaultPrevented).toBe(true);
+    expect(reload).toHaveBeenCalledOnce();
     expect(screen.getByTestId("app-update-notice").textContent)
       .toContain("A new version is ready — tap to refresh");
+    act(() => handleVitePreloadError(new Event("vite:preloadError", { cancelable: true }), reload));
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("uses an update recovery message rather than the generic screen error for chunk failures", () => {
+    sessionStorage.setItem("sp_chunk_reload_at", String(Date.now()));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    function BrokenChunk(): JSX.Element {
+      throw new Error("Failed to fetch dynamically imported module: /assets/old-page.js");
+    }
+
+    render(<AppErrorBoundary><BrokenChunk /></AppErrorBoundary>);
+    expect(screen.getByTestId("chunk-load-recovery").textContent).toContain("A new version is available");
+    expect(screen.queryByText("This screen couldn’t be loaded")).toBeNull();
+    consoleError.mockRestore();
   });
 
   it("shows the refresh prompt for a waiting service-worker update", async () => {

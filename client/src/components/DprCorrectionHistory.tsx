@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CorrectionChanges, CorrectionImpact } from "@/components/DprCorrectionDialog";
 import { canReviewCorrection, correctionErrorMessage, type DprCorrectionRequest } from "@/lib/dprCorrections";
 
-function CorrectionRequest({ request, canApprove, userId, busy, onDecide }: {
+function CorrectionRequest({ request, canApprove, userId, busy, onDecide, onWithdraw }: {
   request: DprCorrectionRequest; canApprove: boolean; userId?: number; busy: boolean;
   onDecide: (requestId: number, approve: boolean, reason: string) => Promise<unknown>;
   onWithdraw?: (requestId: number) => Promise<unknown>;
@@ -53,7 +53,7 @@ function CorrectionRequest({ request, canApprove, userId, busy, onDecide }: {
   </article>;
 }
 
-export function DprCorrectionHistory({ requests, loading, error, canApprove, userId, busy, onRetry, onDecide }: {
+export function DprCorrectionHistory({ requests, loading, error, canApprove, userId, busy, onRetry, onDecide, onWithdraw }: {
   requests: DprCorrectionRequest[]; loading: boolean; error?: string; canApprove: boolean; userId?: number; busy: boolean;
   onRetry: () => void; onDecide: (requestId: number, approve: boolean, reason: string) => Promise<unknown>;
   onWithdraw?: (requestId: number) => Promise<unknown>;

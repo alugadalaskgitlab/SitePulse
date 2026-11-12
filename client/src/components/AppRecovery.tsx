@@ -2,33 +2,85 @@ import { Component, useEffect, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
-type AppErrorBoundaryState = { hasError: boolean };
+type AppErrorBoundaryState = { hasError: boolean; chunkLoadFailure: boolean };
 
 let preloadFailureDetected = false;
 const preloadFailureSubscribers = new Set<() => void>();
+const CHUNK_RELOAD_GUARD_KEY = "sp_chunk_reload_at";
+const CHUNK_RELOAD_GUARD_MS = 60_000;
+
+function isChunkLoadFailure(error: unknown) {
+  const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return /failed to fetch dynamically imported module|importing a module script failed|error loading dynamically imported module|loading chunk .+ failed|failed to load module script/i.test(detail);
+}
+
+function flagPreloadFailure() {
+  preloadFailureDetected = true;
+  preloadFailureSubscribers.forEach(subscriber => subscriber());
+}
+
+function reloadAfterChunkFailure(reload = () => window.location.reload()) {
+  if (typeof window === "undefined") return false;
+  const now = Date.now();
+  let lastReload: number;
+  try {
+    lastReload = Number(window.sessionStorage.getItem(CHUNK_RELOAD_GUARD_KEY) || "0");
+    if (lastReload > 0 && now - lastReload < CHUNK_RELOAD_GUARD_MS) return false;
+    window.sessionStorage.setItem(CHUNK_RELOAD_GUARD_KEY, String(now));
+  } catch {
+    // Without a persistent per-tab guard, avoid a reload loop and leave the manual
+    // refresh notice visible instead.
+    return false;
+  }
+  reload();
+  return true;
+}
+
+export function handleVitePreloadError(event: Event, reload?: () => void) {
+  event.preventDefault();
+  flagPreloadFailure();
+  return reloadAfterChunkFailure(reload);
+}
 
 if (typeof window !== "undefined") {
-  window.addEventListener("vite:preloadError", () => {
-    preloadFailureDetected = true;
-    preloadFailureSubscribers.forEach(subscriber => subscriber());
-  });
+  window.addEventListener("vite:preloadError", event => handleVitePreloadError(event));
 }
 
 export class AppErrorBoundary extends Component<{ children: ReactNode; fallback?: ReactNode }, AppErrorBoundaryState> {
-  state: AppErrorBoundaryState = { hasError: false };
+  state: AppErrorBoundaryState = { hasError: false, chunkLoadFailure: false };
 
-  static getDerivedStateFromError(): AppErrorBoundaryState {
-    return { hasError: true };
+  static getDerivedStateFromError(error: unknown): AppErrorBoundaryState {
+    return { hasError: true, chunkLoadFailure: isChunkLoadFailure(error) };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("Application route failed to render", error, info);
+    if (isChunkLoadFailure(error) && !reloadAfterChunkFailure()) flagPreloadFailure();
   }
 
   render() {
     if (!this.state.hasError) return this.props.children;
 
     if (this.props.fallback) return this.props.fallback;
+    if (this.state.chunkLoadFailure) {
+      return (
+        <main className="flex min-h-[50vh] items-center justify-center p-6">
+          <section
+            role="status"
+            data-testid="chunk-load-recovery"
+            className="w-full max-w-md rounded-lg border bg-background p-6 text-center shadow-sm"
+          >
+            <h1 className="text-lg font-semibold">Refreshing the app</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              A new version is available. If the app does not refresh automatically, reload it to continue.
+            </p>
+            <Button type="button" className="mt-4" onClick={() => window.location.reload()}>
+              Reload app
+            </Button>
+          </section>
+        </main>
+      );
+    }
     return (
       <main className="flex min-h-[50vh] items-center justify-center p-6">
         <section
