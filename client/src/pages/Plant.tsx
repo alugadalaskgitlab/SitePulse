@@ -4685,6 +4685,8 @@ export function EquipmentMasterSection() {
       .filter(u => standardOutputsMap[u] && parseFloat(standardOutputsMap[u]) > 0)
       .map(u => ({ unit: u, outputPerHr: parseFloat(standardOutputsMap[u]) }));
     const monthlyHire = ownership === "hired" && shouldShowMonthlyHireTerms(hireBasis);
+    const hireBasisChanged = ownership === "hired" &&
+      hireBasis !== String((editingEquipment as any).hireBillingBasis ?? "");
     const data = {
       name,
       registrationNumber: registrationNumber || undefined,
@@ -4693,16 +4695,19 @@ export function EquipmentMasterSection() {
         ? { vendorId: selectedVendorId }
         : {}),
       tallyCostCentreName: ownership === "hired" ? tallyCostCentreName : undefined,
-      hireBillingBasis: ownership === "hired" ? hireBasis || null : null,
-      hireRate: monthlyHire ? Number(hireRate) : null,
-      hireStartDate: monthlyHire ? hireStartDate : null,
-      hireEndDate: monthlyHire ? hireEndDate || null : null,
-      hireDieselResponsibility: ownership === "hired" ? hireDieselResponsibility : null,
-      hireOperatorResponsibility: ownership === "hired" ? hireOperatorResponsibility : null,
-      hireAgreementRemarks: ownership === "hired" ? hireRemarks || null : null,
-      hireBreakdownDeductionEnabled: ownership === "hired" ? hireDeductionEnabled : false,
-      hireMonthlyDivisorType: monthlyHire ? monthlyDivisorType : null,
-      hireMonthlyDivisor: monthlyHire && monthlyDivisorType === "custom" ? parseFloat(monthlyDivisorCustom) : null,
+      ...(hireBasisChanged ? { hireBillingBasis: hireBasis || null } : {}),
+      ...(monthlyHire ? {
+        hireBillingBasis: "monthly",
+        hireRate: Number(hireRate),
+        hireStartDate,
+        hireEndDate: hireEndDate || null,
+        hireDieselResponsibility,
+        hireOperatorResponsibility,
+        hireAgreementRemarks: hireRemarks || null,
+        hireBreakdownDeductionEnabled: hireDeductionEnabled,
+        hireMonthlyDivisorType: monthlyDivisorType,
+        hireMonthlyDivisor: monthlyDivisorType === "custom" ? parseFloat(monthlyDivisorCustom) : null,
+      } : {}),
       meterType,
       consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined,
       plantName: plantNameField || null,

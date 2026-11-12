@@ -5318,27 +5318,20 @@ export async function registerRoutes(
               Number(updates.hireMonthlyDivisor ?? current.hireMonthlyDivisor) <= 0)) {
             return { validationError: "Enter a custom monthly divisor greater than zero." };
           }
-          if (updates.ownership === "owned") {
-            Object.assign(updates, {
-              hireBillingBasis: null,
-              hireRate: null,
-              hireStartDate: null,
-              hireEndDate: null,
-              hireDieselResponsibility: null,
-              hireOperatorResponsibility: null,
-              hireAgreementRemarks: null,
-              hireBreakdownDeductionEnabled: false,
-              hireMonthlyDivisorType: null,
-              hireMonthlyDivisor: null,
-            });
-          } else if (effectiveOwnership === "hired" && effectiveBasis !== "monthly") {
-            Object.assign(updates, {
-              hireRate: null,
-              hireStartDate: null,
-              hireEndDate: null,
-              hireMonthlyDivisorType: null,
-              hireMonthlyDivisor: null,
-            });
+          if (effectiveOwnership !== "hired" || effectiveBasis !== "monthly") {
+            for (const field of [
+              "hireRate",
+              "hireStartDate",
+              "hireEndDate",
+              "hireDieselResponsibility",
+              "hireOperatorResponsibility",
+              "hireAgreementRemarks",
+              "hireBreakdownDeductionEnabled",
+              "hireMonthlyDivisorType",
+              "hireMonthlyDivisor",
+            ]) {
+              delete updates[field];
+            }
           }
         }
 

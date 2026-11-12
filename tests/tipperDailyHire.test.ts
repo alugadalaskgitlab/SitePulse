@@ -271,3 +271,64 @@ it("saves Master-based hire groups, permits draft edits and freezes completed bi
   }
   expect((await db.select().from(schema.equipmentMaster).where(eq(schema.equipmentMaster.id, 30)))[0]).toMatchObject(tripMaster);
 });
+
+it("uses the saved master rate for the first daily hire statement", async () => {
+  const id = 82;
+  const date = "2027-03-10";
+  const machine = {
+    ...master,
+    id,
+    name: "FASIUDDIN TIPPER",
+    registrationNumber: "FASIUDDIN-82",
+    vendorName: "Agency",
+    hireBillingBasis: "daily",
+    hireRate: 5000,
+    hireStartDate: "2027-03-01",
+    hireEndDate: null,
+  };
+  await db.insert(schema.equipmentMaster).values(machine);
+  await db.insert(schema.dprs).values({
+    id,
+    date,
+    site: "ROAD",
+    dprStatus: "submitted",
+    isSuperseded: false,
+  });
+  await db.insert(schema.equipmentLogs).values({
+    id,
+    dprId: id,
+    equipmentId: id,
+    entryType: "daily",
+    status: "closed",
+  });
+
+  const bill = await storage.createVendorBill({
+    billDate: date,
+    billType: "equipment",
+    vendorName: machine.vendorName,
+    periodFrom: date,
+    periodTo: date,
+    status: "draft",
+    items: [],
+    hireGroups: [{
+      equipmentId: id,
+      basis: "daily",
+      rate: 1,
+      periodFrom: date,
+      periodTo: date,
+      dailyDecisions: [{ date, decision: "full_day", reason: "Reviewed daily hire" }],
+      tripDecisions: [],
+      exceptionDecisions: [],
+    }],
+  } as any);
+
+  expect(bill.items).toHaveLength(1);
+  expect(bill.items[0]).toMatchObject({ equipmentId: id, qty: 1, rate: 5000, amount: 5000 });
+  const [statement] = await db.select().from(schema.hireStatements)
+    .where(eq(schema.hireStatements.equipmentId, id));
+  expect(statement).toMatchObject({
+    equipmentId: id,
+    billingBasis: "daily",
+    rate: 5000,
+  });
+});

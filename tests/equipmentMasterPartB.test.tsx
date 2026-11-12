@@ -276,6 +276,7 @@ describe("EQUIP-MASTER-01 Part B", () => {
 
   it("preserves a saved hired-owner text when the vendor selection is left unchanged", async () => {
     let patched: Record<string, unknown> | null = null;
+    let savedRecord: EquipmentMasterType | null = null;
     const hiredRecord = sampleEquipment[1];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -284,7 +285,8 @@ describe("EQUIP-MASTER-01 Part B", () => {
       if (url.startsWith("/api/plant-module/equipment")) {
         if (init?.method === "PATCH") {
           patched = JSON.parse(String(init.body));
-          return new Response(JSON.stringify({ ...hiredRecord, ...patched }), { status: 200 });
+          savedRecord = { ...hiredRecord, ...patched };
+          return new Response(JSON.stringify(savedRecord), { status: 200 });
         }
         return new Response(JSON.stringify([hiredRecord]), { status: 200 });
       }
@@ -296,12 +298,26 @@ describe("EQUIP-MASTER-01 Part B", () => {
     await screen.findByTestId("row-equipment-2");
     fireEvent.click(screen.getByTestId("toggle-equipment-row-2"));
     fireEvent.click(screen.getByTestId("button-edit-equipment-2"));
-    fireEvent.change(screen.getByTestId("input-registration-number"), { target: { value: "TS15UF7764" } });
+    fireEvent.change(screen.getByTestId("input-equipment-name"), { target: { value: "TIPPER-4 SITE" } });
     fireEvent.click(screen.getByTestId("button-save-equipment"));
     await waitFor(() => expect(patched).not.toBeNull());
     expect(patched).not.toHaveProperty("vendorId");
     expect(patched).not.toHaveProperty("vendorName");
-    expect(patched).toMatchObject({ registrationNumber: "TS15UF7764" });
+    expect(patched).toMatchObject({ name: "TIPPER-4 SITE" });
+    for (const key of [
+      "hireBillingBasis", "hireRate", "hireStartDate", "hireEndDate",
+      "hireDieselResponsibility", "hireOperatorResponsibility", "hireAgreementRemarks",
+      "hireBreakdownDeductionEnabled", "hireMonthlyDivisorType", "hireMonthlyDivisor",
+    ]) {
+      expect(patched).not.toHaveProperty(key);
+    }
+    await waitFor(() => expect(savedRecord?.name).toBe("TIPPER-4 SITE"));
+    expect(savedRecord).toMatchObject({
+      hireBillingBasis: "daily",
+      hireRate: 5000,
+      hireStartDate: "2026-01-01",
+      hireEndDate: "2026-12-31",
+    });
   });
 
   it("asks before a derived type change and keeps generator names read-only", async () => {

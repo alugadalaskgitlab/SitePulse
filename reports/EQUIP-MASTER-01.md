@@ -175,9 +175,8 @@ audited mechanism rather than adding a column.
   terms in the expanded detail. Hourly, daily, and trip hire rows show only
   “Hourly/Daily/Trip hire — rate set when billing”; their rate/date fields are
   hidden. Create and Edit require a positive rate and start date for monthly
-  hires, and the server enforces the same validation. On editing a non-monthly
-  hire, hidden legacy rate/date values are cleared; viewing the row does not
-  change them.
+  hires, and the server enforces the same validation. Edit leaves saved non-monthly
+  hire terms untouched when their fields are hidden.
 - A name edit that changes the derived type pauses for the requested Save /
   Cancel confirmation. Generator names are read-only with the requested
   explanation.
@@ -245,3 +244,43 @@ records and no database connection.
   the production build and focused tests above pass.
 
 **Part B is complete. No publish was performed.**
+
+## Fix before publish — preserve hidden non-monthly hire terms
+
+Edit now sends hire rate, dates, diesel/operator responsibility, remarks,
+breakdown setting, and monthly divisor only when the selected basis is Monthly.
+For hourly, daily, or trip equipment, the client sends no changes for those
+saved terms. The server also ignores hidden hire-term fields on non-monthly
+edits, so they remain stored even if an older client sends nulls. Switching
+ownership or basis does not clear these values either. The basis itself can be
+changed deliberately; hidden rate, date, responsibility, and other terms change
+only while Monthly is selected.
+
+This protects two first-bill paths that still depend on Equipment Master terms:
+
+1. The Equipment Hire register's `GET /api/equipment-hire/statements` preview
+   and `POST /api/equipment-hire/statements` first-statement creation use the
+   equipment's saved rate and dates for every basis, including Daily.
+2. The shared Vendor Bills `POST /api/vendor-bills` and `PATCH
+   /api/vendor-bills/:id` paths with hire groups use `equipment.hireRate` when
+   creating the first hire statement for that machine. An existing draft uses
+   its submitted group rate; creating a Vendor Bill from an approved statement
+   uses the saved `statement.rate`.
+
+The daily-hire regression fixture is a tipper with saved rate ₹5,000 and start
+date. Renaming it leaves all saved hire fields out of the Edit request and the
+saved fixture retains ₹5,000 and its dates. A first daily Vendor Bill hire group
+then produces a statement and line at ₹5,000.
+
+### Verification
+
+- Focused Equipment Master and Vendor Bill hire tests, run with file
+  parallelism disabled: **11 files passed, 116 tests passed**.
+- The first-daily-statement regression verifies the saved master rate is used.
+- `npm run build`: **passed**.
+- The automatic full-suite workflow run on app restart, before the
+  `equipmentLabel.test.ts` expectation was updated for the new derived-type
+  rows, reported 5,677 passed, 9 failed, and 3 skipped. That full suite was not
+  rerun for this focused fix; the updated label test and all 10 other focused
+  files pass above.
+- No schema or application data changes were made. No publish was performed.

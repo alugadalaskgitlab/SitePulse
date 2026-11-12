@@ -50,11 +50,12 @@ describe("canonical equipment option labels", () => {
     expect(labels[1]).toContain("TS15UF4309");
   });
 
-  it("uses the shared helper throughout the scoped usage and master screens", () => {
+  it("keeps usage labels shared and derives Equipment Master row types from names", () => {
     const usage = readFileSync("client/src/pages/PlantEquipmentUsage.tsx", "utf8");
-    const master = readFileSync("client/src/pages/Plant.tsx", "utf8");
+    const masterRows = readFileSync("client/src/components/EquipmentMasterRows.tsx", "utf8");
     expect(usage.match(/formatEquipmentOptionLabel\(/g)?.length).toBeGreaterThanOrEqual(7);
-    expect(master).toContain("formatEquipmentOptionLabel(equip)");
+    expect(masterRows).toContain("derivedEquipmentType(item.name)");
+    expect(masterRows).toContain("item.registrationNumber");
     expect(usage).not.toContain("HLC Owned Vehicle");
     expect(usage).not.toContain('`HIRED: ${(equip as any).vendorName}`');
   });
