@@ -100,11 +100,10 @@ export default function SiteMaterialStock() {
                 {/* Site header + delivery log link */}
                 <div className="px-4 py-3 border-b bg-muted/40 flex items-center justify-between">
                   <span className="font-semibold text-sm">{site}</span>
-                  <Link href={`/site/material-trips?site=${encodeURIComponent(site)}&returnTo=${encodeURIComponent("/site/material-stock")}`}>
-                    <a className="text-xs text-muted-foreground hover:text-emerald-700 flex items-center gap-1 transition-colors"
-                       data-testid={`link-trips-${site}`}>
-                      View delivery log <ExternalLink className="w-3 h-3" />
-                    </a>
+                  <Link href={`/site/material-trips/review?site=${encodeURIComponent(site)}&returnTo=${encodeURIComponent("/site/material-stock")}`}
+                    className="text-xs text-muted-foreground hover:text-emerald-700 flex items-center gap-1 transition-colors"
+                    data-testid={`link-trips-${site}`}>
+                    Review delivery trips <ExternalLink className="w-3 h-3" />
                   </Link>
                 </div>
 

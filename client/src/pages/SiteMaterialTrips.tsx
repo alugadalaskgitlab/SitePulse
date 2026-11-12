@@ -3,8 +3,7 @@ import { normalizeWeightUnit } from "@shared/stockUnits";
 import { classifyTripRoles, tripRolePayload, validateTripRoles, type TripTransportRole } from "@shared/tripTransportRoles";
 import { TripTransportRoleFields } from "@/components/TripTransportRoleFields";
 import { TripRoleEditDialog } from "@/components/TripRoleEditDialog";
-import { TripRoleBulkConfirmation } from "@/components/TripRoleBulkConfirmation";
-import { BulkTripArrangement } from "@/components/BulkTripArrangement";
+import { TripHireLinkDialog } from "@/components/TripHireLinkDialog";
 import { filterTripsByRole, resolveSelectedTripVendor, tripRoleDescription, type ExistingTripVendor, type TripRoleFilter } from "@/components/trip-role-utils";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -38,11 +37,6 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { SITE_MATERIAL_TRIP_MATERIAL_OPTIONS } from "@shared/siteMaterialTripMaterials";
 import { formatPersonName } from "@shared/personName";
-import type { BulkConfirmableTripRole } from "@shared/tripTransportRoles";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs"];
 
@@ -52,7 +46,7 @@ export default function SiteMaterialTrips() {
   const canEdit = sectionCan("site_materials", "edit");
   const { companyName, companyInfo, logoFile } = useFeatureFlags();
   const searchString = useSearch();
-  const [, navigate] = useLocation();
+  const [currentPath, navigate] = useLocation();
   const piParams = (() => {
     try {
       const p = new URLSearchParams(searchString || "");
@@ -86,16 +80,15 @@ export default function SiteMaterialTrips() {
   const [dateFromFilter, setDateFromFilter] = useState(hireEvidenceDefaults.dateFrom);
   const [dateToFilter, setDateToFilter] = useState(hireEvidenceDefaults.dateTo);
   const [siteFilter, setSiteFilter] = useState(piParams.site || "");
-  const [materialFilter, setMaterialFilter] = useState("");
-  const [vehicleFilter, setVehicleFilter] = useState(hireEvidenceParams.get("hireVehicle") || "");
-  const [supplierFilter, setSupplierFilter] = useState(hireEvidenceDefaults.supplierFilter);
-  const [onlyUnassigned, setOnlyUnassigned] = useState(false);
-  const [onlyWithoutArrangement, setOnlyWithoutArrangement] = useState(false);
-  const [roleFilter, setRoleFilter] = useState<TripRoleFilter>(hireEvidenceDefaults.roleFilter);
+  const [materialFilter, setMaterialFilter] = useState(hireEvidenceParams.get("material") || "");
+  const [vehicleFilter, setVehicleFilter] = useState(hireEvidenceParams.get("vehicleNumber") || hireEvidenceParams.get("hireVehicle") || "");
+  const [supplierFilter, setSupplierFilter] = useState(hireEvidenceParams.get("supplier") || hireEvidenceDefaults.supplierFilter);
+  const [onlyUnassigned, setOnlyUnassigned] = useState(hireEvidenceParams.get("onlyUnassigned") === "true");
+  const [onlyWithoutArrangement, setOnlyWithoutArrangement] = useState(hireEvidenceParams.get("onlyWithoutArrangement") === "true");
+  const [roleFilter, setRoleFilter] = useState<TripRoleFilter>((hireEvidenceParams.get("role") as TripRoleFilter) || hireEvidenceDefaults.roleFilter);
   const [roleChoice, setRoleChoice] = useState<TripTransportRole | null>("same_party");
   const [editingRoleTrip, setEditingRoleTrip] = useState<SiteMaterialTrip | null>(null);
-  const [bulkMaterialSourceSupplier, setBulkMaterialSourceSupplier] = useState("");
-  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [linkingHireTrip, setLinkingHireTrip] = useState<SiteMaterialTrip | null>(null);
   const [savedTripForSlip, setSavedTripForSlip] = useState<MaterialReceiptSlipData | null>(null);
   const savedTripPanelRef = useRef<HTMLDivElement | null>(null);
   const enteredByTouchedRef = useRef(false);
@@ -264,8 +257,22 @@ export default function SiteMaterialTrips() {
     const queryString = params.toString();
     return queryString ? `/api/site-material-trips?${queryString}` : "/api/site-material-trips";
   };
+  const buildReviewQuery = () => {
+    const params = new URLSearchParams(window.location.search);
+    const values: Record<string, string> = {
+      dateFrom: dateFromFilter, dateTo: dateToFilter, site: siteFilter === "all" ? "" : siteFilter,
+      material: materialFilter === "all" ? "" : materialFilter, vehicleNumber: vehicleFilter.trim(),
+      supplier: supplierFilter.trim(),
+    };
+    Object.entries(values).forEach(([key, value]) => value ? params.set(key, value) : params.delete(key));
+    onlyUnassigned ? params.set("onlyUnassigned", "true") : params.delete("onlyUnassigned");
+    onlyWithoutArrangement ? params.set("onlyWithoutArrangement", "true") : params.delete("onlyWithoutArrangement");
+    roleFilter === "unresolved" ? params.set("hireRole", "unresolved") : params.delete("hireRole");
+    roleFilter === "all" ? params.delete("role") : params.set("role", roleFilter);
+    return params.toString();
+  };
 
-  const { data: trips, isLoading } = useQuery<SiteMaterialTrip[]>({
+  const { data: trips, isLoading, isError, refetch: refetchTrips } = useQuery<SiteMaterialTrip[]>({
     queryKey: [buildTripsUrl()],
   });
   // The authoritative master contains both owned and hired equipment.
@@ -463,83 +470,6 @@ export default function SiteMaterialTrips() {
     },
   });
 
-  const bulkAssignMutation = useMutation({
-    mutationFn: async () => {
-      if (onlyWithoutArrangement) throw new Error("Clear the no-arrangement filter before using the material-source tool.");
-      if (roleFilter !== "all") {
-        throw new Error("Select All in the transport/source role filter before using the bulk material-source tool.");
-      }
-      const payload = {
-        dateFrom: dateFromFilter || undefined,
-        dateTo: dateToFilter || undefined,
-        site: siteFilter && siteFilter !== "all" ? siteFilter : undefined,
-        material: materialFilter && materialFilter !== "all" ? materialFilter : undefined,
-        vehicleNumber: vehicleFilter.trim() || undefined,
-        supplier: supplierFilter.trim() || undefined,
-        onlyUnassigned,
-        materialSourceSupplier: bulkMaterialSourceSupplier.trim(),
-      };
-      const response = await apiRequest("POST", "/api/site-material-trips/material-source/bulk", payload);
-      const result: unknown = await response.json();
-      const updatedCount = (result as { updatedCount?: unknown } | null)?.updatedCount;
-      if (!Number.isSafeInteger(updatedCount) || (updatedCount as number) < 0 || (updatedCount as number) > bulkEligibleCount) {
-        throw new Error("The server returned an invalid updated-trip count. Reload the trips before trying again.");
-      }
-      return { updatedCount: updatedCount as number };
-    },
-    onSuccess: ({ updatedCount }) => {
-      setBulkConfirmOpen(false);
-      queryClient.invalidateQueries({ predicate: (query) =>
-        typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/site-material-trips")
-      });
-      invalidateSiteMaterialSuggestions(siteFilter);
-      if (updatedCount === 0) {
-        toast({
-          title: "No trips updated",
-          description: "Nothing was changed. Check the filters and edit permission, then reload the trips before trying again.",
-          variant: "destructive",
-        });
-        return;
-      }
-      toast({
-        title: "Material source assigned",
-        description: `${updatedCount} trip${updatedCount === 1 ? "" : "s"} updated.`,
-      });
-    },
-    onError: (error) => {
-      setBulkConfirmOpen(false);
-      toast({
-        title: "Bulk assignment failed",
-        description: error instanceof Error ? error.message : "The material source could not be assigned.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const bulkConfirmTripRolesMutation = useMutation({
-    mutationFn: async (input: { tripIds: number[]; role: BulkConfirmableTripRole }) => {
-      const response = await apiRequest("POST", "/api/site-material-trips/roles/bulk-confirm", input);
-      const result = await response.json() as { updatedCount?: unknown; role?: unknown };
-      if (result.updatedCount !== input.tripIds.length || result.role !== input.role) {
-        throw new Error("The server did not confirm the entire trip group. Refresh the trips before retrying.");
-      }
-      return { updatedCount: result.updatedCount as number, role: input.role };
-    },
-    onSuccess: ({ updatedCount, role }) => {
-      queryClient.invalidateQueries({ predicate: (query) =>
-        typeof query.queryKey[0] === "string" && (
-          query.queryKey[0].startsWith("/api/site-material-trips") ||
-          query.queryKey[0].startsWith("/api/vendor-bills")
-        )
-      });
-      invalidateSiteMaterialSuggestions(siteFilter);
-      toast({
-        title: "Trip roles confirmed",
-        description: `${updatedCount} trip${updatedCount === 1 ? "" : "s"} confirmed as ${role.replaceAll("_", " ")}.`,
-      });
-    },
-  });
-
   const [cancelTripId, setCancelTripId] = useState<number | null>(null);
   const [historyTripId, setHistoryTripId] = useState<number | null>(null);
 
@@ -559,13 +489,18 @@ export default function SiteMaterialTrips() {
   };
 
   const filteredTrips = trips ?? [];
-  const bulkEligibleCount = filteredTrips.filter(trip => trip.materialSourceType !== "own_source").length;
-  const bulkExcludedCount = filteredTrips.length - bulkEligibleCount;
   const roleFilteredTrips = useMemo(() => filterTripsByRole(filteredTrips, roleFilter), [trips, roleFilter]);
-  const hasUnassignedFilteredTrips = filteredTrips.some(
-    (trip) => trip.materialSourceType !== "own_source" && !trip.materialSourceSupplier?.trim(),
-  );
-
+  const isReviewPage = currentPath === "/site/material-trips/review";
+  const canAdd = sectionCan("site_materials", "create");
+  const recentFrom = format(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000), "yyyy-MM-dd");
+  const recentParams = new URLSearchParams({ dateFrom: recentFrom, dateTo: today });
+  if (siteFilter && siteFilter !== "all") recentParams.set("site", siteFilter);
+  const { data: recentTrips = [], isLoading: recentTripsLoading, isError: recentTripsError, refetch: refetchRecentTrips } = useQuery<SiteMaterialTrip[]>({
+    queryKey: [`/api/site-material-trips?${recentParams.toString()}`],
+    enabled: !isReviewPage && canEdit && !!siteFilter && siteFilter !== "all",
+  });
+  const recentTripsSorted = useMemo(() => [...recentTrips].sort((a, b) =>
+    `${b.date || ""} ${b.time || ""}`.localeCompare(`${a.date || ""} ${a.time || ""}`)), [recentTrips]);
   const tripsByMaterial = useMemo(() => {
     const grouped: Record<string, { count: number; totalQty: number; uom: string }> = {};
     roleFilteredTrips.forEach(trip => {
@@ -578,6 +513,11 @@ export default function SiteMaterialTrips() {
     });
     return grouped;
   }, [roleFilteredTrips]);
+  if (isReviewPage && !canEdit) return <div className="mx-auto max-w-md py-20 text-center">
+    <h1 className="text-xl font-semibold">Edit permission required</h1>
+    <p className="mt-2 text-sm text-muted-foreground">Trip review and corrections are available to users with site-material edit access.</p>
+    <Link href={returnTo} className="mt-4 inline-block text-sm underline">Back</Link>
+  </div>;
 
   return (
     <div className="min-h-[100dvh] bg-background">
@@ -587,7 +527,7 @@ export default function SiteMaterialTrips() {
             <img src={`/${logoFile}`} alt={companyName} className="h-10 w-10 rounded-lg object-cover" />
             <div>
               <h1 className="text-lg font-bold">{companyName}</h1>
-              <p className="text-sm text-muted-foreground">Quick Materials Entry</p>
+              <p className="text-sm text-muted-foreground">{isReviewPage ? "Trip Review & Corrections" : "Quick Materials Entry"}</p>
             </div>
           </div>
         </div>
@@ -602,7 +542,7 @@ export default function SiteMaterialTrips() {
           </Link>
         </div>
 
-        <Card>
+        {!isReviewPage && canAdd && <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Truck className="w-5 h-5" />
@@ -974,9 +914,9 @@ export default function SiteMaterialTrips() {
               </div>
             </form>
           </CardContent>
-        </Card>
+        </Card>}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {!isReviewPage && canEdit && <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {Object.entries(tripsByMaterial).map(([material, data]) => (
             <Card key={material} className="bg-primary/5">
               <CardContent className="p-4">
@@ -993,12 +933,25 @@ export default function SiteMaterialTrips() {
               </CardContent>
             </Card>
           ))}
-        </div>
+        </div>}
 
-        <Card>
+        {(isReviewPage || canEdit) && <Card>
           <CardHeader>
-            <CardTitle>Material Trips</CardTitle>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-3">
+            <CardTitle>{isReviewPage ? "All trips and corrections" : "Recent trips · last 7 days"}</CardTitle>
+            {isReviewPage && <div className="flex flex-wrap gap-2 pt-3">
+              <Link href={`/site/material-trips/review/arrangement?${buildReviewQuery()}`} className="inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium">Link to execution arrangement</Link>
+              <Link href={`/site/material-trips/review/material-source?${buildReviewQuery()}`} className="inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium">Material source backfill</Link>
+              <Link href={`/site/material-trips/review/source-transport?${buildReviewQuery()}`} className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground">Set source and transport</Link>
+            </div>}
+            {!isReviewPage && canEdit && <Link href={`/site/material-trips/review?${buildReviewQuery()}`} className="inline-block pt-2 text-sm text-primary underline underline-offset-4">All trips and corrections</Link>}
+            {!isReviewPage && canEdit && <div className="pt-2">
+              <Label className="text-xs">Chosen site</Label>
+              <Select value={siteFilter || "all"} onValueChange={setSiteFilter}>
+                <SelectTrigger data-testid="select-recent-trip-site"><SelectValue placeholder="Choose site" /></SelectTrigger>
+                <SelectContent><SelectItem value="all">Choose a site</SelectItem>{activeSites.map(site => <SelectItem key={site.id} value={site.name}>{site.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>}
+            {isReviewPage && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-3">
               <div>
                 <Label className="text-xs">From date</Label>
                 <Input type="date" value={dateFromFilter} onChange={(e) => setDateFromFilter(e.target.value)} data-testid="input-filter-date-from" />
@@ -1058,69 +1011,21 @@ export default function SiteMaterialTrips() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
+            </div>}
             <p className="pt-2 text-xs text-muted-foreground" data-testid="trip-role-filter-count">{roleFilteredTrips.length} matching trip{roleFilteredTrips.length === 1 ? "" : "s"} · Role filters include all material-source assignments within the date/site/material/vehicle/transporter filters. The legacy “without a material source” checkbox is separate and resets the role filter.</p>
           </CardHeader>
           <CardContent>
-            {canEdit && (
-              <TripRoleBulkConfirmation
-                trips={filteredTrips}
-                onConfirm={async (input) => {
-                  await bulkConfirmTripRolesMutation.mutateAsync(input);
-                }}
-              />
-            )}
-            {canEdit && hasUnassignedFilteredTrips && (
-              <details className="mb-4 rounded-lg border bg-muted/20 p-3" data-testid="bulk-material-source-panel">
-                <summary className="cursor-pointer font-medium" data-testid="bulk-material-source-disclosure">
-                  Show material-source backfill tool
-                </summary>
-                <div className="mt-3 space-y-2">
-                  <div>
-                  <p className="font-medium">Prepare material-source backlog for billing</p>
-                  <p className="text-xs text-muted-foreground">
-                    Assign one source supplier to the {bulkEligibleCount} eligible trip{bulkEligibleCount === 1 ? "" : "s"} matching the filters above. The transporter is not changed.
-                  </p>
-                  {roleFilter !== "all" && <p className="text-xs text-amber-700">Select All in the transport/source role filter before using this bulk tool. Role-filtered subsets cannot be bulk assigned.</p>}
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <FreeTextSuggestionInput
-                      value={bulkMaterialSourceSupplier}
-                      onChange={(value) => setBulkMaterialSourceSupplier(value.toUpperCase())}
-                      suggestions={filterMaterialSourceSupplierSuggestions}
-                      match="supplier"
-                      suggestionsError={filterSuggestionError}
-                      placeholder="Material Source / Supplier"
-                      className="uppercase sm:max-w-sm"
-                      data-testid="input-bulk-material-source-supplier"
-                    />
-                    <Button
-                      type="button"
-                      disabled={roleFilter !== "all" || !bulkMaterialSourceSupplier.trim() || !bulkEligibleCount || !siteFilter || siteFilter === "all" || onlyWithoutArrangement}
-                      onClick={() => setBulkConfirmOpen(true)}
-                      data-testid="button-bulk-assign-material-source"
-                    >
-                      Assign to {bulkEligibleCount} matching trip{bulkEligibleCount === 1 ? "" : "s"}
-                    </Button>
-                  </div>
-                  {(!siteFilter || siteFilter === "all") && <p className="text-xs text-amber-700">Select one site before bulk assignment.</p>}
-                  {bulkExcludedCount > 0 && <p className="text-xs text-muted-foreground">{bulkExcludedCount} own-source trip{bulkExcludedCount === 1 ? "" : "s"} excluded from bulk assignment.</p>}
-                  {onlyWithoutArrangement && <p className="text-xs text-amber-700">Clear the no-arrangement filter to use the unchanged material-source tool.</p>}
-                </div>
-              </details>
-            )}
-            {canEdit && <BulkTripArrangement filters={{
-              site:siteFilter && siteFilter!=="all"?siteFilter:undefined,
-              material:materialFilter && materialFilter!=="all"?materialFilter:undefined,
-              supplier:supplierFilter.trim()||undefined, vehicleNumber:vehicleFilter.trim()||undefined,
-              dateFrom:dateFromFilter||undefined,dateTo:dateToFilter||undefined,
-              onlyUnassigned,onlyWithoutArrangement,roleFilter,
-            }} />}
-            {isLoading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin" />
+            {!isReviewPage && canEdit && !siteFilter && <p className="py-8 text-center text-muted-foreground">Choose a site to see recent trips.</p>}
+            {!isReviewPage && !canEdit && <p className="py-8 text-center text-muted-foreground">Trip logging is available above.</p>}
+            {(isReviewPage ? isLoading : recentTripsLoading) ? (
+              <div className="space-y-2 py-3" role="status" aria-label="Loading material trips">
+                {[0, 1, 2, 3].map(row => <div key={row} className="h-12 animate-pulse rounded-md bg-muted/60" />)}
               </div>
-            ) : !roleFilteredTrips.length ? (
+            ) : (isReviewPage ? isError : recentTripsError) ? (
+              <div className="py-8 text-center text-sm text-destructive" role="alert">
+                Trips could not be loaded. <Button type="button" variant="outline" size="sm" onClick={() => void (isReviewPage ? refetchTrips() : refetchRecentTrips())}>Retry</Button>
+              </div>
+            ) : !(isReviewPage ? roleFilteredTrips : recentTripsSorted).length ? (
               <p className="text-center text-muted-foreground py-8">No trips match these filters.</p>
             ) : (
               <div className="overflow-x-auto">
@@ -1142,7 +1047,7 @@ export default function SiteMaterialTrips() {
                     </tr>
                   </thead>
                   <tbody>
-                    {roleFilteredTrips.map((trip) => (
+                    {(isReviewPage ? roleFilteredTrips : recentTripsSorted).map((trip) => (
                       <tr key={trip.id} className="border-b hover:bg-muted/30" data-testid={`row-trip-${trip.id}`}>
                         <td className="p-2 whitespace-nowrap">{trip.date ? format(new Date(trip.date + "T00:00:00"), "dd-MMM-yyyy").toUpperCase() : "-"}</td>
                         <td className="p-2">{trip.time || '-'}</td>
@@ -1215,8 +1120,9 @@ export default function SiteMaterialTrips() {
                               company={companyInfo}
                               logoFile={logoFile}
                             />
-                            <Button variant="outline" size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>{canEdit ? "Edit" : "Details"}</Button>
-                            <AuditHistoryButton
+                            {(canEdit || isReviewPage) && <Button variant="outline" size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>{canEdit ? "Edit" : "Details"}</Button>}
+                            {canEdit && trip.transportType !== "in_house" && <Button variant="ghost" size="sm" onClick={() => setLinkingHireTrip(trip)} data-testid={`button-link-hire-vehicle-${trip.id}`}>Link vehicle</Button>}
+                            {(canEdit || isReviewPage) && <AuditHistoryButton
                               variant="ghost"
                               size="icon"
                               onClick={() => setHistoryTripId(trip.id)}
@@ -1224,8 +1130,8 @@ export default function SiteMaterialTrips() {
                               title="History"
                             >
                               <History className="w-4 h-4 text-muted-foreground" />
-                            </AuditHistoryButton>
-                            {sectionCan("site_materials", "delete") && <Button
+                            </AuditHistoryButton>}
+                            {isReviewPage && sectionCan("site_materials", "delete") && <Button
                               variant="ghost"
                               size="icon"
                               onClick={() => setCancelTripId(trip.id)}
@@ -1234,7 +1140,7 @@ export default function SiteMaterialTrips() {
                             >
                               <Ban className="w-4 h-4 text-amber-600" />
                             </Button>}
-                            {featureCan("site_materials", "cancel") && <Button
+                            {isReviewPage && featureCan("site_materials", "cancel") && <Button
                               variant="ghost" 
                               size="icon"
                               onClick={() => deleteMutation.mutate(trip.id)}
@@ -1252,10 +1158,11 @@ export default function SiteMaterialTrips() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>}
       </div>
 
       {editingRoleTrip && <TripRoleEditDialog key={editingRoleTrip.id} trip={editingRoleTrip} sitesList={sitesList} vendors={vendors} equipment={internalEquipment} vendorsLoading={vendorQuery.isLoading} vendorsError={vendorQuery.isError} onRetryVendors={() => void vendorQuery.refetch()} onClose={() => setEditingRoleTrip(null)} />}
+      {linkingHireTrip && <TripHireLinkDialog trip={linkingHireTrip} onClose={() => setLinkingHireTrip(null)} />}
       <CancelDialog
         open={cancelTripId !== null}
         onOpenChange={(v) => !v && setCancelTripId(null)}
@@ -1271,42 +1178,6 @@ export default function SiteMaterialTrips() {
         transactionId={historyTripId}
         recordLabel={`Material Trip #${historyTripId}`}
       />
-      <AlertDialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
-        <AlertDialogContent data-testid="dialog-confirm-bulk-material-source">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Assign material source to {bulkEligibleCount} trip{bulkEligibleCount === 1 ? "" : "s"}?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2">
-                <p>
-                  Set <strong>{bulkMaterialSourceSupplier}</strong> as the material source for matching trips at <strong>{siteFilter}</strong>.
-                </p>
-                <p>
-                  Filters: {dateFromFilter || "any start"} to {dateToFilter || "any end"}
-                  {materialFilter && materialFilter !== "all" ? ` · ${materialFilter}` : ""}
-                  {vehicleFilter ? ` · vehicle ${vehicleFilter}` : ""}
-                  {supplierFilter ? ` · transporter ${supplierFilter}` : ""}
-                  {onlyUnassigned ? " · unassigned only" : " · assigned and unassigned"}.
-                </p>
-                {bulkExcludedCount > 0 && <p>{bulkExcludedCount} own-source trip{bulkExcludedCount === 1 ? "" : "s"} excluded from bulk assignment.</p>}
-                <p>The existing transporter values will remain untouched.</p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-bulk-material-source">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault();
-                bulkAssignMutation.mutate();
-              }}
-              disabled={bulkAssignMutation.isPending || roleFilter !== "all"}
-              data-testid="button-confirm-bulk-material-source"
-            >
-              {bulkAssignMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : `Assign ${filteredTrips.length} trips`}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

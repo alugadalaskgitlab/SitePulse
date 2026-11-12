@@ -19,12 +19,12 @@ it("summarizes unresolved trips and links to the filtered vendor, date range, an
     .toContain("2 trips need “Who brought it?” confirmed (16–19 Sep · SOIL, WMM)");
   const link = screen.getByRole("link", { name: "Confirm on Material Trips" });
   const href = new URL(link.getAttribute("href")!, "https://example.test");
-  expect(href.pathname).toBe("/site/material-trips");
+  expect(href.pathname).toBe("/site/material-trips/review");
   expect(href.searchParams.get("dateFrom")).toBe("2026-09-16");
   expect(href.searchParams.get("dateTo")).toBe("2026-09-19");
   expect(href.searchParams.get("hireSupplier")).toBe("G SANGANNA");
   expect(href.searchParams.get("hireRole")).toBe("unresolved");
-  expect(decodeURIComponent(href.searchParams.get("returnTo")!)).toBe("/plant/vendor-bills");
+  expect(href.searchParams.get("returnTo")).toBe("/plant/vendor-bills");
   expect(screen.queryByTestId("list-unconfirmed-trips")).toBeNull();
 
   fireEvent.click(screen.getByTestId("button-toggle-unconfirmed-trips"));

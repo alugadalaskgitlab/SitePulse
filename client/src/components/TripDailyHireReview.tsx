@@ -61,7 +61,7 @@ export function TripDailyHireReview({ group, equipment, result, activities, bill
           <td className="p-2">{trips.reduce((sum: number, t: any) => sum + Number(t.numberOfTrips ?? 1), 0)}
             <div className="flex flex-wrap gap-1 text-xs">
             {trips.map((t: any) => <a key={`${t.source}:${t.sourceId}`} className="underline" target="_blank" rel="noreferrer"
-              href={`/site/material-trips?hireDate=${day.date}&hireVehicle=${encodeURIComponent(t.vehicleNumber || equipment?.registrationNumber || "")}`}>
+              href={`/site/material-trips/review?hireDate=${day.date}&hireVehicle=${encodeURIComponent(t.vehicleNumber || equipment?.registrationNumber || "")}`}>
               Trip #{t.sourceId}
             </a>)}
           </div></td>

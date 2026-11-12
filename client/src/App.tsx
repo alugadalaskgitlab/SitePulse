@@ -58,6 +58,9 @@ const ProgressReport        = lazy(() => import("@/pages/ProgressReport"));
 const DprActualTheoreticalReport = lazy(() => import("@/pages/DprActualTheoreticalReport"));
 const MaterialBalanceReport = lazy(() => import("@/pages/MaterialBalanceReport"));
 const SiteMaterialTrips     = lazy(() => import("@/pages/SiteMaterialTrips"));
+const TripArrangementReviewPage = lazy(() => import("@/pages/SiteMaterialTripReviewTools").then(module => ({ default: module.TripArrangementReviewPage })));
+const MaterialSourceBackfillPage = lazy(() => import("@/pages/SiteMaterialTripReviewTools").then(module => ({ default: module.MaterialSourceBackfillPage })));
+const SourceTransportReviewPage = lazy(() => import("@/pages/SiteMaterialTripReviewTools").then(module => ({ default: module.SourceTransportReviewPage })));
 const SiteMaterialsReceived = lazy(() => import("@/pages/SiteMaterialsReceived"));
 const SitePurchasesReport   = lazy(() => import("@/pages/SitePurchasesReport"));
 const SiteRequirementNew    = lazy(() => import("@/pages/SiteRequirementNew"));
@@ -383,6 +386,10 @@ function AuthedShell() {
           <Route path="/reports/progress" component={gated(ProgressReport, "site_dprs")} />
           <Route path="/reports/material-balance" component={featureGated(MaterialBalanceReport, "boq_programme")} />
           <Route path="/reports/dpr-actual-vs-theoretical" component={gated(DprActualTheoreticalReport, "site_dprs")} />
+          <Route path="/site/material-trips/review/arrangement" component={gated(TripArrangementReviewPage, "site_materials")} />
+          <Route path="/site/material-trips/review/material-source" component={gated(MaterialSourceBackfillPage, "site_materials")} />
+          <Route path="/site/material-trips/review/source-transport" component={gated(SourceTransportReviewPage, "site_materials")} />
+          <Route path="/site/material-trips/review" component={gated(SiteMaterialTrips, "site_materials")} />
           <Route path="/site/material-trips" component={gated(SiteMaterialTrips, "site_materials")} />
           <Route path="/site/materials-received" component={gated(SiteMaterialsReceived, "site_materials")} />
           <Route path="/site/material-stock" component={gated(SiteMaterialStock, "site_materials")} />

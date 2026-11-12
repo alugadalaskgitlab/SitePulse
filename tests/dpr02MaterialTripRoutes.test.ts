@@ -16,6 +16,8 @@ const spies = vi.hoisted(() => ({
   createTrip: vi.fn(),
   updateTrip: vi.fn(),
   bulkConfirmRoles: vi.fn(),
+  previewSourceTransport: vi.fn(),
+  applySourceTransport: vi.fn(),
   getMaterialReceipt: vi.fn(),
   markMaterialSlipShared: vi.fn(),
   markSiteTripSlipShared: vi.fn(),
@@ -51,8 +53,13 @@ vi.mock("../server/auth-routes", () => ({
   assertCreateOrEdit: () => true, assertCreateEither: () => true, assertApprove: () => true,
   assertDeleteOrCancel: () => true, currentUserName: () => "tester",
 }));
+vi.mock("../server/siteMaterialTripSourceTransport", () => ({
+  previewSiteMaterialTripSourceTransport: spies.previewSourceTransport,
+  applySiteMaterialTripSourceTransport: spies.applySourceTransport,
+}));
 
 import { registerRoutes } from "../server/routes";
+import { sendPushToSection } from "../server/push";
 
 const body = { date: "2026-08-30", site: "Site A", material: "Soil", quantity: 10, uom: "Cum", transportType: "agency_vendor", boqProjectId: 1, boqItemId: 10 };
 let app: express.Express;
@@ -72,6 +79,8 @@ beforeEach(() => {
   spies.createTrip.mockImplementation(async (value) => ({ id: 99, ...value, createdAt: new Date("2026-08-30T12:00:00.000Z") }));
   spies.updateTrip.mockImplementation(async (_id, value) => ({ id: 99, ...value }));
   spies.bulkConfirmRoles.mockResolvedValue({ updatedCount: 2, role: "different_parties" });
+  spies.previewSourceTransport.mockResolvedValue({ rows: [], excluded: [], sourcePlaceSuggestions: [], vendors: [] });
+  spies.applySourceTransport.mockResolvedValue({ updatedCount: 1 });
   spies.getTrip.mockResolvedValue({ id: 99, ...body, programmeBarId: 3, earthworkArrangementId: 4 });
   spies.getMaterialReceipt.mockResolvedValue({ id: 77, createdAt: new Date("2026-11-01T10:00:00Z") });
   spies.markMaterialSlipShared.mockResolvedValue({ id: 77, slipSharedAt: new Date("2026-11-01T10:10:00Z") });
@@ -104,6 +113,63 @@ describe("DPR-02 site-material-trip route enforcement", () => {
       .send({ tripIds: [11, 11], role: "different_parties" });
     expect(duplicateIds.status).toBe(400);
     expect(spies.bulkConfirmRoles).toHaveBeenCalledOnce();
+  });
+  it("previews selected source/transport roles read-only and carries site scope", async () => {
+    const preview = { rows: [{ trip: { id: 11 }, fingerprint: "preview-v1" }], excluded: [], sourcePlaceSuggestions: ["Bodapally"], vendors: [] };
+    spies.previewSourceTransport.mockResolvedValueOnce(preview);
+    const res = await request(app)
+      .post("/api/site-material-trips/source-transport/preview")
+      .send({ tripIds: [11] });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(preview);
+    expect(spies.previewSourceTransport).toHaveBeenCalledWith([11], ["Site A"]);
+    expect(spies.updateTrip).not.toHaveBeenCalled();
+  });
+  it("applies one bulk request, emits one notification, and never patches trips one by one", async () => {
+    const res = await request(app)
+      .post("/api/site-material-trips/source-transport/apply")
+      .send({
+        tripIds: [11],
+        materialSource: { type: "own_source", label: "Bodapally borrow area" },
+        transport: { type: "agency_vendor" },
+        equipmentByTripId: { "11": 29 },
+        reason: "Confirmed from supplier records",
+        expectedFingerprints: { "11": "preview-v1" },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ updatedCount: 1 });
+    expect(spies.applySourceTransport).toHaveBeenCalledWith(expect.objectContaining({
+      tripIds: [11],
+      materialSource: { type: "own_source", label: "Bodapally borrow area" },
+      transport: { type: "agency_vendor" },
+      equipmentByTripId: { "11": 29 },
+      expectedFingerprints: { "11": "preview-v1" },
+      permittedSiteNames: ["Site A"],
+      actor: { userId: 7, userName: "tester", userRole: "manager" },
+    }));
+    expect(sendPushToSection).toHaveBeenCalledTimes(1);
+    expect(sendPushToSection).toHaveBeenCalledWith(
+      "site_materials",
+      "Material trip roles updated",
+      "1 trips updated: source and transport",
+      "/site/material-trips/review",
+    );
+    expect(spies.updateTrip).not.toHaveBeenCalled();
+  });
+  it("requires verify permission before assigning a Vendor Master material source", async () => {
+    const res = await request(app)
+      .post("/api/site-material-trips/source-transport/apply")
+      .send({
+        tripIds: [11],
+        materialSource: { type: "vendor", vendorId: 9 },
+        transport: { type: "agency_vendor" },
+        equipmentByTripId: {},
+        reason: "Source identity confirmed",
+        expectedFingerprints: { "11": "preview-v1" },
+      });
+    expect(res.status).toBe(403);
+    expect(spies.applySourceTransport).not.toHaveBeenCalled();
+    expect(sendPushToSection).not.toHaveBeenCalled();
   });
   it("rejects a direct create missing required BOQ linkage", async () => {
     const res = await request(app).post("/api/site-material-trips").send({ ...body, boqItemId: undefined });

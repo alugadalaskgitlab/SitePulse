@@ -13,16 +13,18 @@ import { existingTripVendorSuggestions, filterTripsByRole, resolveTripVendor, tr
 const harness = vi.hoisted(() => ({
   search: "", toast: vi.fn(), request: vi.fn(), queries: [] as string[],
   canEdit: true,
+  canCreate: true,
+  path: "/site/material-trips",
 }));
 vi.mock("@/lib/queryClient", async (original) => ({ ...await original<object>(), apiRequest: harness.request }));
 vi.mock("wouter", () => ({
   useSearch: () => harness.search,
-  useLocation: () => ["/site/material-trips", vi.fn()],
-  Link: ({ children }: any) => <span>{children}</span>,
+  useLocation: () => [harness.path, vi.fn()],
+  Link: ({ children, href, ...props }: any) => <a href={href} {...props}>{children}</a>,
 }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: harness.toast }) }));
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
-  sectionCan: () => harness.canEdit,
+  sectionCan: (_section: string, action: string) => action === "edit" ? harness.canEdit : action === "create" ? harness.canCreate : harness.canEdit,
   featureCan: (_feature: string, action: string) => action === "view" || harness.canEdit,
   isAdmin: false,
   isOwner: false,
@@ -88,16 +90,26 @@ const rows = [
   trip({ id: 4, materialSourceSupplier: null, materialSourceVendorId: null, supplier: "NARASIMHULU", supplierVendorId: 18 }),
   trip({ id: 5, transportType: "in_house", internalEquipmentId: null, supplier: null, supplierVendorId: null }),
 ];
-function renderPage() {
+function renderPage(path = "/site/material-trips") {
+  harness.path = path;
   return render(<QueryClientProvider client={queryClient}><SiteMaterialTrips /></QueryClientProvider>);
 }
 function setInput(id: string, value: string) {
   fireEvent.change(screen.getByTestId(id), { target: { value } });
 }
 async function ready() {
+  await screen.findAllByRole("option", { name: "NH-44" });
+  if (harness.path === "/site/material-trips/review") {
+    setInput("select-filter-site", "NH-44");
+  } else {
+    await screen.findAllByRole("option", { name: "NH-44" });
+    setInput("select-trip-site", "NH-44");
+    if (screen.queryByTestId("select-recent-trip-site")) setInput("select-recent-trip-site", "NH-44");
+  }
   await screen.findByTestId("row-trip-1");
-  setInput("select-trip-site", "NH-44");
-  await waitFor(() => expect(screen.getByTestId("input-trip-material-source-supplier")).not.toBeDisabled());
+  if (harness.path !== "/site/material-trips/review") {
+    await waitFor(() => expect(screen.getByTestId("input-trip-material-source-supplier")).not.toBeDisabled());
+  }
 }
 function fillBasic() {
   setInput("select-trip-site", "NH-44");
@@ -138,7 +150,10 @@ beforeEach(() => {
   harness.toast.mockReset();
   harness.queries = [];
   harness.canEdit = true;
+  harness.canCreate = true;
+  harness.path = "/site/material-trips";
   queryClient.clear();
+  queryClient.setQueryData(["/api/sites"], [{ id: 11, name: "NH-44", isActive: true }]);
   queryClient.setQueryData(["/api/site-material-trips/vendor-options?site=NH-44"], vendors);
   queryClient.setDefaultOptions({ queries: { retry: false, queryFn: async ({ queryKey }) => {
     const url = String(queryKey[0]);
@@ -170,11 +185,13 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
       { id: 18, name: "Gangaram Narsimulu", businessName: "G N Transport", isActive: true },
     ];
     const page = renderPage();
-    await screen.findByTestId("row-trip-1");
     expect(screen.getByTestId("input-trip-material-source-supplier")).toBeDisabled();
     expect(screen.getByText("Choose Site to search Vendor Master.")).toBeInTheDocument();
     expect(harness.queries.some(url => url.startsWith("/api/site-material-trips/vendor-options"))).toBe(false);
-    await ready();
+    setInput("select-trip-site", "NH-44");
+    await waitFor(() => expect(screen.getByTestId("input-trip-material-source-supplier")).not.toBeDisabled());
+    setInput("select-recent-trip-site", "NH-44");
+    await screen.findByTestId("row-trip-1");
     queryClient.setQueryData(["/api/site-material-trips/vendor-options?site=NH-44"], fixtureVendors);
     fireEvent.click(screen.getByTestId("trip-role-different_parties"));
     const source = screen.getByRole("combobox", { name: /Material Supplier/ });
@@ -463,12 +480,66 @@ describe("focused role fields loading/error/empty states", () => {
 });
 
 describe("B1/B2 role list and filter scope", () => {
+  it("shows add-only users the log form without trip history or correction links", () => {
+    harness.canEdit = false;
+    harness.canCreate = true;
+    renderPage();
+    expect(screen.getByText("Log Material Trip")).toBeInTheDocument();
+    expect(screen.getByTestId("button-submit-trip")).toBeInTheDocument();
+    expect(screen.queryByText("Recent trips · last 7 days")).not.toBeInTheDocument();
+    expect(screen.queryByText("All trips and corrections")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("row-trip-1")).not.toBeInTheDocument();
+  });
+
+  it("keeps review-only access edit-gated and carries edited filters into the separate tools", async () => {
+    harness.canEdit = false;
+    renderPage("/site/material-trips/review");
+    expect(screen.getByText("Edit permission required")).toBeInTheDocument();
+    expect(screen.queryByTestId("button-submit-trip")).not.toBeInTheDocument();
+    cleanup();
+    harness.canEdit = true;
+
+    renderPage("/site/material-trips/review");
+    await ready();
+    setInput("input-filter-date-from", "2025-02-01");
+    setInput("input-filter-date-to", "2025-02-12");
+    setInput("input-filter-vehicle", "XY-412");
+    const arrangement = screen.getByRole("link", { name: "Link to execution arrangement" });
+    const target = new URL(arrangement.getAttribute("href")!, "https://example.test");
+    expect(target.pathname).toBe("/site/material-trips/review/arrangement");
+    expect(target.searchParams.get("dateFrom")).toBe("2025-02-01");
+    expect(target.searchParams.get("dateTo")).toBe("2025-02-12");
+    expect(target.searchParams.get("site")).toBe("NH-44");
+    expect(target.searchParams.get("vehicleNumber")).toBe("XY-412");
+  });
+
+  it("shows only the chosen site's recent trips newest first with edit, receipt-share and vehicle-link actions", async () => {
+    const originals = rows.slice();
+    rows[0] = Object.assign(trip({ id: 1, date: "2026-08-16" }), { slipSendTrackingEnabled: true, slipSendWindowOpen: true });
+    rows[1] = Object.assign(trip({ id: 2, date: "2026-08-17" }), { slipSendTrackingEnabled: true, slipSendWindowOpen: true });
+    rows.splice(2);
+    try {
+      renderPage();
+      await screen.findAllByRole("option", { name: "NH-44" });
+      setInput("select-trip-site", "NH-44");
+      setInput("select-recent-trip-site", "NH-44");
+      await screen.findByTestId("row-trip-1");
+      expect(screen.getByText("Recent trips · last 7 days")).toBeInTheDocument();
+      expect(screen.getAllByTestId(/^row-trip-/).map(row => row.getAttribute("data-testid"))).toEqual(["row-trip-2", "row-trip-1"]);
+      for (const id of [1, 2]) {
+        expect(screen.getByTestId(`button-edit-trip-roles-${id}`)).toHaveTextContent("Edit");
+        expect(screen.getByTestId(`button-link-hire-vehicle-${id}`)).toBeInTheDocument();
+        expect(screen.getByTestId(`button-receipt-send-site-${id}`)).toBeInTheDocument();
+      }
+    } finally { rows.splice(0, rows.length, ...originals); }
+  });
+
   it("shows Date before Time and challans in the existing source cell without changing other columns", async () => {
     const originals = rows.slice();
     rows[0] = trip({date:"2026-08-17",receiptNumber:"CH-123"});
     rows[1] = trip({id:2,date:"2026-08-16",receiptNumber:"   "});
     try {
-      renderPage(); await ready();
+      renderPage("/site/material-trips/review"); await ready();
       expect(screen.getAllByRole("columnheader").map(e=>e.textContent)).toEqual(["Date","Time","Site","Material","Transporter","Material Source","Vehicle","Qty","UOM","Location","Photos","Action"]);
       const first=within(screen.getByTestId("row-trip-1")).getAllByRole("cell");
       expect(first[0]).toHaveTextContent("17-AUG-2026");
@@ -486,25 +557,22 @@ describe("B1/B2 role list and filter scope", () => {
       }
     } finally { rows.splice(0,rows.length,...originals); }
   });
-  it("keeps own-source rows visible but excludes them from both bulk counts", async () => {
+  it("opens the separate material-source tool from the review page without mutating trips", async () => {
     const own = trip({id:99,materialSourceType:"own_source",materialSourceSupplier:null,materialSourceVendorId:null});
     rows.push(own);
     try {
-      renderPage(); await ready();
+      renderPage("/site/material-trips/review"); await ready();
       setInput("select-filter-site","NH-44");
-      await screen.findByTestId("input-bulk-material-source-supplier");
-      setInput("input-bulk-material-source-supplier","SOURCE");
       expect(screen.getAllByTestId(/^row-trip-/)).toHaveLength(6);
-      expect(screen.getByTestId("button-bulk-assign-material-source")).toHaveTextContent("Assign to 5 matching trips");
-      fireEvent.click(screen.getByTestId("button-bulk-assign-material-source"));
-      const dialog = await screen.findByTestId("dialog-confirm-bulk-material-source");
-      expect(dialog).toHaveTextContent("Assign material source to 5 trips?");
-      expect(dialog).toHaveTextContent("1 own-source trip excluded");
+      expect(screen.getByRole("link", { name: "Material source backfill" })).toHaveAttribute(
+        "href", expect.stringContaining("/site/material-trips/review/material-source?"),
+      );
+      expect(screen.queryByTestId("bulk-material-source-panel")).not.toBeInTheDocument();
       expect(harness.request).not.toHaveBeenCalled();
     } finally { rows.pop(); }
   });
   it("renders all role cases in plain words and unresolved in amber", async () => {
-    renderPage(); await ready();
+    renderPage("/site/material-trips/review"); await ready();
     expect(screen.getByTestId("trip-role-description-1")).toHaveTextContent("from SANGANNA · brought by SANGANNA");
     expect(screen.getByTestId("trip-role-description-2")).toHaveTextContent("from SANGANNA · brought by NARASIMHULU (TS15UF4308)");
     expect(screen.getByTestId("trip-role-description-3")).toHaveTextContent("from SANGANNA · brought by our TIPPER-03");
@@ -516,7 +584,7 @@ describe("B1/B2 role list and filter scope", () => {
     expect(harness.request).not.toHaveBeenCalled();
   });
   it("All is not silently scoped by legacy onlyUnassigned; every role filter returns exact count including unresolved with a source", async () => {
-    renderPage(); await ready();
+    renderPage("/site/material-trips/review"); await ready();
     expect(screen.getByTestId("checkbox-filter-only-unassigned")).not.toBeChecked();
     expect(harness.queries.some((url) => url.includes("onlyUnassigned=true"))).toBe(false);
     for (const [role, count, ids] of [
@@ -529,25 +597,23 @@ describe("B1/B2 role list and filter scope", () => {
     }
     expect(harness.request).not.toHaveBeenCalled();
   });
-  it("selecting a role clears the explicit legacy missing-source checkbox; bulk tool is not executed or role-scoped", async () => {
-    renderPage(); await ready();
+  it("selecting a role clears the legacy missing-source checkbox; review contains links, not embedded tools", async () => {
+    renderPage("/site/material-trips/review"); await ready();
     fireEvent.click(screen.getByTestId("checkbox-filter-only-unassigned"));
     await waitFor(() => expect(screen.getAllByTestId(/^row-trip-/)).toHaveLength(1));
     expect(screen.getByTestId("select-filter-trip-role")).toHaveValue("all");
     setInput("select-filter-trip-role", "unresolved");
     await waitFor(() => expect(screen.getAllByTestId(/^row-trip-/)).toHaveLength(2));
     expect(screen.getByTestId("checkbox-filter-only-unassigned")).not.toBeChecked();
-    expect(screen.getByTestId("bulk-material-source-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("bulk-material-source-panel")).toHaveTextContent("Select All in the transport/source role filter before using this bulk tool");
     setInput("select-filter-site", "NH-44");
-    await screen.findByTestId("input-bulk-material-source-supplier");
-    setInput("input-bulk-material-source-supplier", "SANGANNA");
-    expect(screen.getByTestId("button-bulk-assign-material-source")).toBeDisabled();
-    fireEvent.click(screen.getByTestId("button-bulk-assign-material-source"));
+    expect(screen.getByRole("link", { name: "Link to execution arrangement" })).toHaveAttribute("href", expect.stringContaining("site=NH-44"));
+    expect(screen.getByRole("link", { name: "Set source and transport" })).toHaveAttribute("href", expect.stringContaining("site=NH-44"));
+    expect(screen.queryByTestId("bulk-material-source-panel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("bulk-arrangement-tool")).not.toBeInTheDocument();
     expect(harness.request).not.toHaveBeenCalled();
   });
   it("page opens ambiguous editor without a write", async () => {
-    renderPage(); await ready();
+    renderPage("/site/material-trips/review"); await ready();
     fireEvent.click(screen.getByTestId("button-edit-trip-roles-4"));
     expect(await screen.findByTestId("dialog-trip-roles")).toBeInTheDocument();
     expect(within(screen.getByTestId("dialog-trip-roles")).getByRole("button", { name: "Save" })).toBeInTheDocument();

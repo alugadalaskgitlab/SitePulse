@@ -67,6 +67,7 @@ import { readPermissionAccessAudit } from "./permissionAccessMigration";
 import { TransportRateInputError } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
 import { confirmTripHireLink, tripHireReview } from "./tripHireLink";
+import { applySiteMaterialTripSourceTransport, previewSiteMaterialTripSourceTransport } from "./siteMaterialTripSourceTransport";
 import { confirmTripPartyIdentities, tripIdentityLinksInput } from "./tripIdentityLinks";
 import { equipmentVendorIdentities, EQUIPMENT_VENDOR_LINK, ownerNameKey } from "./equipmentVendorIdentity";
 import { buildEquipmentVendorOptions } from "./equipmentVendorOptions";
@@ -1184,6 +1185,113 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error fetching site material trips:", err);
       res.status(500).json({ message: "Failed to fetch site material trips" });
+    }
+  });
+
+  app.get("/api/site-material-trips/source-transport/options", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_materials")) return;
+      const site = z.string().trim().min(1).parse(req.query.site);
+      if (!await assertTripSiteAccess(req, res, site)) return;
+      const siteKey = normalizeSiteTripHistorySite(site);
+      const rows = siteKey ? await db.select({
+        label: siteMaterialTrips.materialSourceLabel,
+      }).from(siteMaterialTrips).where(and(
+        eq(siteMaterialTrips.materialSourceType, "own_source"),
+        sql`upper(regexp_replace(trim(${siteMaterialTrips.site}), '[[:space:]]+', ' ', 'g')) = ${siteKey}`,
+        sql`coalesce(trim(${siteMaterialTrips.materialSourceLabel}), '') <> ''`,
+        sql`coalesce(${siteMaterialTrips.isCancelled}, false) = false`,
+        sql`coalesce(${siteMaterialTrips.isDeleted}, false) = false`,
+      )) : [];
+      const sourcePlaceSuggestions = Array.from(new Set<string>(rows
+        .map((row: any) => String(row.label ?? "").trim())
+        .filter(Boolean)))
+        .sort((a: string, b: string) => a.localeCompare(b));
+      res.json({ sourcePlaceSuggestions });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message });
+      console.error("GET /api/site-material-trips/source-transport/options:", err);
+      res.status(500).json({ message: "Failed to load source-place suggestions" });
+    }
+  });
+
+  app.post("/api/site-material-trips/source-transport/preview", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_materials")) return;
+      const input = z.object({
+        tripIds: z.array(z.number().int().positive()).min(1).max(1000)
+          .refine(ids => new Set(ids).size === ids.length, "Trip IDs must be unique."),
+      }).strict().parse(req.body);
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      const result = await previewSiteMaterialTripSourceTransport(input.tripIds, permittedSiteNames);
+      res.json(result);
+    } catch (err) {
+      const code = (err as any)?.code;
+      if (err instanceof z.ZodError || code === "BAD_REQUEST") {
+        return res.status(400).json({ message: err instanceof z.ZodError ? err.errors[0]?.message : (err as any).message });
+      }
+      if (code === "SOURCE_TRANSPORT_CONFLICT") {
+        return res.status(409).json({ message: (err as any).message });
+      }
+      console.error("POST /api/site-material-trips/source-transport/preview:", err);
+      res.status(500).json({ message: "Failed to preview source and transport changes" });
+    }
+  });
+
+  app.post("/api/site-material-trips/source-transport/apply", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_materials")) return;
+      const input = z.object({
+        tripIds: z.array(z.number().int().positive()).min(1).max(1000)
+          .refine(ids => new Set(ids).size === ids.length, "Trip IDs must be unique."),
+        materialSource: z.discriminatedUnion("type", [
+          z.object({ type: z.literal("own_source"), label: z.string().trim().min(1).max(200) }).strict(),
+          z.object({ type: z.literal("vendor"), vendorId: z.number().int().positive() }).strict(),
+        ]),
+        transport: z.discriminatedUnion("type", [
+          z.object({ type: z.literal("agency_vendor") }).strict(),
+          z.object({ type: z.literal("in_house") }).strict(),
+        ]),
+        equipmentByTripId: z.record(z.string().regex(/^\d+$/), z.number().int().positive().nullable()).default({}),
+        reason: z.string().trim().min(3).max(500),
+        expectedFingerprints: z.record(z.string().regex(/^\d+$/), z.string().min(1).max(1000)),
+      }).strict().parse(req.body);
+      if (input.materialSource.type === "vendor" &&
+          !assertFeatureAction(req, res, "site_materials", "verify")) return;
+      if (Object.keys(input.equipmentByTripId).some((key) => !input.tripIds.includes(Number(key))) ||
+          Object.keys(input.expectedFingerprints).length !== input.tripIds.length ||
+          input.tripIds.some((id) => !input.expectedFingerprints[String(id)])) {
+        return res.status(400).json({ message: "The selected trips do not match the preview. Refresh and review again." });
+      }
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      const result = await applySiteMaterialTripSourceTransport({
+        ...input,
+        ...(permittedSiteNames !== null ? { permittedSiteNames } : {}),
+        actor: {
+          userId: req.authUser!.id,
+          userName: currentUserName(req),
+          userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        },
+      });
+      if (result.updatedCount > 0) {
+        sendPushToSection(
+          "site_materials",
+          "Material trip roles updated",
+          `${result.updatedCount} trips updated: source and transport`,
+          "/site/material-trips/review",
+        ).catch(() => {});
+      }
+      res.json(result);
+    } catch (err) {
+      const code = (err as any)?.code;
+      if (err instanceof z.ZodError || code === "BAD_REQUEST") {
+        return res.status(400).json({ message: err instanceof z.ZodError ? err.errors[0]?.message : (err as any).message });
+      }
+      if (code === "SOURCE_TRANSPORT_CONFLICT" || (err as any)?.status === 409) {
+        return res.status(409).json({ message: (err as any).message });
+      }
+      console.error("POST /api/site-material-trips/source-transport/apply:", err);
+      res.status(500).json({ message: "Failed to update trip source and transport roles" });
     }
   });
 

@@ -25,8 +25,8 @@ export function buildTripRoleConfirmationHref(
   }
   if (vendorName.trim()) params.set("hireSupplier", vendorName.trim());
   params.set("hireRole", "unresolved");
-  if (returnTo) params.set("returnTo", encodeURIComponent(returnTo));
-  return `/site/material-trips?${params.toString()}`;
+  if (returnTo) params.set("returnTo", returnTo);
+  return `/site/material-trips/review?${params.toString()}`;
 }
 
 function tripDateSummary(items: readonly UnconfirmedOffer[]) {
