@@ -1,6 +1,6 @@
-# TRIP-ROLE-02 — Part A read-only findings
+# TRIP-ROLE-02 — Material trip review and role correction
 
-**Status:** Part A complete. Part B has not started. No code or database records were changed, and nothing was published.
+**Status:** Part A is complete. Part B code and automated checks are complete. The live UI/data acceptance is blocked because the documented development verifier login returned 401 and the owner declined resetting that test account. No trip records were changed; nothing was published.
 
 ## Data scope
 
@@ -65,7 +65,7 @@ For active TAKKADPALLY-SIRUR Soil trips dated 26 August–11 September 2026:
 | HLC/VB/2026/0051 — G SANGANNA | Draft | 521/33, 523/35, 525/37, 527/39, 529/41, 531/43, 533/45, 535/47, 537/49, 539/51, 541/53, 542/54, 543/55, 545/57, 547/59, 549/61 |
 | HLC/VB/2026/0060 — MD FASIUDDIN | Draft | 389/96, 393/100, 397/6, 401/10, 405/14 |
 
-Bill 0051 includes trip 542 recorded as vehicle 4470 and trip 545 recorded as `4983) L`; neither has a safe equipment match under the specified transporter/registration rule. The other 14 bill-0051 trips recorded as 4983 match the G SANGANNA-linked Tipper. All five bill-0060 trips match the FASIUDDIN-linked Tipper.
+Bill 0051 includes trip 542 recorded as vehicle 4470 and trip 545 recorded as `4983) L`. Trip 542 has no safe match because the 4470 vehicle belongs to another transporter. Trip 545 does match the G SANGANNA-linked Tipper by its unique last-four suffix, 4983. The other 14 bill-0051 trips recorded as 4983 match that same Tipper. All five bill-0060 trips match the FASIUDDIN-linked Tipper.
 
 ## 5. Notifications
 
@@ -79,19 +79,44 @@ The comparison used the recorded vehicle number against active hired equipment r
 |---:|---|---|---|
 | 112 | NARSIMHULU | 4470 | Tipper, TS15UF 4470 (equipment 29) |
 | 43 | NARSIMHULU | 7839 | Tipper, TS15UA7839 (equipment 28) |
-| 14 | G SANGANNA | 4983 | Tipper, TS15UF 4983 (equipment 33) |
+| 15 | G SANGANNA | 4983 (including `4983) L`) | Tipper, TS15UF 4983 (equipment 33) |
 | 4 | MD FASIUDDIN | TG 13T 9288 | Tipper, TG 13T 9288 (equipment 52) |
 | 1 | MD FASIUDDIN | 9288 | Tipper, TG 13T 9288 (equipment 52) |
 
-**Result:** 174 unique matches, 0 ambiguous matches, and 4 unmatched trips.
+**Corrected result:** 175 unique matches, 0 ambiguous matches, and 3 unmatched trips. The earlier Part A count treated trip 545's trailing `) L` as a mismatch; the specified last-four numeric suffix rule correctly resolves it to the unique G SANGANNA vehicle.
 
-The four unmatched records are:
+The three unmatched records are:
 
 - Trip 542: G SANGANNA, vehicle 4470 — the 4470 Equipment Master record belongs to a different reviewed transporter.
 - Trip 446: NARSIMHULU, vehicle 4479 — no reviewed hired-equipment registration matches.
-- Trip 545: G SANGANNA, vehicle `4983) L` — the extra trailing character prevents an unambiguous suffix match; not guessed.
 - Trip 336: NARSIMHULU, vehicle 9288 — the 9288 Equipment Master record belongs to a different reviewed transporter.
 
 ## Part A result
 
-No schema change is expected for the specified page split and Set source and transport tool. The existing trip fields, vendor-identity checks, hired-vehicle audit log and trip edit audit log cover the described data. Part B is not started; awaiting the owner's “continue”.
+No schema change is expected for the specified page split and Set source and transport tool. The existing trip fields, vendor-identity checks, hired-vehicle audit log and trip edit audit log cover the described data.
+
+## Part B — code and verification
+
+### Page split
+
+- `/site/material-trips` remains the log page. It retains the trip form and purchase-indent prefill and now shows the selected site's last seven days of trips, newest first, with the existing edit, receipt-share and hire-vehicle-link actions. The “All trips and corrections” link is shown only to Materials-edit users; add-only users remain on the log page without trip history or correction links.
+- `/site/material-trips/review` is the Materials-edit review page. It has the existing full filters and trip list, no entry form, and links to the three separate tools: “Link to execution arrangement”, “Material source backfill” and “Set source and transport”.
+- Each tool is on its own Materials-edit page, carries the review filters and has a Back link. Arrangement linking stays in the existing `BulkTripArrangement` component. Material-source backfill remains filter-based, now with a separate count preview and explicit confirmation before saving.
+- Field/Site/Vendor Bills and purchase-indent links still open the log page. TripCandidateWarnings, daily-hire review and Site Material Stock open the review page with their filters. `returnTo` is retained across the page links.
+
+### Set source and transport
+
+- The new tool lets the user select individual or all filtered trips, choose an own-source place or (with the existing verify permission) an active Vendor Master entry, and choose agency/vendor transport or in-house transport.
+- Existing source-place labels are suggested by site. Agency vehicle choices come from the server's audited Vendor Master identity resolution; a short number is proposed only when the last-four match is unique among active hired equipment belonging to the recorded transporter. A null direct vendor ID does not hide a server-confirmed alias match. Ambiguous/unmatched vehicles stay unlinked unless selected in the preview.
+- The server preview excludes trips already on approved/paid bills and includes draft/verified rows with the bill status and re-pull warning. Applying rechecks the preview fingerprints, site scope and bill status in one transaction; it changes only the source-role fields, transport type and the existing hired-vehicle link. The per-trip audit history records the actor and reason, and one section notification is sent for the batch.
+- No bill, stock, DPR, receipt, material, quantity, unit, date, transporter name, site, receipt number, BOQ link or arrangement link is written by this new operation. No schema changes were made.
+
+### Tests and build
+
+- Focused tests: **81 passed across 5 files**, including review/log navigation, separate source and transport preview/apply, bill exclusions/warnings, unique and ambiguous vehicle matching, site-scoped routes and existing trip behavior.
+- `npm run build`: passed. The build reports the repository's existing Browserslist-age and large-chunk warnings.
+- The verifier login attempt used the normal login endpoint and returned **401**. The owner declined resetting the dedicated development verifier account, so no alternate login or auth bypass was attempted.
+
+### Development UI/data acceptance — not completed
+
+The requested signed-in screenshots (Log page, Review page, Set source and transport preview, and a trip after save) could not be captured without an authenticated development session. The requested update of the 112 NARSIMHULU/4470 trips to own source “Bodapally borrow area”, agency transport, and Tipper TS15UF 4470 was **not applied**. No trip or other business record was changed. Complete these remaining UI steps after an authorized development verifier session is available; then verify all 112 rows and capture the four screenshots. No production or replica database was queried, and no publish was performed.

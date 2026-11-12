@@ -20,14 +20,15 @@ type Filters = {
   supplier: string; onlyUnassigned: boolean; onlyWithoutArrangement: boolean; roleFilter: string;
 };
 type PreviewEquipment = { id: number; name: string; registrationNumber?: string | null; ownerVendorId?: number | null; linkedVendorName?: string | null };
-type PreviewRow = { trip: SiteMaterialTrip; currentRole: string; proposedEquipment: PreviewEquipment | null; equipmentChoices: PreviewEquipment[]; ownedEquipmentChoices: PreviewEquipment[]; bill: { billNo: string; status: string } | null; fingerprint: string; blockedReason: string | null };
+type PreviewRow = { trip: SiteMaterialTrip; currentRole: string; proposedEquipment: PreviewEquipment | null; equipmentChoices: PreviewEquipment[]; ownedEquipmentChoices: PreviewEquipment[]; bill: { billNo: string; status: string } | null; fingerprint: string; agencyBlockedReason: string | null };
 type PreviewResponse = { rows: PreviewRow[]; excluded: { tripId: number; billNo?: string; status?: string; reason?: string }[]; sourcePlaceSuggestions?: string[] };
 const REVIEW_PATH = "/site/material-trips/review";
 
 function filtersFromSearch(search: string): Filters {
   const params = new URLSearchParams(search);
+  const hireDate = params.get("hireDate") || "";
   return {
-    dateFrom: params.get("dateFrom") || "", dateTo: params.get("dateTo") || "",
+    dateFrom: params.get("dateFrom") || hireDate, dateTo: params.get("dateTo") || hireDate,
     site: params.get("site") || "", material: params.get("material") || "",
     vehicleNumber: params.get("vehicleNumber") || params.get("hireVehicle") || "",
     supplier: params.get("supplier") || params.get("hireSupplier") || "",
@@ -161,8 +162,10 @@ export function MaterialSourceBackfillPage() {
       queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith("/api/site-material-trips") });
       setConfirmOpen(false);
       setPreviewRows(null);
-      setMessage(`${result.updatedCount} trips updated. Existing transporter names were not changed.`);
-      toast({ title: "Material source assigned", description: `${result.updatedCount} trips updated.` });
+      const updatedCount = result.updatedCount;
+      const updatedLabel = `${updatedCount} trip${updatedCount === 1 ? "" : "s"} updated`;
+      setMessage(`${updatedLabel}. Existing transporter names were not changed.`);
+      toast({ title: "Material source assigned", description: updatedLabel });
     },
     onError: error => {
       setConfirmOpen(false);
@@ -269,7 +272,7 @@ export function SourceTransportReviewPage() {
       setSelectedIds(old => old.filter(id => !excludedIds.has(id) && !result.rows.some(row =>
         row.trip.id === id && (transportType === "agency_vendor"
           ? !!row.agencyBlockedReason
-          : !!row.agencyBlockedReason || row.ownedEquipmentChoices.length === 0)
+          : row.ownedEquipmentChoices.length === 0)
       )));
       setEquipmentByTripId(next);
     },
@@ -290,7 +293,7 @@ export function SourceTransportReviewPage() {
        const currentRows = previewData.rows.filter(row => selectedIds.includes(row.trip.id) &&
          (transportType === "agency_vendor"
            ? !row.agencyBlockedReason
-           : !row.agencyBlockedReason && isInHouseEligible(row.trip) && row.ownedEquipmentChoices.length > 0));
+           : isInHouseEligible(row.trip) && row.ownedEquipmentChoices.length > 0));
       if (!currentRows.length) throw new Error("Select at least one eligible trip.");
       if (transportType === "in_house" && currentRows.some(row => equipmentByTripId[String(row.trip.id)] == null)) {
         throw new Error("Select the exact-match owned equipment for every in-house trip.");
@@ -334,12 +337,15 @@ export function SourceTransportReviewPage() {
   const selectedPreviewRows = previewRows.filter(row => selectedIds.includes(row.trip.id) &&
     (transportType === "agency_vendor"
       ? !row.agencyBlockedReason
-      : !row.agencyBlockedReason && isInHouseEligible(row.trip) && row.ownedEquipmentChoices.length > 0 && equipmentByTripId[String(row.trip.id)] != null));
+      : isInHouseEligible(row.trip) && row.ownedEquipmentChoices.length > 0 && equipmentByTripId[String(row.trip.id)] != null));
   const selectableIds = trips.filter(trip => transportType !== "in_house" || isInHouseEligible(trip)).map(trip => trip.id);
   const toggleTrip = (id: number) => setSelectedIds(old => old.includes(id) ? old.filter(value => value !== id) : [...old, id]);
   const toggleAll = () => setSelectedIds(old => old.length === selectableIds.length ? [] : selectableIds);
-  const sourceRole = sourceType === "own_source" ? "Own source" : "Vendor source";
-  const newRole = `${sourceRole} → ${transportType === "in_house" ? "In-house" : "Agency/vendor"}`;
+  const selectedVendorName = vendors.find(vendor => String(vendor.id) === vendorId)?.name;
+  const sourceRole = sourceType === "own_source"
+    ? `Own source: ${sourceLabel.trim() || "choose a source place"}`
+    : `Vendor source: ${selectedVendorName || "choose a vendor"}`;
+  const newRole = `${sourceRole} → ${transportType === "in_house" ? "Our own vehicle" : "Agency/vendor transport"}`;
   return <ReviewToolFrame title="Set source and transport">
     <div className="space-y-5">
       <FilterSummary filters={filters} />
@@ -355,7 +361,7 @@ export function SourceTransportReviewPage() {
             {trips.map(trip => <label key={trip.id} className="flex items-start gap-2 rounded px-2 py-2 hover:bg-muted/50">
               <input type="checkbox" checked={selectedIds.includes(trip.id)} disabled={transportType === "in_house" && !isInHouseEligible(trip)} onChange={() => toggleTrip(trip.id)} />
               <span className="text-sm">{trip.date} · {trip.site} · {trip.material} · Receipt {trip.receiptNumber || "—"} · {trip.vehicleNumber || "Vehicle not recorded"} · {trip.supplier || "Transporter not recorded"}</span>
-              {transportType === "in_house" && !isInHouseEligible(trip) && <span className="text-xs text-muted-foreground">In-house requires blank transporter identity and an exact active owned-vehicle registration match.</span>}
+              {transportType === "in_house" && !isInHouseEligible(trip) && <span className="text-xs text-muted-foreground">In-house requires a blank transporter identity and a recorded vehicle number.</span>}
             </label>)}
           </div>
           <Button onClick={() => { setPreviewData(null); setMessage(""); preview.mutate(selectedIds); }} disabled={!selectedIds.length || preview.isPending}>
@@ -390,10 +396,7 @@ export function SourceTransportReviewPage() {
           </div>
         </div>
       </section>
-      {equipmentQuery.isLoading && <div role="status" aria-label="Loading Equipment Master" className="h-10 animate-pulse rounded bg-muted" />}
-      {equipmentQuery.isSuccess && ownedEquipment.length === 0 && <p className="text-sm text-muted-foreground">No active owned equipment records are available for in-house matching.</p>}
       {preview?.isError && <p role="alert" className="text-sm text-destructive">The server preview failed. No trip changes have been made. Retry the preview.</p>}
-      {equipmentQuery.isError && <p role="alert" className="text-sm text-destructive">Equipment Master could not be loaded. In-house matches are unavailable. <button type="button" className="underline" onClick={() => void equipmentQuery.refetch()}>Retry</button></p>}
       {previewData && <section className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-lg font-semibold">Server preview · {previewRows.length} eligible</h2><p className="text-sm text-muted-foreground">Proposed role: {newRole}</p></div>
         {!!previewData.excluded.length && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" data-testid="source-transport-excluded">
@@ -404,8 +407,7 @@ export function SourceTransportReviewPage() {
             const trip = row.trip;
             const choices = transportType === "agency_vendor"
               ? row.equipmentChoices
-              : ownedMatchesForTrip(trip)
-                .map(item => ({ id: item.id, name: item.name, registrationNumber: item.registrationNumber, ownerVendorId: null, linkedVendorName: null }));
+              : row.ownedEquipmentChoices;
             const proposed = row.proposedEquipment;
             const unambiguous = !!proposed && choices.some(item => item.id === proposed.id);
             const chosen = equipmentByTripId[String(trip.id)];
@@ -413,7 +415,9 @@ export function SourceTransportReviewPage() {
             const billStatus = row.bill?.status.toLowerCase();
             const billNote = row.bill && ["draft", "verified"].includes(billStatus || "")
               ? `On ${billStatus} bill #${row.bill.billNo} — re-pull that bill's trips to update it` : "";
-            const blocked = !!row.blockedReason || (transportType === "in_house" && !isInHouseEligible(trip));
+            const blocked = transportType === "agency_vendor"
+              ? !!row.agencyBlockedReason
+              : !isInHouseEligible(trip) || row.ownedEquipmentChoices.length === 0;
             return <article key={trip.id} className={`rounded-xl border p-4 ${selectedIds.includes(trip.id) ? "bg-card" : "bg-muted/20 opacity-70"}`} data-testid={`source-transport-preview-${trip.id}`}>
               <div className="flex items-start gap-3">
                 <input type="checkbox" checked={selectedIds.includes(trip.id)} disabled={blocked} onChange={() => toggleTrip(trip.id)} aria-label={`Select trip ${trip.id}`} />
@@ -422,8 +426,9 @@ export function SourceTransportReviewPage() {
                   <p className="mt-1 text-sm">{trip.site} · {trip.material} · Receipt {trip.receiptNumber || "—"}</p>
                   <p className="text-sm text-muted-foreground">Recorded vehicle: {trip.vehicleNumber || "—"} · Transporter: {trip.supplier || "—"}</p>
                   <p className="mt-1 text-sm font-medium">Proposed / selected vehicle: {chosenEquipment?.registrationNumber || chosenEquipment?.name || (transportType === "agency_vendor" ? "Vehicle not matched" : "Choose owned equipment")}</p>
-                  {row.blockedReason && <p className="mt-2 text-sm text-amber-800">{row.blockedReason}</p>}
-                  {transportType === "in_house" && !isInHouseEligible(trip) && <p className="mt-2 text-sm text-amber-800">In-house is unavailable: saved transporter identity must be blank and the recorded vehicle must exactly match active owned equipment.</p>}
+                   {transportType === "agency_vendor" && row.agencyBlockedReason && <p className="mt-2 text-sm text-amber-800">{row.agencyBlockedReason}</p>}
+                   {transportType === "in_house" && !isInHouseEligible(trip) && <p className="mt-2 text-sm text-amber-800">In-house is unavailable: saved transporter identity must be blank and a vehicle number must be recorded.</p>}
+                   {transportType === "in_house" && isInHouseEligible(trip) && !row.ownedEquipmentChoices.length && <p className="mt-2 text-sm text-amber-800">No active owned vehicle exactly matches this recorded registration.</p>}
                   {transportType === "agency_vendor" && <div className="mt-2 space-y-1">
                     {!unambiguous && chosen == null && <p className="text-xs font-medium text-amber-700">Vehicle not matched — select manually to create a hired-vehicle audit link.</p>}
                     <Label htmlFor={`equipment-${trip.id}`} className="text-xs">Hired vehicle link</Label>
