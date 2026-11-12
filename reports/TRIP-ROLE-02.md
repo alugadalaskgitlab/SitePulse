@@ -1,6 +1,6 @@
 # TRIP-ROLE-02 — Material trip review and role correction
 
-**Status:** Part A is complete. Part B code and automated checks are complete. The live UI/data acceptance is blocked because the documented development verifier login returned 401 and the owner declined resetting that test account. No trip records were changed; nothing was published.
+**Status:** Part A is complete. Part B code and automated checks are complete. The live UI/data acceptance is blocked because the pre-existing development verifier login returned 401 and the owner declined resetting that test account. No trip or user records were changed; nothing was published.
 
 ## Data scope
 
@@ -113,9 +113,10 @@ No schema change is expected for the specified page split and Set source and tra
 
 ### Tests and build
 
-- Focused tests: **81 passed across 5 files**, including review/log navigation, separate source and transport preview/apply, bill exclusions/warnings, unique and ambiguous vehicle matching, site-scoped routes and existing trip behavior.
+- Focused tests: **82 passed across 5 files**, including review/log navigation, separate source and transport preview/apply, bill exclusions/warnings, unique and ambiguous vehicle matching, site-scoped routes and existing trip behavior.
 - `npm run build`: passed. The build reports the repository's existing Browserslist-age and large-chunk warnings.
-- The verifier login attempt used the normal login endpoint and returned **401**. The owner declined resetting the dedicated development verifier account, so no alternate login or auth bypass was attempted.
+- The verifier is the pre-existing development-only account **Agent Verification (user 16, agent.verification@test.invalid)** in `sitelog_dev`; it is not a temporary account created for this batch. Its normal login attempt returned **401**. Resetting it would change that test account's password and restore its documented least-privilege test grants; the owner declined, so that reset was not run.
+- No temporary user was created, so none was deleted. No account, role, permission, device or session was changed by this batch. No real user or production data was touched.
 
 ### Development UI/data acceptance — not completed
 
