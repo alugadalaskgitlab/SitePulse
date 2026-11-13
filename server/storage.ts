@@ -2688,7 +2688,7 @@ export class DatabaseStorage implements IStorage {
 
   async getOwnCompanyParty(executor: any = db): Promise<{ id: number; name: string | null } | null> {
     const [selection] = await executor.select({ value: appSettings.value })
-      .from(appSettings).where(eq(appSettings.key, "own_company_party_id")).limit(1);
+      .from(appSettings).where(eq(appSettings.key, "own_company_party_id"));
     const rows = await executor.select({ id: parties.id, name: parties.name, isActive: parties.isActive })
       .from(parties);
     const identity = await this.getCompanyIdentityForStorage(executor);

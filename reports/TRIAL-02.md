@@ -50,7 +50,7 @@ Company name and short name were restored unchanged; the own-party and default-p
 
 ## Verification
 
-- Focused company-identity, own-party, Tally, receipt, and bill tests: **84 passed** across 8 files. The alternate-company PI-prefix test, the explicit DPR diesel-submit regression test, and UX-FIX-01 frontend tests (**12 passed**) also passed.
-- Full suite: pending final run.
-- `npm run build`: passed.
+- Focused company-identity, own-party, Tally, receipt, and bill tests: **166 passed** across 11 files; the final company-identity/vendor-bill regression rerun passed **8 tests** across 2 files. UX-FIX-01 frontend tests also passed (**12 tests**).
+- Full suite: **5 failed files, 454 passed, 2 skipped**; **7 failed tests, 5,741 passed, 3 skipped**. The remaining failures are the known old failures: one each in `arrangementProcurementCorrection`, `dpr314Correction`, `materialReceiptReversal06mD`, and `purchase-indent-pi01`, plus three in `unscheduledReportCredit`. The new own-company lookup's vendor-bill test fixture was corrected; `vendorBillVb15Server` now passes.
+- `npm run build`: passed after the final code and test changes.
 - Schema check: `shared/schema.ts` is unchanged; no migration or schema file was added.

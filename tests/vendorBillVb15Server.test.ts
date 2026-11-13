@@ -44,35 +44,54 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-function queueAutoEquipmentRows() {
+function queueAutoEquipmentRows(billType: string) {
+  const equipment = [
+    { id: 1, name: "SITE JCB", vendorName: "MIRROR VENDOR", ownership: "hired", hireBillingBasis: "hourly" },
+    { id: 2, name: "PLANT ROLLER", vendorName: "MIRROR VENDOR", ownership: "hired", hireBillingBasis: "hourly" },
+  ];
+  const dprLogs = [
+    {
+      id: 10, equipmentId: 1, date: "2026-08-31", entryType: "hourly",
+      hoursWorked: 5, status: "submitted", plantUsageId: 100, site: "SITE A",
+    },
+    {
+      id: 11, equipmentId: 2, date: "2026-08-31", entryType: "hourly",
+      hoursWorked: 2, status: "submitted", plantUsageId: null, site: "SITE B",
+    },
+  ];
+  const plantUsage = [
+    // The linked Plant row is the mirror and must not be billed twice.
+    { id: 100, equipmentId: 1, date: "2026-08-31", entryType: "hourly", hoursOrKmRun: 5 },
+    // Independent Plant usage for the same equipment remains billable.
+    { id: 101, equipmentId: 1, date: "2026-08-31", entryType: "hourly", hoursOrKmRun: 3 },
+    // Matching plantUsageId alone is insufficient; this different
+    // equipment row remains an independent billable candidate.
+    { id: 100, equipmentId: 2, date: "2026-08-31", entryType: "hourly", hoursOrKmRun: 2 },
+    // Independent Plant usage for another equipment remains billable.
+    { id: 201, equipmentId: 2, date: "2026-08-31", entryType: "hourly", hoursOrKmRun: 1 },
+  ];
+  const includesMaterial = billType === "all";
   fx.dbRows.push(
     [], // vendor aliases
-    [
-      { id: 1, name: "SITE JCB", vendorName: "MIRROR VENDOR", ownership: "hired", hireBillingBasis: "hourly" },
-      { id: 2, name: "PLANT ROLLER", vendorName: "MIRROR VENDOR", ownership: "hired", hireBillingBasis: "hourly" },
-    ],
-    [
-      {
-        id: 10, equipmentId: 1, date: "2026-08-31", entryType: "hourly",
-        hoursWorked: 5, status: "submitted", plantUsageId: 100, site: "SITE A",
-      },
-      {
-        id: 11, equipmentId: 2, date: "2026-08-31", entryType: "hourly",
-        hoursWorked: 2, status: "submitted", plantUsageId: null, site: "SITE B",
-      },
-    ],
-    [
-      // The linked Plant row is the mirror and must not be billed twice.
-      { id: 100, equipmentId: 1, date: "2026-08-31", entryType: "hourly", hoursOrKmRun: 5 },
-      // Independent Plant usage for the same equipment remains billable.
-      { id: 101, equipmentId: 1, date: "2026-08-31", entryType: "hourly", hoursOrKmRun: 3 },
-      // Matching plantUsageId alone is insufficient; this different
-      // equipment row remains an independent billable candidate.
-      { id: 100, equipmentId: 2, date: "2026-08-31", entryType: "hourly", hoursOrKmRun: 2 },
-      // Independent Plant usage for another equipment remains billable.
-      { id: 201, equipmentId: 2, date: "2026-08-31", entryType: "hourly", hoursOrKmRun: 1 },
-    ],
+    ...(includesMaterial ? [[]] : []), // material/all: Diesel Vendor Master identities
+    [], // selected Vendor Master identity
+    equipment, // all equipment for explicit vendor-identity checks
+    [], // Vendor Master rows
+    [], // identity confirmation audits
+    ...(includesMaterial ? [
+      [], // own-company party setting
+      [{ id: 1, name: "HIGH LANE CONSTRUCTIONS", isActive: true }], // parties
+      [
+        { key: "company_name", value: "High Lane Constructions Pvt Ltd" },
+        { key: "company_short_name", value: "HLC" },
+      ], // company identity settings
+      [], // site material trips
+    ] : []),
+    equipment, // hired equipment matching the vendor
+    dprLogs,
+    plantUsage,
     [], // unlinked site DPR logs
+    ...(includesMaterial ? Array.from({ length: 12 }, () => []) : []), // later material, transport and labour queries
   );
 }
 
@@ -143,11 +162,7 @@ describe("VB-15 vendor-bill activity mirror suppression", () => {
 
   it("suppresses the linked mirror on both equipment and All auto-item pulls", async () => {
     for (const billType of ["equipment", "all"]) {
-      queueAutoEquipmentRows();
-      if (billType === "all") fx.dbRows.splice(1, 0, []); // role-aware trip query after aliases
-      const equipment = fx.dbRows[billType === "all" ? 2 : 1];
-      fx.dbRows.splice(1, 0, [], equipment, [], []); // selected vendor, owner equipment, vendor identities, audits
-      if (billType === "all") fx.dbRows.splice(5, 0, []); // strict HLC-party lookup before the receipt-linked trip query
+      queueAutoEquipmentRows(billType);
       const storage = new DatabaseStorage();
       const items = await storage.getVendorBillAutoItems(
         "Mirror Vendor",
