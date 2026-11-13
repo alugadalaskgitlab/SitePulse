@@ -1,8 +1,9 @@
-import { useParams } from "wouter";
+import { useParams, useLocation, useSearch } from "wouter";
 import { Link } from "wouter";
 import { ChevronLeft, HardHat, MapPin, Layers, FlaskConical, Wrench, Users, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
+import { isProcurementReturnPath } from "@/lib/workDemandNavigation";
 import type { SectionKey as PermissionSectionKey } from "@shared/permissions";
 import {
   PartyMaster,
@@ -77,9 +78,13 @@ type SectionKey = keyof typeof SECTIONS;
 
 export default function PlantMasters() {
   const params = useParams<{ section: string }>();
+  const search = useSearch();
+  const [, navigate] = useLocation();
   const { sectionVisible, featureCan } = useAuth();
   const section = params.section as SectionKey;
   const config = SECTIONS[section];
+  const returnTo = new URLSearchParams(search).get("returnTo") ?? "";
+  const canReturnToProcurement = section === "materials" && isProcurementReturnPath(returnTo);
 
   if (!config) {
     return (
@@ -137,6 +142,18 @@ export default function PlantMasters() {
             <p className="text-sm text-slate-500 truncate hidden sm:block">{subtitle}</p>
           </div>
         </div>
+        {canReturnToProcurement && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto flex-shrink-0"
+            onClick={() => navigate(returnTo)}
+            data-testid="button-back-to-procurement"
+          >
+            <ChevronLeft className="mr-1 h-4 w-4" />
+            Back to Procurement
+          </Button>
+        )}
       </div>
 
       <Component />

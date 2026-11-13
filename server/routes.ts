@@ -21873,7 +21873,7 @@ export async function registerRoutes(
       const barById = new Map<number, any>((bom.bars as any[]).map((bar: any) => [Number(bar.id), bar]));
       type ValueRow = {
         boqItemId: number; itemCode: string | null; description: string; unit: string;
-        reachId: number | null; reachLabel: string; chainageFrom: number | null; chainageTo: number | null;
+        reachId: number | null; reachLabel: string; chainageFrom: number | null; chainageTo: number | null; side: string | null;
         scopeQuantity: number; doneQuantity: number; incidentalQuantity: number; reworkQuantity: number;
          balanceQuantity: number; overQuantity: number; overBoqQuantity: number;
          overBoqSummaryRow: boolean; overBoqValue: number | null;
@@ -21915,6 +21915,9 @@ export async function registerRoutes(
             reachLabel: share.label,
             chainageFrom: share.chainageFrom,
             chainageTo: share.chainageTo,
+            side: share.reachId == null
+              ? null
+              : scopeSegments.find(segment => Number(segment.id) === Number(share.reachId))?.side ?? null,
             scopeQuantity: share.quantity,
             doneQuantity: 0,
             incidentalQuantity: 0,
@@ -22006,6 +22009,7 @@ export async function registerRoutes(
             unit: String(item.canonicalUnit ?? item.unit ?? ""),
             reachId: null, reachLabel: "BOQ not needed (no-scope portion)",
             chainageFrom: null, chainageTo: null,
+             side: null,
             scopeQuantity: allocation.notNeededQuantity,
             doneQuantity: 0, incidentalQuantity: 0, reworkQuantity: 0,
             balanceQuantity: allocation.notNeededQuantity, overQuantity: 0, rate,
@@ -22062,6 +22066,7 @@ export async function registerRoutes(
         projectId, projectName: project.name, siteName: site.name,
         scopeBasis: "Confirmed working reaches and no-scope/withdrawn corridor length; programme bars do not determine BOQ shares.",
         rows: valueRows,
+        materialItems: bom.expandedItems,
         reachTotals,
         totals: {
           billEstimateWithinBoq: sumKnown("valueDone"),
@@ -23496,6 +23501,21 @@ export async function registerRoutes(
           ? Math.round(shortageRow.actionableShortfall * convFactor * 1000) / 1000
           : null;
         const procurementEquivalentUom = convFactor !== 1 && !uomBlocked ? canonicalUom : null;
+        const procurementEquivalentCft = procurementEquivalentQty != null && procurementEquivalentUom
+          ? materialPlanQuantity(
+              procurementEquivalentQty,
+              procurementEquivalentUom,
+              "CFT",
+              resolvedMat ? {
+                rolledDensity: resolvedMat.rolledDensity == null ? null : Number(resolvedMat.rolledDensity),
+                rollingPct: resolvedMat.rollingPct == null ? null : Number(resolvedMat.rollingPct),
+                looseFactor: resolvedMat.looseFactor == null ? null : Number(resolvedMat.looseFactor),
+                wastagePct: resolvedMat.wastagePct == null ? null : Number(resolvedMat.wastagePct),
+                bulkDensity: resolvedMat.bulkDensity == null ? null : Number(resolvedMat.bulkDensity),
+              } : null,
+              "loose",
+            )
+          : null;
 
         return {
           ...shortageRow,
@@ -23510,6 +23530,7 @@ export async function registerRoutes(
           resolvedVia: mappedId ? "mapping" as const : (aliasOrNameMatchId ? "alias" as const : null),
           ...(conversionBasis ? { conversionBasis, canonicalUom, conversionProfileId: convProfileId } : {}),
           ...(procurementEquivalentQty != null ? { procurementEquivalentQty, procurementEquivalentUom } : {}),
+          ...(procurementEquivalentCft != null ? { procurementEquivalentCft } : {}),
           ...(Object.keys(resolutionDiagnostic).length > 0 ? { resolutionDiagnostic } : {}),
           // Instruction 023/024: earthwork arrangement context
           // isEarthworkBulkRequirement = arrangement flow (already classified as earthwork).

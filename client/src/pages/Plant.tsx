@@ -2675,6 +2675,7 @@ export function PartyMaster() {
 
 export function MaterialMaster() {
   const { toast } = useToast();
+  const search = useSearch();
   const { companyShortName } = useFeatureFlags();
   const { sectionCan, featureCan } = useAuth();
   const canEdit = sectionCan("master_materials", "edit");
@@ -2710,6 +2711,7 @@ export function MaterialMaster() {
   // ── Instruction 021: UOM Conversion Profile form state ───────────────────
   const [showConvForm, setShowConvForm] = useState(false);
   const [showAdvancedConversions, setShowAdvancedConversions] = useState(false);
+  const [autoOpenedMaterialId, setAutoOpenedMaterialId] = useState<number | null>(null);
   const [convFromUom, setConvFromUom] = useState("");
   const [convToUom, setConvToUom] = useState("");
   const [convFactor, setConvFactor] = useState("");
@@ -2758,6 +2760,7 @@ export function MaterialMaster() {
       apiRequest("PATCH", `/api/plant-module/materials/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
+      queryClient.invalidateQueries({ predicate: q => q.queryKey[0] === "/api/boq/projects" && ["bom", "shortage-check"].includes(String(q.queryKey[2])) });
       resetForm();
       toast({ title: "Material updated successfully" });
     },
@@ -2793,6 +2796,7 @@ export function MaterialMaster() {
       }),
     onSuccess: () => {
       refetchConvProfiles();
+      queryClient.invalidateQueries({ predicate: q => q.queryKey[0] === "/api/boq/projects" && ["bom", "shortage-check"].includes(String(q.queryKey[2])) });
       setShowConvForm(false); setConvFromUom(""); setConvToUom(""); setConvFactor(""); setConvBasis(""); setConvType("fixed_factor");
       toast({ title: "Conversion profile saved" });
     },
@@ -2806,6 +2810,7 @@ export function MaterialMaster() {
       apiRequest("PATCH", `/api/plant-materials/${editingMaterial!.id}/uom-conversions/${id}`, { isActive: isActive ? 1 : 0 }),
     onSuccess: () => {
       refetchConvProfiles();
+      queryClient.invalidateQueries({ predicate: q => q.queryKey[0] === "/api/boq/projects" && ["bom", "shortage-check"].includes(String(q.queryKey[2])) });
       toast({ title: "Conversion profile updated" });
     },
     onError: (e: any) => {
@@ -2916,6 +2921,17 @@ export function MaterialMaster() {
     setShowConvForm(false);
     setDialogOpen(true);
   };
+
+  const requestedEditMaterialId = Number(new URLSearchParams(search).get("editMaterial")) || null;
+  useEffect(() => {
+    if (!requestedEditMaterialId || !materials || autoOpenedMaterialId === requestedEditMaterialId) return;
+    const material = materials.find(candidate => Number(candidate.id) === requestedEditMaterialId);
+    if (material) {
+      openEdit(material);
+      setShowAdvancedConversions(true);
+    }
+    setAutoOpenedMaterialId(requestedEditMaterialId);
+  }, [materials, requestedEditMaterialId, autoOpenedMaterialId]);
 
   const openOpeningStockDialog = (material: PlantMaterial) => {
     setSelectedMaterialForStock(material);

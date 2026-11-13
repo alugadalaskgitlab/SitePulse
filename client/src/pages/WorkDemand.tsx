@@ -1,4 +1,4 @@
-import { useMemo, useState, Fragment, useCallback } from "react";
+import { useMemo, useState, Fragment, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { ProgrammeLink as Link } from "@/components/ProgrammeLink";
@@ -43,6 +43,15 @@ import { visibleEquipmentRows } from "@shared/equipmentUsage";
 import { MaterialsBuyAndWorkDone, type MaterialPlanRow } from "@/components/MaterialsBuyAndWorkDone";
 import { ArrangementRegisterLink } from "@/components/ArrangementRegisterLink";
 import { CompactedLooseReminder } from "@/components/CompactedLooseReminder";
+import { BalanceWorkMaterialsByReach } from "@/components/BalanceWorkMaterialsByReach";
+import type { WorkValueBalanceRow } from "@/lib/bomReachBalance";
+import {
+  WORK_DEMAND_TABS,
+  readWorkDemandTab,
+  writeWorkDemandTab,
+  materialUomEditHref,
+  useBackClosesWorkDemandDialog,
+} from "@/lib/workDemandNavigation";
 import type { BoqProject, PlanVsActualRow } from "@shared/schema";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -107,7 +116,7 @@ function CompactedLooseDemand({
               <th className="px-3 py-2 text-left">BOQ layer / mix</th>
               <th className="px-2 py-2 text-right">Compacted Cum</th>
               <th className="px-2 py-2 text-right">MT (if set)</th>
-              <th className="px-2 py-2 text-right">Loose Cum / CFT</th>
+              <th className="px-2 py-2 text-right">Loose Cum / loose CFT</th>
               <th className="px-2 py-2 text-right">Wastage MT / loose Cum</th>
             </tr>
           </thead>
@@ -166,7 +175,7 @@ function CompactedLooseDemand({
                     {result && result.wastageMt > 0 && <div className="text-[10px] text-slate-400">+ {numberOrDash(result.wastageMt)} wastage</div>}
                   </td>
                   <td className="px-2 py-2 text-right font-mono">
-                    {result ? `${numberOrDash(result.looseCum)} / ${numberOrDash(result.looseCft, 0)} CFT` : "—"}
+                    {result ? `${numberOrDash(result.looseCum)} / ${numberOrDash(result.looseCft, 0)} loose CFT` : "—"}
                     {result && result.wastageLooseCum > 0 && <div className="text-[10px] text-slate-400">+ {numberOrDash(result.wastageLooseCum)} loose Cum wastage</div>}
                   </td>
                   <td className="px-2 py-2 text-right font-mono">
@@ -221,6 +230,7 @@ function DemandSourceLinkDialog({
     : sourceKind === "template"
       ? `${choice.name} · ${choice.mixType}`
       : `${choice.name}${choice.defaultUom ? ` · ${choice.defaultUom}` : ""}`;
+  useBackClosesWorkDemandDialog(true, onClose);
   const save = async () => {
     if (!selectedId) return;
     setSaving(true);
@@ -1554,6 +1564,7 @@ interface ShortageRow {
   /** 021 §13: shortfall in stock/procurement UOM (e.g. MT) for materials with conversion. */
   procurementEquivalentQty?: number | null;
   procurementEquivalentUom?: string | null;
+  procurementEquivalentCft?: number | null;
   // ── Instruction 020 additions ─────────────────────────────────────────────
   /** Instruction 020 §3: authoritative server-side procurement status. */
   procurementStatus?: "mapping_required" | "uom_resolution_required" | "multiple_matches" | "earthwork_arrangement_required" | "earthwork_classification_required" | "future_not_due" | "covered_by_stock" | "covered_by_incoming" | "partially_covered" | "action_required";
@@ -1725,6 +1736,7 @@ function ResolveMappingDialog({
   const [searchQ, setSearchQ] = useState("");
   const [selected, setSelected] = useState<PlantMaterialResult | null>(null);
   const [saving, setSaving] = useState(false);
+  useBackClosesWorkDemandDialog(open, onClose);
 
   const { data: results = [], isFetching } = useQuery<PlantMaterialResult[]>({
     queryKey: ["/api/plant-materials/search", searchQ],
@@ -2126,6 +2138,7 @@ function SuggestionBadge({
     setStep("confirm_dest");
   };
   const handleClose = () => { setStep("closed"); setClientRequestId(null); };
+  useBackClosesWorkDemandDialog(step !== "closed", handleClose);
 
   // ── Requirement creation ────────────────────────────────────────────────────
   const createReqMutation = useMutation({
@@ -2293,9 +2306,9 @@ function SuggestionBadge({
           {ps === "mapping_required" ? <Link2 className="w-3 h-3" /> : <Settings2 className="w-3 h-3" />}
           {ps === "mapping_required" ? "Link to master" : ps === "multiple_matches" ? "Resolve Ambiguous Match" : "Resolve Material Mapping"}
         </button>
-        {ps === "uom_resolution_required" && rd?.materialName && (
+        {ps === "uom_resolution_required" && rd?.materialName && row.materialId != null && (
           <a
-            href="/plant?tab=home"
+            href={materialUomEditHref(row.materialId, projectId)}
             className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5 hover:bg-teal-100 transition-colors"
             title="Open Plant Material Master to add a UOM Conversion Profile for this material"
           >
@@ -2408,12 +2421,9 @@ function SuggestionBadge({
 
       {/* ── 021 §13: Procurement equivalent — shortfall in stock/canonical UOM ── */}
       {row.procurementEquivalentQty != null && row.procurementEquivalentUom && (
-        <div className="text-[11px] text-blue-700 bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5 mt-0.5">
-          <span className="font-medium">Procurement equivalent:</span>{" "}
-          {fmtN(row.procurementEquivalentQty)} {row.procurementEquivalentUom}
-          {row.conversionBasis && (
-            <span className="text-[10px] text-blue-500 ml-1">({row.conversionBasis})</span>
-          )}
+        <div className="mt-0.5 text-[11px] text-blue-700" title={row.conversionBasis ?? undefined}>
+          Due now: {fmtN(row.procurementEquivalentQty)} {["MT", "T", "TON", "TONS", "TONNE", "TONNES"].includes(canonicalizeUnit(row.procurementEquivalentUom).toUpperCase()) ? "MT" : row.procurementEquivalentUom}
+          {row.procurementEquivalentCft != null && <> ≈ {fmtN(row.procurementEquivalentCft)} loose CFT</>}
         </div>
       )}
 
@@ -2756,17 +2766,11 @@ function ProcurementTable({
         </details>
       )}
 
-      {/* Info note */}
-      <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
-        <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-        <div>
-          <span className="font-semibold">Planning intelligence only.</span>{" "}
-          Stock shown is {companyShortName}/company custody only. Existing manual IRN and PI creation is unchanged.
-          {unresolvedCount > 0 && (
-            <span className="block mt-1 text-amber-700">{unresolvedCount} material{unresolvedCount > 1 ? "s" : ""} need a master link.</span>
-          )}
-        </div>
-      </div>
+      {unresolvedCount > 0 && (
+        <p className="text-xs text-amber-700" data-testid="unresolved-master-link-count">
+          {unresolvedCount} materials need a master link
+        </p>
+      )}
 
       {actionableCount > 0 && (
         <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200">
@@ -2808,7 +2812,7 @@ function ProcurementTable({
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>{companyShortName} Stock</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Other Parties</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Confirmed Incoming</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>To buy (Plan vs Actual)</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>To buy — whole project</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Future Req.</th>
               <th className="px-3 py-2 font-semibold text-white text-left min-w-[150px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Status / Action</th>
             </tr>
@@ -2821,7 +2825,7 @@ function ProcurementTable({
               const pvaAmount = planRow?.excess ?? planRow?.stillToBuy;
               const pvaCft = planRow?.excess != null ? planRow.excessCft : planRow?.stillToBuyCft;
               const pvaToBuy = planRow
-                ? `${planRow.excess != null ? "Excess " : ""}${pvaAmount == null ? "—" : fmtQty(pvaAmount, 1)} ${planRow.uom}${planRow.showCft && pvaCft != null ? ` · ≈ ${fmtQty(pvaCft, 0)} CFT` : ""}`
+                ? `${planRow.excess != null ? "Excess " : ""}${pvaAmount == null ? "—" : fmtQty(pvaAmount, 1)} ${planRow.uom}${planRow.showCft && pvaCft != null ? ` · ≈ ${fmtQty(pvaCft, 0)} loose CFT` : ""}`
                 : "—";
               return (
                 <tr
@@ -2834,9 +2838,6 @@ function ProcurementTable({
                       <span className="text-slate-700">{row.materialName}</span>
                       {row.materialMappingAmbiguous && (
                         <span className="text-[10px] font-semibold text-orange-700 bg-orange-100 border border-orange-300 rounded px-1 py-0.5" title={`Ambiguous: ${(row.ambiguousCandidates ?? []).map(c => c.name).join(", ")}`}>Multiple Matches</span>
-                      )}
-                      {row.conversionBasis && (
-                        <span className="text-[9px] text-blue-600 italic" title={row.conversionBasis}>⇄ converted</span>
                       )}
                       {row.programmingStatus === "not_programmed" && (
                         <span className="text-[10px] text-slate-400 italic">(not programmed)</span>
@@ -2877,7 +2878,7 @@ function ProcurementTable({
                   <td className={`px-2 py-2 text-right font-mono ${row.confirmedIncomingPurchase > 0 ? "text-blue-700" : "text-slate-300"}`}>
                     {isUnresolved ? "—" : row.confirmedIncomingPurchase > 0 ? fmtQty(row.confirmedIncomingPurchase, 1) : "—"}
                   </td>
-                  <td className={`px-2 py-2 text-right font-mono font-semibold ${hasShortfall ? "text-red-700" : "text-emerald-600"}`}>
+                  <td className={`px-2 py-2 text-right font-mono font-semibold ${hasShortfall ? "text-red-700" : "text-emerald-600"}`} title={row.conversionBasis ?? undefined}>
                     {pvaToBuy}
                     {!!planRow?.soilValuesMissingCount && <span className="block text-[10px] font-normal text-amber-700">{planRow.soilValuesMissingCount} item{planRow.soilValuesMissingCount === 1 ? "" : "s"} need soil values</span>}
                   </td>
@@ -2915,11 +2916,21 @@ export default function WorkDemand() {
   const [sourceLinkItem, setSourceLinkItem] = useState<any | null>(null);
   // Task #1240: honour ?tab= so the proactive shortage badge on the Work
   // Programme page can deep-link straight into the procurement sub-tab.
-  const initialTab = (() => {
-    const t = new URLSearchParams(window.location.search).get("tab");
-    return t === "procurement" || t === "plan-vs-actual" ? t : "materials";
-  })();
+  const initialTab = readWorkDemandTab();
   const [activeTab, setActiveTab] = useState(initialTab);
+  const changeTab = useCallback((tab: string) => {
+    if (!WORK_DEMAND_TABS.has(tab)) return;
+    if (tab !== activeTab) writeWorkDemandTab(tab);
+    setActiveTab(tab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    if (!requested || !WORK_DEMAND_TABS.has(requested)) writeWorkDemandTab("materials", true);
+    const handlePopState = () => setActiveTab(readWorkDemandTab());
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   const { data: project } = useQuery<BoqProject>({
     queryKey: ["/api/boq/projects", projectId],
@@ -2953,6 +2964,24 @@ export default function WorkDemand() {
     enabled: !isNaN(projectId),
   });
 
+  const {
+    data: workValueData,
+    isLoading: workValueLoading,
+    isError: workValueError,
+  } = useQuery<{
+    rows: WorkValueBalanceRow[];
+    materialItems?: BomInputItem[];
+  }>({
+    queryKey: ["/api/boq/projects", projectId, "work-value"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${projectId}/work-value`, { credentials: "include" });
+      if (!res.ok) throw new Error("Could not load Work value balances.");
+      return res.json();
+    },
+    enabled: !isNaN(projectId) && activeTab === "materials",
+    retry: 1,
+  });
+
   // ── Procurement Horizon state ──────────────────────────────────────────────
   // Default to current_month — server resolves the exact cutoff date programme-relatively.
   const [horizonMode, setHorizonMode] = useState<HorizonMode>("current_month");
@@ -2982,7 +3011,7 @@ export default function WorkDemand() {
       }
       return res.json();
     },
-    enabled: !isNaN(projectId) && activeTab === "procurement",
+    enabled: !isNaN(projectId) && (activeTab === "procurement" || activeTab === "materials"),
     retry: 1,
   });
 
@@ -3216,7 +3245,7 @@ export default function WorkDemand() {
                 </div>
               </CardContent>
             </Card>
-            <Card className={`border-orange-100 bg-orange-50/30 cursor-pointer hover:bg-orange-50/60 transition-colors`} onClick={() => setActiveTab("procurement")}>
+            <Card className={`border-orange-100 bg-orange-50/30 cursor-pointer hover:bg-orange-50/60 transition-colors`} onClick={() => changeTab("procurement")}>
               <CardContent className="py-3 px-4 flex items-center gap-3">
                 <ShoppingCart className="w-5 h-5 text-orange-600" />
                 <div>
@@ -3229,7 +3258,7 @@ export default function WorkDemand() {
             </Card>
           </div>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <Tabs value={activeTab} onValueChange={changeTab}>
             <TabsList className="flex-wrap h-auto">
               <TabsTrigger value="materials" className="flex items-center gap-1.5" data-testid="tab-materials">
                 <Package className="w-3.5 h-3.5" /> Materials
@@ -3350,6 +3379,32 @@ export default function WorkDemand() {
                 </div>
               )}
               <CompactedLooseDemand items={bomData?.items ?? []} demand={demand} />
+              {workValueLoading && (
+                <div className="my-3 flex justify-center py-6 text-muted-foreground">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading work balances…
+                </div>
+              )}
+              {workValueError && !workValueLoading && (
+                <div role="alert" className="my-3 rounded border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
+                  Work value balances could not be loaded, so reach material requirements are not shown.
+                </div>
+              )}
+              {workValueData && (
+                <BalanceWorkMaterialsByReach
+                  items={bomData?.items ?? []}
+                  workValueItems={workValueData.materialItems}
+                  bars={bomData?.bars ?? []}
+                  workRows={workValueData.rows}
+                  totalMonths={project.totalMonths ?? 12}
+                  projectStartDate={shortageData?.projectStartDate ?? project.startDate ?? null}
+                  currentMonth={shortageData?.currentMonth ?? 1}
+                  endMonth={shortageData?.maxProgrammeMonth ?? project.totalMonths ?? undefined}
+                  demandMaterials={demand.materials}
+                  stockRows={shortageData?.rows ?? []}
+                  stockLoading={shortageLoading}
+                  arrangements={(bomData as any)?.earthworkArrangements ?? []}
+                />
+              )}
               <MaterialsTable demand={demand} project={project} structureItemDescriptions={structureItemDescriptions} />
             </TabsContent>
 
