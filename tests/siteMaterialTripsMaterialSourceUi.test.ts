@@ -5,6 +5,7 @@ import { selectTripEquipment } from "../client/src/components/trip-master-select
 
 const read = (file: string) => fs.readFileSync(path.resolve(__dirname, "..", file), "utf8");
 const page = read("client/src/pages/SiteMaterialTrips.tsx");
+const reviewTools = read("client/src/pages/SiteMaterialTripReviewTools.tsx");
 const roleFields = read("client/src/components/TripTransportRoleFields.tsx");
 const editPage = read("client/src/pages/SiteMaterialsReceived.tsx");
 const historyDialog = read("client/src/components/HistoryDialog.tsx");
@@ -41,48 +42,45 @@ describe("VB-22 site material trip source supplier UI", () => {
   });
 
   it("sends all visible filters and an explicit assignment in the bulk payload", () => {
-    expect(page).toContain('"/api/site-material-trips/material-source/bulk"');
+    expect(reviewTools).toContain('"/api/site-material-trips/material-source/bulk"');
     for (const field of [
-      "dateFrom: dateFromFilter",
-      "dateTo: dateToFilter",
-      "site: siteFilter",
-      "material: materialFilter",
-      "vehicleNumber: vehicleFilter",
-      "supplier: supplierFilter",
-      "onlyUnassigned",
-      "materialSourceSupplier: bulkMaterialSourceSupplier.trim()",
+      "dateFrom: filters.dateFrom || undefined",
+      "dateTo: filters.dateTo || undefined",
+      "site: filters.site",
+      "material: filters.material || undefined",
+      "vehicleNumber: filters.vehicleNumber || undefined",
+      "supplier: filters.supplier || undefined",
+      "onlyUnassigned: filters.onlyUnassigned",
+      "materialSourceSupplier: source.trim()",
     ]) {
-      expect(page).toContain(field);
+      expect(reviewTools).toContain(field);
     }
-    expect(page).toContain("Assign material source to {bulkEligibleCount}");
-    expect(page).toContain("The existing transporter values will remain untouched.");
+    expect(reviewTools).toContain("The existing transporter names and vehicle identities will remain untouched.");
   });
 
   it("does not report a successful bulk assignment for zero or invalid update counts", () => {
-    expect(page).toContain("Number.isSafeInteger(updatedCount)");
-    expect(page).toContain('title: "No trips updated"');
-    expect(page).toContain("Check the filters and edit permission, then reload");
-    expect(page).toContain("The server returned an invalid updated-trip count");
+    expect(reviewTools).toContain("Number.isSafeInteger(updatedCount)");
+    expect(reviewTools).toContain('title: message.startsWith("No trips updated") ? "No trips updated"');
+    expect(reviewTools).toContain("No trips updated. Check the filters and edit permission, then reload.");
+    expect(reviewTools).toContain("The server returned an invalid updated-trip count. Refresh the preview before retrying.");
   });
 
   it("gates bulk edits with site-material edit permission", () => {
-    expect(page).toContain('sectionCan("site_materials", "edit")');
-    expect(page).toContain("{canEdit && hasUnassignedFilteredTrips && (");
-    expect(page).toContain('data-testid="bulk-material-source-panel"');
+    expect(reviewTools).toContain('sectionCan("site_materials", "edit")');
+    expect(reviewTools).toContain("Edit permission required");
+    expect(page).toContain('href={`/site/material-trips/review/material-source?${buildReviewQuery()}`');
   });
   it("blocks bulk assignment while a client-only role subset is selected, including in the mutation", () => {
-    expect(page).toContain('if (roleFilter !== "all") {');
-    expect(page).toContain('disabled={roleFilter !== "all" || !bulkMaterialSourceSupplier.trim()');
-    expect(page).toContain('disabled={bulkAssignMutation.isPending || roleFilter !== "all"}');
-    expect(page).toContain("Role-filtered subsets cannot be bulk assigned.");
+    expect(reviewTools).toContain('if (filters.roleFilter !== "all") throw new Error("Set the role filter to All before using material-source backfill.");');
+    expect(reviewTools).toContain('disabled={preview.isPending || !filters.site || filters.roleFilter !== "all"');
   });
 
-  it("hides a cleared backlog, treats whitespace as blank, and collapses a real backlog by default", () => {
-    expect(page).toContain("const hasUnassignedFilteredTrips = filteredTrips.some(");
-    expect(page).toContain("!trip.materialSourceSupplier?.trim()");
-    expect(page).toContain("<details");
-    expect(page).toContain("Show material-source backfill tool");
-    expect(page).not.toMatch(/<details[^>]*\sopen(?:=|\s|>)/);
+  it("opens a separate preview-and-confirm material-source backfill tool from review", () => {
+    expect(page).toContain('href={`/site/material-trips/review/material-source?${buildReviewQuery()}`');
+    expect(reviewTools).toContain("export function MaterialSourceBackfillPage()");
+    expect(reviewTools).toContain("Preview matching trips");
+    expect(reviewTools).toContain("Assign source to {previewRows.length} matching trip");
+    expect(reviewTools).toContain("Assign ${previewRows?.length ?? 0} trips");
   });
 
   it("loads the full saved trip and keeps its independent source in the shared single-trip editor", () => {

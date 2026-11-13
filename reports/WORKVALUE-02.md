@@ -190,3 +190,51 @@ No Owner-screen data edits were made in this code-only batch. In particular, BOQ
 - The configured full-suite workflow's earlier run (before the final Part B edits) ended with 449 files passed, 2 skipped, and 7 failed; 5,703 tests passed, 3 skipped, and 13 failed. The visible failures included `siteMaterialTripsMaterialSourceUi.test.ts`, three `unscheduledReportCredit.test.ts` cases, and `vendorBillVb15Server.test.ts`. The full suite was not rerun after the final focused verification.
 
 **No publish was performed.**
+
+## Pre-publish check
+
+### Full-suite comparison
+
+The first full run on the Part B code had **13 failing tests across 7 files**. Five were in `siteMaterialTripsMaterialSourceUi.test.ts`; its source-text checks still searched the old single-page implementation after TRIP-ROLE-02 moved the review tools into `SiteMaterialTripReviewTools.tsx`. One assertion also exposed a real gap: a zero or invalid server update count could still be presented as a successful material-source backfill.
+
+I fixed the count handling so only a safe positive integer no larger than the preview count is reported as success. I updated the five page-split assertions to check the separate tool and its current safeguards. The focused UI test then passed **10/10**.
+
+| Failure group | Before this check | After fixes | Attribution / disposition |
+|---|---:|---:|---|
+| Previously known failures | 7 | 7 | Older failures, listed below |
+| DPR 314 correction | 1 | 1 | Older; reproduced on a source snapshot before WORKVALUE-02 |
+| Material trip UI checks | 5 | 0 | TRIP-ROLE-02 page split; assertions now target the extracted page, and the zero/invalid-count behavior was fixed |
+| WORKVALUE-02 / HOTFIX-01 | 0 | 0 | No failing tests attributed to either batch |
+| **Total** | **13** | **8** |  |
+
+The final `npm test` run reported **451 passed, 2 skipped, 6 failing files; 5,713 passed, 3 skipped, 8 failed tests** (459 files, 5,724 tests). The remaining failures are:
+
+| Test file / failing test | Batch attribution | Error observed |
+|---|---|---|
+| `arrangementProcurementCorrection.test.ts` — “Material mapping required” wording | Older; known failure | Static source assertion does not find the expected literal in the page file |
+| `materialReceiptReversal06mD.test.ts` — converted receipt reversal | Older; known failure | `Cannot convert Kg to Liters without a configured material density.` |
+| `purchase-indent-pi01.test.ts` — incompatible units rollback | Older; known failure | `Cannot convert CUM to MT without a configured material density.` |
+| `unscheduledReportCredit.test.ts` — persisted null-link total | Older; known failure | Expected total 6 and date `2026-08-05`; received total 0 and null date |
+| `unscheduledReportCredit.test.ts` — matching SQM units | Older; known failure | Expected 4,800; received 0 |
+| `unscheduledReportCredit.test.ts` — unresolved credit | Older; known failure | Expected null total; received 0 |
+| `vendorBillVb15Server.test.ts` — linked mirror suppression | Older; known failure | `Cannot read properties of undefined (reading 'isCancelled')` |
+| `dpr314Correction.test.ts` — hydrated SiteEdit rows | Older, not WORKVALUE-02 | `DPR314_CORRECTION: Unexpected correction fields`; the same failure reproduced from the pre-WORKVALUE-02 source snapshot `b4021a62` |
+
+The TRIP-ROLE-02 UI test changes were limited to updating the stale source-location assertions for the extracted review-tool page; the count-validation assertion now checks the corrected behavior. No WORKVALUE-02 or HOTFIX-01 test failure remained to fix. Expected error logs from tests that intentionally render broken routes/chunks were not test failures.
+
+### Schema delta
+
+Compared with the last published source snapshot (`216a30f3`), `shared/schema.ts` contains only these schema additions:
+
+- `boq_items.fixed_quantity` — nullable boolean.
+- `boq_items.fixed_quantity_reach_id` — nullable integer and one foreign key to `project_scope_segments.id` (`ON DELETE SET NULL`).
+- `boq_items.claimed_above_estimate` — non-null boolean, default `false`.
+- `boq_items.claimed_above_estimate_note` — nullable text.
+
+There are no table or column drops, renames, or other schema edits in that source delta. This confirms the code-defined migration is additive only. I did not query production or its replica, open a production-backed migration preview, or publish.
+
+### Build and startup
+
+- `npm run build`: **passed**. The build emitted the existing Browserslist-age and large-chunk warnings.
+- After the code fix, the development app restarted successfully and reported read-only startup readiness `ready: true`.
+- **No publish was performed.**

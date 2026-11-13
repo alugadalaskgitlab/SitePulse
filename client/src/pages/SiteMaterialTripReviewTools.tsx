@@ -156,7 +156,15 @@ export function MaterialSourceBackfillPage() {
         supplier: filters.supplier || undefined, onlyUnassigned: filters.onlyUnassigned,
         materialSourceSupplier: source.trim(),
       });
-      return response.json() as Promise<{ updatedCount: number }>;
+      const result = await response.json() as { updatedCount?: unknown };
+      const updatedCount = result?.updatedCount;
+      if (typeof updatedCount !== "number" || !Number.isSafeInteger(updatedCount) || updatedCount < 0 || updatedCount > previewRows.length) {
+        throw new Error("The server returned an invalid updated-trip count. Refresh the preview before retrying.");
+      }
+      if (updatedCount === 0) {
+        throw new Error("No trips updated. Check the filters and edit permission, then reload.");
+      }
+      return { updatedCount };
     },
     onSuccess: result => {
       queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith("/api/site-material-trips") });
@@ -169,7 +177,12 @@ export function MaterialSourceBackfillPage() {
     },
     onError: error => {
       setConfirmOpen(false);
-      toast({ title: "Backfill failed", description: error instanceof Error ? error.message : "Could not update trips.", variant: "destructive" });
+      const message = error instanceof Error ? error.message : "Could not update trips.";
+      toast({
+        title: message.startsWith("No trips updated") ? "No trips updated" : "Backfill failed",
+        description: message,
+        variant: "destructive",
+      });
     },
   });
   return <ReviewToolFrame title="Material source backfill">
