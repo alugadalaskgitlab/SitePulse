@@ -13,6 +13,7 @@ export type WorkingReachItem = ScopeItemQuery & {
   clientRate?: number | null;
   fixedQuantity?: boolean | null;
   fixedQuantityReachId?: number | null;
+  itemName?: string | null;
   planningWorkType?: string | null;
   workCategory?: string | null;
   layerConfig?: Record<string, unknown> | null;
@@ -42,12 +43,14 @@ function confirmedSegments(segments: ScopeSegmentLike[]) {
 
 const FIXED_UNITS = new Set(["LS", "LUMPSUM", "NOS", "NO", "EACH", "EA", "PCS", "SET", "RM", "RMT"]);
 
-export function defaultsToFixedQuantity(item: Pick<WorkingReachItem, "unit" | "workCategory" | "planningWorkType" | "layerConfig">): boolean {
+export function defaultsToFixedQuantity(item: Pick<WorkingReachItem, "unit" | "itemName" | "workCategory" | "planningWorkType" | "layerConfig">): boolean {
   const unit = String(item.unit ?? "").trim().toUpperCase().replace(/[^A-Z]/g, "");
   const layerType = String(item.layerConfig?.layerType ?? "").trim().toLowerCase();
   const workType = String(item.planningWorkType ?? "").trim().toLowerCase();
   const category = String(item.workCategory ?? "").trim().toUpperCase();
+  const itemName = String(item.itemName ?? "").trim().toLowerCase();
   return FIXED_UNITS.has(unit)
+    || /\bembankment\b/.test(itemName)
     || layerType === "structure"
     || workType === "structure"
     || /STRUCTURE|CULVERT|BRIDGE|ROAD_FURNITURE|ROAD_SAFETY/.test(category);
@@ -64,7 +67,7 @@ function unionLengthByCorridor(segments: ScopeSegmentLike[]): number {
     }
   }
   let length = 0;
-  for (const rows of intervals.values()) {
+  for (const rows of Array.from(intervals.values())) {
     rows.sort((a, b) => a[0] - b[0]);
     const merged: Array<[number, number]> = [];
     for (const [from, to] of rows) {

@@ -2366,6 +2366,7 @@ function InlineGanttTable({
     unit: item.canonicalUnit ?? item.unit,
     fixedQuantity: item.fixedQuantity,
     fixedQuantityReachId: item.fixedQuantityReachId,
+    itemName: item.itemName,
     planningWorkType: item.planningWorkType,
     workCategory: item.workCategory,
     layerConfig: item.layerConfig,

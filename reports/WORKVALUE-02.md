@@ -1,6 +1,6 @@
 # WORKVALUE-02 — Part A (read-only findings)
 
-**Status:** Part A only. No implementation or data changes have been made.
+**Status:** Part A findings followed by Part B implementation and verification.
 
 ## Read-only boundary
 
@@ -111,4 +111,82 @@ No schema changes were made. The existing database has no dedicated fields for t
 
 These would be additive only and would need to be applied to both development databases after approval. The DPR project and progress-item links, BOQ item name, and spray-coat rate already have existing columns/settings; they do not require new columns.
 
-**Part A complete. I stopped before implementation.**
+**Part A complete; Part B follows below.**
+
+## Part B — implementation and verification
+
+### Schema and data boundary
+
+Added only the four approved `boq_items` columns:
+
+| Column | Type | Null/default | Purpose |
+|---|---|---|---|
+| `fixed_quantity` | boolean | nullable; `NULL` uses the item-type default | Owner override for length sharing |
+| `fixed_quantity_reach_id` | integer | nullable; references `project_scope_segments.id`, `ON DELETE SET NULL` | Optional fixed-item reach |
+| `claimed_above_estimate` | boolean | not null, default `false` | Separate above-estimate claim marker |
+| `claimed_above_estimate_note` | text | nullable | Owner's explanation |
+
+The same additive columns and foreign key are present in `sitelog_dev` and the Publish-facing development database (`heliumdb`). Both were checked read-only by database name and `information_schema`. Production and its replica were not queried. No application records were edited; no trips, DPRs, progress rows, receipts, stock ledger rows, bills, BOQ quantities/rates, scope records, or programme bars were changed. Recipe rows were preserved.
+
+### Material use, stock, and buy/use
+
+The same submitted-DPR eligibility rule is used for material use: submitted; not deleted, cancelled, or superseded; and not marked No Site Work. Null legacy status flags count as false. Draft DPRs are excluded. Rework is excluded from material use; incidental quantities are included in use and broken out separately. Clearing and scarifying keep their saved Soil recipe rows, but the recipe generator no longer adds/replaces those rows, and stock/material-balance requirements and use exclude those false Soil lines.
+
+Direct-supply granular identification now uses the item's explicit material-master identity when present, then its own item name/description (for example, **Providing WET MIX MACADAM** resolves to the WMM master), rather than the generic “Granular Material” label. No WMM project mapping row or direct material foreign key was present in the current development records; no mapping or recipe record was created. For the existing item, the item's own WMM wording is the source of identity.
+
+On the current 13 November `sitelog_dev` data, the previous site-stock code would count clearing, scarifying, and shoulder recipe quantities as Soil:
+
+| Material | Before, same current records | After |
+|---|---:|---:|
+| Soil used | 19,701.00 cum loose, including 16,650.00 false use from clearing/scarifying | 3,051.00 cum loose: 1,098.00 billable + 1,953.00 incidental |
+| Soil received | 1,934.04 cum loose | 1,934.04 cum loose |
+| Soil lying / used more than received | 0 lying; 17,766.96 used more than received | 0 lying; **1,116.96 used more than received** |
+| WMM used | 0 MT matched to the WMM master; 1,895 MT left lying | **1,670.29 MT**: 1,521.45 billable + 148.84 incidental |
+| WMM received / lying | 1,895 MT / 1,895 MT | 1,895 MT / **224.71 MT** |
+
+The 13 November figures differ from Part A's 12 November snapshot because the development-copy DPR records changed between the read-only Part A query and this implementation check. Part B did not edit those records.
+
+The current Material buy/use calculations use the same 2.9 km corridor denominator and 2.6 km of confirmed working reaches:
+
+| Material | Working need | Used | Received | Balance work need | Still to buy | Excess |
+|---|---:|---:|---:|---:|---:|---:|
+| Soil, cum loose | 2,004.00 | 3,051.00 | 1,934.04 | 0.00 | **69.96** | 0.00 |
+| WMM, MT | 3,224.81 | 1,670.29 | 1,895.00 | 1,554.53 | **1,329.81** | 0.00 |
+
+Soil need is 1,170 CUM of earthen shoulders plus the full 500 CUM embankment quantity, converted at 1.2 loose factor. WMM need is 1,462.5 CUM × 2.205 MT/CUM. “Still to buy” is need minus received, floored at zero; “Balance work need” is need minus billable and incidental use, floored at zero; site excess is received minus need, only when positive. Site Material Stock and Material Balance show negative stock as “Used more than received: …” rather than hiding it or showing negative lying stock.
+
+Store issues count only when linked to the project and BOQ item. The project/item material report and the site-stock calculation apply the same rework exclusion and incidental-use split.
+
+### Fixed quantities, value, and programme coverage
+
+`NULL` fixed-quantity values preserve type-based defaults. Lump-sum items, counted units, structures, culverts, road furniture/safety, and the ALLADURG embankment item remain whole by default; an Owner can override this in the BOQ item editor and optionally assign a reach. The 500 CUM embankment is assigned to “Whole project” by default. Linear items use working-reach length shares over the full 2.9 km corridor, including the 0.3 km no-scope segment in the denominator but excluding that segment from working need. Item-specific reaches only receive their applicable share.
+
+“Over reach share” is informational. “Over BOQ” is computed against total item progress and the full BOQ quantity; the bill estimate is capped at the full quantity, with excess value shown separately as “Above BOQ — needs variation.” The Owner's “Claimed above estimate” flag and note are separate from that calculation.
+
+Current Work Value figures:
+
+| Reach | Earned/bill estimate | Value of balance work |
+|---|---:|---:|
+| Reach 1 | ₹32,01,275.40 | ₹81,29,134.20 |
+| Reach 3 | ₹8,726.40 | ₹70,23,132.00 |
+| Whole project | ₹0.00 | ₹5,93,984.48 |
+
+Specific checks: Reach 1 shoulders are 915 CUM against a 720 CUM share, so they show 195 CUM “Over reach share,” but not “Over BOQ” (total shoulder progress is below 1,305 CUM). Clearing has 4,800 SQM in Reach 1 against a 3,840 SQM share (960 SQM over that reach share); active in-scope clearing totals 7,425 SQM against the full 6,960 SQM BOQ, so 465 SQM is “Over BOQ” and ₹1,878.60 is above the estimate. WMM's billable Work Value is 690 CUM; incidental 67.5 CUM remains visible but earns no work value.
+
+Programme “under by” compares bars with the item's working-reach quantity, while fixed items compare with their full quantity. Programme bars were not modified. The existing road bars 930–939 and structure bars 953–957 and 959 extend to chainage 3+200, beyond the confirmed corridor end at 2+900; in particular, embankment bar 932 and WMM bar 934 remain unchanged for the Owner to review.
+
+### Owner correction and remaining screen-only values
+
+The Owner correction flow can assign an empty submitted DPR project to a same-site BOQ project and link its progress item in the same reviewed correction. The correction is recorded as “Corrected by Owner.” The development integration test covers the same-site project and item together, and separately verifies Owner correction of incidental/rework flags and the BOQ link without changing stock ledger rows. DPR 413 itself remains unlinked and was not edited; current Work Value totals exclude its 14.0625 CUM until an Owner applies the screen correction.
+
+No Owner-screen data edits were made in this code-only batch. In particular, BOQ item code 10's saved `item_name` remains “Providing and laying bituminous,” not “30 mm bituminous concrete”; tack coat 1's saved layer setting remains 0.25 kg/sqm while the BOQ description states 0.275 kg/sqm. These are still available for the Owner to change through the BOQ/material editing screens; the BOQ description itself was not changed.
+
+### Verification
+
+- Focused tests: **8 files passed, 76 tests passed** (`soilValueWorkingReach`, `workValueMaterialRules`, `dprCorrections.integration`, `workValueTable`, `materialsBuyAndWorkDone`, `workProgrammeRevision06W`, `boqProjectEdit`, and `materialBalanceReport`).
+- `npm run build`: **passed**.
+- Development startup after the changes: **ready**, with read-only schema readiness `ready: true`.
+- The separate project-wide TypeScript check is not clean: it reports 463 diagnostics across the repository. It reports no diagnostics in the new working-reach/material-eligibility helpers or the Part B route block; unrelated diagnostics remain elsewhere.
+- The configured full-suite workflow's earlier run (before the final Part B edits) ended with 449 files passed, 2 skipped, and 7 failed; 5,703 tests passed, 3 skipped, and 13 failed. The visible failures included `siteMaterialTripsMaterialSourceUi.test.ts`, three `unscheduledReportCredit.test.ts` cases, and `vendorBillVb15Server.test.ts`. The full suite was not rerun after the final focused verification.
+
+**No publish was performed.**

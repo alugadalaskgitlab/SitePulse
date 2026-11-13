@@ -21078,6 +21078,7 @@ export async function registerRoutes(
           unit: item.canonicalUnit ?? item.unit,
           fixedQuantity: item.fixedQuantity,
           fixedQuantityReachId: item.fixedQuantityReachId,
+          itemName: item.itemName,
           planningWorkType: item.planningWorkType,
           workCategory: item.workCategory,
           layerConfig: item.layerConfig,
@@ -21144,7 +21145,7 @@ export async function registerRoutes(
           const materialName = String(master?.name ?? demandRow.materialName).trim();
           const sourceType = plantMix ? "plant_mix" : "site";
           const key = rowKeyFor(materialName, master ? Number(master.id) : null, targetUom);
-          const row = planRows.get(key) ?? {
+          const row: PlanRow = planRows.get(key) ?? {
             key,
             materialName,
             uom: targetUom === "CUM_LOOSE" ? "cum loose" : targetUom,
@@ -21179,7 +21180,7 @@ export async function registerRoutes(
             sourceNotes: new Set<string>(),
             attributions: new Set<string>(),
             needsOwnValues: false,
-          } satisfies PlanRow;
+          };
           if (plantMix) {
             row.hasPlantMix = true;
             row.sourceType = row.hasSiteSupply ? "mixed" : "plant_mix";
@@ -21381,7 +21382,7 @@ export async function registerRoutes(
           if (portion != null) billableScopedDoneByItem.set(itemId, (billableScopedDoneByItem.get(itemId) ?? 0) + portion);
         }
       }
-      for (const row of planRows.values()) {
+      for (const row of Array.from(planRows.values())) {
         for (const line of row.lines) {
           const item = itemById.get(line.boqItemId);
           const billableDone = billableScopedDoneByItem.get(line.boqItemId) ?? 0;
@@ -21511,7 +21512,7 @@ export async function registerRoutes(
         }
       }
 
-      for (const row of planRows.values()) {
+      for (const row of Array.from(planRows.values())) {
         if (!row.hasSiteSupply) continue;
         const matching = (siteStockRows as any[]).filter(stock =>
           normalisePlanMaterialName(stock.material) === normalisePlanMaterialName(row.materialName),
@@ -21718,6 +21719,7 @@ export async function registerRoutes(
           unit: item.canonicalUnit ?? item.unit,
           fixedQuantity: item.fixedQuantity,
           fixedQuantityReachId: item.fixedQuantityReachId,
+          itemName: item.itemName,
           planningWorkType: item.planningWorkType,
           workCategory: item.workCategory,
           layerConfig: item.layerConfig,
@@ -22071,6 +22073,7 @@ export async function registerRoutes(
           unit: (item as any).canonicalUnit ?? (item as any).unit,
           fixedQuantity: (item as any).fixedQuantity,
           fixedQuantityReachId: (item as any).fixedQuantityReachId,
+          itemName: (item as any).itemName,
           planningWorkType: (item as any).planningWorkType,
           workCategory: (item as any).workCategory,
           layerConfig: (item as any).layerConfig,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { allocateBoqQuantityToWorkingReaches, defaultsToFixedQuantity, quantityForWorkingReach, workingValueCategory } from "../shared/workingReachValue";
 import type { ScopeSegmentLike } from "../shared/projectScope";
+import { programmeQuantityDiffers } from "../shared/planningEngine";
 
 const reaches: ScopeSegmentLike[] = [
   { id: 1, segmentType: "working_reach", chainageFrom: 0, chainageTo: 1.6, side: null, status: "confirmed", applicability: "all_linear", label: "Reach 1" },
@@ -11,10 +12,15 @@ const reaches: ScopeSegmentLike[] = [
 describe("SOIL-VALUE working-reach shares", () => {
   it("keeps counted and structure quantities whole by default, with Owner override and reach assignment", () => {
     expect(defaultsToFixedQuantity({ unit: "Nos", workCategory: null, planningWorkType: "road", layerConfig: null })).toBe(true);
+    expect(defaultsToFixedQuantity({ unit: "Cum", itemName: "Forming Embankment with material", workCategory: "EARTHWORK", planningWorkType: null, layerConfig: null })).toBe(true);
     expect(defaultsToFixedQuantity({ unit: "Cum", workCategory: "ROAD_FURNITURE", planningWorkType: "road", layerConfig: null })).toBe(true);
     expect(allocateBoqQuantityToWorkingReaches({
       boqItemId: 10, categoryId: null, isLinear: true, currentQty: 5, unit: "Nos",
     }, reaches).shares).toMatchObject([{ label: "Whole project", quantity: 5 }]);
+    expect(allocateBoqQuantityToWorkingReaches({
+      boqItemId: 15, categoryId: null, isLinear: true, currentQty: 500, unit: "Cum",
+      itemName: "Forming Embankment with material",
+    }, reaches).shares).toMatchObject([{ label: "Whole project", quantity: 500 }]);
     const selected = allocateBoqQuantityToWorkingReaches({
       boqItemId: 10, categoryId: null, isLinear: true, currentQty: 5, unit: "Cum",
       fixedQuantity: true, fixedQuantityReachId: 3,
@@ -34,6 +40,11 @@ describe("SOIL-VALUE working-reach shares", () => {
     expect(allocation.workingQuantity).toBeCloseTo(2600);
     expect(allocation.notNeededQuantity).toBeCloseTo(300);
     expect(allocation.shares.map(row => row.quantity)).toEqual([1600, 1000]);
+    expect(programmeQuantityDiffers(allocation.workingQuantity, 1600 + 1000)).toBe(false);
+    const fixed = allocateBoqQuantityToWorkingReaches({
+      boqItemId: 10, categoryId: null, isLinear: true, currentQty: 5, unit: "Nos",
+    }, reaches);
+    expect(programmeQuantityDiffers(fixed.workingQuantity, 5)).toBe(false);
   });
 
   it("does not allocate an item-specific BOQ item to reaches that exclude it", () => {
