@@ -63,6 +63,7 @@ import { SEQUENCE_RULES, validateStretches, type RoadStretchInput } from "@share
 import { BAR_SIDES, BAR_SIDE_LABELS, barSideLabel, geometryApplicability, areSidesDistinctCorridors } from "@shared/barSide";
 import { scopeReachesToStretchRows, scopeConstraints, scopeFingerprint } from "@shared/autoSequenceScope";
 import { SCOPE_SEGMENT_TYPE_LABELS } from "@shared/projectScope";
+import { allocateBoqQuantityToWorkingReaches } from "@shared/workingReachValue";
 import { isStructureOrLocationScheduledItem, isShoulderDesc, classifyShoulderLayer, SHOULDER_DEPENDENCY_NOTES, SHOULDER_CLASSES, type ShoulderClass } from "@shared/workTypeRecipes";
 import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { boqDisplaySourceKey, buildBoqDisplayHierarchy } from "@shared/boqDisplayOrder";
@@ -2353,6 +2354,22 @@ function InlineGanttTable({
   deepLinkItemId?: number | null;
 }) {
   const { toast } = useToast();
+  const { data: coverageScopeSegments = [] } = useQuery<any[]>({
+    queryKey: [`/api/boq/projects/${projectId}/scope-segments`],
+    enabled: Number.isInteger(projectId) && projectId > 0,
+  });
+  const coverageTargetQty = (item: any) => allocateBoqQuantityToWorkingReaches({
+    boqItemId: Number(item.id),
+    categoryId: item.categoryId == null ? null : Number(item.categoryId),
+    isLinear: !["structure", "non_linear"].includes(String(item.layerConfig?.layerType ?? item.workCategory ?? "").toLowerCase()),
+    currentQty: Number(item.currentQty) || 0,
+    unit: item.canonicalUnit ?? item.unit,
+    fixedQuantity: item.fixedQuantity,
+    fixedQuantityReachId: item.fixedQuantityReachId,
+    planningWorkType: item.planningWorkType,
+    workCategory: item.workCategory,
+    layerConfig: item.layerConfig,
+  }, coverageScopeSegments as any[]).workingQuantity;
   const totalMonths = project.totalMonths ?? 12;
   // 027A: full calendar-month columns — a mid-month project start needs one
   // extra column so the programme window fits on the calendar axis.
@@ -2765,8 +2782,8 @@ function InlineGanttTable({
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap min-w-0">
                             <span className="text-[12px] text-muted-foreground flex-shrink-0 whitespace-nowrap">{fmt(item.currentQty)} {(item as any).canonicalUnit ?? item.unit}</span>
-                            <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={(item as any).canonicalUnit ?? item.unit} isStructureItem={isStructureOrLocationScheduledItem(item as any, { hasStructureImportBar: structureImportItemIds.has(item.id) })} />
-                            {itemBars.length > 0 && programmeQuantityDiffers(Number(item.currentQty), totalPlanned) && (
+                            <CoverageBadge planned={totalPlanned} boqQty={coverageTargetQty(item as any)} unit={(item as any).canonicalUnit ?? item.unit} isStructureItem={isStructureOrLocationScheduledItem(item as any, { hasStructureImportBar: structureImportItemIds.has(item.id) })} />
+                            {itemBars.length > 0 && programmeQuantityDiffers(coverageTargetQty(item as any), totalPlanned) && (
                               <span className="text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5" data-testid={`programme-quantity-warning-${item.id}`}>
                                 Programme {fmt(totalPlanned)} {(item as any).canonicalUnit ?? item.unit} vs BOQ {fmt(item.currentQty)} {(item as any).canonicalUnit ?? item.unit}; BOM demand capped at {fmt(Math.min(totalPlanned, item.currentQty))} {(item as any).canonicalUnit ?? item.unit}
                               </span>
@@ -2859,7 +2876,7 @@ function InlineGanttTable({
                           <span className="text-[12px] text-slate-500 font-semibold">
                             Total: {fmtQty(totalPlanned, 1)} {(item as any).canonicalUnit ?? item.unit}
                           </span>
-                          <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={(item as any).canonicalUnit ?? item.unit} isStructureItem={isStructureOrLocationScheduledItem(item as any, { hasStructureImportBar: structureImportItemIds.has(item.id) })} />
+                          <CoverageBadge planned={totalPlanned} boqQty={coverageTargetQty(item as any)} unit={(item as any).canonicalUnit ?? item.unit} isStructureItem={isStructureOrLocationScheduledItem(item as any, { hasStructureImportBar: structureImportItemIds.has(item.id) })} />
                         </div>
                         <div style={{ width: totalRightW, minWidth: totalRightW, flexShrink: 0 }} />
                       </div>

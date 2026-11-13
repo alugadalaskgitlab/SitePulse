@@ -180,7 +180,7 @@ import { normalizedEquipmentTypeName, plannedHoursInDateRange } from "./dprActua
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
 import { requireAuth, isPublicApiPath, isOptionalAuthPath, optionalAuth, lookupSessionFromCookie, loadUserPermissionsMatrix } from "./auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
-import { insertAttachmentSchema, attachmentModuleTypes, boqProjects as boqProjectsTable, dprs as dprsTable, progressEntries as progressEntriesTable, sitePurchases as auditSitePurchases, materialReceipts as auditMaterialReceipts, auditLogs as auditLogsTable } from "@shared/schema";
+import { insertAttachmentSchema, attachmentModuleTypes, dprs as dprsTable, progressEntries as progressEntriesTable, sitePurchases as auditSitePurchases, materialReceipts as auditMaterialReceipts, auditLogs as auditLogsTable } from "@shared/schema";
 import { MAX_ACTIVITY_PHOTOS } from "@shared/dprPhotos";
 import { isBarSide, isDprSideCompatible, barSideLabel, parseChainageKm, areSidesDistinctCorridors } from "@shared/barSide";
 import { checkProgrammeLinkRow, deriveChainageReviewStatus, barSideCoverage, normalizeDprSideKey } from "@shared/dprProgrammeLink";
@@ -205,8 +205,9 @@ import { excavationMaterialOutcomeIssue } from "@shared/cutFillReconciliation";
 import { materializedEquipmentLogChanged } from "@shared/equipmentMovement";
 import { hasDprBoqReferences, hasPreservedDprBoqReferences } from "@shared/dprBoqReferences";
 import { isEvidenceBasedDprNullProjectRecovery, normalizeDprSiteName } from "@shared/dprBoqSelection";
-import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, type ScopeSegmentLike } from "@shared/projectScope";
+import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, segmentAppliesToItem, type ScopeSegmentLike } from "@shared/projectScope";
 import { allocateBoqQuantityToWorkingReaches, quantityForWorkingReach, workingValueCategory } from "@shared/workingReachValue";
+import { directGranularMasterHint, isClearanceOrScarifyingSoilRecipe } from "@shared/materialUseEligibility";
 import { dprSaveErrorMetadata } from "./dprSaveError";
 import { boqConversionConfigError } from "./boqConversionConfig";
 import {
@@ -4029,6 +4030,24 @@ export async function registerRoutes(
   }
 
   const corrections = dprCorrectionService(db, async (candidate, original, changes, actor, tx) => {
+    const projectChanged = Number(candidate.boqProjectId ?? 0) !== Number(original.boqProjectId ?? 0);
+    if (projectChanged) {
+      if (actor.isOwner !== true || original.boqProjectId != null || candidate.boqProjectId == null) {
+        throw Object.assign(new Error("Only the Owner may assign a BOQ project to a submitted DPR with no saved project."), {
+          correctionSection: "header", correctionRowId: original.id, correctionField: "boqProjectId",
+        });
+      }
+      const linkedProject = await storage.getBoqProject(Number(candidate.boqProjectId));
+      const linkedSite = linkedProject?.siteId == null
+        ? null
+        : (await storage.getSites()).find((site: any) => Number(site.id) === Number(linkedProject.siteId));
+      if (!linkedProject || !linkedSite
+          || normalizeDprSiteName(linkedSite.name) !== normalizeDprSiteName(original.site)) {
+        throw Object.assign(new Error("Choose a BOQ project linked to the same site as this DPR."), {
+          correctionSection: "header", correctionRowId: original.id, correctionField: "boqProjectId",
+        });
+      }
+    }
     const changedIds = new Set(changes.filter(c => c.section === "progress").map(c => c.rowId));
     const changed = candidate.progress.filter((row: any) => changedIds.has(row.id));
     for (const row of changed) {
@@ -4081,8 +4100,8 @@ export async function registerRoutes(
     const changedLinks = (section: string) => (candidate[section] ?? []).filter((row: any) =>
       section === "progress" && row.id == null
         || changes.some(c => c.section === section && c.rowId === row.id && ["boqItemId", "structureId", "programmeBarId"].includes(c.field)));
-    await (storage as any).assertDprProjectLinksTx(tx, original.id, original.boqProjectId,
-      { ...candidate, progress: changedLinks("progress"), labour: changedLinks("labour"),
+    await (storage as any).assertDprProjectLinksTx(tx, original.id, projectChanged ? candidate.boqProjectId : original.boqProjectId,
+      { ...candidate, progress: projectChanged ? candidate.progress : changedLinks("progress"), labour: changedLinks("labour"),
         materials: changedLinks("materials"), structureItems: changedLinks("structureItems") },
       changedLinks("equipment"), { versionSourceDprId: original.id });
   });
@@ -18034,6 +18053,38 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const existing = await storage.getBoqItem(id);
       if (!existing || Array.isArray(existing)) return res.status(404).json({ error: "BOQ item not found" });
+      const workValueFields = ["fixedQuantity", "fixedQuantityReachId", "claimedAboveEstimate", "claimedAboveEstimateNote"];
+      const workValueTouched = workValueFields.some(key => Object.prototype.hasOwnProperty.call(req.body ?? {}, key));
+      if (workValueTouched && req.authUser?.isOwner !== true) return res.status(403).json({ error: "Only the Owner can change work-value settings." });
+      if (workValueTouched) {
+        const body = req.body ?? {};
+        if (body.fixedQuantity != null && typeof body.fixedQuantity !== "boolean") {
+          return res.status(400).json({ error: "fixedQuantity must be true, false, or null." });
+        }
+        if (body.claimedAboveEstimate != null && typeof body.claimedAboveEstimate !== "boolean") {
+          return res.status(400).json({ error: "claimedAboveEstimate must be a boolean." });
+        }
+        if (body.claimedAboveEstimateNote != null
+            && (typeof body.claimedAboveEstimateNote !== "string" || body.claimedAboveEstimateNote.length > 1000)) {
+          return res.status(400).json({ error: "Claim note must be 1,000 characters or fewer." });
+        }
+        if (body.fixedQuantityReachId != null) {
+          const reachId = Number(body.fixedQuantityReachId);
+          if (!Number.isSafeInteger(reachId) || reachId <= 0 || body.fixedQuantity === false) {
+            return res.status(400).json({ error: "Choose a valid working reach for a fixed-quantity item." });
+          }
+          const reaches = await storage.getProjectScopeSegments(Number((existing as any).boqProjectId));
+          const selectedReach = reaches.find((segment: any) => Number(segment.id) === reachId
+            && segment.segmentType === "working_reach" && segment.status === "confirmed");
+          if (!selectedReach || !segmentAppliesToItem(selectedReach, {
+            boqItemId: id,
+            categoryId: (existing as any).categoryId,
+            isLinear: !["structure", "non_linear"].includes(String((existing as any).layerConfig?.layerType ?? (existing as any).workCategory ?? "").toLowerCase()),
+          })) {
+            return res.status(400).json({ error: "The selected reach is not a confirmed working reach in this project." });
+          }
+        }
+      }
       const conversionFieldsTouched = ["unit", "dprMeasurementMethod", "dprConversionFactor"]
         .some((key) => Object.prototype.hasOwnProperty.call(req.body ?? {}, key));
       if (conversionFieldsTouched) {
@@ -18047,6 +18098,17 @@ export async function registerRoutes(
       delete updateData.recipeManualOverride;
       const updated = await storage.updateBoqItem(id, updateData);
       if (!updated) return res.status(404).json({ error: "BOQ item not found" });
+      if (workValueTouched) {
+        const fields = Object.fromEntries(workValueFields.map(key => [key, (existing as any)[key] ?? null]));
+        const next = Object.fromEntries(workValueFields.map(key => [key, (updated as any)[key] ?? null]));
+        await storage.logAudit({
+          module: "boq_item_work_value", transactionId: id, action: "owner_settings_updated",
+          userId: req.authUser!.id, userName: currentUserName(req.authUser!),
+          userRole: "owner", reason: "Owner updated fixed-quantity or above-estimate settings.",
+          oldValues: fields, newValues: next,
+          stockImpact: "No operational records or quantities changed.",
+        } as any);
+      }
       res.json(updated);
     } catch (err) {
       console.error("PATCH /api/boq/items/:id:", err);
@@ -21013,6 +21075,12 @@ export async function registerRoutes(
           categoryId: item.categoryId == null ? null : Number(item.categoryId),
           isLinear: !["structure", "non_linear"].includes(String(item.layerConfig?.layerType ?? item.workCategory ?? "").toLowerCase()),
           currentQty: itemQty,
+          unit: item.canonicalUnit ?? item.unit,
+          fixedQuantity: item.fixedQuantity,
+          fixedQuantityReachId: item.fixedQuantityReachId,
+          planningWorkType: item.planningWorkType,
+          workCategory: item.workCategory,
+          layerConfig: item.layerConfig,
         }, scopeSegments);
         scopeAllocationByItem.set(itemId, scopeAllocation);
         const scopedItem = { ...item, currentQty: scopeAllocation.workingQuantity };
@@ -21044,7 +21112,24 @@ export async function registerRoutes(
             }))
           : [];
         const itemDemand = calculateBomDemand([scopedItem], demandBars as any, totalMonths, { arrangements: itemScopedArrangements as any[] });
-        for (const demandRow of itemDemand.materials) {
+        const directGranularItem = String(item.layerConfig?.layerType ?? "") === "granular"
+          && String(item.layerConfig?.granularSource ?? "") !== "plant";
+        const directHint = directGranularItem ? directGranularMasterHint(item) : null;
+        const linkedMaterialId = Number(item.materialMasterId ?? item.layerConfig?.materialMasterId);
+        const directMaster = linkedMaterialId > 0
+          ? mastersById.get(linkedMaterialId) ?? null
+          : directHint ? uniqueMasterFor(directHint) : null;
+        const demandRows: any[] = directGranularItem && directMaster
+          ? [{
+            materialName: directMaster.name,
+            uom: String(item.canonicalUnit ?? item.unit ?? "CUM"),
+            totalQty: scopeAllocation.workingQuantity,
+            monthlyQty: {},
+            sourceNotes: ["Direct-supply granular material — own master"],
+            breakdown: [{ sourceNote: "Direct-supply granular material — own master" }],
+          }]
+          : itemDemand.materials;
+        for (const demandRow of demandRows) {
           const breakdown = demandRow.breakdown?.[0];
           const layerType = String(item.layerConfig?.layerType ?? "");
           const usedSource = useSourceForLayer(layerType, item.layerConfig?.granularSource);
@@ -21052,7 +21137,9 @@ export async function registerRoutes(
           const earthwork = layerType === "earthwork" || !!demandRow.isEarthworkBulkRequirement;
           const directGranular = layerType === "granular" && item.layerConfig?.granularSource !== "plant";
           const targetUom = earthwork ? "CUM_LOOSE" : plantMix || directGranular ? "MT" : demandRow.uom;
-          const forcedMaster = item.materialMasterId ? mastersById.get(Number(item.materialMasterId)) : null;
+          const forcedMaster = item.materialMasterId
+            ? mastersById.get(Number(item.materialMasterId))
+            : directGranular ? directMaster : null;
           const master = forcedMaster ?? uniqueMasterFor(demandRow.materialName);
           const materialName = String(master?.name ?? demandRow.materialName).trim();
           const sourceType = plantMix ? "plant_mix" : "site";
@@ -21313,7 +21400,19 @@ export async function registerRoutes(
         const incidentalQuantity = actuals.incidentalQuantity;
         const convertedBoqQuantity = actualQuantity * (Number(item.dprConversionFactor) || 1);
         const convertedIncidentalBoqQuantity = incidentalQuantity * (Number(item.dprConversionFactor) || 1);
-        for (const material of item.materials ?? []) {
+        const directGranular = String(item.layerConfig?.layerType ?? "") === "granular"
+          && String(item.layerConfig?.granularSource ?? "") !== "plant";
+        const directHint = directGranular ? directGranularMasterHint(item) : null;
+        const linkedMaterialId = Number(item.materialMasterId ?? item.layerConfig?.materialMasterId);
+        const directMaster = linkedMaterialId > 0
+          ? mastersById.get(linkedMaterialId) ?? null
+          : directHint ? uniqueMasterFor(directHint) : null;
+        const itemMaterialsForUse = directGranular && directMaster
+          ? [{ materialName: directMaster.name, qtyPerBoqUnit: 1, uom: String(item.canonicalUnit ?? item.unit ?? "CUM"), wastagePct: 0 }]
+          : (item.materials ?? []).filter((material: any) =>
+            !isClearanceOrScarifyingSoilRecipe(item, material.materialName),
+          );
+        for (const material of itemMaterialsForUse) {
           if (material.isClientSupplied) continue;
           const matches = rowsBySourceName(material.materialName, "site");
           for (const row of matches) {
@@ -21448,7 +21547,12 @@ export async function registerRoutes(
         row.balanceWorkNeed = siteBalanceWork + plantBalanceWork;
         const balance = need == null
           ? { remaining: null, excess: null }
-          : remainingBySupplySource({
+          : row.hasSiteSupply && !row.hasPlantMix
+            ? {
+              remaining: bought == null ? null : Math.max(0, need - bought),
+              excess: bought == null ? null : Math.max(0, bought - need),
+            }
+            : remainingBySupplySource({
             siteNeed: siteBalanceWork,
             plantNeed: plantBalanceWork,
             bought: lyingAtSite,
@@ -21563,6 +21667,7 @@ export async function registerRoutes(
         programmeBarId: progressEntriesTable.programmeBarId,
         activity: progressEntriesTable.activity,
         quantity: progressEntriesTable.quantity,
+        uom: progressEntriesTable.uom,
         side: progressEntriesTable.side,
         chainageFrom: progressEntriesTable.chainageFrom,
         chainageTo: progressEntriesTable.chainageTo,
@@ -21593,8 +21698,10 @@ export async function registerRoutes(
         boqItemId: number; itemCode: string | null; description: string; unit: string;
         reachId: number | null; reachLabel: string; chainageFrom: number | null; chainageTo: number | null;
         scopeQuantity: number; doneQuantity: number; incidentalQuantity: number; reworkQuantity: number;
-        balanceQuantity: number; overQuantity: number; rate: number | null;
-        valueDone: number | null; valueBalance: number | null; overValue: number | null;
+         balanceQuantity: number; overQuantity: number; overBoqQuantity: number;
+         overBoqSummaryRow: boolean; overBoqValue: number | null;
+         claimedAboveEstimate: boolean; claimedAboveEstimateNote: string | null; rate: number | null;
+         valueDone: number | null; valueBalance: number | null; overValue: number | null;
         rowType: "working_reach" | "no_scope";
       };
       const valueRows: ValueRow[] = [];
@@ -21608,6 +21715,12 @@ export async function registerRoutes(
           categoryId: item.categoryId == null ? null : Number(item.categoryId),
           isLinear: !["structure", "non_linear"].includes(String(item.layerConfig?.layerType ?? item.workCategory ?? "").toLowerCase()),
           currentQty: Number(item.currentQty) || 0,
+          unit: item.canonicalUnit ?? item.unit,
+          fixedQuantity: item.fixedQuantity,
+          fixedQuantityReachId: item.fixedQuantityReachId,
+          planningWorkType: item.planningWorkType,
+          workCategory: item.workCategory,
+          layerConfig: item.layerConfig,
         }, scopeSegments);
         const rateValue = item.clientRate == null ? null : Number(item.clientRate);
         const rate = rateValue != null && Number.isFinite(rateValue) ? rateValue : null;
@@ -21630,6 +21743,11 @@ export async function registerRoutes(
             reworkQuantity: 0,
             balanceQuantity: share.quantity,
             overQuantity: 0,
+             overBoqQuantity: 0,
+             overBoqSummaryRow: false,
+             overBoqValue: 0,
+             claimedAboveEstimate: item.claimedAboveEstimate === true,
+             claimedAboveEstimateNote: item.claimedAboveEstimateNote ?? null,
             rate,
             valueDone: 0,
             valueBalance: 0,
@@ -21638,7 +21756,10 @@ export async function registerRoutes(
           });
         }
         for (const sourceRow of rowsForItem) {
-          const itemFactor = Number(item.dprConversionFactor) || 1;
+           const physicalUnit = canonicalizeUnit(String(sourceRow.uom ?? ""));
+           const boqUnit = canonicalizeUnit(String(item.canonicalUnit ?? item.unit ?? ""));
+           const configuredFactor = item.dprConversionFactor == null ? 1 : Number(item.dprConversionFactor);
+           const itemFactor = physicalUnit && boqUnit && physicalUnit === boqUnit ? 1 : configuredFactor;
           const bar = sourceRow.programmeBarId == null ? null : barById.get(Number(sourceRow.programmeBarId));
           const rowForAllocation: any = {
             ...sourceRow,
@@ -21681,12 +21802,23 @@ export async function registerRoutes(
             unassignedByItem.set(itemId, (unassignedByItem.get(itemId) ?? 0) + Math.max(0, totalPhysical - assigned));
           }
         }
-        for (const state of states.values()) {
+         const itemStates = Array.from(states.values());
+         const billableDone = itemStates.reduce((sum, state) => sum + state.doneQuantity, 0);
+         const fullBoqQuantity = Math.max(0, Number(item.currentQty) || 0);
+         const overBoqQuantity = Math.max(0, billableDone - fullBoqQuantity);
+         let valueCapacity = Math.min(billableDone, fullBoqQuantity);
+        for (let stateIndex = 0; stateIndex < itemStates.length; stateIndex++) {
+           const state = itemStates[stateIndex];
           state.balanceQuantity = Math.max(0, state.scopeQuantity - state.doneQuantity);
           state.overQuantity = Math.max(0, state.doneQuantity - state.scopeQuantity);
-          state.valueDone = money(Math.min(state.doneQuantity, state.scopeQuantity), rate);
+           const valuedQuantity = Math.min(state.doneQuantity, valueCapacity);
+           valueCapacity = Math.max(0, valueCapacity - valuedQuantity);
+           state.valueDone = money(valuedQuantity, rate);
           state.valueBalance = money(state.balanceQuantity, rate);
-          state.overValue = money(state.overQuantity, rate);
+           state.overBoqQuantity = stateIndex === 0 ? overBoqQuantity : 0;
+           state.overBoqSummaryRow = stateIndex === 0 && overBoqQuantity > 0;
+           state.overBoqValue = stateIndex === 0 ? money(overBoqQuantity, rate) : 0;
+           state.overValue = 0;
           valueRows.push(state);
         }
         if (allocation.notNeededQuantity > 0) {
@@ -21699,6 +21831,10 @@ export async function registerRoutes(
             scopeQuantity: allocation.notNeededQuantity,
             doneQuantity: 0, incidentalQuantity: 0, reworkQuantity: 0,
             balanceQuantity: allocation.notNeededQuantity, overQuantity: 0, rate,
+             overBoqQuantity: 0, overBoqSummaryRow: false,
+             overBoqValue: 0,
+             claimedAboveEstimate: item.claimedAboveEstimate === true,
+             claimedAboveEstimateNote: item.claimedAboveEstimateNote ?? null,
             valueDone: 0, valueBalance: money(allocation.notNeededQuantity, rate), overValue: 0,
             rowType: "no_scope",
           });
@@ -21751,7 +21887,7 @@ export async function registerRoutes(
         reachTotals,
         totals: {
           billEstimateWithinBoq: sumKnown("valueDone"),
-          overBoqValue: sumKnown("overValue"),
+         overBoqValue: workingRows.reduce((sum, row) => sum + (row.overBoqValue ?? 0), 0),
           valueBalance: sumKnown("valueBalance"),
           boqNotNeededValue: notNeededValue,
           incompleteValueRows,
@@ -21863,12 +21999,15 @@ export async function registerRoutes(
           uom: storeIssueItemsTable.uom,
         }).from(storeIssuesTable)
           .innerJoin(storeIssueItemsTable, eq(storeIssueItemsTable.issueId, storeIssuesTable.id))
+          .innerJoin(internalRequisitions, eq(internalRequisitions.id, storeIssuesTable.irnId))
+          .innerJoin(materialRequirements, eq(materialRequirements.id, internalRequisitions.requirementId))
           .leftJoin(storeItemsTable, eq(storeItemsTable.id, storeIssueItemsTable.itemId))
           .where(and(
             gte(storeIssuesTable.date, from),
             lte(storeIssuesTable.date, to),
-            eq(storeIssuesTable.siteId, site.id),
             eq(storeIssuesTable.isCancelled, false),
+            eq(materialRequirements.boqProjectId, projectId),
+            isNotNull(materialRequirements.sourceBoqItemId),
           )),
         db.select({
           dprDate: dprsTable.date,
@@ -21923,19 +22062,32 @@ export async function registerRoutes(
       const materialsByItem = new Map<number, Array<{ name: string; qtyPerBoqUnit: number; uom: string; profile: any; wastagePct: number }>>();
       for (const item of bom.expandedItems ?? []) {
         const itemId = Number(item.id);
+        const itemData = item as any;
         const scopeAllocation = allocateBoqQuantityToWorkingReaches({
           boqItemId: itemId,
           categoryId: (item as any).categoryId == null ? null : Number((item as any).categoryId),
           isLinear: !["structure", "non_linear"].includes(String((item as any).layerConfig?.layerType ?? (item as any).workCategory ?? "").toLowerCase()),
           currentQty: Number(item.currentQty) || 0,
+          unit: (item as any).canonicalUnit ?? (item as any).unit,
+          fixedQuantity: (item as any).fixedQuantity,
+          fixedQuantityReachId: (item as any).fixedQuantityReachId,
+          planningWorkType: (item as any).planningWorkType,
+          workCategory: (item as any).workCategory,
+          layerConfig: (item as any).layerConfig,
         }, scopeSegments);
         const materials: Array<{ name: string; qtyPerBoqUnit: number; uom: string; profile: any; wastagePct: number }> = [];
-        for (const rawRow of item.materials ?? []) {
+        const directGranular = itemData.layerConfig?.layerType === "granular" && itemData.layerConfig?.granularSource !== "plant";
+        const directHint = directGranular ? directGranularMasterHint(itemData) : null;
+        const directMaster = directHint ? masterByName.get(normalName(directHint)) : null;
+        const recipeRows = directMaster
+          ? [{ materialName: directMaster.name, qtyPerBoqUnit: 1, uom: itemData.canonicalUnit ?? itemData.unit, wastagePct: 0 }]
+          : item.materials ?? [];
+        for (const rawRow of recipeRows) {
           const row = rawRow as any;
           const name = String(row.materialName ?? row.name ?? "").trim();
           const perUnit = Number(row.qtyPerBoqUnit);
           if (!name || !Number.isFinite(perUnit) || perUnit < 0) continue;
-          const itemData = item as any;
+          if (isClearanceOrScarifyingSoilRecipe(itemData, name)) continue;
           const baseProfile = profileFor(name, itemData.layerQuantityProfile);
           const materialUom = String(row.uom ?? item.unit ?? "MT");
           const wastagePct = Number(row.wastagePct) || 0;
@@ -22017,9 +22169,14 @@ export async function registerRoutes(
         const item = itemById.get(entry.boqItemId) as any;
         const itemMaterials = materialsByItem.get(entry.boqItemId) ?? [];
         if (!item || !itemMaterials.length) continue;
+        if (itemMaterials.some(material => isClearanceOrScarifyingSoilRecipe(item, material.name))) continue;
         const actualQty = Number(entry.quantity);
         if (!Number.isFinite(actualQty) || actualQty < 0) continue;
-        const conversion = Number(item.dprConversionFactor ?? 1);
+        const physicalUnit = canonicalizeUnit(String(entry.uom ?? ""));
+        const boqUnit = canonicalizeUnit(String(item.canonicalUnit ?? item.unit ?? ""));
+        const conversion = physicalUnit && boqUnit && physicalUnit === boqUnit
+          ? 1
+          : Number(item.dprConversionFactor ?? 1);
         for (const material of itemMaterials) {
           sources.push({
             materialName: material.name,

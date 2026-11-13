@@ -60,6 +60,7 @@ import {
   dprSelectableBoqItems,
   hasDprBoqReferences,
   hasDprMeaningfulNonBoqWork,
+  normalizeDprSiteName,
 } from "@shared/dprBoqSelection";
 import { extractNotReadyRowTarget, scrollAndHighlightRow, dprRowKey } from "@/lib/dprNotReadyHighlight";
 import {
@@ -476,6 +477,7 @@ export default function SiteEdit() {
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const correctionFormRef = useRef<DprCorrectionForm | null>(null);
   const [correctionError, setCorrectionError] = useState("");
+  const [ownerCorrectionProjectId, setOwnerCorrectionProjectId] = useState<number | null>(null);
   const [pendingCorrectionId, setPendingCorrectionId] = useState<number | null>(null);
   const [splitProgress, setSplitProgress] = useState<{
     sourcePersistedId: number; splitAt: string; secondIsIncidental: boolean;
@@ -536,6 +538,19 @@ export default function SiteEdit() {
   });
   const { data: sitesList = [] } = sitesQuery;
   const activeSites = sitesList.filter(s => s.isActive);
+  const ownerCorrectionSiteId = sitesList.find(site =>
+    normalizeDprSiteName(site.name) === normalizeDprSiteName(String(dpr?.site ?? "")),
+  )?.id ?? null;
+  const ownerCorrectionProjectsQuery = useQuery<any[]>({
+    queryKey: ["/api/boq/projects", "owner-correction", ownerCorrectionSiteId],
+    queryFn: async () => {
+      const response = await fetch(`/api/boq/projects?siteId=${ownerCorrectionSiteId}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load projects for this site.");
+      return response.json();
+    },
+    enabled: authUser?.isOwner === true && isSubmittedCorrection && dpr?.boqProjectId == null && ownerCorrectionSiteId != null,
+  });
+  const ownerCorrectionTargetProjectId = ownerCorrectionProjectId ?? (dpr?.boqProjectId == null ? null : Number(dpr.boqProjectId));
 
   const [header, setHeader] = useState({
     date: format(new Date(), "yyyy-MM-dd"),
@@ -586,6 +601,19 @@ export default function SiteEdit() {
     recoveryEvidence: dpr,
     cataloguePreviewEligible: boqCataloguePreviewEligible,
   });
+  const ownerCorrectionItemsQuery = useQuery<any[]>({
+    queryKey: ["/api/boq/projects", ownerCorrectionTargetProjectId, "owner-correction-items"],
+    queryFn: async () => {
+      const response = await fetch(`/api/boq/projects/${ownerCorrectionTargetProjectId}/items`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load items for the selected project.");
+      return response.json();
+    },
+    enabled: authUser?.isOwner === true && isSubmittedCorrection && ownerCorrectionTargetProjectId != null
+      && Number(ownerCorrectionTargetProjectId) !== Number(siteBoqProjectId),
+  });
+  const ownerCorrectionItems = Number(ownerCorrectionTargetProjectId) === Number(siteBoqProjectId)
+    ? siteBoqItems
+    : ownerCorrectionItemsQuery.data ?? [];
   const { data: bomProfileData } = useQuery<{ items: Array<any>; bars: Array<any> }>({
     queryKey: ["/api/boq/projects", siteBoqProjectId, "bom"],
     queryFn: async () => {
@@ -1703,7 +1731,7 @@ export default function SiteEdit() {
       setCorrectionError("");
       corrections.preview.reset();
       correctionFormRef.current = snapshotCorrectionForm({
-        header: { ...header, boqProjectId: savedDprBoqProjectId ?? null },
+        header: { ...header, boqProjectId: ownerCorrectionTargetProjectId ?? (dpr?.boqProjectId ?? null) },
         workType, progress, equipment, labour, materials, sitePurchases,
         splitProgress,
         structureItems: workType === "structure" || dpr?.structureItems?.length ? structureItems : [],
@@ -1874,6 +1902,52 @@ export default function SiteEdit() {
     <div className="max-w-4xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300">
       <InsufficientDieselDialog payload={dieselShortage} onClose={() => setDieselShortage(null)} />
       {isSubmittedCorrection && <>
+        {authUser?.isOwner === true && <Card data-testid="owner-dpr-project-item-correction">
+          <CardHeader><CardTitle className="text-base">Owner correction · BOQ project and item links</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {dpr?.boqProjectId == null && <>
+              <Label>BOQ project for this site</Label>
+              <Select value={ownerCorrectionProjectId == null ? "" : String(ownerCorrectionProjectId)}
+                onValueChange={value => setOwnerCorrectionProjectId(Number(value))}>
+                <SelectTrigger data-testid="select-owner-correction-project"><SelectValue placeholder="Choose a project at this site" /></SelectTrigger>
+                <SelectContent>
+                  {(ownerCorrectionProjectsQuery.data ?? []).map(project => (
+                    <SelectItem key={project.id} value={String(project.id)}>{project.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>}
+            {ownerCorrectionTargetProjectId != null && <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">Choose BOQ items for saved progress lines below. The project and item links are reviewed and saved together as one Owner correction.</p>
+              {progress.filter(row => row.persistedId != null).map((entry, index) => (
+                <div key={entry.persistedId} className="grid gap-2 sm:grid-cols-[minmax(150px,1fr)_minmax(220px,2fr)] sm:items-center">
+                  <Label htmlFor={`owner-correction-item-${entry.persistedId}`} className="text-xs">
+                    {entry.activity || `Progress line ${index + 1}`} · {entry.side || "Side not recorded"} · Ch {entry.chainageFrom || "—"}–{entry.chainageTo || "—"}
+                  </Label>
+                  <Select value={entry.boqItemId == null ? "__unlinked__" : String(entry.boqItemId)}
+                    onValueChange={value => setProgress(previous => previous.map(row =>
+                      row.persistedId === entry.persistedId ? { ...row, boqItemId: value === "__unlinked__" ? null : Number(value) } : row,
+                    ))}>
+                    <SelectTrigger id={`owner-correction-item-${entry.persistedId}`} data-testid={`select-owner-correction-item-${entry.persistedId}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__unlinked__">Not linked</SelectItem>
+                      {ownerCorrectionItems.map((item: any) => (
+                        <SelectItem key={item.id} value={String(item.id)}>
+                          {item.itemCode ? `[${item.itemCode}] ` : ""}{item.itemName || item.description}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+            </div>}
+            {ownerCorrectionProjectsQuery.isError && <p role="alert" className="text-sm text-destructive">{(ownerCorrectionProjectsQuery.error as Error).message}</p>}
+            {ownerCorrectionItemsQuery.isError && <p role="alert" className="text-sm text-destructive">{(ownerCorrectionItemsQuery.error as Error).message}</p>}
+            <p className="text-xs text-muted-foreground">No project or BOQ data is saved until you use Save and confirm the correction review.</p>
+          </CardContent>
+        </Card>}
         <DprCorrectionDialog key={correctionOpen ? "open-review" : "closed-review"} open={correctionOpen} dprId={id}
           review={corrections.preview.data ?? null} loading={corrections.preview.isPending} saving={corrections.save.isPending}
           error={correctionError} ownerDirect={corrections.preview.data?.ownerDirectAllowed === true}

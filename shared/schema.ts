@@ -3564,6 +3564,12 @@ export const boqItems = pgTable("boq_items", {
   // 'structure' = point-location (qty entered directly per bar; chainage used for
   // scheduling only). Auto-detected from description keywords at import time.
   planningWorkType: text("planning_work_type").notNull().default("road"),
+  // WORKVALUE-02: NULL uses the work-type default; an Owner can explicitly
+  // keep a counted/structure item shared by reach or make a road item fixed.
+  fixedQuantity: boolean("fixed_quantity"),
+  fixedQuantityReachId: integer("fixed_quantity_reach_id").references(() => projectScopeSegments.id, { onDelete: "set null" }),
+  claimedAboveEstimate: boolean("claimed_above_estimate").notNull().default(false),
+  claimedAboveEstimateNote: text("claimed_above_estimate_note"),
   // Row number from the BOQ Excel import; stored for exact P1 matching in
   // structure schedule import (boq_excel_row + item_code + boq_sub_item).
   excelRow: integer("excel_row"),

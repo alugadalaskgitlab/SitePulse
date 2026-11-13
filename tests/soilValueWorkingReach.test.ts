@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allocateBoqQuantityToWorkingReaches, quantityForWorkingReach, workingValueCategory } from "../shared/workingReachValue";
+import { allocateBoqQuantityToWorkingReaches, defaultsToFixedQuantity, quantityForWorkingReach, workingValueCategory } from "../shared/workingReachValue";
 import type { ScopeSegmentLike } from "../shared/projectScope";
 
 const reaches: ScopeSegmentLike[] = [
@@ -9,6 +9,22 @@ const reaches: ScopeSegmentLike[] = [
 ];
 
 describe("SOIL-VALUE working-reach shares", () => {
+  it("keeps counted and structure quantities whole by default, with Owner override and reach assignment", () => {
+    expect(defaultsToFixedQuantity({ unit: "Nos", workCategory: null, planningWorkType: "road", layerConfig: null })).toBe(true);
+    expect(defaultsToFixedQuantity({ unit: "Cum", workCategory: "ROAD_FURNITURE", planningWorkType: "road", layerConfig: null })).toBe(true);
+    expect(allocateBoqQuantityToWorkingReaches({
+      boqItemId: 10, categoryId: null, isLinear: true, currentQty: 5, unit: "Nos",
+    }, reaches).shares).toMatchObject([{ label: "Whole project", quantity: 5 }]);
+    const selected = allocateBoqQuantityToWorkingReaches({
+      boqItemId: 10, categoryId: null, isLinear: true, currentQty: 5, unit: "Cum",
+      fixedQuantity: true, fixedQuantityReachId: 3,
+    }, reaches);
+    expect(selected.shares).toMatchObject([{ reachId: 3, quantity: 5 }]);
+    expect(selected.notNeededQuantity).toBe(0);
+    expect(allocateBoqQuantityToWorkingReaches({
+      boqItemId: 10, categoryId: null, isLinear: true, currentQty: 5, unit: "Nos", fixedQuantity: false,
+    }, reaches).shares.map(row => row.quantity)).toEqual([5 * 1.6 / 2.9, 5 / 2.9]);
+  });
   it("allocates BOQ quantity over working reaches, retaining the no-scope portion", () => {
     const allocation = allocateBoqQuantityToWorkingReaches({
       boqItemId: 5, categoryId: null, isLinear: true, currentQty: 2900,
@@ -30,6 +46,19 @@ describe("SOIL-VALUE working-reach shares", () => {
     expect(allocation.scoped).toBe(true);
     expect(allocation.workingQuantity).toBe(0);
     expect(allocation.notNeededQuantity).toBe(500);
+  });
+  it("keeps the full corridor denominator while sharing only across reaches that apply", () => {
+    const scoped = allocateBoqQuantityToWorkingReaches({
+      boqItemId: 88, categoryId: null, isLinear: true, currentQty: 500,
+    }, [
+      { ...reaches[0], applicability: "items", itemIds: [77] },
+      reaches[1],
+      reaches[2],
+    ]);
+    expect(scoped.denominatorKm).toBeCloseTo(2.9);
+    expect(scoped.workingQuantity).toBeCloseTo(500 / 2.9);
+    expect(scoped.notNeededQuantity).toBeCloseTo(500 - 500 / 2.9);
+    expect(scoped.shares).toMatchObject([{ reachId: 3, quantity: 500 / 2.9 }]);
   });
 
   it("allocates submitted DPR quantity by chainage overlap and side, not programme bars", () => {

@@ -14,6 +14,7 @@ import { buildBoqDisplayHierarchy } from "@shared/boqDisplayOrder";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -144,6 +145,10 @@ export function initialBoqItemEditForm(item: BoqItemWithCategory) {
     clientRate: item.clientRate != null ? String(item.clientRate) : "",
     workCategory: item.workCategory ?? "__none__",
     dprConversionFactor: (item as any).dprConversionFactor != null ? String((item as any).dprConversionFactor) : "",
+    fixedQuantityMode: (item as any).fixedQuantity == null ? "default" : (item as any).fixedQuantity ? "fixed" : "share",
+    fixedQuantityReachId: (item as any).fixedQuantityReachId == null ? "__whole__" : String((item as any).fixedQuantityReachId),
+    claimedAboveEstimate: (item as any).claimedAboveEstimate === true,
+    claimedAboveEstimateNote: String((item as any).claimedAboveEstimateNote ?? ""),
   };
 }
 
@@ -175,7 +180,18 @@ function ItemEditDialog({
   projectId: number;
 }) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isOwner = user?.isOwner === true;
   const [form, setForm] = useState(() => initialBoqItemEditForm(item));
+  const { data: scopeSegments = [] } = useQuery<any[]>({
+    queryKey: ["/api/boq/projects", projectId, "scope-segments"],
+    queryFn: async () => {
+      const response = await fetch(`/api/boq/projects/${projectId}/scope-segments`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load working reaches.");
+      return response.json();
+    },
+    enabled: isOwner,
+  });
   const physicalUnit = canonicalizeUnit(resolveBoqUomProfile({
     unit: form.unit,
     dprMeasurementMethod: (item as any).dprMeasurementMethod ?? null,
@@ -192,6 +208,8 @@ function ItemEditDialog({
       apiRequest("PATCH", `/api/boq/items/${item.id}`, data),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "items"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "work-value"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "material-buy-use"] });
       toast({ title: "Item updated" });
       onClose();
     },
@@ -208,7 +226,17 @@ function ItemEditDialog({
       toast({ title: "Conversion factor must be a positive number", variant: "destructive" });
       return;
     }
-    patchMutation.mutate(buildBoqItemEditPatch(form, item.currentQty));
+    const patch = buildBoqItemEditPatch(form, item.currentQty);
+    if (isOwner) {
+      Object.assign(patch, {
+        fixedQuantity: form.fixedQuantityMode === "default" ? null : form.fixedQuantityMode === "fixed",
+        fixedQuantityReachId: form.fixedQuantityMode === "fixed" && form.fixedQuantityReachId !== "__whole__"
+          ? Number(form.fixedQuantityReachId) : null,
+        claimedAboveEstimate: form.claimedAboveEstimate,
+        claimedAboveEstimateNote: form.claimedAboveEstimateNote.trim() || null,
+      });
+    }
+    patchMutation.mutate(patch);
   }
 
   return (
@@ -333,6 +361,42 @@ function ItemEditDialog({
               );
             })()}
           </div>
+          {isOwner && <section className="space-y-3 rounded-md border bg-amber-50/50 p-3" data-testid="work-value-owner-settings">
+            <h3 className="text-sm font-semibold">Work value settings · Owner</h3>
+            <div>
+              <Label className="text-sm">Quantity allocation</Label>
+              <Select value={form.fixedQuantityMode} onValueChange={value => setForm(p => ({ ...p, fixedQuantityMode: value }))}>
+                <SelectTrigger data-testid="select-fixed-quantity-mode"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Use item default</SelectItem>
+                  <SelectItem value="fixed">Fixed quantity</SelectItem>
+                  <SelectItem value="share">Share by working-reach length</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">Fixed items are not reduced by no-scope reaches. Leave the reach blank to assign the full quantity to the whole project.</p>
+            </div>
+            {form.fixedQuantityMode === "fixed" && <div>
+              <Label className="text-sm">Assign fixed quantity to</Label>
+              <Select value={form.fixedQuantityReachId} onValueChange={value => setForm(p => ({ ...p, fixedQuantityReachId: value }))}>
+                <SelectTrigger data-testid="select-fixed-quantity-reach"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__whole__">Whole project</SelectItem>
+                  {scopeSegments.filter(segment => segment.segmentType === "working_reach" && segment.status === "confirmed").map(segment => (
+                    <SelectItem key={segment.id} value={String(segment.id)}>{segment.label || `Reach ${segment.id}`}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>}
+            <div className="flex items-center gap-2">
+              <Checkbox checked={form.claimedAboveEstimate} onCheckedChange={checked => setForm(p => ({ ...p, claimedAboveEstimate: checked === true }))} id="claimed-above-estimate" />
+              <Label htmlFor="claimed-above-estimate" className="text-sm">Claimed above estimate</Label>
+            </div>
+            {form.claimedAboveEstimate && <div>
+              <Label htmlFor="claimed-above-estimate-note" className="text-sm">Claim note</Label>
+              <Textarea id="claimed-above-estimate-note" rows={2} maxLength={1000} value={form.claimedAboveEstimateNote}
+                onChange={event => setForm(p => ({ ...p, claimedAboveEstimateNote: event.target.value }))} />
+            </div>}
+          </section>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="button-edit-cancel">Cancel</Button>

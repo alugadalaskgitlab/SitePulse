@@ -15,7 +15,13 @@ type WorkValueRow = {
   incidentalQuantity: number;
   reworkQuantity: number;
   balanceQuantity: number;
+  /** Informational only: billable work beyond this reach's share. */
   overQuantity: number;
+  overBoqQuantity: number;
+  overBoqSummaryRow: boolean;
+  overBoqValue: number | null;
+  claimedAboveEstimate: boolean;
+  claimedAboveEstimateNote: string | null;
   rate: number | null;
   valueDone: number | null;
   valueBalance: number | null;
@@ -126,8 +132,10 @@ export function WorkValueTable({ projectId }: { projectId: number }) {
               <th className="p-2 text-right">Incidental · no value</th>
               <th className="p-2 text-right">Rework · no value</th>
               <th className="p-2 text-right">Balance</th>
+              <th className="p-2 text-right">Over reach share · info</th>
               <th className="p-2 text-right">Value done</th>
               <th className="p-2 text-right">Over BOQ</th>
+              <th className="p-2">Claimed above estimate</th>
               <th className="p-2 text-right">Value balance</th>
             </tr>
           </thead>
@@ -143,10 +151,12 @@ export function WorkValueTable({ projectId }: { projectId: number }) {
                 <td className="p-2 text-right font-mono">{row.incidentalQuantity > 0 ? qty(row.incidentalQuantity, row.unit) : "—"}</td>
                 <td className="p-2 text-right font-mono">{row.reworkQuantity > 0 ? qty(row.reworkQuantity, row.unit) : "—"}</td>
                 <td className="p-2 text-right font-mono">{qty(row.balanceQuantity, row.unit)}</td>
+                <td className="p-2 text-right font-mono">{row.overQuantity > 0 ? qty(row.overQuantity, row.unit) : "—"}</td>
                 <td className="p-2 text-right font-mono">{money(row.valueDone)}</td>
                 <td className="p-2 text-right font-mono">
-                  {row.overQuantity > 0 ? <><span>{qty(row.overQuantity, row.unit)}</span><span className="block text-[10px]">{money(row.overValue)} · needs variation</span></> : "—"}
+                  {row.overBoqQuantity > 0 ? <><span>{qty(row.overBoqQuantity, row.unit)}</span><span className="block text-[10px]">{money(row.overBoqValue)} · needs variation</span></> : "—"}
                 </td>
+                <td className="p-2">{row.claimedAboveEstimate ? <span className="font-medium">Yes{row.claimedAboveEstimateNote ? ` · ${row.claimedAboveEstimateNote}` : ""}</span> : "—"}</td>
                 <td className="p-2 text-right font-mono">{money(row.valueBalance)}</td>
               </tr>
             ))}
@@ -159,7 +169,7 @@ export function WorkValueTable({ projectId }: { projectId: number }) {
                 <td className="p-2 text-right font-mono">{qty(row.scopeQuantity, row.unit)}</td>
                 <td className="p-2 text-right">—</td><td className="p-2 text-right">—</td><td className="p-2 text-right">—</td>
                 <td className="p-2 text-right font-mono">{qty(row.balanceQuantity, row.unit)}</td>
-                <td className="p-2 text-right">—</td><td className="p-2 text-right">—</td>
+                <td className="p-2 text-right">—</td><td className="p-2 text-right">—</td><td className="p-2">—</td>
                 <td className="p-2 text-right font-mono">{money(row.valueBalance)}</td>
               </tr>
             ))}

@@ -29,10 +29,11 @@ const ownerDirectProgressFields = new Set([
 const ownerCanApplyDirectly = (actor: Actor, review: any) => actor.isOwner === true
   && review.requiresApproval
   && review.changes.filter((change: any) => change.requiresApproval).every((change: any) =>
-    change.section === "progress" && (
-      ownerDirectProgressFields.has(change.field)
-      || change.derived === true && ["chainageToKm", "length", "quantity", "quantitySource"].includes(change.field)
-    ));
+    change.section === "header" && change.field === "boqProjectId" && change.oldValue == null && Number(change.newValue) > 0
+      || change.section === "progress" && (
+        ownerDirectProgressFields.has(change.field)
+        || change.derived === true && ["chainageToKm", "length", "quantity", "quantitySource"].includes(change.field)
+      ));
 
 /** Extends submitted-DPR editing using existing edit requests and audit history.
  * No new tables, migration, financial writers or equipment finalizer. */
@@ -92,7 +93,7 @@ export function dprCorrectionService(database: any, validate: Validate) {
     return saved;
   }
   async function review(tx: any, saved: any, form: any, actor: Actor) {
-    const plan = planDprCorrection(saved, form);
+    const plan = planDprCorrection(saved, form, actor);
     const setDerived = (row: any, field: string, value: any) => {
       const old = saved.progress.find((p: any) => p.id === row.id);
       if (value == null) return;

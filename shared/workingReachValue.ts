@@ -11,6 +11,11 @@ export type WorkingReachItem = ScopeItemQuery & {
   currentQty: number;
   unit?: string | null;
   clientRate?: number | null;
+  fixedQuantity?: boolean | null;
+  fixedQuantityReachId?: number | null;
+  planningWorkType?: string | null;
+  workCategory?: string | null;
+  layerConfig?: Record<string, unknown> | null;
 };
 
 export interface WorkingReachShare {
@@ -35,10 +40,22 @@ function confirmedSegments(segments: ScopeSegmentLike[]) {
   return segments.filter(segment => (segment.status ?? "confirmed") === "confirmed");
 }
 
-function unionLengthByCorridor(segments: ScopeSegmentLike[], query: ScopeItemQuery): number {
+const FIXED_UNITS = new Set(["LS", "LUMPSUM", "NOS", "NO", "EACH", "EA", "PCS", "SET", "RM", "RMT"]);
+
+export function defaultsToFixedQuantity(item: Pick<WorkingReachItem, "unit" | "workCategory" | "planningWorkType" | "layerConfig">): boolean {
+  const unit = String(item.unit ?? "").trim().toUpperCase().replace(/[^A-Z]/g, "");
+  const layerType = String(item.layerConfig?.layerType ?? "").trim().toLowerCase();
+  const workType = String(item.planningWorkType ?? "").trim().toLowerCase();
+  const category = String(item.workCategory ?? "").trim().toUpperCase();
+  return FIXED_UNITS.has(unit)
+    || layerType === "structure"
+    || workType === "structure"
+    || /STRUCTURE|CULVERT|BRIDGE|ROAD_FURNITURE|ROAD_SAFETY/.test(category);
+}
+
+function unionLengthByCorridor(segments: ScopeSegmentLike[]): number {
   const intervals = new Map<string, Array<[number, number]>>();
   for (const segment of segments) {
-    if (!segmentAppliesToItem(segment, query)) continue;
     if (!["working_reach", "no_scope", "withdrawn"].includes(segment.segmentType)) continue;
     for (const corridor of corridorsForSide(segment.side)) {
       const rows = intervals.get(corridor) ?? [];
@@ -77,11 +94,41 @@ export function allocateBoqQuantityToWorkingReaches(
     categoryId: item.categoryId,
     isLinear: item.isLinear,
   };
-  const denominatorKm = unionLengthByCorridor(segments, query);
+  const denominatorKm = unionLengthByCorridor(segments);
   const workingSegments = segments.filter(segment =>
     segment.segmentType === "working_reach" && segmentAppliesToItem(segment, query),
   );
   const currentQty = Number.isFinite(Number(item.currentQty)) ? Math.max(0, Number(item.currentQty)) : 0;
+  const fixed = item.fixedQuantity ?? defaultsToFixedQuantity(item);
+  if (fixed) {
+    const selected = item.fixedQuantityReachId == null
+      ? null
+      : workingSegments.find(segment => Number(segment.id) === Number(item.fixedQuantityReachId));
+    if (item.fixedQuantityReachId != null && !selected) {
+      return {
+        denominatorKm, workingLengthKm: 0, workingQuantity: 0,
+        notNeededQuantity: currentQty, scoped: denominatorKm > 0, shares: [],
+      };
+    }
+    const share: WorkingReachShare = selected
+      ? {
+        reachId: selected.id ?? null,
+        label: selected.label?.trim() || "Selected reach",
+        chainageFrom: Number(selected.chainageFrom),
+        chainageTo: Number(selected.chainageTo),
+        effectiveLengthKm: Math.max(0, Number(selected.chainageTo) - Number(selected.chainageFrom)),
+        quantity: currentQty,
+      }
+      : { reachId: null, label: "Whole project", chainageFrom: null, chainageTo: null, effectiveLengthKm: 0, quantity: currentQty };
+    return {
+      denominatorKm,
+      workingLengthKm: selected ? share.effectiveLengthKm : 0,
+      workingQuantity: currentQty,
+      notNeededQuantity: 0,
+      scoped: denominatorKm > 0,
+      shares: [share],
+    };
+  }
   if (denominatorKm <= 0) {
     const hasLinearScope = item.isLinear && segments.some(segment =>
       ["working_reach", "no_scope", "withdrawn"].includes(segment.segmentType),

@@ -17,7 +17,7 @@ export const correctionFields: Record<string, string[]> = Object.fromEntries(Obj
 }).map(([section, fields]) => [section, fields.split(" ")]));
 
 export const correctionSections = Object.keys(correctionFields).filter(s => s !== "header");
-const numeric = new Set("length width thickness quantity layerNo reusableQty openingReading closingReading diesel openingDiesel dieselBalanceInTank dieselNorm expectedDiesel hoursWorked amountPaid numberOfTrips tripDistance totalKm waterQuantity count hours amount dprConversionFactor".split(" "));
+const numeric = new Set("boqProjectId length width thickness quantity layerNo reusableQty openingReading closingReading diesel openingDiesel dieselBalanceInTank dieselNorm expectedDiesel hoursWorked amountPaid numberOfTrips tripDistance totalKm waterQuantity count hours amount dprConversionFactor".split(" "));
 const booleans = new Set(["noSiteWork", "isIncidental", "reworkNoNewMaterial"]);
 const defaults: Record<string, any> = {
   "equipment.entryType": "time_meter", "labour.category": "Skilled", "labour.gender": "Male",
@@ -47,6 +47,7 @@ function equivalent(section: string, key: string, input: any, old: any) {
 }
 
 export function needsApproval(section: string, field: string) {
+  if (section === "header" && field === "boqProjectId") return true;
   if (section === "equipment") return !["operator", "task", "usageStatusReason"].includes(field);
   if (["materials", "sitePurchases", "structureItems"].includes(section)) return true;
   if (section === "labour") return !["task", "workerNames"].includes(field);
@@ -55,7 +56,7 @@ export function needsApproval(section: string, field: string) {
 }
 
 /** Plan only: no replacement of logs, no canonical finalizer or ledger writes. */
-export function planDprCorrection(saved: any, form: any) {
+export function planDprCorrection(saved: any, form: any, actor?: { isOwner?: boolean }) {
   const changes: CorrectionChange[] = [];
   const blocked: CorrectionBlock[] = [];
   const candidate = structuredClone(saved);
@@ -144,7 +145,12 @@ export function planDprCorrection(saved: any, form: any) {
           if (value === base) continue;
         }
         if (equivalent(section, field, value, old[field])) continue;
-        if (["date", "site", "boqProjectId"].includes(field) && section === "header"
+        if (section === "header" && field === "boqProjectId") {
+          if (saved.boqProjectId != null || actor?.isOwner !== true || !Number.isSafeInteger(Number(value)) || Number(value) <= 0) {
+            block(section, old.id, field, "Only the Owner may link a submitted DPR whose BOQ project is blank; existing project links cannot be changed here.");
+            continue;
+          }
+        } else if (["date", "site"].includes(field) && section === "header"
             || section === "equipment" && ["equipmentId", "plantUsageId", "machine", "vehicleNo"].includes(field)) {
           block(section, old.id, field, "Operational identity is linked to historical records. Retain the original site/date/project/machine/usage reference.");
           continue;

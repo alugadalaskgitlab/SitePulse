@@ -113,6 +113,31 @@ it("lets only an Owner apply a reviewed, reasoned derived-quantity correction di
     expect.objectContaining({ field: "quantity", oldValue: 180, newValue: 168.75 }),
   ]));
 });
+it("lets an Owner assign a blank DPR project and item together as a reviewed Owner correction", async () => {
+  const owner = { id: 31, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
+  const f = await fixture();
+  f.form.header.boqProjectId = 77;
+  f.form.progress[0].boqItemId = 901;
+  const blockedForEditor = await service.preview(f.id, f.form, author);
+  expect(blockedForEditor.blocked).toEqual(expect.arrayContaining([
+    expect.objectContaining({ field: "boqProjectId" }),
+  ]));
+  const review = await service.preview(f.id, f.form, owner);
+  expect(review.blocked).toEqual([]);
+  expect(review.requiresApproval).toBe(true);
+  expect(review.ownerDirectAllowed).toBe(true);
+  expect(review.changes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ section: "header", field: "boqProjectId", oldValue: null, newValue: 77 }),
+    expect.objectContaining({ section: "progress", field: "boqItemId", oldValue: null, newValue: 901 }),
+  ]));
+  const result: any = await service.submit(f.id, {
+    form: f.form, baseHash: review.baseHash, reason: "Link to the same-site BOQ after review", confirmImpact: true,
+  }, owner);
+  expect(result.pending).toBeUndefined();
+  expect(result.boqProjectId).toBe(77);
+  expect(result.progress[0].boqItemId).toBe(901);
+  expect((await service.list(f.id))[0]).toMatchObject({ status: "owner_corrected" });
+});
 it("lets the Owner directly correct an incidental rework flag and BOQ link after review", async () => {
   const owner = { id: 3, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
   const f = await fixture();

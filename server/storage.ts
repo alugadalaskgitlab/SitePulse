@@ -482,6 +482,7 @@ import { isMeaningfulEquipmentRow, meaningfulEquipmentRows } from "@shared/equip
 import { shouldCreateDprEquipmentDieselLedger } from "@shared/dprPlantLink";
 import { dprProgressReviewFactsChanged, resolveDprProgressSources } from "@shared/dprProgressIdentity";
 import { normaliseUnit, computeRequirementStatus, isContractCutToFillDescription, deriveMaterialsFromLayerConfig } from "@shared/planningEngine";
+import { directGranularMasterHint, isClearanceOrScarifyingSoilRecipe } from "@shared/materialUseEligibility";
 import { materialPlanQuantity, siteMaterialLyingBalance, soilCompactedToLooseCum, useSourceForLayer } from "@shared/bomPlanActual";
 import { COUNTED_DPR_FLAG, COUNTED_DPR_STATUS, isEligibleSubmittedDpr } from "@shared/dprEligibility";
 import { convertSolidQty } from "@shared/uomConvert";
@@ -13674,7 +13675,9 @@ export class DatabaseStorage implements IStorage {
        reworkNoNewMaterial: progressEntries.reworkNoNewMaterial,
       dprStatus: dprs.dprStatus, isDeleted: dprs.isDeleted,
       isCancelled: dprs.isCancelled, isSuperseded: dprs.isSuperseded,
-      layerConfig: boqItems.layerConfig, itemUnit: boqItems.unit,
+       layerConfig: boqItems.layerConfig, itemUnit: boqItems.unit,
+       itemDescription: boqItems.description, itemName: boqItems.itemName,
+       workCategory: boqItems.workCategory,
     }).from(progressEntries).innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
       .leftJoin(boqItems, eq(boqItems.id, progressEntries.boqItemId))
       .where(progConds.length ? and(...progConds) : undefined);
@@ -13688,6 +13691,9 @@ export class DatabaseStorage implements IStorage {
       if (!isEligibleSubmittedDpr(p)) continue;
       if (p.reworkNoNewMaterial === true) continue;
       if (p.boqItemId == null || !p.quantity || !p.site) continue;
+      if (isClearanceOrScarifyingSoilRecipe({
+        description: p.itemDescription, itemName: p.itemName, workCategory: p.workCategory,
+      }, "Soil")) continue;
       const layer = p.layerConfig as any;
       const layerType = String(layer?.layerType ?? "");
       const granularSource = String(layer?.granularSource ?? "");
@@ -13700,8 +13706,12 @@ export class DatabaseStorage implements IStorage {
       const savedRecipes = recipeByItem.get(p.boqItemId) ?? [];
       // Direct-supply granular work has one canonical material line from its
       // layer/master, not the potentially stale fractions from an SNL recipe.
-      const itemRecipes = directGranular && derived.length
-        ? derived
+       const directHint = directGranularMasterHint({
+         description: p.itemDescription, itemName: p.itemName, workCategory: p.workCategory, layerConfig: layer,
+       });
+       const directMaster = directHint ? resolve(directHint) : null;
+       const itemRecipes = directGranular && derived.length
+         ? derived.map((row: any) => directMaster ? { ...row, materialName: directMaster.name } : row)
         : savedRecipes.length ? savedRecipes : derived;
       for (const rec of itemRecipes) {
         if (rec.isClientSupplied) continue;
@@ -34354,6 +34364,10 @@ export class DatabaseStorage implements IStorage {
   ): Promise<void> {
     const itemFull = await this.getSnlItem(snlItemId);
     if (!itemFull) throw new Error("SNL item not found");
+    const targetBoqItem = await this.getBoqItem(boqItemId);
+    const preserveClearanceMaterialRows = !!targetBoqItem
+      && !Array.isArray(targetBoqItem)
+      && isClearanceOrScarifyingSoilRecipe(targetBoqItem as any, "Soil");
     const selectedBook = await getNormBookState();
     const sourceIsActive = await isSnlItemFromActiveSource(snlItemId);
     if (!canApplySnlSource({
@@ -34380,9 +34394,9 @@ export class DatabaseStorage implements IStorage {
     // the BOQ equipment-hours recipe.
     const equipment = pickRows(itemFull.equipment).filter((e) => isSnlEquipmentHoursUnit(e.unit));
     const labour = pickRows(itemFull.labour);
-    const gradingMaterials = gradingVariant
+    const gradingMaterials = (gradingVariant
       ? itemFull.materials.filter(m => m.gradingVariant === gradingVariant)
-      : itemFull.materials.filter(m => !m.gradingVariant);
+      : itemFull.materials.filter(m => !m.gradingVariant));
 
     // Fetch active planning equipment types to link bottleneck resource for duration calc.
     const planTypes = await db
@@ -34432,20 +34446,23 @@ export class DatabaseStorage implements IStorage {
           }))
         );
       }
-      // Populate boqItemMaterials
-      await tx.delete(boqItemMaterials).where(eq(boqItemMaterials.boqItemId, boqItemId));
-      if (gradingMaterials.length) {
-        await tx.insert(boqItemMaterials).values(
-          gradingMaterials.map((m, i) => ({
-            boqItemId,
-            sortOrder: m.sortOrder ?? i,
-            materialName: m.materialName,
-            uom: m.unit,
-            qtyPerBoqUnit: (m.derivedPerUnit ?? 0) * normUnitsPerBoqUnit,
-            isAuto: true,
-            notes: m.notes ?? `SNL ${itemFull.itemCode}`,
-          }))
-        );
+      // Clearance/scarifying material rows are preserved as historical data;
+      // automatic remapping must neither add nor replace them.
+      if (!preserveClearanceMaterialRows) {
+        await tx.delete(boqItemMaterials).where(eq(boqItemMaterials.boqItemId, boqItemId));
+        if (gradingMaterials.length) {
+          await tx.insert(boqItemMaterials).values(
+            gradingMaterials.map((m, i) => ({
+              boqItemId,
+              sortOrder: m.sortOrder ?? i,
+              materialName: m.materialName,
+              uom: m.unit,
+              qtyPerBoqUnit: (m.derivedPerUnit ?? 0) * normUnitsPerBoqUnit,
+              isAuto: true,
+              notes: m.notes ?? `SNL ${itemFull.itemCode}`,
+            }))
+          );
+        }
       }
     });
   }
