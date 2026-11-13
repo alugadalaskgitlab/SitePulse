@@ -54,6 +54,9 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (url.endsWith("/api/vendor-bills/check-possible-doubles")) {
+      return new Response(JSON.stringify([]));
+    }
     if (url.endsWith("/api/vendor-bills")) {
       if (init?.method === "POST") {
         writes.push(JSON.parse(String(init.body)));

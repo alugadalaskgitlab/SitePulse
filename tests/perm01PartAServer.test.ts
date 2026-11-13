@@ -105,7 +105,8 @@ describe("PERM-01 Part A server route guards", () => {
     expect(routes).toContain('if (!assertFeatureAction(req, res, "vendor_bills", "approve")) return;');
     expect(routes).toContain('if (!assertFeatureAction(req, res, "purchase_orders", "approve")) return;');
     expect(routes).toContain('if (!await assertPiDeliveryScope(req, res, indentId, [req.body])) return;');
-    expect(routes).toContain('if (existing.status === "verified" || existing.status === "approved" || existing.status === "paid") {');
+    expect(routes).toContain('if (existing.status === "verified") {');
+    expect(routes).toContain('if (existing.status === "approved" || existing.status === "paid") {');
   });
 
   it("the new edit helper preserves authentication and admin/owner bypass", () => {

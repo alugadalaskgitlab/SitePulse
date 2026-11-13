@@ -19300,6 +19300,16 @@ export class DatabaseStorage implements IStorage {
       }
       const linkedStatements: HireStatement[] = await tx.select().from(hireStatements)
         .where(eq(hireStatements.vendorBillId, id)).for("update");
+      const statusOrder = ["draft", "verified", "approved", "paid"];
+      const currentStatusIndex = statusOrder.indexOf(existing.status);
+      const requestedStatusIndex = statusOrder.indexOf(status);
+      if (currentStatusIndex >= 0 && requestedStatusIndex >= 0 &&
+        requestedStatusIndex < currentStatusIndex) {
+        // Reopening is a status-only change. Keep all payment evidence,
+        // frozen settlement values, bill figures and hire history untouched.
+        await tx.update(vendorBills).set({ status }).where(eq(vendorBills.id, id));
+        return true;
+      }
       const validTransitions: Record<string, string[]> = {
         draft: ["verified"],
         verified: ["approved"],

@@ -456,7 +456,7 @@ describe("VB-EXPORT-02 Part A actual VendorBills page wiring", () => {
     state.save.mockClear();
     expect((await clickExport("footer", "pdf")).totals).toEqual(snapshot.totals);
   });
-  it.each(["draft", "verified", "approved", "paid"])("editing %s preserves real status and current unsaved rates/adjustments", async status => {
+  it.each(["draft", "verified"])("editing %s preserves real status and current unsaved rates/adjustments", async status => {
     state.owner = true;
     bill.status = status;
     await openDetail();
@@ -476,6 +476,22 @@ describe("VB-EXPORT-02 Part A actual VendorBills page wiring", () => {
     expect((screen.getByTestId("input-item-rate-0") as HTMLInputElement).value).toBe("178.35");
     state.save.mockClear();
     expect((await clickExport("header", "pdf")).totals).toEqual(snapshot.totals);
+  });
+  it.each(["approved", "paid"])("%s bills stay locked and exports keep their saved figures", async status => {
+    state.owner = true;
+    bill.status = status;
+    await openDetail();
+
+    expect(screen.queryByTestId("button-edit-bill")).toBeNull();
+    expect(screen.getByTestId("text-approved-paid-edit-locked").textContent)
+      .toBe("This bill is approved/paid. Use Reopen (Owner) or the Owner correction buttons.");
+    expect(screen.queryByTestId("input-item-rate-0")).toBeNull();
+
+    const snapshot = await clickExport("footer");
+    expect(snapshot).toMatchObject({ saved: true, status });
+    expect(snapshot.totals.subtotal).toBe(837.25);
+    expect(snapshot.sections.find(section => section.category === "material")?.groups[0].rows[0].rate).toBe(167.45);
+    expect(snapshot.notes).toBe("REVIEWED RECEIPTS");
   });
   it("hides whole-bill controls when Export is not granted", async () => {
     state.admin = false;

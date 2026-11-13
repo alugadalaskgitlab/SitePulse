@@ -23,6 +23,27 @@ The names for the first pair are `NARASIMHULU JCB PLANNT` and `NARASIMHULU JCB P
 
 I compared the requested bill fingerprint (`id`, status, gross, net payable, paid amount) before and after the read-only inspection: **0 bills changed** (58 compared).
 
-### Work not started
+At the end of Part A I stopped before implementation. The continuation below follows the clarification that the two example pairs are not supposed to match; no extra matching condition was added.
 
-Because the example pairs do not satisfy the stated matching rule, I did not change bill editing, status transitions, the possible-double warning, or the paid-amount filter, and did not run tests or a build. No schema change was made. Clarification is needed on whether another condition should flag either example pair before implementation.
+## Part B — Safety controls
+
+- Approved and paid bills can no longer be edited. The screen hides Edit and shows: “This bill is approved/paid. Use Reopen (Owner) or the Owner correction buttons.” Verified edits still return to draft and keep the `status_reset` audit entry.
+- Owners can reopen an approved or paid bill as draft after entering a reason. Backward status changes are Owner-only and require a reason. Reopening changes only status and adds a before/after audit entry; saved amounts, payment details, settlements and linked hire statements stay unchanged.
+- Saving a bill checks only the stated possible-double rules: same vendor identity, plus either the same invoice number ignoring case/spaces or the same gross amount within seven days. The warning allows Save anyway or Cancel. List badges identify the other bill. The existing per-item duplicate check was left unchanged.
+- Added the “Paid, amount missing” filter and the “Paid amount not recorded” line; no amount is filled automatically.
+
+### Development data checks
+
+- Database: `sitelog_dev`; 58 bills and 411 bill lines.
+- Possible-double pairs: 0.
+- Paid bills with no recorded amount: 20.
+- Existing per-item duplicate check: HLC/VB/2026/0017 and HLC/VB/2026/0021 — 0 items flagged between the pair.
+- Existing per-item duplicate check: HLC/VB/2026/0028 and HLC/VB/2026/0029 — 0 items flagged between the pair.
+- Before/after fingerprint (`id`, status, gross, net payable, paid amount): **0 bills changed** (58 compared).
+
+### Verification
+
+- Focused bill-safety and export tests: 120 passed; permission route test: 17 passed.
+- Full suite: 5,726 passed, 8 failed, 3 skipped (460 test files). The only failures are the 8 already known: `arrangementProcurementCorrection` (1), `materialReceiptReversal06mD` (1), `purchase-indent-pi01` (1), `unscheduledReportCredit` (3), `vendorBillVb15Server` (1), and `dpr314Correction` (1). No new failures remained. The outdated approved/paid edit assertions were changed to expect the requested lock; the monthly selection mock now handles the added pre-save check.
+- `npm run build`: passed.
+- No schema, data, startup, or Tally changes. No production database was accessed and nothing was published.

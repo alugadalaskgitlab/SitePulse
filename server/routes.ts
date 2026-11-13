@@ -134,6 +134,7 @@ import { financialSites, vendorFinancialGuard } from "./vendorFinancialAccess";
 import { buildPreviousBillingContext } from "@shared/vendorBillPreviousContext";
 import { buildVendorBillExport } from "@shared/vendorBillExport";
 import { normalizeVendorBillActorName, vendorBillStatusAction } from "@shared/vendorBillAccess";
+import { findPossibleDoubleBillMatches } from "@shared/vendorBillPossibleDouble";
 import { buildVendorBillCompleteWorkbook } from "./vendorBillCompleteWorkbook";
 import { buildTallyExportReadiness, parseTallyExportConfig, trimTallyMappingName } from "@shared/tallyExportReadiness";
 import { buildTallyImportXml, buildTallyVoucherPreview } from "@shared/tallyVoucher";
@@ -14138,6 +14139,11 @@ export async function registerRoutes(
       if (existingVisible.length === 0) {
         return res.status(403).json({ message: "Access denied for this bill's existing site scope" });
       }
+      if (existing.status === "approved" || existing.status === "paid") {
+        return res.status(409).json({
+          message: "This bill is approved/paid. Use Reopen (Owner) or the Owner correction buttons.",
+        });
+      }
       // Legacy/partial PUT callers predate siteId. Omission preserves the
       // persisted scope; only an explicit null changes the bill to All Sites.
       const hasExplicitSiteAnswer = Object.prototype.hasOwnProperty.call(billData, "siteId");
@@ -14182,10 +14188,10 @@ export async function registerRoutes(
         });
       }
 
-      // Editing any bill status is controlled by the same feature action.
-      // Reopen previously verified/approved/paid bills as drafts for review.
+      // Editing a verified bill returns it to draft for review. Approved and
+      // paid bills are immutable here and use the Owner reopen route instead.
       if (!assertFeatureAction(req, res, "vendor_bills", "edit")) return;
-      if (existing.status === "verified" || existing.status === "approved" || existing.status === "paid") {
+      if (existing.status === "verified") {
         input.status = "draft";
       }
 
@@ -14277,10 +14283,18 @@ export async function registerRoutes(
         settlementReason: z.string().trim().max(500).optional(),
       });
       const { status, reason, amountPaid, settlementType, settlementReason } = statusSchema.parse(req.body);
-      if (!assertFeatureAction(req, res, "vendor_bills", vendorBillStatusAction(status))) return;
       const before = await storage.getVendorBill(id);
       if (!before) return res.status(404).json({ message: "Vendor bill not found" });
       if (before.isCancelled === true) return res.status(409).json({ message: "A voided vendor bill cannot change status" });
+      const statusOrder = ["draft", "verified", "approved", "paid"];
+      const isBackwardMove = statusOrder.indexOf(status) < statusOrder.indexOf(before.status);
+      if (isBackwardMove && req.authUser?.isOwner !== true) {
+        return res.status(403).json({ message: "Only the Owner can move a bill back." });
+      }
+      if (isBackwardMove && !reason?.trim()) {
+        return res.status(400).json({ message: "A reason is required to move a bill back." });
+      }
+      if (!assertFeatureAction(req, res, "vendor_bills", vendorBillStatusAction(status))) return;
       if (status === "approved" && !req.authUser?.isOwner) {
         if (before.authorUserId != null && before.authorUserId === req.authUser?.id) {
           return res.status(403).json({ message: "You cannot approve a bill you created." });
@@ -14337,7 +14351,14 @@ export async function registerRoutes(
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }
-      await recordChange(req, storage, {
+      await recordChange(req, storage, isBackwardMove ? {
+        module: "vendor_bills",
+        transactionId: id,
+        action: "reopen",
+        before: { status: before.status },
+        after: { status: bill.status },
+        reason,
+      } : {
         module: "vendor_bills",
         transactionId: id,
         action: "update",
@@ -15019,6 +15040,54 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error checking duplicate billed items:", err);
       res.status(500).json({ message: "Failed to check duplicates" });
+    }
+  });
+
+  app.post("/api/vendor-bills/check-possible-doubles", async (req, res) => {
+    try {
+      const input = z.object({
+        vendorName: z.string().trim().min(1).max(200),
+        billNo: z.string().trim().min(1).max(120),
+        billDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        totalAmount: z.number().finite(),
+        billingVendorId: z.number().int().positive().nullable().optional(),
+        excludeBillId: z.number().int().positive().optional(),
+      }).strict().parse(req.body ?? {});
+
+      if (input.excludeBillId != null) {
+        if (!assertFeatureAction(req, res, "vendor_bills", "edit")) return;
+        const current = await storage.getVendorBill(input.excludeBillId);
+        if (!current) return res.status(404).json({ message: "Vendor bill not found" });
+        if ((await scopeVendorBillsToSiteAccess(req, [current])).length === 0) {
+          return res.status(403).json({ message: "Access denied for this bill's existing site scope" });
+        }
+      } else if (!assertCreateEither(req, res, "vendor_bills", "vendor_bills_raise")) {
+        return;
+      }
+
+      const visibleBills = await scopeVendorBillsToSiteAccess(req, await storage.getVendorBills({}));
+      const vendorIds = Array.from(new Set([
+        input.billingVendorId,
+        ...visibleBills.map(bill => bill.vendorId),
+      ].filter((id): id is number => id != null).map(Number)));
+      const [masterVendors, aliases] = await Promise.all([
+        storage.getVendorNamesByIds(vendorIds),
+        storage.getVendorAliases(),
+      ]);
+      const matches = findPossibleDoubleBillMatches({
+        id: input.excludeBillId,
+        billNo: input.billNo,
+        billDate: input.billDate,
+        totalAmount: input.totalAmount,
+        vendorId: input.billingVendorId,
+        vendorName: input.vendorName,
+      }, visibleBills, masterVendors, aliases);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json(matches);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error("Error checking possible duplicate vendor bills:", err);
+      res.status(500).json({ message: "Failed to check possible duplicate bills" });
     }
   });
 

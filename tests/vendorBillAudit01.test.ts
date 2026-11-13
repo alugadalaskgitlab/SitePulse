@@ -469,27 +469,14 @@ describe("AUDIT-01 vendor-bill history", () => {
     }));
 
     const approvedBefore = makeBill({ status: "approved" });
-    const approvedAfter = makeBill({ billDate: "2026-10-05", status: "draft" });
     storage.getVendorBill.mockResolvedValue(approvedBefore);
-    storage.updateVendorBill.mockResolvedValue(approvedAfter);
     const approvedEditResponse = await request(app).put("/api/vendor-bills/7").send({
       ...billPayload, billDate: "2026-10-05",
     });
-    expect(approvedEditResponse.status).toBe(200);
-    expect(approvedEditResponse.body.billDate).toBe("2026-10-05");
-    expect(approvedEditResponse.body.status).toBe("draft");
-    expect(storage.updateVendorBill).toHaveBeenLastCalledWith(7, expect.objectContaining({ status: "draft" }));
-    for (const field of ["totalAmount", "netPayableAmount", "amountPaid"]) {
-      expect(approvedAfter[field]).toBe(approvedBefore[field]);
-    }
-    expect(storage.logAudit).toHaveBeenNthCalledWith(3, expect.objectContaining({
-      module: "vendor_bills", transactionId: 7, action: "update",
-      oldValues: approvedBefore, newValues: approvedAfter,
-    }));
-    expect(storage.logAudit).toHaveBeenNthCalledWith(4, expect.objectContaining({
-      module: "vendor_bills", transactionId: 7, action: "status_reset",
-      oldValues: { status: "approved" }, newValues: { status: "draft" }, userId: 9,
-    }));
+    expect(approvedEditResponse.status).toBe(409);
+    expect(approvedEditResponse.body.message).toBe("This bill is approved/paid. Use Reopen (Owner) or the Owner correction buttons.");
+    expect(storage.updateVendorBill).toHaveBeenCalledTimes(1);
+    expect(storage.logAudit).toHaveBeenCalledTimes(2);
 
     storage.getVendorBill.mockResolvedValue(before);
     const paidDetails = makeBill({ ...before, paymentMode: "upi", paidBy: "company" });
@@ -642,16 +629,110 @@ describe("AUDIT-01 vendor-bill history", () => {
     expect(attentionPage).toContain('row.kinds.includes("paid_amount") && !row.kinds.includes("negative_net")');
   });
 
-  it("keeps the approved-bill edit permission check and records status reset as a separate history action", () => {
+  it("blocks approved/paid bill PUT edits while preserving the verified-to-draft reset", () => {
     const routes = readFileSync("server/routes.ts", "utf8");
     const editStart = routes.indexOf('app.put("/api/vendor-bills/:id"');
     const editEnd = routes.indexOf('app.patch("/api/vendor-bills/:id/payment-details"', editStart);
     const editRoute = routes.slice(editStart, editEnd);
-    expect(editRoute).toContain('if (existing.status === "verified" || existing.status === "approved" || existing.status === "paid")');
+    expect(editRoute).toContain('if (existing.status === "approved" || existing.status === "paid")');
+    expect(editRoute).toContain('message: "This bill is approved/paid. Use Reopen (Owner) or the Owner correction buttons."');
+    expect(editRoute).toContain('if (existing.status === "verified")');
     expect(editRoute).toContain('if (!assertFeatureAction(req, res, "vendor_bills", "edit")) return;');
     expect(editRoute).toContain('action: "status_reset"');
     const history = readFileSync("client/src/components/HistoryDialog.tsx", "utf8");
     expect(history).toContain('status_reset: "Status reset"');
+  });
+
+  it("rejects approved and paid PUT edits but still resets verified edits to draft", async () => {
+    for (const status of ["approved", "paid"]) {
+      storage.getVendorBill.mockResolvedValue(makeBill({ status, siteId: null }));
+      const response = await request(app).put("/api/vendor-bills/7").send({ ...billPayload, siteId: null });
+      expect(response.status).toBe(409);
+      expect(response.body.message).toBe("This bill is approved/paid. Use Reopen (Owner) or the Owner correction buttons.");
+    }
+    expect(storage.updateVendorBill).not.toHaveBeenCalled();
+
+    const verified = makeBill({ status: "verified", siteId: null });
+    const reopened = makeBill({ status: "draft", siteId: null });
+    storage.getVendorBill.mockResolvedValue(verified);
+    storage.updateVendorBill.mockResolvedValue(reopened);
+    const response = await request(app).put("/api/vendor-bills/7").send({ ...billPayload, siteId: null });
+    expect(response.status).toBe(200);
+    expect(storage.updateVendorBill.mock.calls.at(-1)?.[1]).toMatchObject({ status: "draft" });
+    expect(storage.logAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: "status_reset",
+      oldValues: { status: "verified" },
+      newValues: { status: "draft" },
+    }));
+  });
+
+  it("allows only the Owner to reopen a bill with a reason and preserves payment evidence", async () => {
+    const paid = makeBill({
+      status: "paid", amountPaid: 40,
+      paymentMode: "rtgs", paidBy: "Company account",
+      settlementType: "carried_forward", settlementAmount: 60, settlementReason: "Paid less",
+      settledBy: "Owner",
+      settledAt: "2026-10-01 10:00:00",
+      paidAt: "2026-10-01 10:00:00",
+      paymentRecordedBy: "Cashier",
+      paymentRemarks: "Bank transfer",
+    });
+    storage.getVendorBill.mockResolvedValue(paid);
+
+    const forbidden = await request(app).patch("/api/vendor-bills/7/status").send({ status: "draft", reason: "Reopen for review" });
+    expect(forbidden.status).toBe(403);
+    expect(forbidden.body.message).toBe("Only the Owner can move a bill back.");
+    expect(storage.updateVendorBillStatus).not.toHaveBeenCalled();
+
+    fx.role = "owner";
+    const reopened = { ...paid, status: "draft" };
+    storage.updateVendorBillStatus.mockResolvedValue(reopened);
+    const response = await request(app).patch("/api/vendor-bills/7/status").send({
+      status: "draft", reason: "Review supporting documents",
+    });
+    expect(response.status).toBe(200);
+    expect(storage.updateVendorBillStatus).toHaveBeenCalledWith(7, "draft", "Audit User", undefined);
+    expect(response.body).toMatchObject({
+      status: "draft", amountPaid: 40, paymentMode: "rtgs", paidBy: "Company account",
+      settlementType: "carried_forward", settlementAmount: 60, settlementReason: "Paid less",
+      settledBy: "Owner", settledAt: "2026-10-01 10:00:00",
+      paidAt: "2026-10-01 10:00:00", paymentRecordedBy: "Cashier",
+      paymentRemarks: "Bank transfer",
+    });
+    expect(storage.logAudit).toHaveBeenLastCalledWith(expect.objectContaining({
+      action: "reopen",
+      oldValues: { status: "paid" },
+      newValues: { status: "draft" },
+      reason: "Review supporting documents",
+    }));
+  });
+
+  it("requires a reason for an Owner status move backwards", async () => {
+    fx.role = "owner";
+    storage.getVendorBill.mockResolvedValue(makeBill({ status: "approved" }));
+    const response = await request(app).patch("/api/vendor-bills/7/status").send({ status: "draft" });
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("A reason is required to move a bill back.");
+    expect(storage.updateVendorBillStatus).not.toHaveBeenCalled();
+  });
+
+  it("runs the separate possible-double check without changing the existing per-item duplicate endpoint", async () => {
+    const existing = makeBill({
+      id: 17, status: "draft", vendorId: 2, vendorName: "HIGH LANE CONSTRUCTIONS",
+      billNo: "HLC/VB/2026/0017", billDate: "2026-05-13", totalAmount: 2500,
+    });
+    storage.getVendorBills.mockResolvedValue([existing]);
+    const response = await request(app).post("/api/vendor-bills/check-possible-doubles").send({
+      vendorName: "HIGH LANE CONSTRUCTIONS",
+      billingVendorId: 2,
+      billNo: "HLC/VB/2026/OTHER",
+      billDate: "2026-05-20",
+      totalAmount: 2500,
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([expect.objectContaining({
+      id: 17, billNo: "HLC/VB/2026/0017", reason: "amount_and_date",
+    })]);
   });
 
   it("keeps bill-date persistence restricted to the billDate column", () => {

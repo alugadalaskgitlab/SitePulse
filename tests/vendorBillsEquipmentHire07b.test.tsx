@@ -57,6 +57,7 @@ let vendorBillWrites: Array<{ method: string; body: any }> = [];
 let autoItemsForTest: any[] = [autoEquipmentItem];
 let rateCardsForTest: any[] = [];
 let duplicateRowsForTest: Array<{ index: number; billNo: string; billStatus: string }> = [];
+let possibleDoubleMatchesForTest: any[] = [];
 let deferredDuplicateChecks: Promise<Response>[] = [];
 let deferredRateCards: Promise<Response> | null = null;
 let hireActivityRowsForTest: any[] = [];
@@ -75,6 +76,7 @@ beforeEach(() => {
   autoItemsForTest = [autoEquipmentItem];
   rateCardsForTest = [];
   duplicateRowsForTest = [];
+  possibleDoubleMatchesForTest = [];
   deferredDuplicateChecks = [];
   deferredRateCards = null;
   hireActivityRowsForTest = [];
@@ -101,6 +103,12 @@ beforeEach(() => {
       vendorBillWrites.push({ method: init.method, body });
       billDetailOverrideForTest = { ...billDetailOverrideForTest, billDate: body.billDate };
       return new Response(JSON.stringify({ id: billDetailOverrideForTest.id, billDate: body.billDate }), { status: 200 });
+    }
+    if (url.endsWith("/status") && init?.method === "PATCH") {
+      const body = init.body ? JSON.parse(String(init.body)) : {};
+      vendorBillWrites.push({ method: init.method, body });
+      billDetailOverrideForTest = { ...billDetailOverrideForTest, status: body.status };
+      return new Response(JSON.stringify(billDetailOverrideForTest), { status: 200 });
     }
     if (url.endsWith("/api/vendor-bills")) {
       if (init?.method === "POST" || init?.method === "PUT") {
@@ -134,6 +142,9 @@ beforeEach(() => {
     if (url.includes("/api/vendor-bills/check-duplicates")) {
       return deferredDuplicateChecks.shift() || new Response(JSON.stringify(duplicateRowsForTest));
     }
+    if (url.includes("/api/vendor-bills/check-possible-doubles")) {
+      return new Response(JSON.stringify(possibleDoubleMatchesForTest));
+    }
     if (url.includes("/api/reports/equipment-performance")) return new Response(JSON.stringify({ fleet: [{ equipmentId: 81, dieselConsumed: null, expectedDiesel: null, difference: null, consumptionIncomplete: true, dailyRows: [] }] }));
     throw new Error(`Unexpected request ${url}`);
   }));
@@ -154,7 +165,7 @@ async function openFreshPullBill(items: any[]) {
 }
 
 describe("VB-07B equipment uses the shared itemized bill flow", () => {
-  it("shows Edit on approved hire and material bills, hides it on void, and offers VOID only to the Owner", async () => {
+  it("locks approved and paid editing, keeps draft editing, and offers Reopen only to the Owner", async () => {
     const approvedHire = {
       ...historicalBill,
       billNo: "HLC/VB/2026/EDIT-HIRE",
@@ -166,6 +177,7 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     fireEvent.click(await screen.findByTestId("card-bill-81"));
     expect((await screen.findByTestId("text-bill-no")).textContent).toBe("HLC/VB/2026/EDIT-HIRE");
     expect(screen.queryByTestId("button-edit-bill")).toBeNull();
+    expect(screen.getByTestId("text-approved-paid-edit-locked").textContent).toContain("Use Reopen (Owner)");
     expect(screen.queryByTestId("button-void-bill")).toBeNull();
 
     cleanup();
@@ -187,7 +199,8 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-82"));
     expect((await screen.findByTestId("text-bill-no")).textContent).toBe("HLC/VB/2026/EDIT-MATERIAL");
-    expect(screen.getByTestId("button-edit-bill")).toBeTruthy();
+    expect(screen.queryByTestId("button-edit-bill")).toBeNull();
+    expect(screen.getByTestId("text-approved-paid-edit-locked")).toBeTruthy();
 
     cleanup();
     queryClient.clear();
@@ -206,7 +219,8 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-82"));
     expect(await screen.findByTestId("button-void-bill")).toBeTruthy();
-    expect(screen.getByTestId("button-edit-bill")).toBeTruthy();
+    expect(screen.queryByTestId("button-edit-bill")).toBeNull();
+    expect(screen.getByTestId("button-reopen-bill")).toBeTruthy();
     expect(screen.getByTestId("button-bill-history")).toBeTruthy();
   });
 
@@ -241,13 +255,72 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-82"));
     expect(await screen.findByTestId("badge-bill-status")).toBeTruthy();
-    expect(screen.getByTestId("button-edit-bill")).toBeTruthy();
+    expect(screen.queryByTestId("button-edit-bill")).toBeNull();
     expect(screen.queryByTestId("button-bill-history")).toBeNull();
     expect(screen.queryByTestId("vendor-bill-audit-summary")).toBeNull();
     const statusSteps = screen.getByTestId("status-steps").textContent || "";
     expect(statusSteps).toContain("Site Verifier");
     expect(statusSteps).toContain("Site Approver");
     expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("/api/audit-logs"))).toBe(false);
+  });
+
+  it("filters to paid bills with missing recorded amounts and labels the missing amount", async () => {
+    authTestState.isOwner = true;
+    const missingAmountBill = {
+      ...historicalBill,
+      status: "paid",
+      amountPaid: null,
+      netPayableAmount: 90000,
+      hireStatements: [],
+    };
+    billListOverrideForTest = [missingAmountBill];
+    billDetailOverrideForTest = missingAmountBill;
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("filter-paid-amount-missing"));
+    fireEvent.click(await screen.findByTestId("card-bill-81"));
+    expect((await screen.findByTestId("text-paid-amount-not-recorded")).textContent).toBe("Paid amount not recorded");
+    expect(screen.getByTestId("button-record-vb-missing-paid-amount")).toBeTruthy();
+  });
+
+  it("marks both list bills that match the possible-double warning rule", async () => {
+    billListOverrideForTest = [
+      { ...itemizedEquipmentBill, id: 82, vendorId: 83, status: "draft", billNo: "VB-0082", billDate: "2026-09-15", totalAmount: 5000 },
+      { ...itemizedEquipmentBill, id: 83, vendorId: 83, status: "verified", billNo: "VB-0083", billDate: "2026-09-22", totalAmount: 5000 },
+    ];
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    expect(await screen.findByTestId("badge-possible-double-82")).toBeTruthy();
+    expect(screen.getByTestId("badge-possible-double-83")).toBeTruthy();
+  });
+
+  it("asks before saving a possible double bill and Cancel leaves it unsaved", async () => {
+    billDetailOverrideForTest = { ...itemizedEquipmentBill, status: "draft" };
+    possibleDoubleMatchesForTest = [{
+      id: 90, billNo: "HLC/VB/2026/0090", billDate: "2026-09-30", totalAmount: 200, reason: "amount_and_date",
+    }];
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-82"));
+    fireEvent.click(await screen.findByTestId("button-edit-bill"));
+    fireEvent.change(await screen.findByTestId("input-bill-date"), { target: { value: "2026-10-01" } });
+    fireEvent.click(screen.getByTestId("button-save-bill"));
+    expect(await screen.findByTestId("dialog-possible-double-bill")).toBeTruthy();
+    expect(screen.getByTestId("text-possible-double-warning").textContent).toContain("HLC/VB/2026/0090");
+    expect(vendorBillWrites).toHaveLength(0);
+    fireEvent.click(screen.getByTestId("button-cancel-possible-double-save"));
+    expect(vendorBillWrites).toHaveLength(0);
+  });
+
+  it("lets the Owner reopen an approved bill as draft with a reason", async () => {
+    authTestState.isOwner = true;
+    billDetailOverrideForTest = { ...itemizedEquipmentBill, status: "approved", amountPaid: 150 };
+    render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-bill-82"));
+    fireEvent.click(await screen.findByTestId("button-reopen-bill"));
+    fireEvent.change(await screen.findByTestId("input-reopen-bill-reason"), { target: { value: "Review invoice" } });
+    fireEvent.click(screen.getByTestId("button-confirm-reopen-bill"));
+    await waitFor(() => expect(vendorBillWrites.some(write => write.method === "PATCH")).toBe(true));
+    expect(vendorBillWrites.find(write => write.method === "PATCH")?.body).toEqual({
+      status: "draft", reason: "Review invoice",
+    });
   });
 
   it("offers the separate date action for an approved bill and sends only the new date plus an optional reason", async () => {
@@ -370,12 +443,12 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     expect(screen.queryByTestId("vendor-master-bottom-details")).toBeNull();
   });
 
-  it("confirms an approved edit before writes, keeps cancel inert, and saves drafts without confirmation", async () => {
+  it("confirms a verified edit before writes, keeps cancel inert, and saves drafts without confirmation", async () => {
     billDetailOverrideForTest = {
       ...itemizedEquipmentBill,
       billNo: "HLC/VB/2026/CONFIRM01",
       billType: "material",
-      status: "approved",
+      status: "verified",
     };
     render(<QueryClientProvider client={queryClient}><VendorBills /></QueryClientProvider>);
     fireEvent.click(await screen.findByTestId("card-bill-82"));
@@ -383,7 +456,7 @@ describe("VB-07B equipment uses the shared itemized bill flow", () => {
     fireEvent.change(await screen.findByTestId("input-bill-date"), { target: { value: "2026-10-02" } });
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     fireEvent.click(screen.getByTestId("button-save-bill"));
-    const wording = "Bill HLC/VB/2026/CONFIRM01 is currently approved. Saving this edit will return it to draft, require it to be verified and approved again, and remove it from Payable now until it is approved again. Continue?";
+    const wording = "Bill HLC/VB/2026/CONFIRM01 is currently verified. Saving this edit will return it to draft, require it to be verified and approved again, and remove it from Payable now until it is approved again. Continue?";
     expect(confirm).toHaveBeenCalledWith(wording);
     expect(vendorBillWrites).toHaveLength(0);
     expect(fetch).not.toHaveBeenCalledWith("/api/vendor-rate-cards/bulk-upsert", expect.anything());

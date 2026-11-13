@@ -597,4 +597,47 @@ describe("VB-09 server itemized equipment hire", () => {
     expect(reconcile).toHaveBeenCalledTimes(2);
     expect(fx.writes.some(write => write.kind === "update" && write.value.totalAmount === 105_000)).toBe(true);
   });
+
+  it("reopens a paid bill by updating only status, preserving all saved payment evidence", async () => {
+    const paid = {
+      id: 701,
+      status: "paid",
+      amountPaid: "2500.00",
+      paymentMode: "rtgs",
+      paidBy: "Company account",
+      settlementType: "carried_forward",
+      settlementAmount: "100.00",
+      settlementReason: "Invoice balance",
+      settledBy: "Owner",
+      settledAt: "2026-10-01 10:00:00",
+      paidAt: "2026-10-01 10:00:00",
+      paymentRecordedBy: "Cashier",
+      paymentRemarks: "Bank transfer",
+      totalAmount: "2600.00",
+      netPayableAmount: "2600.00",
+      isCancelled: false,
+    };
+    fx.lastBill = paid;
+    fx.txRows.push([paid], []);
+    await new DatabaseStorage().updateVendorBillStatus(701, "draft", "Owner");
+
+    const statusUpdate = fx.writes.filter(write => write.kind === "update").at(-1)?.value;
+    expect(statusUpdate).toEqual({ status: "draft" });
+    expect(paid).toMatchObject({
+      status: "paid",
+      amountPaid: "2500.00",
+      paymentMode: "rtgs",
+      paidBy: "Company account",
+      settlementType: "carried_forward",
+      settlementAmount: "100.00",
+      settlementReason: "Invoice balance",
+      settledBy: "Owner",
+      settledAt: "2026-10-01 10:00:00",
+      paidAt: "2026-10-01 10:00:00",
+      paymentRecordedBy: "Cashier",
+      paymentRemarks: "Bank transfer",
+      totalAmount: "2600.00",
+      netPayableAmount: "2600.00",
+    });
+  });
 });

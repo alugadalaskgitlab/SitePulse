@@ -29,6 +29,10 @@ import {
   vendorBillSettlementLine,
 } from "@shared/vendorBillSettlement";
 import { normalizeVendorBillActorName, vendorBillStatusAction } from "@shared/vendorBillAccess";
+import {
+  buildPossibleDoubleBillIndex,
+  type PossibleDoubleBillMatch,
+} from "@shared/vendorBillPossibleDouble";
 import { hasFrozenTripDailyHire, FROZEN_TRIP_DAILY_MESSAGE } from "@shared/vendorBillRecovery";
 import { isAlpsLikeFreeTextPayer } from "@shared/vendorBillAttention";
 export { hasCumulativeVendorPayment } from "@shared/vendorBillPayment";
@@ -608,6 +612,11 @@ export function VendorBillPaymentDetails({
           </div>
         </div>
       )}
+      {canRecordMissingPaidAmount && isMissingPaidAmount && (
+        <p className="mt-3 text-sm font-medium text-amber-800 dark:text-amber-300" data-testid="text-paid-amount-not-recorded">
+          Paid amount not recorded
+        </p>
+      )}
       {canRecordMissingPaidAmount && needsMissingPaidAmount && !missingPaidAmountMutation.isSuccess && (
         <div className="mt-3 rounded-md border p-3" data-testid="section-vb-missing-paid-amount">
           <div className="space-y-1">
@@ -712,6 +721,16 @@ export default function VendorBills() {
   const [editingBillId, setEditingBillId] = useState<number | null>(null);
   const [editingBillStatus, setEditingBillStatus] = useState("draft");
   const [editingBillOriginalNo, setEditingBillOriginalNo] = useState("");
+  const [paidAmountMissingOnly, setPaidAmountMissingOnly] = useState(false);
+  const [checkingPossibleDoubles, setCheckingPossibleDoubles] = useState(false);
+  const [pendingPossibleDoubleSave, setPendingPossibleDoubleSave] = useState<{
+    billId: number | null;
+    data: any;
+    matches: PossibleDoubleBillMatch[];
+    checkError?: string;
+  } | null>(null);
+  const [reopenBillAction, setReopenBillAction] = useState<{ billId: number; billNo: string } | null>(null);
+  const [reopenBillReason, setReopenBillReason] = useState("");
   const { rememberCalendar, readCalendars } = useWholeBillCalendarSnapshots();
   const renderedHireOutputs = useRef(new Map<string, EquipmentHireExportData>());
   const [historicalHireBillId, setHistoricalHireBillId] = useState<number | null>(null);
@@ -1288,14 +1307,16 @@ export default function VendorBills() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status, amountPaid, settlementType, settlementReason }: {
+    mutationFn: ({ id, status, amountPaid, settlementType, settlementReason, reason }: {
       id: number; status: string; amountPaid?: number;
       settlementType?: "rounded_off" | "carried_forward"; settlementReason?: string;
+      reason?: string;
     }) =>
       apiRequest("PATCH", `/api/vendor-bills/${id}/status`, {
         status,
         ...(amountPaid === undefined ? {} : { amountPaid }),
         ...(settlementType ? { settlementType, settlementReason } : {}),
+        ...(reason === undefined ? {} : { reason }),
       }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-bills"] });
@@ -1309,6 +1330,10 @@ export default function VendorBills() {
       setPaidStatusAmount("");
       setPaidSettlementType("carried_forward");
       setPaidSettlementReason("");
+      if (variables.status === "draft" && reopenBillAction?.billId === variables.id) {
+        setReopenBillAction(null);
+        setReopenBillReason("");
+      }
       toast({ title: "Bill status updated" });
     },
     onError: (err: Error, variables) => {
@@ -2426,7 +2451,16 @@ export default function VendorBills() {
     // below is the single existing path that upserts the final rates.
   };
 
-  const handleSubmit = () => {
+  const saveVendorBill = (billId: number | null, data: any) => {
+    setPendingPossibleDoubleSave(null);
+    if (billId != null) {
+      updateMutation.mutate({ id: billId, data });
+    } else {
+      createMutation.mutate(data);
+    }
+  };
+
+  const handleSubmit = async () => {
     if (!vendorName || !billDate) {
       toast({ title: "Please fill vendor name and bill date", variant: "destructive" });
       return;
@@ -2653,17 +2687,46 @@ export default function VendorBills() {
       })),
     };
 
-    if (editingBillId !== null && ["verified", "approved", "paid"].includes(editingBillStatus)) {
+    if (editingBillId !== null && editingBillStatus === "verified") {
       const confirmed = window.confirm(
-        `Bill ${editingBillOriginalNo} is currently ${editingBillStatus}. Saving this edit will return it to draft, require it to be verified and approved again, and remove it from Payable now until it is approved again. Continue?`,
+        `Bill ${editingBillOriginalNo} is currently verified. Saving this edit will return it to draft, require it to be verified and approved again, and remove it from Payable now until it is approved again. Continue?`,
       );
       if (!confirmed) return;
     }
 
-    if (editingBillId) {
-      updateMutation.mutate({ id: editingBillId, data });
-    } else {
-      createMutation.mutate(data);
+    const billId = editingBillId;
+    setCheckingPossibleDoubles(true);
+    try {
+      const response = await fetch("/api/vendor-bills/check-possible-doubles", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorName: data.vendorName,
+          billingVendorId: data.billingVendorId ?? null,
+          billNo: data.billNo,
+          billDate: data.billDate,
+          totalAmount: data.totalAmount,
+          ...(billId == null ? {} : { excludeBillId: billId }),
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.message || "Possible-double check failed");
+      }
+      const matches = await response.json() as PossibleDoubleBillMatch[];
+      if (matches.length) {
+        setPendingPossibleDoubleSave({ billId, data, matches });
+      } else {
+        saveVendorBill(billId, data);
+      }
+    } catch (error) {
+      setPendingPossibleDoubleSave({
+        billId,
+        data,
+        matches: [],
+        checkError: error instanceof Error ? error.message : "Possible-double check failed",
+      });
     }
   };
 
@@ -2692,6 +2755,13 @@ export default function VendorBills() {
       toast({ title: "Voided bills cannot be edited", variant: "destructive" });
       return;
     }
+    if (bill.status === "approved" || bill.status === "paid") {
+      toast({
+        title: "This bill is approved/paid. Use Reopen (Owner) or the Owner correction buttons.",
+        variant: "destructive",
+      });
+      return;
+    }
     loadBillForEdit(bill);
   };
 
@@ -2717,14 +2787,34 @@ export default function VendorBills() {
       status: filterStatus, category: filterCategory, party: filterParty, site: filterSite,
     }, sites);
   }, [bills, financialReview.data, canViewFinancials, sites, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty, filterSite]);
-  const filteredBills = useMemo(() => billScope === "all" ? scopeIndependentBills : filterFinancialBills(
+  const filteredBillsBeforePaidAmountFilter = useMemo(() => billScope === "all" ? scopeIndependentBills : filterFinancialBills(
     canViewFinancials ? (financialReview.data || []) : (bills || []),
     {
       scope: billScope, dateFrom: filterDateFrom, dateTo: filterDateTo, vendor: filterVendor,
       status: filterStatus, category: filterCategory, party: filterParty, site: filterSite,
     }, sites,
   ), [scopeIndependentBills, bills, financialReview.data, canViewFinancials, billScope, sites, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty, filterSite]);
+  const filteredBills = useMemo(() => paidAmountMissingOnly
+    ? filteredBillsBeforePaidAmountFilter.filter(bill =>
+      bill.status === "paid" && (bill.amountPaid == null || bill.amountPaid === "") &&
+      bill.isCancelled !== true && (bill as any).isDeleted !== true)
+    : filteredBillsBeforePaidAmountFilter,
+  [paidAmountMissingOnly, filteredBillsBeforePaidAmountFilter]);
   const billsHiddenByUnpaid = billScope === "unpaid" ? Math.max(0, scopeIndependentBills.length - filteredBills.length) : 0;
+  const paidAmountMissingCount = useMemo(() => filterFinancialBills(
+    canViewFinancials ? (financialReview.data || []) : (bills || []),
+    {
+      scope: "all", dateFrom: filterDateFrom, dateTo: filterDateTo, vendor: filterVendor,
+      status: "all", category: filterCategory, party: filterParty, site: filterSite,
+    }, sites,
+  ).filter(bill => bill.status === "paid" && (bill.amountPaid == null || bill.amountPaid === "") &&
+    bill.isCancelled !== true && (bill as any).isDeleted !== true).length,
+  [bills, financialReview.data, canViewFinancials, sites, filterDateFrom, filterDateTo, filterVendor, filterCategory, filterParty, filterSite]);
+  const possibleDoubleBillIndex = useMemo(() => buildPossibleDoubleBillIndex(
+    (bills || []) as any[],
+    (billingIdentities.data || []).map(identity => ({ id: identity.id, name: identity.name })),
+    (vendorAliasesData || []).map(alias => ({ canonicalName: alias.canonicalName, alias: alias.alias })),
+  ), [bills, billingIdentities.data, vendorAliasesData]);
 
   const financialBills = useMemo(() => {
     if (!canViewFinancials || financialReview.isError) return [];
@@ -4892,10 +4982,10 @@ export default function VendorBills() {
               </Button>
               <Button
                 onClick={handleSubmit}
-                disabled={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending || checkingPossibleDoubles || !!pendingPossibleDoubleSave}
                 data-testid="button-save-bill"
               >
-                {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+                {(createMutation.isPending || updateMutation.isPending || checkingPossibleDoubles) && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
                 {editingBillId ? "UPDATE BILL" : "SAVE BILL"}
               </Button>
             </div>
@@ -4922,10 +5012,10 @@ export default function VendorBills() {
               </Button>
               <Button
                 onClick={handleSubmit}
-                disabled={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending || checkingPossibleDoubles || !!pendingPossibleDoubleSave}
                 data-testid="button-save-bill"
               >
-                {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+                {(createMutation.isPending || updateMutation.isPending || checkingPossibleDoubles) && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
                 UPDATE BILL
               </Button>
             </div>
@@ -5084,6 +5174,45 @@ export default function VendorBills() {
             </>}
           </DialogContent>
         </Dialog>
+        <Dialog open={!!pendingPossibleDoubleSave} onOpenChange={open => {
+          if (!open) setPendingPossibleDoubleSave(null);
+        }}>
+          <DialogContent data-testid="dialog-possible-double-bill">
+            <DialogHeader>
+              <DialogTitle>Possible double bill</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-2 rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
+              {pendingPossibleDoubleSave?.checkError ? (
+                <p>{pendingPossibleDoubleSave.checkError}. Save anyway?</p>
+              ) : (
+                <>
+                  {pendingPossibleDoubleSave?.matches.map(match => (
+                    <p key={`${match.id}-${match.reason}`} data-testid="text-possible-double-warning">
+                      Possible double bill: {match.billNo} (same vendor, amount ₹{formatCurrency(Number(match.totalAmount))}, date {match.billDate ? formatDate(match.billDate) : "not recorded"}{match.reason === "invoice_number" ? ", invoice number matches" : ""}). Save anyway?
+                    </p>
+                  ))}
+                </>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setPendingPossibleDoubleSave(null)} data-testid="button-cancel-possible-double-save">
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => pendingPossibleDoubleSave && saveVendorBill(
+                  pendingPossibleDoubleSave.billId,
+                  pendingPossibleDoubleSave.data,
+                )}
+                disabled={!pendingPossibleDoubleSave || createMutation.isPending || updateMutation.isPending}
+                data-testid="button-save-possible-double-anyway"
+              >
+                {createMutation.isPending || updateMutation.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+                Save anyway
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
       </>
     );
@@ -5101,7 +5230,7 @@ export default function VendorBills() {
 
     const currentStatusIdx = STATUS_ORDER.indexOf(bill.status as any);
     const nextStatus = currentStatusIdx < STATUS_ORDER.length - 1 ? STATUS_ORDER[currentStatusIdx + 1] : null;
-    const canEditBill = !bill.isCancelled &&
+    const canEditBill = !bill.isCancelled && !["approved", "paid"].includes(bill.status) &&
       (user?.isOwner || canEdit) &&
       (!bill.hireStatements?.length ||
         (bill.status === "draft" && bill.hireStatements.every(s => s.status === "draft")));
@@ -5300,6 +5429,13 @@ export default function VendorBills() {
             )}
           </div>
         </div>
+        {!bill.isCancelled && ["approved", "paid"].includes(bill.status) && <p
+          role="note"
+          className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-200"
+          data-testid="text-approved-paid-edit-locked"
+        >
+          This bill is approved/paid. Use Reopen (Owner) or the Owner correction buttons.
+        </p>}
 
         <Card>
           <CardContent className="py-4 space-y-4">
@@ -5443,6 +5579,20 @@ export default function VendorBills() {
                 >
                   {statusMutation.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
                   MARK AS {nextStatus.toUpperCase()}
+                </Button>
+              )}
+              {user?.isOwner && !bill.isCancelled && ["approved", "paid"].includes(bill.status) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setReopenBillReason("");
+                    setReopenBillAction({ billId: bill.id, billNo: bill.billNo });
+                  }}
+                  disabled={statusMutation.isPending}
+                  data-testid="button-reopen-bill"
+                >
+                  REOPEN AS DRAFT
                 </Button>
               )}
               {canVoid && !bill.isCancelled && (
@@ -6028,6 +6178,51 @@ export default function VendorBills() {
             </DialogContent>
           </Dialog>
         )}
+        <Dialog open={!!reopenBillAction} onOpenChange={open => {
+          if (!open) {
+            setReopenBillAction(null);
+            setReopenBillReason("");
+          }
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reopen bill as draft</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm">Bill {reopenBillAction?.billNo} will return to draft for review. Saved amounts, payment details and payment history will remain unchanged.</p>
+            <div className="space-y-2">
+              <Label htmlFor="reopen-vendor-bill-reason">Reason *</Label>
+              <Textarea
+                id="reopen-vendor-bill-reason"
+                value={reopenBillReason}
+                onChange={event => setReopenBillReason(event.target.value)}
+                maxLength={500}
+                rows={3}
+                data-testid="input-reopen-bill-reason"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => {
+                setReopenBillAction(null);
+                setReopenBillReason("");
+              }} data-testid="button-cancel-reopen-bill">
+                CANCEL
+              </Button>
+              <Button
+                type="button"
+                disabled={!reopenBillAction || !reopenBillReason.trim() || statusMutation.isPending}
+                onClick={() => reopenBillAction && statusMutation.mutate({
+                  id: reopenBillAction.billId,
+                  status: "draft",
+                  reason: reopenBillReason.trim(),
+                })}
+                data-testid="button-confirm-reopen-bill"
+              >
+                {statusMutation.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                REOPEN AS DRAFT
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
@@ -6085,6 +6280,22 @@ export default function VendorBills() {
         <div role="group" aria-label="Bill payment scope" className="inline-flex gap-1">
           <Button size="sm" variant={billScope === "unpaid" ? "default" : "outline"} aria-pressed={billScope === "unpaid"} onClick={() => setBillScope("unpaid")}>Unpaid</Button>
           <Button size="sm" variant={billScope === "all" ? "default" : "outline"} aria-pressed={billScope === "all"} onClick={() => setBillScope("all")}>All Bills</Button>
+          <Button
+            size="sm"
+            variant={paidAmountMissingOnly ? "default" : "outline"}
+            aria-pressed={paidAmountMissingOnly}
+            onClick={() => {
+              const next = !paidAmountMissingOnly;
+              setPaidAmountMissingOnly(next);
+              if (next) {
+                setBillScope("all");
+                setFilterStatus("all");
+              }
+            }}
+            data-testid="filter-paid-amount-missing"
+          >
+            Paid, amount missing{paidAmountMissingCount > 0 ? ` (${paidAmountMissingCount})` : ""}
+          </Button>
         </div>
         {canViewFinancials && canExportFinancials && <Button variant="outline" size="sm" onClick={() => handleGstRegisterExport("xlsx")}
           disabled={!filteredBills.length || !financialReview.isSuccess || financialReview.isFetching} data-testid="button-export-financial-summary">
@@ -6247,12 +6458,12 @@ export default function VendorBills() {
               </div>
             </div>
           </div>
-          {(filterDateFrom || filterDateTo || filterVendor !== "all" || filterStatus !== "all" || filterCategory !== "all" || filterParty !== "all" || filterSite) && (
+          {(filterDateFrom || filterDateTo || filterVendor !== "all" || filterStatus !== "all" || filterCategory !== "all" || filterParty !== "all" || filterSite || paidAmountMissingOnly) && (
             <div className="flex justify-end mt-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setFilterVendor("all"); setFilterStatus("all"); setFilterCategory("all"); setFilterParty("all"); setFilterSite(""); }}
+                onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setFilterVendor("all"); setFilterStatus("all"); setFilterCategory("all"); setFilterParty("all"); setFilterSite(""); setPaidAmountMissingOnly(false); }}
                 data-testid="button-clear-all-filters"
               >
                 <X className="w-3 h-3 mr-1" />
@@ -6277,6 +6488,13 @@ export default function VendorBills() {
       ) : (
         <div className="space-y-3">
           {filteredBills.map(bill => {
+            const possibleDoubleMatches = possibleDoubleBillIndex.get(Number(bill.id)) || [];
+            const possibleDoubleDetails = possibleDoubleMatches.map(match => {
+              const why = match.reason === "invoice_number"
+                ? "same normalized invoice number"
+                : `same vendor, amount ₹${formatCurrency(Number(match.totalAmount))}, date ${match.billDate ? formatDate(match.billDate) : "not recorded"}`;
+              return `${match.billNo} (${why})`;
+            });
             let labourSiteAmt = 0, labourPlantAmt = 0, labourTotal = 0;
             for (const item of (bill.items || []) as any[]) {
               if ((item.category || "other") !== "labour") continue;
@@ -6308,6 +6526,22 @@ export default function VendorBills() {
                       {` \u2022 Bill date ${bill.billDate ? formatDate(bill.billDate) : "not recorded"}`}
                       {bill.periodFrom && bill.periodTo && ` \u2022 Period ${formatDate(bill.periodFrom)} to ${formatDate(bill.periodTo)}`}
                     </p>
+                    {possibleDoubleMatches.length > 0 && <button
+                      type="button"
+                      className="mt-1 rounded-md border border-amber-500 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
+                      title={`Possible double bill with ${possibleDoubleDetails.join("; ")}. Tap for details.`}
+                      aria-label={`Possible double bill with ${possibleDoubleDetails.join("; ")}`}
+                      data-testid={`badge-possible-double-${bill.id}`}
+                      onClick={event => {
+                        event.stopPropagation();
+                        toast({
+                          title: "Possible double bill",
+                          description: possibleDoubleDetails.join("; "),
+                        });
+                      }}
+                    >
+                      Possible double{possibleDoubleMatches.length > 1 ? ` · ${possibleDoubleMatches.length}` : ""}
+                    </button>}
                     {showLabourSplit && (
                       <p className="text-xs text-muted-foreground italic mt-0.5" data-testid={`text-bill-labour-split-${bill.id}`}>
                         Labour {formatCurrency(labourTotal)} &mdash; DPR Site {formatCurrency(labourSiteAmt)} &middot; Plant Shift {formatCurrency(labourPlantAmt)}
