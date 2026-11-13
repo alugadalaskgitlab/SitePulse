@@ -14,16 +14,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import type { RmcRawMaterialReceipt } from "@shared/schema";
 
 const today = new Date().toISOString().slice(0, 10);
 const CATEGORIES = ["Cement", "Fine Aggregate", "Coarse Aggregate 10mm", "Coarse Aggregate 20mm", "Admixture", "Water", "Other"];
 const UOMS = ["MT", "kg", "L", "m³", "Bag", "Nos"];
 
-function defaultForm() {
+function defaultForm(plantName = "Main Plant") {
   return {
     date: today,
-    plantName: "Main Plant",
+    plantName,
     materialName: "",
     category: "",
     qty: "",
@@ -48,13 +49,14 @@ const ALL_PLANTS = "__ALL__";
 
 export default function RmcRawMaterials() {
   const { toast } = useToast();
+  const { defaultPlantName } = useFeatureFlags();
   const { sectionCan, featureCan } = useAuth();
   const canCreate = sectionCan("plant_materials", "create");
   const canEdit = sectionCan("plant_materials", "edit");
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState(defaultForm());
+  const [form, setForm] = useState(defaultForm(defaultPlantName));
   const [dateFrom, setDateFrom] = useState(() => localStorage.getItem("rmc_materials_date_from") ?? today);
   const [dateTo, setDateTo] = useState(() => localStorage.getItem("rmc_materials_date_to") ?? today);
   const [plantSelect, setPlantSelect] = useState(() => localStorage.getItem("rmc_plant_filter") ?? ALL_PLANTS);
@@ -119,7 +121,7 @@ export default function RmcRawMaterials() {
 
   function openCreate() {
     setEditingId(null);
-    setForm(defaultForm());
+    setForm(defaultForm(defaultPlantName));
     setOpen(true);
   }
 

@@ -4,6 +4,7 @@ import type { TripTransportRole } from "@shared/tripTransportRoles";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTripEquipmentMasters } from "@/hooks/use-trip-masters";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { selectTripEquipment, equipmentOwnershipLabel } from "./trip-master-selection";
 import type { TripRoleDraft } from "./TripTransportRoleFields";
 import type { ExistingTripVendor } from "./trip-role-utils";
@@ -13,6 +14,7 @@ export function TripMasterVehicleField({ value, onChange, onChoice, vendors, cho
   choice: TripTransportRole | null; vendors: ExistingTripVendor[]; allowOutside: boolean; testIdPrefix: string;
 }) {
   const id = useId();
+  const { companyShortName } = useFeatureFlags();
   const { master, owners } = useTripEquipmentMasters();
   const selectedId = value.equipmentId ?? value.internalEquipmentId;
   const selected = master.data?.find(e => e.id === selectedId);
@@ -22,7 +24,7 @@ export function TripMasterVehicleField({ value, onChange, onChoice, vendors, cho
   const equipmentLabel = (e: NonNullable<typeof master.data>[number]) => {
     const reviewedOwner = owners.data?.find(item => item.id === e.id);
     const vendor = vendors.find(item => item.id === reviewedOwner?.vendorId);
-    return `${e.equipmentType || e.name} · ${e.registrationNumber || "Registration missing"} · ${equipmentOwnershipLabel(e, vendor?.businessName?.trim() || reviewedOwner?.linkedVendorName || vendor?.name)}`;
+    return `${e.equipmentType || e.name} · ${e.registrationNumber || "Registration missing"} · ${equipmentOwnershipLabel(e, vendor?.businessName?.trim() || reviewedOwner?.linkedVendorName || vendor?.name, companyShortName)}`;
   };
   const transporterId = choice === "same_party" ? value.materialSourceVendorId : value.supplierVendorId;
   return <div className="space-y-2">

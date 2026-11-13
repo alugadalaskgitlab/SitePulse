@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import type { RmcBatchRecordWithDesign, RmcMixDesign } from "@shared/schema";
 
 const today = new Date().toISOString().slice(0, 10);
@@ -115,6 +116,7 @@ const ALL_PLANTS = "__ALL__";
 
 export default function RmcBatchRecords() {
   const { toast } = useToast();
+  const { defaultPlantName } = useFeatureFlags();
   const { featureCan, user } = useAuth();
   const canCreate = featureCan("hmp_rmc", "add");
   const canEdit = featureCan("hmp_rmc", "edit");
@@ -122,7 +124,7 @@ export default function RmcBatchRecords() {
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState(defaultForm("Main Plant"));
+  const [form, setForm] = useState(defaultForm(defaultPlantName));
   const [printRecord, setPrintRecord] = useState<RmcBatchRecordWithDesign | null>(null);
   const [dateFrom, setDateFrom] = useState(() => localStorage.getItem("rmc_batch_date_from") ?? today);
   const [dateTo, setDateTo] = useState(() => localStorage.getItem("rmc_batch_date_to") ?? today);
@@ -215,7 +217,7 @@ export default function RmcBatchRecords() {
 
   function openCreate() {
     setEditingId(null);
-    setForm(defaultForm("Main Plant"));
+    setForm(defaultForm(defaultPlantName));
     setOpen(true);
   }
 

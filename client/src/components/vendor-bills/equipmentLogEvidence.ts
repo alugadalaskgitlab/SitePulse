@@ -68,6 +68,7 @@ export function projectEquipmentLogEvidence(
   evidence?: EquipmentLogEvidence | null,
   billedQty?: number | null,
   billedUnit?: string | null,
+  companyShortName = "HLC",
 ) {
   const columns: Record<string, BillExportCell> = Object.fromEntries(EQUIPMENT_LOG_COLUMNS.map(key => [key, null]));
   if (!evidence?.log) return { columns, lines: [] as string[], consumption: null, mismatchNote: null as string | null };
@@ -92,7 +93,7 @@ export function projectEquipmentLogEvidence(
   const stopped = row.usageStatus === "breakdown" || row.usageStatus === "idle_no_work" || row.usageStatus === "idle_no_operator";
   // Stored liability is distinct from dieselSource (purchase/tank provenance).
   const responsibility = evidence.equipment?.hireDieselResponsibility;
-  const scope = responsibility?.trim().toLowerCase() === "hlc" ? "HLC"
+  const scope = responsibility?.trim().toLowerCase() === "hlc" ? companyShortName
     : responsibility?.trim().toLowerCase() === "vendor" ? "vendor" : null;
   const issued = finite(row.diesel);
   const lines: string[] = [];

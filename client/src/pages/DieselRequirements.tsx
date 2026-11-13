@@ -481,7 +481,7 @@ export default function DieselRequirements() {
   const search = useSearch();
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
-  const { rmcEnabled } = useFeatureFlags();
+  const { rmcEnabled, companyText } = useFeatureFlags();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
 
   const [view, setView] = useState<ViewMode>("list");
@@ -1513,7 +1513,7 @@ export default function DieselRequirements() {
                               const remainingItems = activeEquipment.filter(e => !recentSet.has(e.id));
                               const renderItem = (eq: EquipmentMasterType) => (
                                 <SelectItem key={eq.id} value={String(eq.id)} data-testid={`option-equipment-${eq.id}`}>
-                                  {eq.name}{eq.registrationNumber ? ` (${eq.registrationNumber})` : ""} | {(eq as any).ownership === "hired" ? `HIRED: ${(eq as any).vendorName || "—"}` : "HLC OWN"}
+                                  {companyText(`${eq.name}${eq.registrationNumber ? ` (${eq.registrationNumber})` : ""} | ${(eq as any).ownership === "hired" ? `HIRED: ${(eq as any).vendorName || "—"}` : "HLC OWN"}`)}
                                 </SelectItem>
                               );
                               return (

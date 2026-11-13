@@ -39,7 +39,7 @@ describe("receipt UI and final-submit wiring", () => {
     const start = routes.indexOf('app.post("/api/plant-module/material-receipts/:id/final-submit"');
     const nextRoute = routes.indexOf("app.post(", start + 1);
     const receiptSubmitRoute = routes.slice(start, nextRoute);
-    expect(receiptSubmitRoute).toContain("hlcPartyId = await storage.getHlcPartyId()");
+    expect(receiptSubmitRoute).toContain("hlcPartyId = await storage.getOwnCompanyPartyId()");
     expect(receiptSubmitRoute).toContain("retaining document requirement.");
     expect(receiptSubmitRoute).toContain("if (!isOwnerOrLegacyAdmin && !isPartyNonPurchaseReceipt(before, hlcPartyId))");
     expect(receiptSubmitRoute).toContain("Please upload the bill, challan, DC, invoice or receipt photo before Final Submit.");

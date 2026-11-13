@@ -10,6 +10,7 @@
 import { ArrangementStatusBadge } from "@/components/EarthworkArrangementDialog";
 import { deriveEarthworkSourcingBadge, type EarthworkArrangementSummary } from "@shared/planningEngine";
 import { ArrangementTripRatesView } from "./ArrangementTripRates";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 export function ArrangementRegisterLink({
   arrangements, totalDemand,
@@ -19,6 +20,7 @@ export function ArrangementRegisterLink({
   totalDemand: number;
   uom?: string;
 }) {
+  const { companyText } = useFeatureFlags();
   const activeArrs = (arrangements ?? []).filter(a => a.status !== "cancelled" && a.status !== "rejected");
   const badge = deriveEarthworkSourcingBadge(activeArrs, totalDemand);
   const badgeMeta: Record<string, { label: string; tone: "green" | "slate" } | undefined> = {
@@ -34,7 +36,7 @@ export function ArrangementRegisterLink({
     <div className="flex flex-col gap-1" data-testid="arrangement-register-cell">
       {meta && (
         <span className={`inline-flex w-fit items-center gap-1 text-[11px] font-semibold rounded border px-1.5 py-0.5 ${meta.tone === "green" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-slate-600 bg-slate-50 border-slate-200"}`}>
-          {meta.label}
+          {companyText(meta.label)}
         </span>
       )}
       {activeArrs.length > 0 && (

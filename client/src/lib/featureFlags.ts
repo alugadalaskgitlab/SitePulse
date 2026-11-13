@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { DEFAULT_COMPANY_NAME, DEFAULT_PLANT_NAME, deriveCompanyShortName, formatCompanyText } from "@shared/companyIdentity";
 
 interface AppConfig {
   rmcEnabled: boolean;
@@ -9,6 +10,9 @@ interface AppConfig {
   companyAddress: string;
   companyGstin: string;
   companyPhone: string;
+  defaultPlantName: string;
+  ownCompanyPartyId: number | null;
+  ownCompanyPartyName: string | null;
   // Deployment-wide licensed modules list.
   // Empty = all modules visible (default, Roads Only effectively shows everything
   // the user has permission for — HMP/RMC just aren't visible since no plant exists).
@@ -24,16 +28,21 @@ export function useFeatureFlags() {
     refetchOnWindowFocus: true,
   });
   const licensedModules: string[] = data?.licensedModules ?? [];
-  const companyName = data?.companyName ?? "High Lane Constructions Pvt Ltd";
+  const companyName = data?.companyName ?? DEFAULT_COMPANY_NAME;
+  const companyShortName = data?.companyShortName ?? (data?.companyName ? deriveCompanyShortName(companyName) : DEFAULT_COMPANY_NAME);
   const companyAddress = data?.companyAddress ?? "";
   const companyGstin = data?.companyGstin ?? "";
   const companyPhone = data?.companyPhone ?? "";
   return {
     rmcEnabled: data?.rmcEnabled ?? false,
     companyName,
-    companyShortName: data?.companyShortName ?? "HLC",
+    companyShortName,
     appTagline: data?.appTagline ?? "Live Ops. Not Just Logs.",
-    logoFile: data?.logoFile ?? "hlc-logo.jpg",
+    logoFile: data?.logoFile ?? "",
+    defaultPlantName: data?.defaultPlantName ?? DEFAULT_PLANT_NAME,
+    ownCompanyPartyId: data?.ownCompanyPartyId ?? null,
+    ownCompanyPartyName: data?.ownCompanyPartyName ?? null,
+    companyText: (text: string) => formatCompanyText(text, { companyName, companyShortName }),
     companyAddress,
     companyGstin,
     companyPhone,

@@ -42,6 +42,7 @@ import {
   getStockTransferCorrectionHistory,
   previewStockUnitNormalization,
 } from "./stockUnitAdmin";
+import { DEFAULT_COMPANY_NAME, DEFAULT_PLANT_NAME, canRunLegacyLedgerGapFix, resolveCompanyIdentity } from "@shared/companyIdentity";
 import { pipeOperatorManualPdf } from './operator-manual-pdf';
 import { pipeAdminGuidePdf } from './admin-guide-pdf';
 import { pipeEstimatorGuidePdf } from './estimator-guide-pdf';
@@ -136,7 +137,12 @@ import { buildVendorBillExport } from "@shared/vendorBillExport";
 import { normalizeVendorBillActorName, vendorBillStatusAction } from "@shared/vendorBillAccess";
 import { findPossibleDoubleBillMatches } from "@shared/vendorBillPossibleDouble";
 import { buildVendorBillCompleteWorkbook } from "./vendorBillCompleteWorkbook";
-import { buildTallyExportReadiness, parseTallyExportConfig, trimTallyMappingName } from "@shared/tallyExportReadiness";
+import {
+  buildTallyExportReadiness,
+  parseTallyExportConfig,
+  tallyCompanyNameBlocker,
+  trimTallyMappingName,
+} from "@shared/tallyExportReadiness";
 import { buildTallyImportXml, buildTallyVoucherPreview } from "@shared/tallyVoucher";
 import {
   buildHireSiteSuggestion,
@@ -545,18 +551,16 @@ export async function registerRoutes(
   }
 
   async function getCompanyConfig() {
-    const companyName = process.env.COMPANY_NAME
-      ?? (await storage.getSetting("company_name"))
-      ?? "High Lane Constructions Pvt Ltd";
-    const companyShortName = process.env.COMPANY_SHORT_NAME
-      ?? (await storage.getSetting("company_short_name"))
-      ?? companyName.split(/\s+/).filter(Boolean).map((w: string) => w[0]).join("").toUpperCase().slice(0, 5);
+    const identity = resolveCompanyIdentity({
+      companyName: process.env.COMPANY_NAME ?? await storage.getSetting("company_name"),
+      companyShortName: process.env.COMPANY_SHORT_NAME ?? await storage.getSetting("company_short_name"),
+    });
     const appTagline = process.env.APP_TAGLINE
       ?? (await storage.getSetting("app_tagline"))
       ?? "Live Ops. Not Just Logs.";
     const logoFile = process.env.COMPANY_LOGO_FILE
       ?? (await storage.getSetting("company_logo_file"))
-      ?? "hlc-logo.jpg";
+      ?? "";
     const companyAddress = process.env.COMPANY_ADDRESS
       ?? (await storage.getSetting("company_address"))
       ?? "";
@@ -573,10 +577,21 @@ export async function registerRoutes(
     //      ["roads","hmp","rmc"] = Roads+HMP+RMC.
     const licensedModulesRaw = await storage.getSetting("licensed_modules");
     const licensedModules: string[] = licensedModulesRaw ? JSON.parse(licensedModulesRaw) : [];
-    return { companyName, companyShortName, appTagline, logoFile, companyAddress, companyGstin, companyPhone, licensedModules };
+    const [ownCompanyParty, defaultPlantName] = await Promise.all([
+      storage.getOwnCompanyParty(),
+      storage.getDefaultPlantName(),
+    ]);
+    return {
+      ...identity,
+      ownCompanyPartyId: ownCompanyParty?.id ?? null,
+      ownCompanyPartyName: ownCompanyParty?.name ?? null,
+      defaultPlantName: defaultPlantName || DEFAULT_PLANT_NAME,
+      appTagline, logoFile, companyAddress, companyGstin, companyPhone, licensedModules,
+    };
   }
 
   function getCompanyLogoPath(logoFile: string): string {
+    if (!logoFile?.trim()) return "";
     const p = path.join(process.cwd(), "client", "public", logoFile);
     return fs.existsSync(p) ? p : "";
   }
@@ -591,13 +606,17 @@ export async function registerRoutes(
     } catch {
       res.json({
         rmcEnabled: RMC_ENABLED,
-        companyName: "High Lane Constructions Pvt Ltd",
-        companyShortName: "HLC",
+        companyName: "Your company",
+        companyShortName: DEFAULT_COMPANY_NAME,
         appTagline: "Live Ops. Not Just Logs.",
-        logoFile: "hlc-logo.jpg",
+        logoFile: "",
         companyAddress: "",
         companyGstin: "",
         companyPhone: "",
+        ownCompanyPartyId: null,
+        ownCompanyPartyName: null,
+        defaultPlantName: DEFAULT_PLANT_NAME,
+        licensedModules: [],
       });
     }
   });
@@ -608,6 +627,64 @@ export async function registerRoutes(
       res.json(cfg);
     } catch (e: any) {
       res.status(500).json({ message: e?.message ?? "Failed to load branding config" });
+    }
+  });
+
+  app.get("/api/admin/own-company-party", requireAuth, async (req, res) => {
+    if (!assertAdmin(req, res)) return;
+    try {
+      const [party, explicitSetting, activeParties] = await Promise.all([
+        storage.getOwnCompanyParty(),
+        storage.getSetting("own_company_party_id"),
+        storage.getParties(),
+      ]);
+      res.json({
+        selectedPartyId: party?.id ?? null,
+        explicitlySelected: explicitSetting !== null,
+        parties: activeParties.map(({ id, name }) => ({ id, name })),
+      });
+    } catch {
+      res.status(503).json({ message: "The company party could not be loaded." });
+    }
+  });
+
+  app.post("/api/admin/own-company-party", requireAuth, async (req, res) => {
+    if (!assertAdmin(req, res)) return;
+    const parsed = z.object({ partyId: z.number().int().positive().nullable() }).strict().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Choose an active company party or clear the selection." });
+    try {
+      await storage.setOwnCompanyPartyId(parsed.data.partyId);
+      const party = await storage.getOwnCompanyParty();
+      res.json({ selectedPartyId: party?.id ?? null, explicitlySelected: parsed.data.partyId !== null });
+    } catch (error: any) {
+      res.status(400).json({ message: error?.message ?? "The company party could not be saved." });
+    }
+  });
+
+  app.get("/api/admin/default-plant-name", requireAuth, async (req, res) => {
+    if (!assertAdmin(req, res)) return;
+    try {
+      const configuredName = await storage.getSetting("default_plant_name");
+      res.json({ configuredName: configuredName?.trim() || null, effectiveName: await storage.getDefaultPlantName() });
+    } catch {
+      res.status(503).json({ message: "The default plant name could not be loaded." });
+    }
+  });
+
+  app.post("/api/admin/default-plant-name", requireAuth, async (req, res) => {
+    if (!assertAdmin(req, res)) return;
+    const parsed = z.object({ name: z.string().trim().max(120) }).strict().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Enter a plant name up to 120 characters." });
+    try {
+      const name = parsed.data.name;
+      if (name) await storage.setSetting("default_plant_name", name);
+      else await db.delete(appSettings).where(eq(appSettings.key, "default_plant_name"));
+      res.json({
+        configuredName: name || null,
+        effectiveName: name || await storage.getDefaultPlantName(),
+      });
+    } catch {
+      res.status(503).json({ message: "The default plant name could not be saved." });
     }
   });
 
@@ -5962,7 +6039,7 @@ export async function registerRoutes(
       let hlcPartyId: number | null = null;
       if (!isOwnerOrLegacyAdmin) {
         try {
-          hlcPartyId = await storage.getHlcPartyId();
+          hlcPartyId = await storage.getOwnCompanyPartyId();
         } catch (error) {
           console.error("Could not resolve HLC party for receipt Final Submit; retaining document requirement.", error);
         }
@@ -7223,7 +7300,7 @@ export async function registerRoutes(
   app.get("/api/plant-module/generator-candidates", async (req, res) => {
     try {
       const date = req.query.date as string | undefined;
-      const plantName = (req.query.plant as string) || "Main Plant";
+      const plantName = (req.query.plant as string) || await storage.getDefaultPlantName();
       if (!date) return res.status(400).json({ message: "date is required" });
 
       const [glogs, usage, equipment] = await Promise.all([
@@ -8268,7 +8345,7 @@ export async function registerRoutes(
       const result = await storage.getHlcBorrowReconciliation(partyId, materialId, dateFrom, dateTo);
       res.json(result);
     } catch (err) {
-      res.status(500).json({ message: "Failed to generate HLC borrow reconciliation" });
+      res.status(500).json({ message: "Failed to generate company borrow reconciliation" });
     }
   });
 
@@ -8314,7 +8391,8 @@ export async function registerRoutes(
   app.post("/api/plant-module/bitumen-dip-readings", async (req, res) => {
     try {
       if (!assertCreate(req, res, "plant_bitumen")) return;
-      const parsed = insertBitumenDipReadingSchema.parse(req.body);
+      const input = insertBitumenDipReadingSchema.parse(req.body);
+      const parsed = { ...input, plantName: input.plantName?.trim() || await storage.getDefaultPlantName() };
       const reading = await storage.createBitumenDipReading(parsed);
       sendPushToSection("plant_bitumen", "Bitumen Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.depthCm}cm`, "/plant/bitumen-stock").catch(() => {});
       res.status(201).json(reading);
@@ -8386,7 +8464,8 @@ export async function registerRoutes(
   app.post("/api/plant-module/ldo-flow-readings", async (req, res) => {
     try {
       if (!assertCreate(req, res, "plant_ldo")) return;
-      const parsed: LdoFlowReadingCreate = ldoFlowReadingCreateSchema.parse(req.body);
+      const input: LdoFlowReadingCreate = ldoFlowReadingCreateSchema.parse(req.body);
+      const parsed: LdoFlowReadingCreate = { ...input, plantName: input.plantName?.trim() || await storage.getDefaultPlantName() };
       const reading = await storage.createLdoFlowReading(parsed);
       sendPushToSection("plant_ldo", "LDO Flow Reading", `Meter: ${parsed.meterReading || 'N/A'}`, "/plant/ldo-flow-meter").catch(() => {});
       res.status(201).json(reading);
@@ -8517,17 +8596,18 @@ export async function registerRoutes(
       }
       // Normalize: force per-row plant to the request-level plant so saves
       // are scoped consistently (UI sends a single plant per save anyway).
-      const rows = parsed.data.rows.map(r => ({ ...r, plant: parsed.data.plant }));
+      const plant = parsed.data.plant.trim() || await storage.getDefaultPlantName();
+      const rows = parsed.data.rows.map(r => ({ ...r, plant }));
       const result = await storage.upsertLdoFlowReadingsBackfill(rows, actor);
       const dates = rows.map(r => r.date).sort();
       const range = dates.length ? `${dates[0]}..${dates[dates.length - 1]}` : "n/a";
       console.info(
-        `[LdoBackfill] actor="${actor.trim()}" role=admin plant="${parsed.data.plant}" ` +
+        `[LdoBackfill] actor="${actor.trim()}" role=admin plant="${plant}" ` +
         `at=${new Date().toISOString()} range=${range} requested=${rows.length} ` +
         `inserted=${result.inserted} deleted=${result.deleted} skipped=${result.skipped} ` +
         `conflicts=${result.conflicts.length}`
       );
-      res.json({ message: "LDO backfill saved", actor, plant: parsed.data.plant, ...result });
+      res.json({ message: "LDO backfill saved", actor, plant, ...result });
     } catch (err: any) {
       console.error("Failed to save LDO backfill", err);
       res.status(500).json({ message: err?.message || "Failed to save LDO backfill" });
@@ -8558,7 +8638,8 @@ export async function registerRoutes(
   app.post("/api/plant-module/ldo-dip-readings", async (req, res) => {
     try {
       if (!assertCreate(req, res, "plant_ldo")) return;
-      const parsed = insertLdoDipReadingSchema.parse(req.body);
+      const input = insertLdoDipReadingSchema.parse(req.body);
+      const parsed = { ...input, plantName: input.plantName?.trim() || await storage.getDefaultPlantName() };
       const reading = await storage.createLdoDipReading(parsed);
       sendPushToSection("plant_ldo", "LDO Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.depthCm}cm`, "/plant/ldo-flow-meter").catch(() => {});
       res.status(201).json(reading);
@@ -8668,17 +8749,18 @@ export async function registerRoutes(
       }
       // Normalize: force per-row plant to the request-level plant so saves
       // are scoped consistently (UI sends a single plant per save anyway).
-      const rows = parsed.data.rows.map(r => ({ ...r, plant: parsed.data.plant }));
+      const plant = parsed.data.plant.trim() || await storage.getDefaultPlantName();
+      const rows = parsed.data.rows.map(r => ({ ...r, plant }));
       const result = await storage.upsertLdoDipReadingsBackfill(rows, actor);
       const dates = rows.map(r => r.date).sort();
       const range = dates.length ? `${dates[0]}..${dates[dates.length - 1]}` : "n/a";
       console.info(
-        `[LdoDipBackfill] actor="${actor.trim()}" role=admin plant="${parsed.data.plant}" ` +
+        `[LdoDipBackfill] actor="${actor.trim()}" role=admin plant="${plant}" ` +
         `at=${new Date().toISOString()} range=${range} requested=${rows.length} ` +
         `inserted=${result.inserted} deleted=${result.deleted} skipped=${result.skipped} ` +
         `conflicts=${result.conflicts.length}`
       );
-      res.json({ message: "LDO dip backfill saved", actor, plant: parsed.data.plant, ...result });
+      res.json({ message: "LDO dip backfill saved", actor, plant, ...result });
     } catch (err: any) {
       console.error("Failed to save LDO dip backfill", err);
       res.status(500).json({ message: err?.message || "Failed to save LDO dip backfill" });
@@ -8711,7 +8793,7 @@ export async function registerRoutes(
       if (!assertView(req, res, "plant_stock")) return;
       const dateFrom = (req.query.dateFrom as string | undefined) || "";
       const dateTo = (req.query.dateTo as string | undefined) || "";
-      const plant = (req.query.plant as string | undefined) || "Main Plant";
+      const plant = (req.query.plant as string | undefined) || await storage.getDefaultPlantName();
 
       if (!dateFrom || !dateTo) {
         return res.status(400).json({ message: "dateFrom and dateTo are required" });
@@ -8825,12 +8907,13 @@ export async function registerRoutes(
   app.get("/api/plant-module/shift-logs/plants", async (req, res) => {
     try {
       if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
+      const defaultPlantName = await storage.getDefaultPlantName();
       const all = await storage.getPlantShiftLogs({});
       const permitted = await permittedReportPlants(req);
       const plants = permitted === null
-        ? Array.from(new Set(all.map(l => l.plantName || "Main Plant")))
+        ? Array.from(new Set(all.map(l => l.plantName || defaultPlantName)))
         : Array.from(permitted);
-      if (!plants.length && permitted === null) plants.push("Main Plant");
+      if (!plants.length && permitted === null) plants.push(defaultPlantName);
       res.json(plants);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -8845,7 +8928,8 @@ export async function registerRoutes(
         dateTo: req.query.dateTo as string | undefined,
       });
       const permitted = await permittedReportPlants(req);
-      res.json(permitted === null ? logs : logs.filter(l => permitted.has(l.plantName || "Main Plant")));
+      const defaultPlantName = await storage.getDefaultPlantName();
+      res.json(permitted === null ? logs : logs.filter(l => permitted.has(l.plantName || defaultPlantName)));
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to fetch shift logs" });
     }
@@ -8854,7 +8938,7 @@ export async function registerRoutes(
   app.get("/api/plant-module/shift-logs/by-date/:date", async (req, res) => {
     try {
       if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
-      const plantName = (req.query.plant as string) || "Main Plant";
+      const plantName = (req.query.plant as string) || await storage.getDefaultPlantName();
       if (!await assertReportPlant(req, res, plantName)) return;
       const log = await storage.getPlantShiftLogByDate(req.params.date, undefined, plantName);
       if (!log) return res.status(404).json({ message: "No shift log for that date" });
@@ -8869,7 +8953,7 @@ export async function registerRoutes(
       if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
       const log = await storage.getPlantShiftLog(parseInt(req.params.id));
       if (!log) return res.status(404).json({ message: "Shift log not found" });
-      if (!await assertReportPlant(req, res, log.plantName || "Main Plant")) return;
+      if (!await assertReportPlant(req, res, log.plantName || await storage.getDefaultPlantName())) return;
       res.json(log);
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to fetch shift log" });
@@ -8879,8 +8963,14 @@ export async function registerRoutes(
   app.post("/api/plant-module/shift-logs", async (req, res) => {
     try {
       const { upsertPlantShiftLogSchema } = await import("@shared/schema");
-      const parsed = upsertPlantShiftLogSchema.parse(req.body);
-      const plantForScope = parsed.plantName || "Main Plant";
+      const input = upsertPlantShiftLogSchema.parse(req.body);
+      const parsed = {
+        ...input,
+        plantName: typeof req.body?.plantName === "string" && req.body.plantName.trim()
+          ? req.body.plantName.trim()
+          : await storage.getDefaultPlantName(),
+      };
+      const plantForScope = parsed.plantName;
       if (!await assertReportPlant(req, res, plantForScope)) return;
       // Permission gate: derive create-vs-edit from actual persistence state,
       // NOT from the presence of `id` in the request body. `upsertPlantShiftLog`
@@ -8889,7 +8979,7 @@ export async function registerRoutes(
       // an edit-only user sending no `id` could overwrite an existing row, and
       // a create-only user sending a fake `id` could insert a brand-new row.
       const dateForLookup = parsed.date;
-      const plantForLookup = parsed.plantName || "Main Plant";
+      const plantForLookup = parsed.plantName;
       const existingRow = dateForLookup
         ? await storage.getPlantShiftLogByDate(dateForLookup, undefined, plantForLookup)
         : null;
@@ -8954,7 +9044,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const existing = await storage.getPlantShiftLog(id);
       if (!existing) return res.status(404).json({ message: "Shift log not found" });
-      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
+      if (!await assertReportPlant(req, res, existing.plantName || await storage.getDefaultPlantName())) return;
       const updated = await storage.finalizePlantShiftLog(id, finalizedBy);
       if (!updated) return res.status(404).json({ message: "Shift log not found" });
       res.json(updated);
@@ -8969,7 +9059,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const existing = await storage.getPlantShiftLog(id);
       if (!existing) return res.status(404).json({ message: "Shift log not found" });
-      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
+      if (!await assertReportPlant(req, res, existing.plantName || await storage.getDefaultPlantName())) return;
       const ok = await storage.deletePlantShiftLog(id);
       if (!ok) return res.status(404).json({ message: "Shift log not found" });
       res.json({ success: true });
@@ -8987,7 +9077,7 @@ export async function registerRoutes(
       if (isNaN(id)) return res.status(400).json({ message: "Invalid shift log ID" });
       const existing = await storage.getPlantShiftLog(id);
       if (!existing) return res.status(404).json({ message: "Shift log not found" });
-      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
+      if (!await assertReportPlant(req, res, existing.plantName || await storage.getDefaultPlantName())) return;
       const bodySchema = z.object({ dryerFedFrom: z.enum(["TANK_1", "TANK_2"]) });
       const parsed = bodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -9008,7 +9098,7 @@ export async function registerRoutes(
   app.get("/api/plant-module/daily-reports/:date", async (req, res) => {
     try {
       if (!assertView(req, res, "plant_daily_reports")) return;
-      const plantName = (req.query.plant as string) || "Main Plant";
+      const plantName = (req.query.plant as string) || await storage.getDefaultPlantName();
       if (!await assertReportPlant(req, res, plantName)) return;
       const summary = await storage.getDailyPlantSummary(req.params.date, plantName);
       res.json(summary);
@@ -9711,11 +9801,12 @@ export async function registerRoutes(
       type Entry = { date: string; plant: string };
       let entries: Entry[] = [];
       if (Array.isArray(req.body?.entries)) {
+        const defaultPlantName = await storage.getDefaultPlantName();
         entries = (req.body.entries as any[])
-          .map((e) => ({ date: String(e?.date || "").trim(), plant: String(e?.plant || "Main Plant").trim() || "Main Plant" }))
+          .map((e) => ({ date: String(e?.date || "").trim(), plant: String(e?.plant || defaultPlantName).trim() || defaultPlantName }))
           .filter((e) => e.date);
       } else if (Array.isArray(req.body?.dates)) {
-        const plantName = (req.body?.plant as string) || "Main Plant";
+        const plantName = (req.body?.plant as string)?.trim() || await storage.getDefaultPlantName();
         entries = (req.body.dates as any[]).map((d) => ({ date: String(d), plant: plantName }));
       }
       if (!entries.length) {
@@ -9852,7 +9943,7 @@ export async function registerRoutes(
     try {
       if (!assertReportExport(req, res, "plant_daily_reports")) return;
       const date = req.params.date;
-      const plantName = (req.query.plant as string) || "Main Plant";
+      const plantName = (req.query.plant as string) || await storage.getDefaultPlantName();
       if (!await assertReportPlant(req, res, plantName)) return;
       const summary: any = await storage.getDailyPlantSummary(date, plantName);
 
@@ -9886,7 +9977,7 @@ export async function registerRoutes(
       const requestedPlant = (req.query.plant as string | undefined) || undefined;
       if (requestedPlant && !await assertReportPlant(req, res, requestedPlant)) return;
       if (servedByProd) {
-        const plantName = requestedPlant || "Main Plant";
+        const plantName = requestedPlant || await storage.getDefaultPlantName();
         const rows = await storage.getHeatingSessionsForProductionDay(plantName, servedByProd);
         const permitted = await permittedReportPlants(req);
         return res.json(permitted === null ? rows : rows.filter(row => permitted.has(row.plantName || plantName)));
@@ -9898,7 +9989,8 @@ export async function registerRoutes(
         plantName: requestedPlant,
       });
       const permitted = await permittedReportPlants(req);
-      res.json(permitted === null ? rows : rows.filter(row => permitted.has(row.plantName || "Main Plant")));
+       const defaultPlantName = await storage.getDefaultPlantName();
+       res.json(permitted === null ? rows : rows.filter(row => permitted.has(row.plantName || defaultPlantName)));
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to fetch heating sessions" });
     }
@@ -9922,7 +10014,8 @@ export async function registerRoutes(
       if (plantName && !await assertReportPlant(req, res, plantName)) return;
       const rows = await storage.getBoilerMeterReconciliation({ dateFrom, dateTo, plantName });
       const permitted = await permittedReportPlants(req);
-      res.json(permitted === null ? rows : rows.filter(row => permitted.has(row.plantName || "Main Plant")));
+      const defaultPlantName = await storage.getDefaultPlantName();
+      res.json(permitted === null ? rows : rows.filter(row => permitted.has(row.plantName || defaultPlantName)));
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to fetch reconciliation" });
     }
@@ -9943,7 +10036,8 @@ export async function registerRoutes(
       if (plantName && !await assertReportPlant(req, res, plantName)) return;
       const rows = await storage.getDryerSourceMismatches({ dateFrom, dateTo, plantName });
       const permitted = await permittedReportPlants(req);
-      res.json(permitted === null ? rows : rows.filter(row => permitted.has(row.plantName || "Main Plant")));
+      const defaultPlantName = await storage.getDefaultPlantName();
+      res.json(permitted === null ? rows : rows.filter(row => permitted.has(row.plantName || defaultPlantName)));
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to fetch dryer source mismatches" });
     }
@@ -9966,7 +10060,7 @@ export async function registerRoutes(
       for (const sessionId of sessionIds) {
         const session = await storage.getBitumenHeatingSession(sessionId);
         if (!session) return res.status(404).json({ message: `Heating session ${sessionId} not found` });
-        if (!await assertReportPlant(req, res, session.plantName || "Main Plant")) return;
+        if (!await assertReportPlant(req, res, session.plantName || await storage.getDefaultPlantName())) return;
       }
       const updatedCount = await storage.alignDryerSourceForSessions(sessionIds, targetValue);
       res.json({ updatedCount });
@@ -9989,7 +10083,7 @@ export async function registerRoutes(
       }
       const existing = await storage.getBitumenHeatingSession(id);
       if (!existing) return res.status(404).json({ message: "Heating session not found" });
-      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
+      if (!await assertReportPlant(req, res, existing.plantName || await storage.getDefaultPlantName())) return;
       const updatedCount = await storage.alignDryerSourceForSessions([id], parsed.data.dryerFedFrom);
       if (updatedCount === 0) return res.status(404).json({ message: "Heating session not found" });
       res.json({ success: true });
@@ -10003,7 +10097,7 @@ export async function registerRoutes(
       if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
       const row = await storage.getBitumenHeatingSession(parseInt(req.params.id));
       if (!row) return res.status(404).json({ message: "Heating session not found" });
-      if (!await assertReportPlant(req, res, row.plantName || "Main Plant")) return;
+      if (!await assertReportPlant(req, res, row.plantName || await storage.getDefaultPlantName())) return;
       res.json(row);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -10014,11 +10108,17 @@ export async function registerRoutes(
     try {
       if (!assertCreate(req, res, "plant_heating")) return;
       const { upsertBitumenHeatingSessionSchema } = await import("@shared/schema");
-      const parsed = upsertBitumenHeatingSessionSchema.parse(req.body);
+      const input = upsertBitumenHeatingSessionSchema.parse(req.body);
+      const parsed = {
+        ...input,
+        plantName: typeof req.body?.plantName === "string" && req.body.plantName.trim()
+          ? req.body.plantName.trim()
+          : await storage.getDefaultPlantName(),
+      };
       if (parsed.id != null) {
         return res.status(400).json({ code: "ID_NOT_ALLOWED_ON_POST", message: "POST creates new sessions; use PUT /:id to update" });
       }
-      if (!await assertReportPlant(req, res, parsed.plantName || "Main Plant")) return;
+      if (!await assertReportPlant(req, res, parsed.plantName)) return;
       const editedBy = parsed.editedBy || "operator";
       // Operator-driven save flow — no PIN gating; finalized rows can be re-edited freely.
       const authorizedRole: "admin" | "manager" | null = "manager";
@@ -10048,8 +10148,8 @@ export async function registerRoutes(
       const editedBy = parsed.editedBy || currentUserName(req) || "operator";
       const existingSession = await storage.getBitumenHeatingSession(id);
       if (!existingSession) return res.status(404).json({ message: "Heating session not found" });
-      if (!await assertReportPlant(req, res, existingSession.plantName || "Main Plant")) return;
-      if (!await assertReportPlant(req, res, parsed.plantName || existingSession.plantName || "Main Plant")) return;
+      if (!await assertReportPlant(req, res, existingSession.plantName || await storage.getDefaultPlantName())) return;
+      if (!await assertReportPlant(req, res, parsed.plantName || existingSession.plantName || await storage.getDefaultPlantName())) return;
       const u = req.authUser;
       const canBypassFinalizedLock = !!(
         u?.isOwner ||
@@ -10108,7 +10208,7 @@ export async function registerRoutes(
       if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid session id" });
       const existing = await storage.getBitumenHeatingSession(id);
       if (!existing) return res.status(404).json({ message: "Heating session not found" });
-      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
+      if (!await assertReportPlant(req, res, existing.plantName || await storage.getDefaultPlantName())) return;
       const editedBy = currentUserName(req) || "operator";
       const { upsertBitumenHeatingSessionSchema } = await import("@shared/schema");
       const parsed = upsertBitumenHeatingSessionSchema.parse({ ...existing, id });
@@ -10160,7 +10260,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const existing = await storage.getBitumenHeatingSession(id);
       if (!existing) return res.status(404).json({ message: "Heating session not found" });
-      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
+      if (!await assertReportPlant(req, res, existing.plantName || await storage.getDefaultPlantName())) return;
       const finalizedBy: string = (req.body?.finalizedBy as string) || "operator";
       const updated = await storage.finalizeBitumenHeatingSession(id, finalizedBy);
       if (!updated) return res.status(404).json({ message: "Heating session not found" });
@@ -10176,7 +10276,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const existing = await storage.getBitumenHeatingSession(id);
       if (!existing) return res.status(404).json({ message: "Heating session not found" });
-      if (!await assertReportPlant(req, res, existing.plantName || "Main Plant")) return;
+      if (!await assertReportPlant(req, res, existing.plantName || await storage.getDefaultPlantName())) return;
       const ok = await storage.deleteBitumenHeatingSession(id);
       if (!ok) return res.status(404).json({ message: "Heating session not found" });
       res.json({ success: true });
@@ -10186,7 +10286,7 @@ export async function registerRoutes(
   });
 
   const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-  function resolveTrendsRange(req: any): { dateFrom: string; dateTo: string; plantName: string } | { error: string } {
+  async function resolveTrendsRange(req: any): Promise<{ dateFrom: string; dateTo: string; plantName: string } | { error: string }> {
     const today = new Date().toISOString().slice(0, 10);
     const dateTo = (req.query.dateTo as string) || today;
     const dateFromQ = req.query.dateFrom as string | undefined;
@@ -10202,13 +10302,13 @@ export async function registerRoutes(
     if (dateFrom > dateTo) {
       return { error: "dateFrom must be <= dateTo" };
     }
-    const plantName = (req.query.plant as string | undefined) || "Main Plant";
+    const plantName = (req.query.plant as string | undefined) || await storage.getDefaultPlantName();
     return { dateFrom, dateTo, plantName };
   }
 
   app.get("/api/plant-module/heating-trends", async (req, res) => {
     try {
-      const r = resolveTrendsRange(req);
+      const r = await resolveTrendsRange(req);
       if ("error" in r) return res.status(400).json({ message: r.error });
       const result = await storage.getHeatingTrends(r);
       res.json(result);
@@ -10220,7 +10320,7 @@ export async function registerRoutes(
   app.get("/api/plant-module/heating-trends/excel", async (req, res) => {
     try {
       if (!assertReportExport(req, res, "plant_heating", "plant_heating_trends")) return;
-      const r = resolveTrendsRange(req);
+      const r = await resolveTrendsRange(req);
       if ("error" in r) return res.status(400).json({ message: r.error });
       const { dateFrom, dateTo, plantName } = r;
       if (!await assertReportPlant(req, res, plantName)) return;
@@ -10309,7 +10409,7 @@ export async function registerRoutes(
         return res.status(400).json({ code: "INVALID_TANK", message: "tank must be 1 or 2" });
       }
       const before = (req.query.before as string) || new Date().toISOString().slice(0, 16);
-      const plantName = (req.query.plant as string) || "Main Plant";
+      const plantName = (req.query.plant as string) || await storage.getDefaultPlantName();
       const result = await storage.getLatestLdoMeterReading(tank, before, plantName);
       res.json(result);
     } catch (err: any) {
@@ -12847,14 +12947,15 @@ export async function registerRoutes(
     const vouchers: NonNullable<ReturnType<typeof buildTallyVoucherPreview>["preview"]>[] = [];
     const blocked: Array<{ billId: number; billNo: string; reasons: string[] }> = [];
 
-    if (state.config.companyName !== "High Lane Constructions Pvt Ltd - SK 2025-26") {
+    const companyNameBlocker = tallyCompanyNameBlocker(state.config.companyName);
+    if (companyNameBlocker) {
       return {
         state,
         vouchers: [],
         blocked: billIds.map(billId => ({
           billId,
           billNo: `Bill #${billId}`,
-          reasons: ["Only the configured HLC Tally company may be exported in this feature."],
+          reasons: [companyNameBlocker],
         })),
       };
     }
@@ -12918,7 +13019,7 @@ export async function registerRoutes(
   // screen/table. Only the Owner can attest the ledger and voucher-type names.
   app.patch("/api/vendor-bills/tally-posting-mappings", async (req, res) => {
     if (!assertAdmin(req, res)) return;
-    if (!req.authUser?.isOwner) return res.status(403).json({ message: "Only the Owner can confirm HLC Tally posting mappings." });
+    if (!req.authUser?.isOwner) return res.status(403).json({ message: "Only the Owner can confirm company Tally posting mappings." });
     res.setHeader("Cache-Control", "private, no-store");
     const safeTallyName = z.string().trim().max(120)
       .refine(value => !/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value), "Tally names cannot contain XML control characters")
@@ -12931,7 +13032,7 @@ export async function registerRoutes(
       confirmed: z.boolean(),
     }).strict();
     const bodySchema = z.object({
-      homeStateCode: z.string().trim().regex(/^\d{2}$/, "HLC home state code must be a two-digit state code.").nullable().optional(),
+      homeStateCode: z.string().trim().regex(/^\d{2}$/, "Company home state code must be a two-digit state code.").nullable().optional(),
       voucherMappings: z.object({
         material: voucherMappingSchema,
         equipment: voucherMappingSchema,
@@ -13039,8 +13140,9 @@ export async function registerRoutes(
         }
       });
       const filenameDate = new Date().toISOString().slice(0, 10);
+      const identity = await getCompanyConfig();
       res.setHeader("Content-Type", "application/xml; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="HLC-Tally-vouchers-${filenameDate}.xml"`);
+      res.setHeader("Content-Disposition", `attachment; filename="${identity.companyShortName}-Tally-vouchers-${filenameDate}.xml"`);
       res.status(200).send(xml);
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ message: "Select and confirm one or more valid bills.", issues: error.issues });
@@ -13618,7 +13720,7 @@ export async function registerRoutes(
       }
       const selectedSite = await resolveVendorBillSite(req, res, req.query.siteId);
       if (!selectedSite) return;
-      const hlcPartyId = await storage.getHlcPartyId();
+      const hlcPartyId = await storage.getOwnCompanyPartyId();
       let items = await storage.getVendorBillAutoItems(vendorName, billType, periodFrom, periodTo, entryTypeFilter, selectedSite.siteName, hlcPartyId);
       if (!selectedSite.siteName) {
         const permitted = await getPermittedSiteNames(req);
@@ -14428,6 +14530,7 @@ export async function registerRoutes(
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }
+      const companyConfig = await getCompanyConfig();
       if (!(await scopeVendorBillsToSiteAccess(req, [bill])).length) {
         return res.status(403).json({ message: "Access denied for this bill's site" });
       }
@@ -14720,7 +14823,7 @@ export async function registerRoutes(
       y += 40;
 
       doc.fillColor("#000").fontSize(10).font("Helvetica-Bold");
-      doc.text("For HIGH LANE CONSTRUCTIONS", tableX + pageW - 200, y, { width: 200, align: "center" });
+      doc.text(`For ${companyConfig.companyName}`, tableX + pageW - 200, y, { width: 200, align: "center" });
       doc.moveDown(3);
       const compSignY = doc.y;
       doc.moveTo(tableX + pageW - 200, compSignY).lineTo(tableX + pageW, compSignY).strokeColor("#000").lineWidth(0.5).stroke();
@@ -15169,6 +15272,10 @@ export async function registerRoutes(
   app.post("/api/admin/fix-ledger-gap-427", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
+      const company = await getCompanyConfig();
+      if (!canRunLegacyLedgerGapFix(company.companyShortName)) {
+        return res.status(404).json({ message: "Not found." });
+      }
       const result = await storage.applyLedgerGapFix427();
       res.json(result);
     } catch (err) {
@@ -16182,7 +16289,7 @@ export async function registerRoutes(
     }
     for (const key of ["responsibility", "repairScope"] as const) {
       if (data[key] != null && data[key] !== "" && !["vendor", "hlc"].includes(data[key])) {
-        return { message: `${key === "responsibility" ? "Responsibility" : "Repair scope"} must be Vendor or HLC.` };
+        return { message: `${key === "responsibility" ? "Responsibility" : "Repair scope"} must be Vendor or company.` };
       }
       if (data[key] === "") data[key] = null;
     }
@@ -20924,7 +21031,7 @@ export async function registerRoutes(
           materialId: mixTemplateComponents.materialId,
           percent: mixTemplateComponents.percent,
         }).from(mixTemplateComponents),
-        storage.getHlcPartyId(),
+        storage.getOwnCompanyPartyId(),
         storage.getSiteMaterialReconciliation({ permittedSiteNames: [site.name] }),
       ]);
 
@@ -22870,7 +22977,7 @@ export async function registerRoutes(
         storage.getMaterialMappings(projectId),
         storage.getEarthworkArrangements(projectId), // Instruction 023
         storage.getArrangementProgrammeAllocationsForProject(projectId), // Instruction 026
-        storage.getHlcPartyId(),
+        storage.getOwnCompanyPartyId(),
       ]);
       // Instruction 026 §9: attach programme-bar allocations for bar-level phasing.
       const allocsByArrId = new Map<number, Array<{ programmeBarId: number; boqItemId: number; qty: number }>>();

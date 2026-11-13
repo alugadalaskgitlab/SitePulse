@@ -775,7 +775,7 @@ import { ReportExportGate } from "@/components/ReportExportGate";
 
 export default function PlantLdoMismatch() {
   const { appendPlantContext, getPlantBackLink } = useOrigin();
-  const { companyName: reportCompanyName, logoFile: reportLogoFile } = useFeatureFlags();
+  const { companyName: reportCompanyName, defaultPlantName, logoFile: reportLogoFile } = useFeatureFlags();
   const { user } = useAuth();
   const canCleanupOrphans = user?.isOwner === true;
   const { toast } = useToast();
@@ -785,7 +785,7 @@ export default function PlantLdoMismatch() {
 
   const searchString = useSearch();
   const sp = new URLSearchParams(searchString);
-  const plant = sp.get("plant") || "Main Plant";
+  const plant = sp.get("plant") || defaultPlantName;
 
   const LS_KEY_FROM = "ldo-mismatch-dateFrom";
   const LS_KEY_TO = "ldo-mismatch-dateTo";

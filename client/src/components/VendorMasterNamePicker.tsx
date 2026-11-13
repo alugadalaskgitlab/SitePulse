@@ -4,6 +4,7 @@ import type { ExistingTripVendor } from "@/components/trip-role-utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TripMasterCombobox } from "@/components/TripMasterCombobox";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 const isActiveVendor = (vendor: ExistingTripVendor) =>
   vendor.isActive == null || vendor.isActive === true || Number(vendor.isActive) === 1;
@@ -20,6 +21,7 @@ export function VendorMasterNamePicker({
   testId: string;
   onSelect: (vendorName: string) => void;
 }) {
+  const { companyShortName } = useFeatureFlags();
   const id = useId();
   const [query, setQuery] = useState(value);
   useEffect(() => setQuery(value), [value]);
@@ -59,7 +61,7 @@ export function VendorMasterNamePicker({
       testId={testId}
     />
     {!loading && !error && !vendors.some(isActiveVendor) && (
-      <p className="text-xs text-muted-foreground">No active vendors are available. Add a vendor before recording an HLC-stock receipt.</p>
+      <p className="text-xs text-muted-foreground">No active vendors are available. Add a vendor before recording a {companyShortName}-stock receipt.</p>
     )}
   </div>;
 }

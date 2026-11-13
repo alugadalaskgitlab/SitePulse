@@ -42,7 +42,7 @@ export function ReportHeader({
   return (
     <div className="bg-card border rounded-xl p-6 shadow-sm print:shadow-none print:border-gray-300">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4 pb-4 border-b print:flex-row print:items-center">
-        {showLogo && (
+        {showLogo && logoFile && (
           <img
             src={`/${logoFile}`}
             alt={companyName}

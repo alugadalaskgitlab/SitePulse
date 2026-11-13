@@ -11,6 +11,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import type { Party, PlantMaterial as Material } from "@shared/schema";
 
 type PreviewRow = {
@@ -42,6 +43,7 @@ function getErrorMessage(err: unknown): string {
 }
 
 export default function PlantStockReassign() {
+  const { companyShortName } = useFeatureFlags();
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
   const { user } = useAuth();
@@ -170,7 +172,7 @@ export default function PlantStockReassign() {
           <div className="font-semibold text-amber-800 dark:text-amber-300">Admin only — corrects mis-assigned ledger entries.</div>
           <div className="text-sm text-amber-800/80 dark:text-amber-200/80 mt-0.5">
             Use this to move past dispatches or receipts from one party to another (for example, bitumen
-            dispatches that were saved against HLC but actually belong to VATPALLY). Always preview first.
+            dispatches that were saved against {companyShortName} but actually belong to VATPALLY). Always preview first.
           </div>
         </div>
       </div>

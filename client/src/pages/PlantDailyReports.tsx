@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ChevronLeft, Download, FileDown, Loader2, ExternalLink, CheckCircle2, XCircle, ChevronDown, X, Circle, AlertCircle, Wrench } from "lucide-react";
 import { format, parseISO, subDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { unzipSync, strFromU8 } from "fflate";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import DryerSourceFixDialog from "@/components/DryerSourceFixDialog";
@@ -111,6 +112,7 @@ type IndexRow = {
 import { ReportExportGate } from "@/components/ReportExportGate";
 
 export default function PlantDailyReports() {
+  const { defaultPlantName } = useFeatureFlags();
   const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const { toast } = useToast();
   const today = format(new Date(), "yyyy-MM-dd");
@@ -248,7 +250,7 @@ export default function PlantDailyReports() {
     queryKey: ["/api/plant-module/shift-logs/plants"],
     queryFn: async () => {
       const res = await fetch("/api/plant-module/shift-logs/plants", { credentials: "include" });
-      if (!res.ok) return ["Main Plant"];
+      if (!res.ok) return [defaultPlantName];
       return res.json();
     },
   });
@@ -515,7 +517,7 @@ export default function PlantDailyReports() {
               data-testid="select-plant"
             >
               <option value="">All plants</option>
-              {(plantsList || ["Main Plant"]).map((p) => (
+              {(plantsList || [defaultPlantName]).map((p) => (
                 <option key={p} value={p}>{p}</option>
               ))}
             </select>

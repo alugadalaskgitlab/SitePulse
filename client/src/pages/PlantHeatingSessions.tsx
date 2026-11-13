@@ -25,15 +25,16 @@ import DryerSourceFixDialog from "@/components/DryerSourceFixDialog";
 import type { DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
 import { getLdoVolumeAtDepth, getLdoDeadStockVolume } from "@shared/ldo-dip-chart";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 type DgMode = "none" | "inline" | "link";
 
-function emptyForm(date: string) {
+function emptyForm(date: string, plantName = "Main Plant") {
   return {
     id: undefined as number | undefined,
     date,
     sessionType: "NIGHT_PREHEAT",
-    plantName: "Main Plant",
+    plantName,
     staffName: "",
     staffRole: "",
     startTime: "",
@@ -89,6 +90,7 @@ function durationHrs(start: string, end: string): number | null {
 }
 
 export default function PlantHeatingSessions() {
+  const { defaultPlantName } = useFeatureFlags();
   const { toast } = useToast();
   const { featureCan } = useAuth();
   const canVerify = featureCan("hmp_rmc", "verify");
@@ -143,7 +145,7 @@ export default function PlantHeatingSessions() {
   const autoOpenedRef = useRef<number | null>(null);
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState<FormState>(emptyForm(today));
+  const [form, setForm] = useState<FormState>(emptyForm(today, defaultPlantName));
   const [draftRestored, setDraftRestored] = useState(false);
 
   // Draft recovery: save the new-session form to localStorage whenever any field
@@ -702,14 +704,14 @@ export default function PlantHeatingSessions() {
     // with the originating date and plant so it is immediately attributed to the
     // right production day. Direct access keeps the original today/Main Plant defaults.
     const seedDate = returnToFromUrl ? (dateParam || today) : today;
-    const seedPlant = (returnToFromUrl && originPlantFromUrl) ? originPlantFromUrl : "Main Plant";
-    setForm({ ...emptyForm(seedDate), plantName: seedPlant });
+    const seedPlant = (returnToFromUrl && originPlantFromUrl) ? originPlantFromUrl : defaultPlantName;
+    setForm(emptyForm(seedDate, seedPlant));
     setDialogOpen(true);
   };
 
   const openNewForDate = (date: string) => {
-    const seedPlant = (returnToFromUrl && originPlantFromUrl) ? originPlantFromUrl : "Main Plant";
-    setForm({ ...emptyForm(date), plantName: seedPlant });
+    const seedPlant = (returnToFromUrl && originPlantFromUrl) ? originPlantFromUrl : defaultPlantName;
+    setForm(emptyForm(date, seedPlant));
     setDialogOpen(true);
   };
 
@@ -1395,7 +1397,7 @@ export default function PlantHeatingSessions() {
             show={draftRestored && !form.id}
             draftSavedAt={heatingDraftSavedAt}
             onDismiss={() => setDraftRestored(false)}
-            onDiscard={() => { clearHeatingDraft(); setDraftRestored(false); setForm(emptyForm(today)); }}
+            onDiscard={() => { clearHeatingDraft(); setDraftRestored(false); setForm(emptyForm(today, defaultPlantName)); }}
           />
 
           <div className="space-y-4 pt-2">

@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import {
   calculateBomDemand,
   monthLabel,
@@ -460,6 +461,7 @@ function EquipmentTable({
   demand: BomDemand;
   project: BoqProject;
 }) {
+  const { companyText } = useFeatureFlags();
   const equip = demand.equipment;
   const [expandedEq, setExpandedEq] = useState<Set<string>>(() => new Set());
 
@@ -468,7 +470,7 @@ function EquipmentTable({
   const adjustmentsBanner = eqAdjustments.length > 0 && (
     <div className="mb-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-[12px] text-teal-800 space-y-0.5">
       <div className="font-semibold">Demand reduced by approved execution arrangements</div>
-      {[...new Set(eqAdjustments.map(a => a.note))].map((note, i) => <div key={i}>{note}</div>)}
+      {[...new Set(eqAdjustments.map(a => a.note))].map((note, i) => <div key={i}>{companyText(note)}</div>)}
     </div>
   );
 
@@ -595,6 +597,7 @@ function LabourTable({
   demand: BomDemand;
   project: BoqProject;
 }) {
+  const { companyText } = useFeatureFlags();
   const lab = demand.labour;
   const [expandedLab, setExpandedLab] = useState<Set<string>>(() => new Set());
 
@@ -603,7 +606,7 @@ function LabourTable({
   const labBanner = labAdjustments.length > 0 && (
     <div className="mb-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-[12px] text-teal-800 space-y-0.5">
       <div className="font-semibold">Demand reduced by approved execution arrangements</div>
-      {[...new Set(labAdjustments.map(a => a.note))].map((note, i) => <div key={i}>{note}</div>)}
+      {[...new Set(labAdjustments.map(a => a.note))].map((note, i) => <div key={i}>{companyText(note)}</div>)}
     </div>
   );
 
@@ -2034,6 +2037,7 @@ function SuggestionBadge({
   projectLinkedSiteId?: number | null;
   onMappingResolved?: () => void;
 }) {
+  const { companyShortName } = useFeatureFlags();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { featureCan } = useAuth();
@@ -2389,7 +2393,7 @@ function SuggestionBadge({
                 </button>
                 <button onClick={() => openFor("irn")} disabled={isPending}
                   className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 hover:bg-orange-100 transition-colors disabled:opacity-60">
-                  <ShoppingCart className="w-3 h-3" /> Issue from HLC Stock
+                  <ShoppingCart className="w-3 h-3" /> Issue from {companyShortName} Stock
                 </button>
               </>
             ) : (
@@ -2431,7 +2435,7 @@ function SuggestionBadge({
                 <p className="font-semibold text-gray-800 truncate">{row.materialName}</p>
                 {/* v2 breakdown */}
                 <p className="text-gray-600">Demand to horizon: <span className="font-mono font-semibold">{fmtN(row.demandUpToSelectedDate)} {row.uom}</span></p>
-                <p className="text-gray-600">HLC Stock: <span className="font-mono font-semibold">{fmtN(row.hlcRecordedStock)}</span> · Confirmed Incoming: <span className="font-mono font-semibold">{fmtN(row.confirmedIncomingPurchase)}</span></p>
+                <p className="text-gray-600">{companyShortName} Stock: <span className="font-mono font-semibold">{fmtN(row.hlcRecordedStock)}</span> · Confirmed Incoming: <span className="font-mono font-semibold">{fmtN(row.confirmedIncomingPurchase)}</span></p>
                 <p className="text-gray-700 font-medium">Actionable Shortfall: <span className="font-mono text-red-700">{fmtN(row.actionableShortfall)} {row.uom}</span></p>
                 {row.futureRequirement > 0 && <p className="text-gray-500 text-[12px]">Future requirement (after horizon): {fmtN(row.futureRequirement)} {row.uom}</p>}
                 {row.requiredByDate && <p className="text-gray-500 text-[12px]">Required by: <span className="font-medium">{row.requiredByDate}</span></p>}
@@ -2546,7 +2550,7 @@ function SuggestionBadge({
                 <p className="font-semibold">{row.materialName}</p>
                 <p className="text-gray-600">Total required: <span className="font-mono font-semibold">{fmtN(totalQty)} {row.uom}</span></p>
                 {row.hlcRecordedStock > 0 && (
-                  <p className="text-blue-700 text-[12px]">Suggested internal allocation (from HLC stock): {fmtN(Math.min(row.hlcRecordedStock, Math.max(0, row.demandUpToSelectedDate - row.confirmedIncomingPurchase - row.confirmedInternalIncoming)))} {row.uom}</p>
+                  <p className="text-blue-700 text-[12px]">Suggested internal allocation (from {companyShortName} stock): {fmtN(Math.min(row.hlcRecordedStock, Math.max(0, row.demandUpToSelectedDate - row.confirmedIncomingPurchase - row.confirmedInternalIncoming)))} {row.uom}</p>
                 )}
                 {row.stockWithOtherParties > 0 && (
                   <p className="text-indigo-600 text-[12px]">ℹ Other parties hold {fmtN(row.stockWithOtherParties)} {row.uom} — confirm availability before requesting transfer.</p>
@@ -2690,6 +2694,7 @@ function ProcurementTable({
   onHorizonChange: (mode: HorizonMode, custom: string) => void;
   onMappingResolved: () => void;
 }) {
+  const { companyShortName } = useFeatureFlags();
   const planRowsByMaterialId = new Map(
     planMaterialRows
       .filter((row) => row.materialMasterId != null)
@@ -2756,7 +2761,7 @@ function ProcurementTable({
         <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
         <div>
           <span className="font-semibold">Planning intelligence only.</span>{" "}
-          Stock shown is HLC/company custody only. Existing manual IRN and PI creation is unchanged.
+          Stock shown is {companyShortName}/company custody only. Existing manual IRN and PI creation is unchanged.
           {unresolvedCount > 0 && (
             <span className="block mt-1 text-amber-700">{unresolvedCount} material{unresolvedCount > 1 ? "s" : ""} need a master link.</span>
           )}
@@ -2800,7 +2805,7 @@ function ProcurementTable({
                   return "Demand to Horizon";
                 })()}
               </th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>HLC Stock</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>{companyShortName} Stock</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Other Parties</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Confirmed Incoming</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>To buy (Plan vs Actual)</th>
@@ -2900,6 +2905,7 @@ function ProcurementTable({
 // ─── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function WorkDemand() {
+  const { companyShortName } = useFeatureFlags();
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id);
   const queryClient = useQueryClient();

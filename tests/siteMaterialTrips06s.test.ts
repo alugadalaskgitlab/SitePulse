@@ -117,7 +117,7 @@ describe("06S §2 resolver — explicit chain only (Tests B/E, O)", () => {
 describe("06S §3 ActivityReceiptStrip (Tests A/B/C/D)", () => {
   it("Test A: agency-supplied — PI query disabled, 'no HLC PI required' shown", () => {
     expect(stripSrc).toContain("enabled: hlcResponsible && !!boqProjectId && !!boqItemId");
-    expect(stripSrc).toContain("Supply responsibility: Agency — no HLC PI required.");
+    expect(stripSrc).toContain("Supply responsibility: Agency — no {companyShortName} PI required.");
   });
   it("Test B: single match shows vendor/order/balance and auto-attaches indentId/indentItemId to the POST", () => {
     expect(stripSrc).toContain("Material supply: {piMatch.vendor ?? \"Vendor TBD\"} · {piMatch.indentNo}");
@@ -125,7 +125,7 @@ describe("06S §3 ActivityReceiptStrip (Tests A/B/C/D)", () => {
     expect(stripSrc).toContain("indentItemId: piMatch?.indentItemId ?? undefined");
   });
   it("Test C: no match → non-blocking warning; save button logic untouched by PI state", () => {
-    expect(stripSrc).toContain("No approved/ordered Purchase Indent found for this HLC-supplied material.");
+    expect(stripSrc).toContain("No approved/ordered Purchase Indent found for this {companyShortName}-supplied material.");
     // Save is disabled only by pending/quantity — never by PI resolution state:
     expect(stripSrc).toContain("disabled={createMutation.isPending || !form.quantity || parseFloat(form.quantity) <= 0}");
   });

@@ -11,6 +11,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { Party, PlantMaterial as Material, StockLedgerEntry } from "@shared/schema";
 import { formatQty, toFiniteNumber } from "@shared/stockReconciliation";
@@ -37,6 +38,7 @@ function getErrorMessage(err: unknown): string {
 
 export default function PlantStockTransfer() {
   const { toast } = useToast();
+  const { companyShortName } = useFeatureFlags();
   const { getPlantBackLink } = useOrigin();
   const { featureCan } = useAuth();
   const canTransfer = featureCan("issues_stock", "add");
@@ -201,8 +203,8 @@ export default function PlantStockTransfer() {
         <div>
           <div className="font-semibold text-blue-800 dark:text-blue-300">Forward stock transfer — use to return borrowed material.</div>
           <div className="text-sm text-blue-800/80 dark:text-blue-200/80 mt-0.5">
-            When a dispatch borrowed material from HLC and the party has since received their own stock, 
-            use this form to transfer the equivalent quantity back to HLC. Two ledger entries are created 
+            When a dispatch borrowed material from {companyShortName} and the party has since received their own stock,
+            use this form to transfer the equivalent quantity back to {companyShortName}. Two ledger entries are created
             (debit source party, credit destination party) with a full audit trail.
           </div>
         </div>

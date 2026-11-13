@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRoute } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -39,15 +40,15 @@ function shiftConsumed(
 }
 
 export default function PlantHeatingMismatch() {
+  const { defaultPlantName } = useFeatureFlags();
   const { appendPlantContext, getPlantBackLink } = useOrigin();
   const [, params] = useRoute("/plant/heating-mismatch/:date");
   const date = params?.date || "";
 
-  // Plant override via ?plant=, defaults to Main Plant (the trends page is
-  // currently locked to Main Plant too).
+  // Plant override via ?plant=, otherwise use the configured default.
   const search = typeof window !== "undefined" ? window.location.search : "";
   const sp = new URLSearchParams(search);
-  const plant = sp.get("plant") || "Main Plant";
+  const plant = sp.get("plant") || defaultPlantName;
 
   // Trends → mismatch is a "reports" tab navigation; preserve that on the
   // back-link so closing the page returns to the same tab.

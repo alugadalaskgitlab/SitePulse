@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ReportExportGate } from "@/components/ReportExportGate";
 import { Link, useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from 
 import DryerSourceFixDialog, { type DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 type DailyPlantSummary = {
   date: string;
@@ -114,10 +115,15 @@ type DryerMismatchRow = {
 export default function PlantDailyReport() {
   const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const { toast } = useToast();
+  const { defaultPlantName } = useFeatureFlags();
   const [, params] = useRoute("/plant/daily-report/:date");
   const backHref = appendPlantContext("/plant/daily-reports", { defaultTab: "reports" });
   const [date, setDate] = useState(params?.date || format(new Date(), "yyyy-MM-dd"));
-  const [plantName, setPlantName] = useState("Main Plant");
+  const [plantName, setPlantName] = useState(defaultPlantName);
+  const plantNameTouched = useRef(false);
+  useEffect(() => {
+    if (!plantNameTouched.current && plantName === "Main Plant") setPlantName(defaultPlantName);
+  }, [defaultPlantName, plantName]);
   const [showAllDispatches, setShowAllDispatches] = useState(false);
   const [fixDialog, setFixDialog] = useState<{ open: boolean; target: DryerSourceFixTarget | null }>({ open: false, target: null });
 
@@ -125,7 +131,7 @@ export default function PlantDailyReport() {
     queryKey: ["/api/plant-module/shift-logs/plants"],
     queryFn: async () => {
       const res = await fetch("/api/plant-module/shift-logs/plants", { credentials: "include" });
-      if (!res.ok) return ["Main Plant"];
+      if (!res.ok) return [defaultPlantName];
       return res.json();
     },
   });
@@ -193,8 +199,8 @@ export default function PlantDailyReport() {
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
-          <select value={plantName} onChange={e => setPlantName(e.target.value)} className="border rounded px-2 py-1 text-sm" data-testid="select-plant">
-            {(plantsList && plantsList.length ? plantsList : ["Main Plant"]).map(p => <option key={p} value={p}>{p}</option>)}
+          <select value={plantName} onChange={e => { plantNameTouched.current = true; setPlantName(e.target.value); }} className="border rounded px-2 py-1 text-sm" data-testid="select-plant">
+            {(plantsList && plantsList.length ? plantsList : [defaultPlantName]).map(p => <option key={p} value={p}>{p}</option>)}
           </select>
           <Link href={appendPlantContext(`/plant/shift-log/${date}`, { defaultTab: "reports" })}>
             <Button variant="outline" size="sm" data-testid="button-edit-shift-log"><Edit className="w-4 h-4 mr-1" />Shift Log</Button>

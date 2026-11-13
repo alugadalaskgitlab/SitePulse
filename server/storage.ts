@@ -9,7 +9,17 @@ import { dailyHireBilledDays } from "./dailyHireBilledDays";
 import { hasFrozenTripDailyHire, FROZEN_TRIP_DAILY_MESSAGE } from "../shared/vendorBillRecovery";
 import { purchaseOrders } from "../shared/schema";
 import { linkedPiStoreStock } from "../shared/piStoreStock";
-import { resolveHlcParty } from "../shared/hlcParty";
+import { resolveOwnCompanyParty } from "../shared/hlcParty";
+import {
+  DEFAULT_PLANT_NAME,
+  formatInternalRequisitionNumber,
+  formatVendorBillNumber,
+  nextInternalRequisitionSequence,
+  nextPurchaseIndentSequence,
+  nextVendorBillSequence,
+  resolveCompanyIdentity,
+  companyPrefixSegment,
+} from "../shared/companyIdentity";
 import { bulkTripConditions } from "./siteMaterialTripFilters";
 import { currentVendorNamesByIds, resolveVendorNameMatch, resolveVendorNameMatchById, vendorNameIdentityCondition } from "./vendorNameResolution";
 import { validatedTransportRateFields } from "../shared/transportRate";
@@ -1674,6 +1684,10 @@ export interface IStorage {
   createHireStatementVendorBill(statementId: number, bill: Omit<CreateVendorBillRequest, "items" | "billNo"> & { items: Omit<InsertVendorBillItem, "billId">[] }, authorUserId?: number | null): Promise<{ statement: HireStatement; bill: VendorBillWithItems; created: boolean }>;
   getVendorNames(): Promise<string[]>;
   getHlcPartyId(): Promise<number | null>;
+  getOwnCompanyParty(): Promise<{ id: number; name: string | null } | null>;
+  getOwnCompanyPartyId(executor?: any): Promise<number | null>;
+  setOwnCompanyPartyId(partyId: number | null): Promise<void>;
+  getDefaultPlantName(): Promise<string>;
   getVendorNamesByIds(ids: number[]): Promise<{ id: number; name: string }[]>;
   getVendorAliases(): Promise<VendorAlias[]>;
   addVendorAlias(canonicalName: string, alias: string): Promise<VendorAlias>;
@@ -2661,9 +2675,53 @@ async function lockBoqItemForRecipeWrite(tx: any, boqItemId: number, manualEdit:
 }
 
 export class DatabaseStorage implements IStorage {
+  private async getCompanyIdentityForStorage(executor: any = db) {
+    const settings = await executor.select({ key: appSettings.key, value: appSettings.value })
+      .from(appSettings)
+      .where(inArray(appSettings.key, ["company_name", "company_short_name"]));
+    const byKey = new Map(settings.map((row: { key: string; value: string }) => [row.key, row.value]));
+    return resolveCompanyIdentity({
+      companyName: process.env.COMPANY_NAME ?? byKey.get("company_name"),
+      companyShortName: process.env.COMPANY_SHORT_NAME ?? byKey.get("company_short_name"),
+    });
+  }
+
+  async getOwnCompanyParty(executor: any = db): Promise<{ id: number; name: string | null } | null> {
+    const [selection] = await executor.select({ value: appSettings.value })
+      .from(appSettings).where(eq(appSettings.key, "own_company_party_id")).limit(1);
+    const rows = await executor.select({ id: parties.id, name: parties.name, isActive: parties.isActive })
+      .from(parties);
+    const identity = await this.getCompanyIdentityForStorage(executor);
+    return resolveOwnCompanyParty(rows, selection?.value ?? null, identity);
+  }
+
+  async getOwnCompanyPartyId(executor: any = db): Promise<number | null> {
+    return (await this.getOwnCompanyParty(executor))?.id ?? null;
+  }
+
+  async setOwnCompanyPartyId(partyId: number | null): Promise<void> {
+    if (partyId == null) {
+      await db.delete(appSettings).where(eq(appSettings.key, "own_company_party_id"));
+      return;
+    }
+    const [party] = await db.select({ id: parties.id, isActive: parties.isActive })
+      .from(parties).where(eq(parties.id, partyId)).limit(1);
+    if (!party || party.isActive !== 1) throw new Error("Choose an active company party.");
+    await this.setSetting("own_company_party_id", String(partyId));
+  }
+
+  async getDefaultPlantName(): Promise<string> {
+    const configured = (await this.getSetting("default_plant_name"))?.trim();
+    return configured || DEFAULT_PLANT_NAME;
+  }
+
+  private async getCompanyShortName(executor: any = db): Promise<string> {
+    const identity = await this.getCompanyIdentityForStorage(executor);
+    return companyPrefixSegment(identity.companyShortName);
+  }
+
   async getHlcPartyId(): Promise<number | null> {
-    const partyRows = await db.select({ id: parties.id, name: parties.name }).from(parties).orderBy(parties.id);
-    return resolveHlcParty(partyRows)?.id ?? null;
+    return this.getOwnCompanyPartyId();
   }
 
   /** Acquire sorted item locks before creating an application-owned reference. */
@@ -5157,11 +5215,8 @@ export class DatabaseStorage implements IStorage {
     const dieselMaterial = await this.resolveCanonicalDieselMaterial(tx);
     if (!dieselMaterial) throw new Error("Canonical DIESEL/HSD material not found for DPR equipment fuel ledger");
 
-    const allPartiesForHlc = await tx.select().from(parties).orderBy(parties.id);
-    let hlcParty = allPartiesForHlc.find((p: any) => p.name?.toUpperCase() === 'HLC');
-    if (!hlcParty) hlcParty = allPartiesForHlc.find((p: any) => p.name?.toUpperCase().includes('HLC') || p.name?.toUpperCase().includes('HIGH LANE'));
-    if (!hlcParty) hlcParty = allPartiesForHlc[0];
-    const hlcPartyId = hlcParty?.id || null;
+    const hlcPartyId = await this.getOwnCompanyPartyId(tx);
+    if (hlcPartyId == null) throw new Error("Select the company party in Admin Settings before recording diesel stock.");
 
     for (const eLog of dieselLogs) {
       const dieselQty = eLog.diesel;
@@ -5237,11 +5292,8 @@ export class DatabaseStorage implements IStorage {
           const [ledgerMaterial] = await tx.select().from(plantMaterials)
             .where(eq(plantMaterials.id, ledgerEntry.materialId)).limit(1);
           const dieselMaterial = ledgerMaterial ?? await this.resolveCanonicalDieselMaterial(tx);
-          const allPartiesCleanup = await tx.select().from(parties).orderBy(parties.id);
-          let hlcPartyCleanup = allPartiesCleanup.find((p: any) => p.name?.toUpperCase() === 'HLC');
-          if (!hlcPartyCleanup) hlcPartyCleanup = allPartiesCleanup.find((p: any) => p.name?.toUpperCase().includes('HLC') || p.name?.toUpperCase().includes('HIGH LANE'));
-          if (!hlcPartyCleanup) hlcPartyCleanup = allPartiesCleanup[0];
-          const hlcPartyId = hlcPartyCleanup?.id || null;
+          const hlcPartyId = await this.getOwnCompanyPartyId(tx);
+          if (hlcPartyId == null) throw new Error("Select the company party in Admin Settings before correcting diesel stock.");
 
           if (dieselMaterial) {
             await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, +Number(ledgerEntry.quantityOut ?? 0), null);
@@ -7583,11 +7635,11 @@ export class DatabaseStorage implements IStorage {
         const dieselMaterial = await this.resolveCanonicalDieselMaterial(tx);
         if (!dieselMaterial) throw new Error("Canonical DIESEL/HSD material not found for equipment usage fuel ledger");
         
-        // Find HLC party for diesel stock
-        const [hlcParty] = await tx.select().from(parties)
-          .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
-          .limit(1);
-        const hlcPartyId = hlcParty?.id || null;
+        // Use the explicitly configured company party; never guess by row order.
+        const hlcPartyId = await this.getOwnCompanyPartyId(tx);
+        if (hlcPartyId == null) {
+          throw new Error("Select the company party in Admin Settings before recording equipment diesel.");
+        }
         
         if (dieselMaterial) {
           if (dieselSource === 'plant_stock') {
@@ -8173,14 +8225,14 @@ export class DatabaseStorage implements IStorage {
       if (newNeedsLedger && !ledgerMaterial) {
         throw new Error("Canonical DIESEL/HSD material not found for equipment usage fuel ledger");
       }
-      const [hlcParty] = await tx.select().from(parties)
-        .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
-        .limit(1);
-      const hlcPartyId = hlcParty?.id || null;
+      const hlcPartyId = await this.getOwnCompanyPartyId(tx);
       const replacementPartyId =
         dieselTransition.ledgerType === "equipment_usage" && priorPlantLedger
           ? priorPlantLedger.partyId
           : hlcPartyId;
+      if (newNeedsLedger && replacementPartyId == null) {
+        throw new Error("Select the company party in Admin Settings before recording equipment fuel.");
+      }
       
       // Apply stock only from observed ledger history. A legacy source flag without
       // a real deduction never earns a phantom restoration.
@@ -9046,11 +9098,8 @@ export class DatabaseStorage implements IStorage {
     const linkedRefIds = [...new Set(linkedEntries.map(e => e.referenceId!))];
 
     // 4. Find HLC party.
-    const allParties = await db.select({ id: parties.id, name: parties.name }).from(parties);
-    const hlcParty =
-      allParties.find(p => p.name?.trim().toUpperCase() === 'HLC') ??
-      allParties.find(p => p.name?.trim().toUpperCase().includes('HLC') || p.name?.trim().toUpperCase().includes('HIGH LANE'));
-    const hlcPartyId = hlcParty?.id ?? null;
+    const hlcPartyId = await this.getOwnCompanyPartyId();
+    if (hlcPartyId == null) throw new Error("Select the company party in Admin Settings before viewing company-stock reconciliation.");
 
     // 5. Fetch HLC ledger rows ONLY for linked dispatches using referenceId.
     //    This is fully party-scoped: no cross-contamination with other parties that
@@ -9768,13 +9817,11 @@ export class DatabaseStorage implements IStorage {
       const shortages: { materialId: number; required: number; available: number }[] = [];
       const partyId = dispatchData.partyId;
       
-      // Find HLC party (used for the optional borrow path)
+      // Find the configured company party; there is no arbitrary-party fallback.
       const allPartiesList = await tx.select().from(parties).orderBy(parties.id);
-      // Strict HLC lookup: never silently fall back to an arbitrary party.
-      const hlcParty = allPartiesList.find(p => p.name?.toUpperCase() === 'HLC')
-        || allPartiesList.find(p => p.name?.toUpperCase().includes('HIGH LANE'))
-        || null;
-      const hlcPartyId = hlcParty?.id ?? null;
+      const ownCompanyParty = await this.getOwnCompanyParty(tx);
+      const hlcPartyId = ownCompanyParty?.id ?? null;
+      const companyShortName = await this.getCompanyShortName(tx);
       const ownerParty = allPartiesList.find(p => p.id === partyId);
       const ownerPartyName = ownerParty?.name || `Party #${partyId}`;
       
@@ -9968,7 +10015,7 @@ export class DatabaseStorage implements IStorage {
           ownerPartyId: partyId,
           ownerPartyName,
           fallbackPartyId: hlcPartyId,
-          fallbackPartyName: hlcParty?.name ?? null,
+          fallbackPartyName: ownCompanyParty?.name ?? null,
           shortages: shortageDetails,
         });
         throw err;
@@ -9982,10 +10029,11 @@ export class DatabaseStorage implements IStorage {
         // The party has never received this material so it is entirely under HLC's
         // scope. Deduct directly from HLC with no owner ledger row written.
         if (!ownerReceiptMatIds.has(item.matId)) {
-          if (hlcPartyId && hlcPartyId !== partyId) {
+          if (hlcPartyId == null) throw new Error("Select the company party in Admin Settings before using company stock.");
+          if (hlcPartyId !== partyId) {
             await deductFromSource(hlcPartyId, item.matId, item.qty, item.uom, item.label, item.tankNumber);
           } else {
-            // Owner IS HLC, or HLC not found — deduct from owner as normal.
+            // The dispatch owner is the configured company party.
             await deductFromSource(partyId, item.matId, item.qty, item.uom, item.label, item.tankNumber);
           }
           // No shortage entry — this is expected HLC stock consumption, not a shortfall.
@@ -10002,7 +10050,8 @@ export class DatabaseStorage implements IStorage {
         const remaining = +(item.qty - fromOwner).toFixed(9);
         if (remaining > 0) {
           // Borrowing branch — only reachable when allowHlcFallback === true.
-          if (hlcPartyId && hlcPartyId !== partyId) {
+          if (hlcPartyId == null) throw new Error("Select the company party in Admin Settings before borrowing stock.");
+          if (hlcPartyId !== partyId) {
             // When the owner has zero stock (fromOwner === 0), insert a 0-qty marker row for the
             // owner party BEFORE the HLC borrow entry.  Without this marker getPartyStatement only
             // reads the owner's ledger and would never see this dispatch at all, so the full HLC
@@ -10021,9 +10070,9 @@ export class DatabaseStorage implements IStorage {
               }).returning({ id: stockLedger.id });
               if (markerRow?.id) insertedLedgerIds.push(markerRow.id);
             }
-            await deductFromSource(hlcPartyId, item.matId, remaining, item.uom, `${item.label} (Borrowed from HLC)`, item.tankNumber);
+            await deductFromSource(hlcPartyId, item.matId, remaining, item.uom, `${item.label} (Borrowed from ${companyShortName})`, item.tankNumber);
           } else {
-            // Owner IS HLC, or no HLC found — record the shortfall against the owner so the ledger remains complete.
+            // The company party is also the dispatch owner; keep the full use on that party.
             await deductFromSource(partyId, item.matId, remaining, item.uom, `${item.label} (${ownerPartyName} — short)`, item.tankNumber);
           }
           shortages.push({ materialId: item.matId, required: item.qty, available: Math.max(ownerBal, 0) });
@@ -10148,12 +10197,10 @@ export class DatabaseStorage implements IStorage {
       return { fromDateTime, dispatches: 0, ledgerRowsDeleted: 0, ledgerRowsCreated: 0, errors: [] };
     }
 
-    // 4. Look up HLC party for borrow-split recreation
-    const [hlcParty] = await qdb.select().from(parties)
-      .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
-      .limit(1);
-    const hlcPartyId = hlcParty?.id ?? null;
-    const hlcPartyName = hlcParty?.name ?? 'HLC';
+    // 4. Use the configured company party for borrow-split recreation.
+    const ownCompanyParty = await this.getOwnCompanyParty(qdb);
+    const hlcPartyId = ownCompanyParty?.id ?? null;
+    const hlcPartyName = ownCompanyParty?.name ?? null;
 
     const allParties = await qdb.select().from(parties);
     const partyNameMap = new Map(allParties.map(p => [p.id, p.name]));
@@ -10201,7 +10248,11 @@ export class DatabaseStorage implements IStorage {
       if (!s || s.required <= 0) return { ownerQty: totalQty, hlcQty: 0 };
       const ownerFraction = Math.min(1, Math.max(0, s.available / s.required));
       const ownerQty = +(totalQty * ownerFraction).toFixed(9);
-      return { ownerQty, hlcQty: +(totalQty - ownerQty).toFixed(9) };
+      const hlcQty = +(totalQty - ownerQty).toFixed(9);
+      if (hlcQty > 0.0001 && hlcPartyId == null) {
+        throw new Error("Select the company party in Admin Settings before rebuilding borrowed-stock entries.");
+      }
+      return { ownerQty, hlcQty };
     };
 
     const sortByDateTime = (list: typeof affectedDispatches) =>
@@ -10560,7 +10611,7 @@ export class DatabaseStorage implements IStorage {
           await insertLegacyDeltaEntry(dispatch.partyId, partyName, dispatch.date, matId, ownerDelta, dispatch.id);
 
           if (Math.abs(hlcDelta) >= 0.0001 && hlcPartyId !== null) {
-            const hlcLabel = partyNameMap.get(hlcPartyId) ?? "HLC";
+            const hlcLabel = partyNameMap.get(hlcPartyId) ?? hlcPartyName ?? "Company";
             await insertLegacyDeltaEntry(hlcPartyId, hlcLabel, dispatch.date, matId, hlcDelta, dispatch.id);
           }
         }
@@ -10721,10 +10772,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       // Get HLC party
-      const [hlcParty] = await db.select().from(parties)
-        .where(sql`UPPER(TRIM(${parties.name})) = 'HLC'`)
-        .limit(1);
-      const hlcPartyId = hlcParty?.id || null;
+      const hlcPartyId = await this.getOwnCompanyPartyId();
 
       // Only plant-stock consumption belongs in the plant Diesel ledger.
       // In particular, direct_purchase is paid/consumed outside this bucket.
@@ -10739,6 +10787,9 @@ export class DatabaseStorage implements IStorage {
           sql`(${equipmentUsage.dieselIncluded} IS NULL OR ${equipmentUsage.dieselIncluded} = false)`,
           eq(equipmentUsage.dieselSource, 'plant_stock')
         ));
+      if (usageEntries.length > 0 && hlcPartyId == null) {
+        throw new Error("Select the company party in Admin Settings before reconciling equipment diesel.");
+      }
 
       // Get existing equipment_usage ledger entries
       const existingLedgerEntries = await db.select().from(stockLedger)
@@ -13294,6 +13345,7 @@ export class DatabaseStorage implements IStorage {
     const [trip] = await db.transaction(async (tx) => {
         if (masterSelection) await prepareTripMasterSelection(
           tx, data, masterSelection, undefined, (name, executor) => this.resolveVendorAliases(name, executor ?? tx),
+          await this.getCompanyShortName(tx),
         );
         const vehicleKey = normalizeVehicleSupplierVehicle(data.vehicleNumber);
         const inputSupplier = normalizeVehicleSupplierName(data.supplier);
@@ -13418,6 +13470,7 @@ export class DatabaseStorage implements IStorage {
         if (!existing) return [undefined] as const;
         if (masterSelection) await prepareTripMasterSelection(
           tx, { ...existing, ...data }, masterSelection, existing, (name, executor) => this.resolveVendorAliases(name, executor ?? tx),
+          await this.getCompanyShortName(tx),
         );
         else if (actor) {
           const priorLink = (await readTripHireLinks(tx, [existing.id])).get(existing.id);
@@ -13425,7 +13478,8 @@ export class DatabaseStorage implements IStorage {
             equipmentId: priorLink?.newValues?.equipmentId ?? existing.internalEquipmentId ?? null,
             actor: { id: actor.userId, fullName: actor.userName,
               isAdmin: actor.userRole === "admin", isOwner: actor.userRole === "owner" },
-          }, existing, (name, executor) => this.resolveVendorAliases(name, executor ?? tx));
+          }, existing, (name, executor) => this.resolveVendorAliases(name, executor ?? tx),
+          await this.getCompanyShortName(tx));
         }
 
         const oldKey = normalizeVehicleSupplierVehicle(existing.vehicleNumber);
@@ -15839,25 +15893,40 @@ export class DatabaseStorage implements IStorage {
 
   private async generateIndentNo(tx: any, siteId: number | null, raisedFrom: string | null): Promise<string> {
     const year = new Date().getFullYear();
+    const shortName = await this.getCompanyShortName(tx);
     const [site] = siteId ? await tx.select().from(sites).where(eq(sites.id, siteId)) : [];
     if (siteId && !site) throw new Error("Site not found");
     const name = site?.name ?? raisedFrom?.trim();
     if (!name) throw new Error("Site or raised-from location is required");
     const key = siteId ? `site:${siteId}` : `location:${name.toUpperCase()}`;
-    const counterKey = `pi-number:${key}:${year}`;
+    const counterKey = shortName === "HLC"
+      ? `pi-number:${key}:${year}`
+      : `pi-number:${shortName}:${key}:${year}`;
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${counterKey}))`);
     const [counter] = await tx.select().from(appSettings).where(eq(appSettings.key, counterKey));
-    const prefix = formatPurchaseIndentNumber(name, year, 0).replace(/0000$/, "");
-    const [result] = await tx.select({ count: sql<number>`count(*)`, max: sql<number>`max(CASE WHEN starts_with(${purchaseIndents.indentNo}, ${prefix}) AND ${purchaseIndents.indentNo} ~ '/[0-9]+$' THEN substring(${purchaseIndents.indentNo} from '/([0-9]+)$')::integer ELSE 0 END)` })
+    const prefix = formatPurchaseIndentNumber(name, year, 0, shortName).replace(/0000$/, "");
+    const [result] = await tx.select({
+      count: shortName === "HLC"
+        ? sql<number>`count(*)`
+        : sql<number>`count(*) FILTER (WHERE starts_with(${purchaseIndents.indentNo}, ${prefix}) AND ${purchaseIndents.indentNo} ~ '/[0-9]+$')`,
+      max: sql<number>`max(CASE WHEN starts_with(${purchaseIndents.indentNo}, ${prefix}) AND ${purchaseIndents.indentNo} ~ '/[0-9]+$' THEN substring(${purchaseIndents.indentNo} from '/([0-9]+)$')::integer ELSE 0 END)`,
+    })
       .from(purchaseIndents)
       .where(and(sql`EXTRACT(YEAR FROM ${purchaseIndents.createdAt}) = ${year}`, siteId
         ? eq(purchaseIndents.siteId, siteId)
         : sql`${purchaseIndents.siteId} IS NULL AND upper(trim(${purchaseIndents.raisedFrom})) = ${name.toUpperCase()}`));
-    const seq = Math.max(Number(counter?.value) || 0, Number(result?.count) || 0, Number(result?.max) || 0) + 1;
+    const seq = nextPurchaseIndentSequence({
+      shortName,
+      legacyCounter: shortName === "HLC" ? Number(counter?.value) || 0 : 0,
+      companyCounter: shortName === "HLC" ? 0 : Number(counter?.value) || 0,
+      legacyCount: shortName === "HLC" ? Number(result?.count) || 0 : 0,
+      companyCount: shortName === "HLC" ? 0 : Number(result?.count) || 0,
+      companyMax: Number(result?.max) || 0,
+    });
     // Existing settings storage keeps the high-water mark through deletions/site renames.
     if (counter) await tx.update(appSettings).set({ value: String(seq), updatedAt: new Date() }).where(eq(appSettings.id, counter.id));
     else await tx.insert(appSettings).values({ key: counterKey, value: String(seq) });
-    return formatPurchaseIndentNumber(name, year, seq);
+    return formatPurchaseIndentNumber(name, year, seq, shortName);
   }
 
   async createPurchaseIndent(data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems> {
@@ -18287,19 +18356,15 @@ export class DatabaseStorage implements IStorage {
 
   private async generateVendorBillNo(): Promise<string> {
     const year = new Date().getFullYear();
+    const shortName = await this.getCompanyShortName();
+    const prefix = `${shortName}/VB/${year}/`;
     const existing = await db.select({ billNo: vendorBills.billNo })
       .from(vendorBills)
-      .where(sql`${vendorBills.billNo} LIKE ${'HLC/VB/' + year + '/%'}`)
+      .where(sql`${vendorBills.billNo} LIKE ${prefix + '%'}`)
       .orderBy(desc(vendorBills.id));
     
-    let nextNum = 1;
-    if (existing.length > 0) {
-      const lastNo = existing[0].billNo;
-      const parts = lastNo.split('/');
-      const lastNum = parseInt(parts[parts.length - 1], 10);
-      if (!isNaN(lastNum)) nextNum = lastNum + 1;
-    }
-    return `HLC/VB/${year}/${String(nextNum).padStart(4, '0')}`;
+    const nextNum = nextVendorBillSequence(shortName, year, existing.map(row => row.billNo).reverse());
+    return formatVendorBillNumber(shortName, year, nextNum);
   }
 
   /**
@@ -18499,7 +18564,7 @@ export class DatabaseStorage implements IStorage {
       // per-row consumption. Only Plant Stock issues belong to HLC's stock;
       // contractor/direct-purchase fuel cannot inflate an HLC recovery.
       const authoritativeDieselPeriod = authoritativeHireDieselPeriod(activities as any, equipment, group.periodFrom, group.periodTo);
-      const calc = calculateHireGroup({ terms, periodFrom: group.periodFrom, periodTo: group.periodTo, activities, maintenance,
+      const calc = calculateHireGroup({ companyShortName: await this.getCompanyShortName(tx), terms, periodFrom: group.periodFrom, periodTo: group.periodTo, activities, maintenance,
         dailyDecisions: group.dailyDecisions, tripDecisions: group.tripDecisions, exceptionDecisions: decisions,
         quantityOverride: group.quantityOverride, grossAmountOverride: group.grossAmountOverride,
         // The Equipment Master, not client-submitted activity/override data,
@@ -19930,7 +19995,7 @@ export class DatabaseStorage implements IStorage {
     const matchingIds = ownerEquipment.filter(e => ownerIdentities.get(e.id)?.vendor?.id === selectedIdentity).map(e => e.id);
     const needsReceiptOwnershipFilter = bt === "material" || bt === "transport" || bt === "all";
     const hlcPartyId = needsReceiptOwnershipFilter
-      ? knownHlcPartyId === undefined ? await this.getHlcPartyId() : knownHlcPartyId
+      ? knownHlcPartyId === undefined ? await this.getOwnCompanyPartyId() : knownHlcPartyId
       : null;
     const items: (Partial<InsertVendorBillItem> & { sourceId?: number | string; sourceType?: string | null; vehicleNumber?: string | null; receiptNumber?: string | null; actualMt?: number | null; physicalQuantity?: number; physicalUnit?: string | null })[] = [];
 
@@ -20545,7 +20610,7 @@ export class DatabaseStorage implements IStorage {
       .where(sql`${equipmentMaster.vendorName} IS NOT NULL AND ${equipmentMaster.vendorName} != ''`);
     for (const r of eqVendors) { if (r.name) names.add(r.name.toUpperCase().trim()); }
 
-    const hlcPartyId = await this.getHlcPartyId();
+    const hlcPartyId = await this.getOwnCompanyPartyId();
     const mrSuppliers = hlcPartyId == null ? [] : await db.select({ name: materialReceipts.supplier })
       .from(materialReceipts)
       .where(and(
@@ -23329,7 +23394,7 @@ export class DatabaseStorage implements IStorage {
         if (row.supplier) addRecord(row.supplier, "material");
       }
 
-      const hlcPartyId = await this.getHlcPartyId();
+      const hlcPartyId = await this.getOwnCompanyPartyId();
       const plantReceipts = hlcPartyId == null ? [] : await db.select({
         supplier: materialReceipts.supplier,
       })
@@ -24085,7 +24150,7 @@ export class DatabaseStorage implements IStorage {
       addMaterial(row.material || "MATERIAL", row.uom);
     }
 
-    const hlcPartyId = await this.getHlcPartyId();
+    const hlcPartyId = await this.getOwnCompanyPartyId();
     const plantReceipts = hlcPartyId == null ? [] : await db.selectDistinct({
       materialName: plantMaterials.name,
       uom: materialReceipts.uom,
@@ -27209,11 +27274,8 @@ export class DatabaseStorage implements IStorage {
       return result;
     }
 
-    const [hlcParty] = await db.select({ id: parties.id })
-      .from(parties)
-      .where(sql`UPPER(TRIM(${parties.name})) = 'HLC' OR ${parties.name} ILIKE '%HIGH LANE%'`)
-      .limit(1);
-    const hlcPartyId = hlcParty?.id ?? null;
+    const hlcPartyId = await this.getOwnCompanyPartyId();
+    if (hlcPartyId == null) return { created: 0, skipped: 0, errors: 1 };
 
     const candidates = execSelectRows<{
       id: string; date: string; party_id: string | null;
@@ -27350,11 +27412,8 @@ export class DatabaseStorage implements IStorage {
       return result;
     }
 
-    const [hlcParty] = await db.select({ id: parties.id })
-      .from(parties)
-      .where(sql`UPPER(TRIM(${parties.name})) = 'HLC' OR ${parties.name} ILIKE '%HIGH LANE%'`)
-      .limit(1);
-    const hlcPartyId = hlcParty?.id ?? null;
+    const hlcPartyId = await this.getOwnCompanyPartyId();
+    if (hlcPartyId == null) return { created: 0, skipped: 0, errors: 1 };
 
     const candidates = execSelectRows<{
       id: string; date: string; party_id: string | null;
@@ -30060,11 +30119,20 @@ export class DatabaseStorage implements IStorage {
     firstMaterial: string,
   ): Promise<string> {
     const year = new Date().getFullYear();
+    const shortName = await this.getCompanyShortName(tx);
+    const prefix = `${shortName}/IRN/${year}/`;
     const [result] = await tx
       .select({ count: sql<number>`count(*)` })
       .from(internalRequisitions)
-      .where(sql`EXTRACT(YEAR FROM ${internalRequisitions.createdAt}) = ${year}`);
-    const seq = (Number(result?.count) || 0) + 1;
+      .where(and(
+        sql`EXTRACT(YEAR FROM ${internalRequisitions.createdAt}) = ${year}`,
+        shortName === "HLC" ? sql`TRUE` : sql`${internalRequisitions.irnNo} LIKE ${prefix + "%"}`,
+      ));
+    const seq = nextInternalRequisitionSequence(
+      shortName,
+      shortName === "HLC" ? Number(result?.count) || 0 : 0,
+      shortName === "HLC" ? 0 : Number(result?.count) || 0,
+    );
 
     const fromCode = raisedFrom.toLowerCase().includes("hmp")
       ? "HMP"
@@ -30081,7 +30149,7 @@ export class DatabaseStorage implements IStorage {
 
     const mat3 = firstMaterial.replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase() || "MAT";
 
-    return `HLC/IRN/${year}/${fromCode}-${initials}-${mat3}/${String(seq).padStart(4, "0")}`;
+    return formatInternalRequisitionNumber(shortName, year, fromCode, initials, mat3, seq);
   }
 
   async getInternalRequisitions(

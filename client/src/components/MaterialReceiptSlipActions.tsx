@@ -27,7 +27,8 @@ export function MaterialReceiptSlipActions({
 
   const createPdf = async () => {
     const blob = await buildMaterialReceiptSlipPdf(record, company, logoFile);
-    return { blob, filename: materialReceiptSlipFilename(record) };
+    const companyShortName = company.shortName?.trim() || "Your company";
+    return { blob, filename: materialReceiptSlipFilename(record, companyShortName), companyShortName };
   };
   const download = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -66,7 +67,7 @@ export function MaterialReceiptSlipActions({
         setPdfUrl(URL.createObjectURL(blob));
         setOpen(true);
       } else {
-        const caption = materialReceiptSlipCaption(record);
+        const caption = materialReceiptSlipCaption(record, company.shortName?.trim() || "Your company");
         const file = new File([blob], filename, { type: "application/pdf" });
         const shareNavigator = navigator as Navigator & {
           canShare?: (data?: ShareData) => boolean;

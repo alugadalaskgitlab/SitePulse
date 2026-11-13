@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 const rupees = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -60,6 +61,7 @@ export function EquipmentMasterRows({
   onDelete,
   togglePending = false,
 }: EquipmentMasterRowsProps) {
+  const { companyShortName } = useFeatureFlags();
   const [tab, setTab] = useState<"owned" | "hired">("owned");
   const [searchByTab, setSearchByTab] = useState<Record<"owned" | "hired", string>>({ owned: "", hired: "" });
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -179,8 +181,8 @@ export function EquipmentMasterRows({
                                   <Detail label="Start date" value={item.hireStartDate || "—"} />
                                   <Detail label="End date" value={item.hireEndDate || "Open-ended"} />
                                   <Detail label="Divisor" value={divisorLabel(item)} />
-                                  <Detail label="Diesel by" value={item.hireDieselResponsibility === "vendor" ? "Vendor" : "HLC"} />
-                                  <Detail label="Operator by" value={item.hireOperatorResponsibility === "vendor" ? "Vendor" : "HLC"} />
+                                  <Detail label="Diesel by" value={item.hireDieselResponsibility === "vendor" ? "Vendor" : companyShortName} />
+                                  <Detail label="Operator by" value={item.hireOperatorResponsibility === "vendor" ? "Vendor" : companyShortName} />
                                   <Detail label="Breakdown deduction" value={item.hireBreakdownDeductionEnabled ? "Allowed" : "Not allowed"} />
                                   {item.hireAgreementRemarks?.trim() && <Detail label="Remarks" value={item.hireAgreementRemarks.trim()} />}
                                 </>

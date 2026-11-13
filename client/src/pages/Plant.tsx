@@ -2675,6 +2675,7 @@ export function PartyMaster() {
 
 export function MaterialMaster() {
   const { toast } = useToast();
+  const { companyShortName } = useFeatureFlags();
   const { sectionCan, featureCan } = useAuth();
   const canEdit = sectionCan("master_materials", "edit");
   const canCreate = sectionCan("master_materials", "create");
@@ -2979,7 +2980,7 @@ export function MaterialMaster() {
   const materialLooseDensity = looseWeightPerCumFromProfile(materialProfile);
   const materialThickness = materialThicknessMm.trim() === "" ? null : Number(materialThicknessMm);
   const getPartyName = (id: number | null) => {
-    if (id === null) return "HLC (Common)";
+    if (id === null) return `${companyShortName} (Common)`;
     return parties?.find(p => p.id === id)?.name || `Party #${id}`;
   };
 
@@ -4495,6 +4496,7 @@ export function EquipmentIdentificationSection() {
 
 export function EquipmentMasterSection() {
   const { toast } = useToast();
+  const { companyShortName } = useFeatureFlags();
   const { sectionCan, featureCan } = useAuth();
   const canEdit = sectionCan("master_equipment", "edit");
   const canCreate = sectionCan("master_equipment", "create");
@@ -4857,8 +4859,8 @@ export function EquipmentMasterSection() {
                         <div><Label>Hire rate (₹)</Label><Input type="number" min="0" step="0.01" value={hireRate} onChange={e => setHireRate(e.target.value)} data-testid="input-hire-rate" /></div>
                         <div><Label>Hire start date</Label><Input type="date" value={hireStartDate} onChange={e => setHireStartDate(e.target.value)} data-testid="input-hire-start-date" /></div>
                         <div><Label>Hire end date <span className="text-muted-foreground">(optional)</span></Label><Input type="date" value={hireEndDate} onChange={e => setHireEndDate(e.target.value)} data-testid="input-hire-end-date" /></div>
-                        <div><Label>Diesel responsibility</Label><Select value={hireDieselResponsibility} onValueChange={setHireDieselResponsibility}><SelectTrigger data-testid="select-hire-diesel-responsibility"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hlc">HLC</SelectItem><SelectItem value="vendor">Vendor</SelectItem></SelectContent></Select></div>
-                        <div><Label>Operator responsibility</Label><Select value={hireOperatorResponsibility} onValueChange={setHireOperatorResponsibility}><SelectTrigger data-testid="select-hire-operator-responsibility"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hlc">HLC</SelectItem><SelectItem value="vendor">Vendor</SelectItem></SelectContent></Select></div>
+                        <div><Label>Diesel responsibility</Label><Select value={hireDieselResponsibility} onValueChange={setHireDieselResponsibility}><SelectTrigger data-testid="select-hire-diesel-responsibility"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hlc">{companyShortName}</SelectItem><SelectItem value="vendor">Vendor</SelectItem></SelectContent></Select></div>
+                        <div><Label>Operator responsibility</Label><Select value={hireOperatorResponsibility} onValueChange={setHireOperatorResponsibility}><SelectTrigger data-testid="select-hire-operator-responsibility"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hlc">{companyShortName}</SelectItem><SelectItem value="vendor">Vendor</SelectItem></SelectContent></Select></div>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div><Label>Monthly divisor</Label><Select value={monthlyDivisorType} onValueChange={setMonthlyDivisorType}><SelectTrigger data-testid="select-monthly-divisor"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="calendar">Calendar days</SelectItem><SelectItem value="30">30 days</SelectItem><SelectItem value="custom">Custom</SelectItem></SelectContent></Select></div>

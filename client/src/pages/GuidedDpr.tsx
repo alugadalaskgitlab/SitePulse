@@ -26,6 +26,7 @@ import type { EquipmentActivitySegment } from "@/components/EquipmentActivityAll
 import { chooseResourceItem, newResourceRow, todaysResourceActivities, resourceSuggestion, type SuggestionRow } from "@/lib/resourceSuggestions";
 import { readDprWriteTokens, requireDprWriteTokens, type DprWriteTokens } from "@/lib/dprSectionTokens";
 import { useLocation, useSearch } from "wouter";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { Link } from "wouter";
 import {
   ChevronDown, ChevronUp, Plus, Trash2, Loader2, Check, Camera, X,
@@ -229,6 +230,7 @@ function fmtCh(km: number | null | undefined): string {
 }
 
 export default function GuidedDpr() {
+  const { companyShortName } = useFeatureFlags();
   const [, setLocation] = useLocation();
   const searchStr = useSearch();
   const entryParams = new URLSearchParams(searchStr);
@@ -1751,7 +1753,7 @@ export default function GuidedDpr() {
             return false;
           }
           if (bar.arrangement && /part/i.test(bar.arrangement.mode ?? "") && !e.executedBy) {
-            toast({ title: "Executed by required", description: `"${e.activity}": this reach is partly outsourced — select HLC or agency (separate rows per executor).`, variant: "destructive" });
+            toast({ title: "Executed by required", description: `"${e.activity}": this reach is partly outsourced — select ${companyShortName} or agency (separate rows per executor).`, variant: "destructive" });
             return false;
           }
         }
@@ -2598,7 +2600,7 @@ export default function GuidedDpr() {
                           <SelectContent>
                             {activeEquipmentMaster.map((m: any) => (
                               <SelectItem key={m.id} value={String(m.id)}>
-                                {m.name} {m.registrationNumber ? `(${m.registrationNumber})` : ""} — {m.ownership === "hired" ? `HIRED: ${m.vendorName ?? ""}` : "HLC OWN"}
+                                {m.name} {m.registrationNumber ? `(${m.registrationNumber})` : ""} — {m.ownership === "hired" ? `HIRED: ${m.vendorName ?? ""}` : `${companyShortName} OWN`}
                               </SelectItem>
                             ))}
                             <SelectItem value={OTHER_EQUIPMENT_VALUE}>Other / Unlisted equipment</SelectItem>
@@ -2811,7 +2813,7 @@ export default function GuidedDpr() {
                          equipmentPickerSlot={equipmentPickerSlot}
                          ownerTypeSlot={ownerTypeSlot}
                          dieselSourceSlot={dieselSourceSlot}
-                         stoppageSlot={<BreakdownStoppageEditor usageStatus={pt.usageStatus}
+                          stoppageSlot={<BreakdownStoppageEditor usageStatus={pt.usageStatus} companyShortName={companyShortName}
                            draftOnly
                            value={(pt.breakdowns ?? []) as StagedBreakdown[]}
                            onChange={(breakdowns) => setEquipment(rows => rows.map((row, rowIndex) =>

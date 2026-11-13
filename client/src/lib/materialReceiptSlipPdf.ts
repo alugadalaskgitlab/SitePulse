@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import type { MaterialReceiptSlipCompany, MaterialReceiptSlipData } from "./materialReceiptSlipTypes";
 import { loadPdfLogoDataUrl } from "@/components/vendor-bills/pdfExportStyle";
 import { formatPersonName } from "@shared/personName";
+import { formatCompanyText } from "@shared/companyIdentity";
 
 const W = 148;
 const M = 10;
@@ -120,7 +121,7 @@ function layout(
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(...INK);
-    doc.text("HLC", M + 9, 19.5, { align: "center" });
+    doc.text(company.shortName?.trim() || "Your company", M + 9, 19.5, { align: "center" });
     logoWidth = 18;
   }
 
@@ -128,7 +129,7 @@ function layout(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
   doc.setTextColor(...INK);
-  doc.text(doc.splitTextToSize(company.name || "High Lane Constructions", W - M - textX).slice(0, 1), textX, 15.5);
+   doc.text(doc.splitTextToSize(company.name || "Your company", W - M - textX).slice(0, 1), textX, 15.5);
   const companyLines = [
     company.address?.trim() || "",
     [
@@ -168,7 +169,7 @@ function layout(
 
   y += 5;
   const info = record.kind === "plant"
-    ? [["Date", displayDate(record.date)], ["Time", displayTime(record.time)], ["Received at", record.plantName || "Main Plant"]] as [string, string][]
+    ? [["Date", displayDate(record.date)], ["Time", displayTime(record.time)], ["Received at", record.plantName || company.defaultPlantName?.trim() || "Main Plant"]] as [string, string][]
     : [["Date", displayDate(record.date)], ["Time", displayTime(record.time)], ["Site", record.site || "-"], ["Location", record.location || "-"]] as [string, string][];
   const widths = record.kind === "plant" ? [30, 24, 74] : [26, 20, 41, 41];
   doc.setDrawColor(...RULE);
@@ -204,7 +205,13 @@ function layout(
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7.6);
     doc.setTextColor(...INK);
-    doc.text(doc.splitTextToSize(record.partyName || "HLC", 46).slice(0, 1), M + 22, y + 20.5);
+     const stockOwner = record.partyName
+       ? formatCompanyText(record.partyName, {
+           companyName: company.name || "Your company",
+           companyShortName: company.shortName?.trim() || "Your company",
+         })
+       : company.shortName?.trim() || "Your company";
+     doc.text(doc.splitTextToSize(stockOwner, 46).slice(0, 1), M + 22, y + 20.5);
   }
   label(doc, "Quantity received", W - M - 5, y + 7, "right");
   const uom = (record.uom || "").toUpperCase();
@@ -331,14 +338,17 @@ export async function buildMaterialReceiptSlipPdf(
   return doc.output("blob");
 }
 
-export function materialReceiptSlipFilename(record: MaterialReceiptSlipData): string {
+export function materialReceiptSlipFilename(record: MaterialReceiptSlipData, companyShortName = "Your company"): string {
   const reference = record.kind === "plant" ? record.receiptNo || `RECEIPT-${record.id}` : `TRIP-${record.id}`;
   const safeReference = reference.trim().replace(/[\/\s]+/g, "-").replace(/[^A-Za-z0-9._-]/g, "-");
-  return `HLC-${safeReference}.pdf`;
+  const safeCompany = companyShortName.trim().replace(/[^A-Za-z0-9_-]/g, "-") || "Your-company";
+  return `${safeCompany}-${safeReference}.pdf`;
 }
 
-export function materialReceiptSlipCaption(record: MaterialReceiptSlipData): string {
-  const heading = record.kind === "plant" ? "*HLC · Material Receipt*" : "*HLC · Site Material Receipt*";
+export function materialReceiptSlipCaption(record: MaterialReceiptSlipData, companyShortName = "Your company"): string {
+  const heading = record.kind === "plant"
+    ? `*${companyShortName} · Material Receipt*`
+    : `*${companyShortName} · Site Material Receipt*`;
   const reference = record.kind === "plant"
     ? record.receiptNo || `Receipt #${record.id}`
     : `Trip ${record.id}${record.receiptNumber ? ` · Challan ${record.receiptNumber}` : ""}`;

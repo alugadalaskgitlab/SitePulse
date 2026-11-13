@@ -22,6 +22,7 @@ export async function prepareTripMasterSelection(
   selection: TripMasterSelection,
   previous?: any,
   resolveVendorAliases?: (name: string, executor?: any) => Promise<string[]>,
+  companyShortName = "HLC",
 ) {
   if (next.isCancelled || next.isDeleted || previous?.isCancelled || previous?.isDeleted) fail("Cancelled or deleted trips cannot be edited.");
   for (const key of ["supplierVendorId", "materialSourceVendorId"]) {
@@ -75,7 +76,7 @@ export async function prepareTripMasterSelection(
     fail("The vehicle registration does not match the selected Equipment Master.");
   if (machine.ownership === "owned") {
     if (next.transportType !== "in_house" || next.internalEquipmentId !== machine.id || next.supplierVendorId != null)
-      fail("Owned equipment must use HLC transport, not an outside hire link.");
+       fail(`Owned equipment must use ${companyShortName} transport, not an outside hire link.`);
     return;
   }
   if (machine.ownership !== "hired" || next.transportType === "in_house")

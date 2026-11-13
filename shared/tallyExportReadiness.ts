@@ -10,6 +10,12 @@ export type TallyExportConfig = {
   componentLedgerMappings: TallyComponentLedgerMappings;
 };
 
+export const TALLY_COMPANY_NAME_REQUIRED = "Set the Tally company name in Tally settings first.";
+
+export function tallyCompanyNameBlocker(companyName: string | null | undefined): string | null {
+  return companyName?.trim() ? null : TALLY_COMPANY_NAME_REQUIRED;
+}
+
 export const tallyBillCategories = ["material", "equipment", "transport", "labour"] as const;
 export type TallyBillCategory = typeof tallyBillCategories[number];
 
@@ -125,7 +131,7 @@ export function parseTallyExportConfig(value: string | null | undefined): TallyE
     throw new Error("Tally export configuration must be an object.");
   }
   const config = parsed as Record<string, unknown>;
-  const required = ["companyName", "cutoverDate", "projectCategory", "resourceCategory"] as const;
+  const required = ["cutoverDate", "projectCategory", "resourceCategory"] as const;
   for (const key of required) {
     if (typeof config[key] !== "string" || config[key].length === 0) {
       throw new Error(`Tally export configuration is missing ${key}.`);
@@ -139,7 +145,7 @@ export function parseTallyExportConfig(value: string | null | undefined): TallyE
     throw new Error("Tally export cutover date must be a valid YYYY-MM-DD date.");
   }
   return {
-    companyName: config.companyName as string,
+    companyName: typeof config.companyName === "string" ? config.companyName.trim() : "",
     cutoverDate,
     projectCategory: config.projectCategory as string,
     resourceCategory: config.resourceCategory as string,

@@ -10,6 +10,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { StockUnitAdminPanel } from "@/components/StockUnitAdminPanel";
 
 const LDO_FALLBACK = "PLANT OPERATOR";
@@ -17,6 +18,7 @@ const LDO_FALLBACK = "PLANT OPERATOR";
 export default function AdminSettings() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { companyShortName } = useFeatureFlags();
   // Page-level access is enforced by <RequireAuth section="admin_settings"> in
   // App.tsx. Reaching this component implies the user can view the section.
   const authenticated = true;
@@ -37,6 +39,8 @@ export default function AdminSettings() {
   const [brandingAddress, setBrandingAddress] = useState("");
   const [brandingGstin, setBrandingGstin] = useState("");
   const [brandingPhone, setBrandingPhone] = useState("");
+  const [ownCompanyPartyId, setOwnCompanyPartyId] = useState("");
+  const [defaultPlantNameDraft, setDefaultPlantNameDraft] = useState("");
 
   // LDO Received By defaults
   const [ldoTank1ReceivedBy, setLdoTank1ReceivedBy] = useState("");
@@ -50,6 +54,15 @@ export default function AdminSettings() {
     queryKey: ["/api/admin/branding"],
     enabled: authenticated,
   });
+  const { data: ownCompanyPartyData } = useQuery<{
+    selectedPartyId: number | null;
+    explicitlySelected: boolean;
+    parties: Array<{ id: number; name: string }>;
+  }>({ queryKey: ["/api/admin/own-company-party"], enabled: authenticated });
+  const { data: defaultPlantNameData } = useQuery<{
+    configuredName: string | null;
+    effectiveName: string;
+  }>({ queryKey: ["/api/admin/default-plant-name"], enabled: authenticated });
 
   // Licensed modules (deployment-wide)
   const { data: licensedModulesData } = useQuery<{ licensedModules: string[] }>({
@@ -142,6 +155,13 @@ export default function AdminSettings() {
   }, [brandingData]);
 
   useEffect(() => {
+    if (ownCompanyPartyData) setOwnCompanyPartyId(ownCompanyPartyData.selectedPartyId?.toString() ?? "");
+  }, [ownCompanyPartyData]);
+  useEffect(() => {
+    if (defaultPlantNameData) setDefaultPlantNameDraft(defaultPlantNameData.configuredName ?? "");
+  }, [defaultPlantNameData]);
+
+  useEffect(() => {
     if (ldoReceivedByData) {
       setLdoTank1ReceivedBy(ldoReceivedByData.tank1 ?? "");
       setLdoTank2ReceivedBy(ldoReceivedByData.tank2 ?? "");
@@ -184,6 +204,45 @@ export default function AdminSettings() {
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to save branding", variant: "destructive" });
     },
+  });
+
+  const saveOwnCompanyPartyMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/admin/own-company-party", {
+        partyId: ownCompanyPartyId ? Number(ownCompanyPartyId) : null,
+      });
+      if (!response.ok) throw new Error((await response.json()).message || "Could not save company party");
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/own-company-party"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/config"] }),
+      ]);
+      toast({ title: "Company party saved" });
+    },
+    onError: (error: any) => toast({
+      title: "Could not save company party",
+      description: error.message,
+      variant: "destructive",
+    }),
+  });
+
+  const saveDefaultPlantNameMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/admin/default-plant-name", { name: defaultPlantNameDraft });
+      if (!response.ok) throw new Error((await response.json()).message || "Could not save default plant name");
+      return response.json() as Promise<{ configuredName: string | null; effectiveName: string }>;
+    },
+    onSuccess: async data => {
+      queryClient.setQueryData(["/api/admin/default-plant-name"], data);
+      await queryClient.invalidateQueries({ queryKey: ["/api/config"] });
+      toast({ title: "Default plant name saved" });
+    },
+    onError: (error: any) => toast({
+      title: "Could not save default plant name",
+      description: error.message,
+      variant: "destructive",
+    }),
   });
 
   const changeAdminPinMutation = useMutation({
@@ -357,7 +416,7 @@ export default function AdminSettings() {
                 id="brandingName"
                 value={brandingName}
                 onChange={(e) => setBrandingName(e.target.value)}
-                placeholder="e.g. High Lane Constructions Pvt Ltd"
+                placeholder="Your legal company name"
                 data-testid="input-branding-name"
               />
             </div>
@@ -367,7 +426,7 @@ export default function AdminSettings() {
                 id="brandingShortName"
                 value={brandingShortName}
                 onChange={(e) => setBrandingShortName(e.target.value.toUpperCase())}
-                placeholder="e.g. HLC"
+                placeholder={`e.g. ${companyShortName}`}
                 maxLength={10}
                 data-testid="input-branding-short-name"
               />
@@ -432,6 +491,92 @@ export default function AdminSettings() {
               )}
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+              <Building2 className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div>
+              <CardTitle>Our company (party)</CardTitle>
+              <CardDescription>Used for company-owned stock and receipts. No party is guessed if this is unset.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[16rem] flex-1 space-y-2">
+            <Label htmlFor="own-company-party">Company party</Label>
+            <select
+              id="own-company-party"
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              value={ownCompanyPartyId}
+              onChange={event => setOwnCompanyPartyId(event.target.value)}
+              data-testid="select-own-company-party"
+            >
+              <option value="">Use legacy company-name matching when applicable</option>
+              {(ownCompanyPartyData?.parties ?? []).map(party => (
+                <option key={party.id} value={party.id}>{party.name}</option>
+              ))}
+            </select>
+            {ownCompanyPartyData && (
+              <p className="text-xs text-muted-foreground">
+                {ownCompanyPartyData.explicitlySelected
+                  ? "The selected party is saved."
+                  : ownCompanyPartyData.selectedPartyId
+                    ? "Using the existing company-name match; saving will make this choice explicit."
+                    : "No company party is selected or matched."}
+              </p>
+            )}
+          </div>
+          <Button
+            onClick={() => saveOwnCompanyPartyMutation.mutate()}
+            disabled={saveOwnCompanyPartyMutation.isPending || !ownCompanyPartyData}
+            data-testid="button-save-own-company-party"
+          >
+            {saveOwnCompanyPartyMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Save party
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-900/30 flex items-center justify-center">
+              <Package2 className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+            </div>
+            <div>
+              <CardTitle>Default plant name</CardTitle>
+              <CardDescription>Used only for new records, blank plant values, and sample text. Existing plant names are not changed.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[16rem] flex-1 space-y-2">
+            <Label htmlFor="default-plant-name">Plant name</Label>
+            <Input
+              id="default-plant-name"
+              value={defaultPlantNameDraft}
+              onChange={event => setDefaultPlantNameDraft(event.target.value)}
+              placeholder="Main Plant (current fallback)"
+              maxLength={120}
+              data-testid="input-default-plant-name"
+            />
+            <p className="text-xs text-muted-foreground">
+              Effective default: {defaultPlantNameData?.effectiveName ?? "Main Plant"}. Leave blank to keep the fallback.
+            </p>
+          </div>
+          <Button
+            onClick={() => saveDefaultPlantNameMutation.mutate()}
+            disabled={saveDefaultPlantNameMutation.isPending || !defaultPlantNameData}
+            data-testid="button-save-default-plant-name"
+          >
+            {saveDefaultPlantNameMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Save plant name
+          </Button>
         </CardContent>
       </Card>
 
@@ -583,7 +728,7 @@ export default function AdminSettings() {
           <div className="rounded border p-3 bg-slate-50 dark:bg-slate-900/30 text-sm text-slate-600 dark:text-slate-400">
             <strong>Current package: </strong>
             {isUnrestricted
-              ? "Unrestricted — all modules visible (High Lane internal deployment)"
+              ? `Unrestricted — all modules visible (${companyShortName} internal deployment)`
               : hmpLicensed && rmcLicensed
                 ? "Roads + HMP + RMC (both plant modules licensed)"
                 : hmpLicensed
@@ -630,7 +775,7 @@ export default function AdminSettings() {
                 disabled={saveLicensedModulesMutation.isPending || isUnrestricted}
                 data-testid="button-preset-unrestricted"
               >
-                Unrestricted (HLC internal)
+                Unrestricted ({companyShortName} internal)
               </Button>
               <Button
                 size="sm"

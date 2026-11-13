@@ -20,7 +20,7 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain("reconcileVendorBillHireGroups");
     expect(storage).toContain('bill.status !== "draft"');
     expect(storage).toContain("pg_advisory_xact_lock(1426");
-    expect(storage).toContain("calculateHireGroup({ terms");
+    expect(storage).toContain("calculateHireGroup({ companyShortName: await this.getCompanyShortName(tx), terms");
     expect(storage).toContain("A hire group cannot claim another bill's statement");
   });
 

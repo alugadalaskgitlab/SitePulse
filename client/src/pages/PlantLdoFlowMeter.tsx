@@ -17,6 +17,7 @@ import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { normalizeWeightUnit } from "@shared/stockUnits";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
 import { format, parseISO } from "date-fns";
@@ -54,6 +55,7 @@ function classifyReadingSource(r: { sourceShiftLogId?: number | null; sourceHeat
 
 export default function PlantLdoFlowMeter() {
   const { toast } = useToast();
+  const { companyShortName, defaultPlantName } = useFeatureFlags();
   const { sectionCan, user, featureCan } = useAuth();
   const isOwner = user?.isOwner === true;
   const canCreate = featureCan("plant_receipts", "add");
@@ -65,7 +67,7 @@ export default function PlantLdoFlowMeter() {
   const sp = new URLSearchParams(searchString || window.location.search);
   const pageRole: "manager" | "admin" | null = isOwner ? "admin" : "manager";
   const isAdmin = isOwner;
-  const urlPlant = sp.get("plant") || "Main Plant";
+  const urlPlant = sp.get("plant") || defaultPlantName;
   const backLink = getPlantBackLink({ defaultTab: "stock", role: pageRole });
   const [, setLocation] = useLocation();
 
@@ -73,15 +75,15 @@ export default function PlantLdoFlowMeter() {
     queryKey: ["/api/plant-module/shift-logs/plants"],
     queryFn: async () => {
       const res = await fetch("/api/plant-module/shift-logs/plants", { credentials: "include" });
-      if (!res.ok) return ["Main Plant"];
+      if (!res.ok) return [defaultPlantName];
       return res.json();
     },
   });
 
   const plantOptions = useMemo(() => {
-    const list = plantsList && plantsList.length ? plantsList : ["Main Plant"];
+    const list = plantsList && plantsList.length ? plantsList : [defaultPlantName];
     return list.includes(urlPlant) ? list : [...list, urlPlant];
-  }, [plantsList, urlPlant]);
+  }, [plantsList, urlPlant, defaultPlantName]);
 
   const handlePlantChange = (newPlant: string) => {
     if (newPlant === urlPlant) return;
@@ -1052,7 +1054,7 @@ export default function PlantLdoFlowMeter() {
   function exportPdf() {
     const doc = new jsPDF({ orientation: "landscape" });
     doc.setFontSize(16);
-    doc.text("LDO Flow Meter Readings - HLC Plant", 14, 15);
+    doc.text(`LDO Flow Meter Readings - ${companyShortName} Plant`, 14, 15);
     doc.setFontSize(10);
     doc.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, 22);
 
@@ -1079,7 +1081,7 @@ export default function PlantLdoFlowMeter() {
     const printContent = `
       <html><head><title>LDO Flow Meter Readings</title>
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
-      <body><div class="header"><h2>LDO Flow Meter Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
+      <body><div class="header"><h2>LDO Flow Meter Readings - ${companyShortName} Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
       <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Dryer Src</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Source</th><th>Notes</th></tr>
       ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← Boiler tank" : ""}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${getReadingSourceLabel(r)}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;

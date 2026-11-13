@@ -54,6 +54,7 @@ export function loadPdfLogoDataUrl(logoFile?: string | null): Promise<string | n
 export type PdfBillHeader = {
   title: string;
   companyName?: string;
+  companyShortName?: string;
   logoDataUrl?: string | null;
   billNo?: string;
   billDate?: string;
@@ -92,11 +93,11 @@ export function drawPdfBillHeader(doc: jsPDF, header: PdfBillHeader): number {
   }
   if (!logoDrawn) {
     doc.rect(10, 8, 15, 12);
-    doc.text("HLC", 17.5, 15.5, { align: "center" });
+    doc.text(header.companyShortName || "Your company", 17.5, 15.5, { align: "center" });
   }
 
   doc.setFontSize(10);
-  doc.text(header.companyName || "Highlane Constructions", 29, 13);
+  doc.text(header.companyName || "Your company", 29, 13);
   doc.setFontSize(12);
   doc.text(header.title, width - 10, 13, { align: "right" });
 

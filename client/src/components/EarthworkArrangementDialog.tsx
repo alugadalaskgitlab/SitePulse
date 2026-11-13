@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { AlertCircle, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import type { EarthworkArrangementSummary } from "@shared/planningEngine";
 import { deriveEarthworkSourcingBadge, checkCutFillBalance, suggestCutToFillSourceItem } from "@shared/planningEngine";
@@ -239,6 +240,7 @@ export function ArrangementSummaryCard({
   onCancel: () => void;
   onSaved: () => void;
 }) {
+  const { companyText } = useFeatureFlags();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showHistory, setShowHistory] = useState(false);
@@ -318,7 +320,7 @@ export function ArrangementSummaryCard({
     <div className="rounded border border-slate-200 bg-white p-3 space-y-1.5 text-[12px]">
       <div className="flex items-center justify-between gap-2">
         <span className="font-semibold text-slate-800 truncate">
-          {ARRANGEMENT_TYPE_LABELS[arr.arrangementType as ArrangementType] ?? BITUMINOUS_ARRANGEMENT_TYPE_LABELS[arr.arrangementType] ?? arr.arrangementType}
+          {companyText(ARRANGEMENT_TYPE_LABELS[arr.arrangementType as ArrangementType] ?? BITUMINOUS_ARRANGEMENT_TYPE_LABELS[arr.arrangementType] ?? arr.arrangementType)}
         </span>
         <ArrangementStatusBadge status={arr.status} />
       </div>
@@ -633,6 +635,7 @@ export function EarthworkArrangementDialog({
   open, onClose, onSaved, projectId, boqItemId, materialLabel, boqQty, contractQty, sourceBoqItems, sourceItemCount, editArrangement,
   workCategory: workCategoryProp, bituminousItemType: bituminousItemTypeProp, uom: uomProp,
 }: EarthworkArrangementDialogProps) {
+  const { companyText } = useFeatureFlags();
   // ── Instruction 028: category resolution (edit rows win over props) ────────
   const category: WorkCategoryKey = (editArrangement?.workCategory as WorkCategoryKey) ?? workCategoryProp ?? "earthwork";
   const isBituminous = category === "bituminous";
@@ -1068,7 +1071,7 @@ export function EarthworkArrangementDialog({
               </SelectTrigger>
               <SelectContent>
                 {(Object.entries(typeLabels) as [ArrangementType, string][]).map(([k, v]) => (
-                  <SelectItem key={k} value={k} className="text-[12px]">{v}</SelectItem>
+                  <SelectItem key={k} value={k} className="text-[12px]">{companyText(v)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1423,7 +1426,7 @@ export function EarthworkArrangementDialog({
                           </SelectTrigger>
                           <SelectContent>
                             {(Object.entries(RESPONSIBILITY_LABELS) as [ComponentResponsibility, string][]).map(([v, label]) => (
-                              <SelectItem key={v} value={v} className={`text-[11px] ${RESPONSIBILITY_COLORS[v]}`}>{label}</SelectItem>
+                              <SelectItem key={v} value={v} className={`text-[11px] ${RESPONSIBILITY_COLORS[v]}`}>{companyText(label)}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>

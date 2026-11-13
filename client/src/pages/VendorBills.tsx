@@ -685,7 +685,7 @@ export default function VendorBills() {
     staleTime: 0,
     retry: false,
   });
-  const { companyName, logoFile } = useFeatureFlags();
+  const { companyName, companyShortName, logoFile } = useFeatureFlags();
   const canCreate = featureCan("vendor_bills", "add");
   const canEdit = featureCan("vendor_bills", "edit");
   const canViewBills = featureCan("vendor_bills", "view");
@@ -1339,7 +1339,7 @@ export default function VendorBills() {
     onError: (err: Error, variables) => {
       const months = vendorBillHsdRecoveryMonths(err);
       if (months.length) setHireVerificationHsdNotice({ billId: variables.id, months });
-      toast({ ...vendorBillStatusError(err), variant: "destructive" });
+      toast({ ...vendorBillStatusError(err, companyShortName), variant: "destructive" });
     },
   });
 
@@ -1841,6 +1841,7 @@ export default function VendorBills() {
   const hireResult = (group: HireGroup) => {
     const eq = hireEquipmentFor(group.equipmentId) || {};
     return calculateHireGroup({
+      companyShortName,
       terms: {
         ...calculationTermsForBill(group, eq),
         automaticMonthlyBreakdownDeductions: !isHistoricalHireEdit,
@@ -2203,6 +2204,7 @@ export default function VendorBills() {
     const sections = projectVendorBillPageItems({
       items: lineItems, subtotals: categorySubtotals, shouldGroup, labourFilter, showLabourFilter,
       billType, total: totalAmount,
+      companyShortName,
       getLabourSource: item => getLabourSource({ siteName: item.siteName, description: item.description || "" }),
       getSiteLabel: item => parseSiteBadge({ ...item, description: item.description || "" })?.label || null,
       formatDate,
@@ -2228,7 +2230,7 @@ export default function VendorBills() {
       ? `Active labour view filter: ${labourFilter}. Exported rows follow the displayed filter; category subtotals, GST, TDS and net payable retain the broader whole-bill screen totals, including hidden rows.`
       : "";
     return {
-      companyName: companyName || "HLC", logoFile, vendorName, billNo, billDate, periodFrom, periodTo,
+      companyName, companyShortName, logoFile, vendorName, billNo, billDate, periodFrom, periodTo,
       site: selectedSiteId === "all"
         ? "All sites"
         : sites?.find(site => String(site.id) === selectedSiteId)?.name || "Site answer not recorded",
@@ -3600,7 +3602,7 @@ export default function VendorBills() {
                  });
                 const exportData: EquipmentHireExportData = {
                   billNo, billDate, billStatus: editingBillId !== null ? editingBillStatus : "Draft",
-                  companyName: companyName || "Highlane Constructions", logoFile,
+                   companyName, companyShortName, logoFile,
                   vendorName, equipmentName: formatEquipmentOptionLabel(equipment || {}),
                   equipmentType: equipment?.equipmentType,
                   equipmentMasterReference: equipment?.registrationNumber || equipment?.equipmentNumber || selection.equipmentId,
@@ -3774,7 +3776,7 @@ export default function VendorBills() {
                   <div className="space-y-3 border-t pt-3">
                     <p className="text-xs font-semibold uppercase tracking-wide">Adjustments / Recoveries</p>
                     {String(equipment?.hireDieselResponsibility || "").toLowerCase() === "hlc" && <div className="space-y-3 rounded border p-3 text-xs">
-                      <strong>HSD supplied by HLC</strong>
+                      <strong>HSD supplied by {companyShortName}</strong>
                       <div className="grid gap-2 sm:grid-cols-5">
                         <div><span className="text-muted-foreground">Actual Diesel Consumed</span><strong className="block">{diesel?.actualDiesel == null ? "Tank Readings N/A" : `${Number(diesel.actualDiesel).toFixed(2)} L`}</strong></div>
                         <div><span className="text-muted-foreground">Expected Diesel</span><strong className="block">{diesel?.expectedDieselAvailable === false || diesel?.expectedDiesel == null ? "Tank Readings N/A" : `${Number(diesel.expectedDiesel).toFixed(2)} L`}</strong></div>
@@ -4037,7 +4039,7 @@ export default function VendorBills() {
                         data-hire-diesel-months={reconciliationMonthKeys.join(" ")}
                         tabIndex={-1}
                       >
-                        <strong>HLC diesel reconciliation</strong>
+                        <strong>{companyShortName} diesel reconciliation</strong>
                         <div className="mt-2 grid gap-2 sm:grid-cols-4">
                           <span>Expected: <strong>{diesel?.expectedDieselAvailable === false ? "Tank Readings N/A" : `${Number(diesel?.expectedDiesel || 0).toFixed(2)} L`}</strong></span>
                           <span>Actual: <strong>{diesel?.expectedDieselAvailable === false ? "Tank Readings N/A" : `${Number(diesel?.actualDiesel || 0).toFixed(2)} L`}</strong></span>
@@ -4178,7 +4180,7 @@ export default function VendorBills() {
                   {billType !== "equipment" && <span className="mt-1 block text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Other billable activities for this vendor/period are shown here.</span>}
                   {autoItemsResult?.hlcPartyMissing && (billType === "material" || billType === "transport" || billType === "all") && (
                     <p role="alert" className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200" data-testid="warning-hlc-party-not-found">
-                      HLC party not found — receipts not offered.
+                      {companyShortName} party not found — receipts not offered.
                     </p>
                   )}
                   <div className="mt-3 space-y-2">
@@ -5261,7 +5263,7 @@ export default function VendorBills() {
         hireReview: projectHireReview(statement, bill),
         // Bill-wide net must not be repeated once for each statement.
         ...(index > 0 ? { netPayableAmount: undefined } : {}),
-      }, logoFile));
+      }, logoFile, companyShortName, companyName));
     const detailFinancials = getBillFinancialTotals(bill);
     const detailVendorName = vendorDisplayName(bill);
     const detailSiteName = (bill as any).siteName ||
@@ -5334,7 +5336,7 @@ export default function VendorBills() {
       const outputs = savedHireOutputs.flatMap((output: ReturnType<typeof buildSavedEquipmentHireBillOutput>) =>
         output ? [output.data] : []);
       return {
-        companyName: companyName || "HLC", logoFile, vendorName: detailVendorName, billNo: bill.billNo, billDate: bill.billDate,
+        companyName, companyShortName, logoFile, vendorName: detailVendorName, billNo: bill.billNo, billDate: bill.billDate,
         periodFrom: bill.periodFrom || "", periodTo: bill.periodTo || "",
         site: b.siteName || (b.siteId == null ? "All sites" : sites?.find(site => site.id === b.siteId)?.name || ""),
         equipmentType: Array.from(new Set((b.hireStatements || [])
@@ -5358,6 +5360,7 @@ export default function VendorBills() {
         hireStatementDetails: outputs.map(hireStatementExportFromData),
         sections: projectVendorBillPageItems({
           items: bill.items, subtotals: detailSubtotals, shouldGroup, billType: type, total: detailFinancials.totalAmount,
+          companyShortName,
           getLabourSource: item => getLabourSource({ siteName: item.siteName, description: item.description || "" }),
           getSiteLabel: item => parseSiteBadge({ ...item, description: item.description || "" })?.label || null,
           formatDate,
@@ -5532,7 +5535,7 @@ export default function VendorBills() {
               className="space-y-3 rounded border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/20"
               data-testid="hire-verification-hsd-notice"
             >
-              <p className="font-semibold">Verification is blocked until the HLC diesel reconciliation has a disposition for:</p>
+              <p className="font-semibold">Verification is blocked until the {companyShortName} diesel reconciliation has a disposition for:</p>
               <ul className="list-inside list-disc">
                 {hireVerificationHsdNotice.months.map(month => <li key={month.key}>{month.label}</li>)}
               </ul>
@@ -5847,7 +5850,7 @@ export default function VendorBills() {
 
         {hasPersistedHireStatements && <div className="space-y-3">
           {hasFrozenTripDailyHire(bill as any) && <p className="text-sm text-amber-700">{FROZEN_TRIP_DAILY_MESSAGE}</p>}
-          <SavedBillCalendars bill={bill} canExport={canExport} logoFile={logoFile} />
+          <SavedBillCalendars bill={bill} canExport={canExport} logoFile={logoFile} companyName={companyName} companyShortName={companyShortName} />
         </div>}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">

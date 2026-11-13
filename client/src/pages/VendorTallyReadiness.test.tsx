@@ -71,6 +71,10 @@ describe("Vendor Tally Readiness page", () => {
 
   beforeEach(() => {
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(["/api/config"], {
+      companyName: "High Lane Constructions Pvt Ltd",
+      companyShortName: "HLC",
+    });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
       json: async () => mockReport,

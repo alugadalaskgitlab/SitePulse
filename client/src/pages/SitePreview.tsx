@@ -8,6 +8,7 @@ import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import type { Personnel, EquipmentMasterType } from "@shared/schema";
 import { layerDisplayName } from "@shared/layerDisplay";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 interface PreviewData {
   date: string;
@@ -30,6 +31,7 @@ interface SitePreviewProps {
 }
 
 export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: SitePreviewProps) {
+  const { companyShortName } = useFeatureFlags();
   const { data: personnelList } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
   });
@@ -259,7 +261,7 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                         if (equip) {
                           return (
                             <div className="text-sm text-muted-foreground" data-testid={`text-owner-info-${i}`}>
-                              {equip.ownership === "hired" ? `HIRED: ${equip.vendorName || "Unknown Vendor"}` : "HLC OWN"}
+                              {equip.ownership === "hired" ? `HIRED: ${equip.vendorName || "Unknown Vendor"}` : `${companyShortName} OWN`}
                             </div>
                           );
                         }

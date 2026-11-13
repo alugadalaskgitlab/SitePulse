@@ -29,6 +29,7 @@ const labourSources = [
 export function projectVendorBillPageItems({
   items, subtotals, shouldGroup, labourFilter = "all", showLabourFilter = false,
   getLabourSource, getSiteLabel, formatDate, billType = "all", total = 0,
+  companyShortName,
 }: {
   items: ScreenItem[]; subtotals: Record<string, number>; shouldGroup: boolean;
   labourFilter?: "all" | "site" | "plant"; showLabourFilter?: boolean;
@@ -36,6 +37,7 @@ export function projectVendorBillPageItems({
   getSiteLabel: (item: ScreenItem) => string | null;
   formatDate: (date: string | null | undefined) => string;
   billType?: string; total?: number;
+  companyShortName?: string;
 }) {
   const meaningful = items.filter(item => !(item.initialBlank && isTrulyBlankManualBillRow({
     ...item, qty: item.qty ?? undefined, rate: item.rate ?? undefined, amount: item.amount ?? undefined,
@@ -43,7 +45,7 @@ export function projectVendorBillPageItems({
   const toRow = (item: ScreenItem): BillExportRow => {
     const diesel = item.description?.match(/DIESEL:\s*(\d+(?:\.\d+)?)L/i);
     const equipmentLog = item.category === "equipment"
-      ? projectEquipmentLogEvidence(item.equipmentLogEvidence, item.qty, item.unit)
+      ? projectEquipmentLogEvidence(item.equipmentLogEvidence, item.qty, item.unit, companyShortName)
       : null;
     return {
       date: item.date || "", category: item.category || "other", description: item.description || "",

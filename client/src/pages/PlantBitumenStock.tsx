@@ -50,7 +50,7 @@ function classifyReadingSource(r: { sourceShiftLogId?: number | null; sourceHeat
 export default function PlantBitumenStock() {
   const { toast } = useToast();
   const { sectionCan, featureCan, user } = useAuth();
-  const { companyName, logoFile } = useFeatureFlags();
+  const { companyName, companyShortName, defaultPlantName, logoFile } = useFeatureFlags();
   const canCreate = featureCan("plant_receipts", "add");
   const canEdit = featureCan("plant_receipts", "edit");
   const canDelete = featureCan("hmp_rmc", "cancel");
@@ -59,7 +59,7 @@ export default function PlantBitumenStock() {
   const searchString = useSearch();
   const sp = new URLSearchParams(searchString || window.location.search);
   const pageRole: "manager" | "admin" | null = user?.isOwner ? "admin" : "manager";
-  const urlPlant = sp.get("plant") || "Main Plant";
+  const urlPlant = sp.get("plant") || defaultPlantName;
   const backLink = getPlantBackLink({ defaultTab: "stock", role: pageRole });
   const [, setLocation] = useLocation();
 
@@ -67,15 +67,15 @@ export default function PlantBitumenStock() {
     queryKey: ["/api/plant-module/shift-logs/plants"],
     queryFn: async () => {
       const res = await fetch("/api/plant-module/shift-logs/plants", { credentials: "include" });
-      if (!res.ok) return ["Main Plant"];
+      if (!res.ok) return [defaultPlantName];
       return res.json();
     },
   });
 
   const plantOptions = useMemo(() => {
-    const list = plantsList && plantsList.length ? plantsList : ["Main Plant"];
+    const list = plantsList && plantsList.length ? plantsList : [defaultPlantName];
     return list.includes(urlPlant) ? list : [...list, urlPlant];
-  }, [plantsList, urlPlant]);
+  }, [plantsList, urlPlant, defaultPlantName]);
 
   const handlePlantChange = (newPlant: string) => {
     if (newPlant === urlPlant) return;
@@ -754,7 +754,7 @@ export default function PlantBitumenStock() {
     const printContent = `
       <html><head><title>Bitumen Dip Readings</title>
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
-      <body><div class="header"><h2>Bitumen Dip Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
+      <body><div class="header"><h2>Bitumen Dip Readings - ${companyShortName} Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
       <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Depth(cm)</th><th>Volume(L)</th><th>Weight(MT)</th><th>Usable(MT)</th><th>Type</th><th>Source</th><th>Notes</th></tr>
       ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>Tank ${r.tankNumber}</td><td>${r.depthCm}</td><td>${r.volumeLiters.toFixed(3)}</td><td>${(r.weightKg / 1000).toFixed(3)}</td><td>${(getUsableVolume(r.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)}</td><td>${r.readingType}</td><td>${SOURCE_LABELS[classifyReadingSource(r)]}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;

@@ -22,6 +22,7 @@ export interface DprSectionEditorProps {
   onFixOtherSection?: (issue: DprReadinessIssue) => void;
 }
 import { useLocation, useSearch } from "wouter";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -312,6 +313,7 @@ import { boqItemDisplayName } from "@shared/boqItemName";
 import { layerFieldLabel, showLayerField } from "@shared/layerDisplay";
 
 export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectionEditorProps } = {}) {
+  const { companyShortName } = useFeatureFlags();
   // The same collapsed activity presentation is used in section and classic
   // editors; sectionEditor still exclusively controls section save mechanics.
   const condensedActivityPresentation = true;
@@ -1996,7 +1998,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         }
         const arr = (bar as any).arrangement;
         if (arr && /part/i.test(arr.mode ?? "") && !p.executedBy) {
-          toast({ title: `Row ${i + 1}: executed by required`, description: "This reach is partly outsourced — select whether HLC or the agency executed this work. Record HLC and agency work as separate rows.", variant: "destructive" });
+          toast({ title: `Row ${i + 1}: executed by required`, description: `This reach is partly outsourced — select whether ${companyShortName} or the agency executed this work. Record ${companyShortName} and agency work as separate rows.`, variant: "destructive" });
           return;
         }
       }
@@ -3368,7 +3370,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 <SelectTrigger data-testid={`select-equipment-${idx}`}><SelectValue placeholder="Select equipment..." /></SelectTrigger>
                 <SelectContent>
                   {activeEquipment.map(eq => <SelectItem key={eq.id} value={String(eq.id)}>
-                    {eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""} — {eq.ownership === "hired" ? `HIRED: ${eq.vendorName}` : "HLC OWN"}
+                    {eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""} — {eq.ownership === "hired" ? `HIRED: ${eq.vendorName}` : `${companyShortName} OWN`}
                   </SelectItem>)}
                   <SelectItem value={OTHER_EQUIPMENT_VALUE}>Other / Unlisted equipment</SelectItem>
                 </SelectContent>
@@ -3484,7 +3486,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               equipmentPickerSlot={equipmentPicker}
               ownerTypeSlot={ownerType}
               dieselSourceSlot={dieselSource}
-              stoppageSlot={<BreakdownStoppageEditor usageStatus={entry.usageStatus} draftOnly={!!sectionEditor} value={entry.breakdowns ?? []}
+              stoppageSlot={<BreakdownStoppageEditor usageStatus={entry.usageStatus} companyShortName={companyShortName} draftOnly={!!sectionEditor} value={entry.breakdowns ?? []}
                 onChange={breakdowns => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, breakdowns } : row))}
                 testId={`equipment-breakdown-${idx}`} />}
               onChange={(patch) => setEquipment((rows) => rows.map((row, rowIndex) => rowIndex === idx

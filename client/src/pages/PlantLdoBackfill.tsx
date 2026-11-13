@@ -14,12 +14,12 @@ import { ChevronLeft, Loader2, Save, AlertTriangle, FileSpreadsheet, Wand2, Lock
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { LdoFlowReading } from "@shared/schema";
 
 const TANK_LABELS: Record<number, string> = { 1: "Boiler Meter", 2: "Dryer Meter" };
-const PLANT_OPTIONS = ["Main Plant"];
 const DEFAULT_FROM = "2026-02-25";
 
 type RowSource = "shift-log" | "heating-session" | "manual" | "backfill" | "empty";
@@ -143,6 +143,7 @@ const SOURCE_BADGE: Record<RowSource, { label: string; className: string }> = {
 };
 
 export default function PlantLdoBackfill() {
+  const { defaultPlantName } = useFeatureFlags();
   const { user } = useAuth();
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
@@ -156,7 +157,8 @@ export default function PlantLdoBackfill() {
   const today = format(new Date(), "yyyy-MM-dd");
   const [from, setFrom] = useState(DEFAULT_FROM);
   const [to, setTo] = useState(today);
-  const [plant, setPlant] = useState(PLANT_OPTIONS[0]);
+  const [plantSelection, setPlant] = useState<string | null>(null);
+  const plant = plantSelection ?? defaultPlantName;
   const [autoChain, setAutoChain] = useState(true);
   const [csvText, setCsvText] = useState("");
   const [csvOpen, setCsvOpen] = useState(false);
@@ -491,7 +493,7 @@ export default function PlantLdoBackfill() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PLANT_OPTIONS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                  <SelectItem value={defaultPlantName}>{defaultPlantName}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -539,7 +541,7 @@ export default function PlantLdoBackfill() {
                 rows={6}
                 value={csvText}
                 onChange={e => setCsvText(e.target.value)}
-                placeholder={"2026-02-25,Main Plant,1,12345,12380,heated 2 dispatches\n2026-02-25,Main Plant,2,5012,5034,"}
+                placeholder={`2026-02-25,${defaultPlantName},1,12345,12380,heated 2 dispatches\n2026-02-25,${defaultPlantName},2,5012,5034,`}
                 data-testid="textarea-csv"
               />
               <div className="flex gap-2">

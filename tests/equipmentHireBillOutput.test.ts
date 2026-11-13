@@ -54,6 +54,8 @@ import {
 import { projectHireReview } from "../shared/vendorBillLayout";
 
 const data: EquipmentHireExportData = {
+  companyName: "Highlane Constructions",
+  companyShortName: "HLC",
   billNo: "VB/EH/001", vendorName: "Acme Hire", equipmentName: "Excavator · EX-01", projectSite: "North Site",
   periodFrom: "2026-01-10", periodTo: "2026-01-11", hireBasis: "Daily", rate: 5000,
   grossHire: 10000, breakdownDeduction: 1000, hsdRecovery: 250, otherDebit: 100,

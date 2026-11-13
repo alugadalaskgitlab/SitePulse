@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { Link } from "wouter";
 import {
   EQUIPMENT_IDENTIFICATION_QUERY_KEY,
@@ -50,6 +51,7 @@ function selectOptions(data: AnyRow | undefined, name: string) {
 
 export default function EquipmentPerformanceReport() {
   const { featureCan } = useAuth();
+  const { companyText } = useFeatureFlags();
   const canReview = featureCan("equipment_usage", "verify");
   const defaultFilters = useMemo<Filters>(
     () => ({ ...EMPTY_EQUIPMENT_PERFORMANCE_FILTERS, dateTo: format(new Date(), "yyyy-MM-dd") }),
@@ -175,7 +177,7 @@ export default function EquipmentPerformanceReport() {
             <Filter label="Project / Site"><NativeSelect value={filters.projectId} onChange={value => set("projectId", value)} placeholder="All projects" items={selectOptions(report.data, "projects")} /></Filter>
             <Filter label="Scope"><NativeSelect value={filters.scope} onChange={value => set("scope", value)} placeholder="All" items={selectOptions(report.data, "scopes")} fallback={["site", "plant"]} /></Filter>
             <Filter label="Ownership"><NativeSelect value={filters.ownership} onChange={value => set("ownership", value)} placeholder="All" items={selectOptions(report.data, "ownership")} fallback={["owned", "hired"]} /></Filter>
-            <Filter label="Owner / Vendor"><NativeSelect value={filters.ownerVendor} onChange={value => set("ownerVendor", value)} placeholder="All owners / vendors" items={selectOptions(report.data, "owners")} /></Filter>
+            <Filter label="Owner / Vendor"><NativeSelect value={filters.ownerVendor} onChange={value => set("ownerVendor", value)} placeholder="All owners / vendors" items={selectOptions(report.data, "owners").map((item: any) => typeof item === "string" ? { value: item, label: companyText(item) } : { ...item, label: companyText(item.label ?? item.name ?? item.value ?? "") })} /></Filter>
             <Filter label="Equipment Type"><NativeSelect value={filters.equipmentType} onChange={value => set("equipmentType", value)} placeholder="All types" items={selectOptions(report.data, "equipmentTypes")} /></Filter>
             <Filter label="Equipment"><NativeSelect value={filters.equipmentId} onChange={value => set("equipmentId", value)} placeholder="All equipment" items={equipmentOptions.map(item => ({ ...item, label: formatEquipmentOptionLabel(item) }))} /></Filter>
           </div>
@@ -205,7 +207,7 @@ export default function EquipmentPerformanceReport() {
                 </tr></thead>
                  <tbody>{rows.length ? rows.map(row => <tr key={row.key} className="equip-row cursor-pointer border-t border-[#e4dece]" tabIndex={0} role="button" onClick={event => openMachineDetails(row, event.currentTarget)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openMachineDetails(row, event.currentTarget); } }}>
                   <td className="px-4 py-3 font-semibold text-[#193f48]">{row.machine}{row.registrationNumber ? <div className="mt-0.5 text-[10px] font-normal text-slate-500">{row.registrationNumber}</div> : null}</td>
-                  <td className="capitalize">{row.ownership}</td><td>{row.ownerVendor}</td>
+                  <td className="capitalize">{row.ownership}</td><td>{companyText(row.ownerVendor)}</td>
                   <Numeric>{reading(row.openingMeter, row.meterUnit)}</Numeric><Numeric>{reading(row.closingMeter, row.meterUnit)}</Numeric>
                   <Numeric>{partialDuration(row.workingHours, row.workingHoursIncomplete)}</Numeric><Numeric>{partialDuration(row.clockDuration, row.clockDurationIncomplete)}</Numeric>
                   <Numeric>{litres(row.dieselIssued)}</Numeric><Numeric>{litres(row.openingTank)}</Numeric><Numeric>{litres(row.closingTank)}</Numeric>

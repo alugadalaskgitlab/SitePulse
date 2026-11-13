@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ReportExportGate } from "@/components/ReportExportGate";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -81,12 +82,13 @@ function fmt(n: number | null | undefined, digits = 2) {
 }
 
 export default function PlantHeatingTrends() {
+  const { defaultPlantName } = useFeatureFlags();
   const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const today = format(new Date(), "yyyy-MM-dd");
   const defaultFrom = format(subDays(new Date(), 29), "yyyy-MM-dd");
   const [dateFrom, setDateFrom] = useState(defaultFrom);
   const [dateTo, setDateTo] = useState(today);
-  const [plant] = useState("Main Plant");
+  const plant = defaultPlantName;
   const [useShiftMeter, setUseShiftMeter] = useState(false);
 
   const queryKey = ["/api/plant-module/heating-trends", dateFrom, dateTo, plant] as const;

@@ -80,7 +80,7 @@ import { getBaseSiteName } from "@shared/siteName";
 export default function SiteDashboard() {
   const { toast } = useToast();
   const { sectionCan } = useAuth();
-  const { companyName, logoFile } = useFeatureFlags();
+  const { companyName, companyShortName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("site_dprs", "create");
   const canEdit = sectionCan("site_dprs", "edit");
   const canExport = sectionCan("site_dprs", "export");
@@ -365,7 +365,7 @@ export default function SiteDashboard() {
         if (master.ownership === "hired") {
           return `HIRED: ${master.vendorName || "Unknown"}`;
         }
-        return "HLC OWN";
+        return `${companyShortName} OWN`;
       }
     }
     return "";

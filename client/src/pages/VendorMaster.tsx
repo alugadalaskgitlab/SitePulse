@@ -3,8 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { getBillFinancialTotals } from "@shared/vendorBillFinancialReport";
 import { billReviewAmounts } from "@shared/vendorBillReview";
+import { isOwnCompanyName, type CompanyIdentity } from "@shared/companyIdentity";
 
 type Vendor = {
   id: number; name: string; businessName: string | null; gstNumber: string | null; panNumber: string | null;
@@ -33,11 +35,11 @@ const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR
 function normalizeProposalName(name: string) {
   return name.toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
 }
-function isSelfPlaceholder(name: string) {
+function isSelfPlaceholder(name: string, identity: CompanyIdentity) {
   const normalized = normalizeProposalName(name);
   const words = normalized.split(" ").filter(Boolean);
   if (!words.length) return false;
-  if (words.includes("HLC") || /(^| )H L C( |$)/.test(normalized) || /(^| )HIGH LANE CONSTRUCTIONS?( |$)/.test(normalized)) return true;
+  if (isOwnCompanyName(name, identity)) return true;
   const placeholderWords = new Set(["SELF", "OWN", "SUPPLIER", "VENDOR", "SOURCE", "MATERIAL", "TRANSPORT", "PARTY", "COMPANY"]);
   return words.some(word => word === "SELF" || word === "OWN") && words.every(word => placeholderWords.has(word));
 }
@@ -81,6 +83,8 @@ function Editor({ initial, onSave, onCancel, busy }: {
 
 export default function VendorMaster() {
   const { featureCan, user } = useAuth();
+  const { companyName, companyShortName, ownCompanyPartyName, companyText } = useFeatureFlags();
+  const companyIdentity: CompanyIdentity = { companyName, companyShortName, ownCompanyPartyName };
   const canAddVendor = featureCan("masters", "add");
   const canEditMasters = featureCan("masters", "edit");
   const qc = useQueryClient();
@@ -146,7 +150,7 @@ export default function VendorMaster() {
   const visiblePendingProposals = reviewStatus === "pending" ? proposalGroups.flat() : [];
   const selectedProposals = visiblePendingProposals.filter(p => selectedProposalKeys.includes(proposalKey(p)));
   const bulkEligibleVisible = visiblePendingProposals.filter(p =>
-    roleFilter !== "all" && roleFilter !== "equipment" && !p.suggestionId && !p.linkedVendorId && !isSelfPlaceholder(p.name),
+    roleFilter !== "all" && roleFilter !== "equipment" && !p.suggestionId && !p.linkedVendorId && !isSelfPlaceholder(p.name, companyIdentity),
   );
   const allEligibleSelected = bulkEligibleVisible.length > 0 && bulkEligibleVisible.every(p => selectedProposalKeys.includes(proposalKey(p)));
   const roleCounts = (review.data || []).reduce<Record<string, number>>((counts, proposal) => {
@@ -173,8 +177,8 @@ export default function VendorMaster() {
     try {
       for (let index = 0; index < selectedProposals.length; index++) {
         const proposal = selectedProposals[index];
-        if (isSelfPlaceholder(proposal.name)) {
-          failed = { proposal, reason: "HLC/self/own placeholder names cannot be added to the Vendor Master." };
+        if (isSelfPlaceholder(proposal.name, companyIdentity)) {
+          failed = { proposal, reason: companyText(`${companyShortName}/self/own placeholder names cannot be added to the Vendor Master.`) };
           break;
         }
         try {
@@ -293,7 +297,7 @@ export default function VendorMaster() {
         const target = chosen[key] ?? String(p.linkedVendorId ?? p.suggestionId ?? "");
          const suggestedVendorId = p.linkedVendorId ?? p.suggestionId;
          const suggestedVendorName = p.linkedVendorName || available.find(v => v.id === suggestedVendorId)?.name;
-         const blockedPlaceholder = isSelfPlaceholder(p.name);
+         const blockedPlaceholder = isSelfPlaceholder(p.name, companyIdentity);
         return <div key={key} className="rounded-lg border bg-white p-4 flex flex-wrap items-center gap-4">
            {reviewStatus === "pending" && roleFilter !== "all" && roleFilter !== "equipment" && <input type="checkbox" aria-label={`Select ${p.name}`} checked={selectedProposalKeys.includes(selectKey)}
              disabled={busy || blockedPlaceholder} onChange={event => setSelectedProposalKeys(current =>
@@ -302,7 +306,7 @@ export default function VendorMaster() {
             {p.registration && <p className="mt-1 font-mono font-semibold">{p.registration}</p>}
             {p.linkedVendorId && <p className="text-sm font-medium">Vendor Master: {p.linkedVendorName || available.find(v => v.id === p.linkedVendorId)?.name || `#${p.linkedVendorId}`}</p>}
              {suggestedVendorId && <p className="text-sm font-medium text-blue-800">Suggested existing master: {suggestedVendorName || `#${suggestedVendorId}`} — excluded from select-all; select deliberately.</p>}
-             {blockedPlaceholder && <p className="text-sm font-medium text-red-700">Not eligible: HLC/self/own placeholder names cannot be added to the Vendor Master.</p>}
+             {blockedPlaceholder && <p className="text-sm font-medium text-red-700">Not eligible: {companyText(`${companyShortName}/self/own placeholder names cannot be added to the Vendor Master.`)}</p>}
             {p.conflict && <p className="text-sm text-amber-700">{p.conflict}</p>}
             {p.confirmedBy && <p className="text-xs text-slate-600">Confirmed by {p.confirmedBy}{p.confirmedAt ? ` · ${new Date(p.confirmedAt).toLocaleString()}` : ""} · {p.confirmationReason}</p>}</div>
           {reviewStatus === "pending" && canEditMasters && <>
@@ -335,8 +339,8 @@ export default function VendorMaster() {
       {creating && <div className="fixed inset-0 bg-black/40 z-50 overflow-auto p-4 flex items-start justify-center"><div className="w-full max-w-2xl mt-8">
         <p className="bg-white px-5 pt-4 font-medium">Create & link: {creating.name} ({roleLabels[creating.role]})</p>
          <Editor key={`${creating.role}:${creating.name}`} initial={{ name: creating.name, businessName: creating.name }} busy={busy} onCancel={() => setCreating(null)} onSave={form => {
-           if (isSelfPlaceholder(String(form.name || creating.name))) {
-             setMessage("This HLC/self/own placeholder name was not created.");
+           if (isSelfPlaceholder(String(form.name || creating.name), companyIdentity)) {
+             setMessage(companyText(`This ${companyShortName}/self/own placeholder name was not created.`));
              setCreating(null);
              return;
            }

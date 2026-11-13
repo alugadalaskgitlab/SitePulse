@@ -35,14 +35,16 @@ export function breakdownDurationHours(fromTime: string, toTime: string): number
   return minutes > 0 ? Math.round((minutes / 60) * 1000) / 1000 : null;
 }
 
-export function BreakdownStoppageEditor({ value, onChange, disabled = false, draftOnly = false, testId = "breakdown", usageStatus }: {
+export function BreakdownStoppageEditor({ value, onChange, disabled = false, draftOnly = false, testId = "breakdown", usageStatus, companyShortName = "HLC" }: {
   value: StagedBreakdown[];
   onChange: (next: StagedBreakdown[]) => void;
   disabled?: boolean;
   draftOnly?: boolean;
   testId?: string;
   usageStatus?: string | null;
+  companyShortName?: string;
 }) {
+  const companyText = (text: string) => text.replace(/\bHLC\b/gi, companyShortName);
   const patch = (index: number, patchValue: Partial<StagedBreakdown>) =>
     onChange(value.map((row, i) => i === index ? { ...row, ...patchValue } : row));
   return <section className={`${value.length || usageStatus === "breakdown" ? "rounded-md border border-amber-200 bg-amber-50/40 p-3" : ""} space-y-3 [&_label]:text-xs [&_label]:text-slate-700 dark:[&_label]:text-slate-200`} data-draft-only={draftOnly} data-testid={`${testId}-editor`}>
@@ -56,8 +58,8 @@ export function BreakdownStoppageEditor({ value, onChange, disabled = false, dra
         <div><Label>To</Label><Input type="time" value={row.toTime} disabled={disabled} onChange={e => patch(index, { toTime: e.target.value })} data-testid={`${testId}-to-${index}`} /></div>
         <div><Label>Hours</Label><div className="h-10 flex items-center text-sm">{duration == null ? "—" : `${duration.toFixed(1)} h`}</div></div>
         <div><Label>Reason</Label><Input value={row.description} disabled={disabled} onChange={e => patch(index, { description: e.target.value })} data-testid={`${testId}-reason-${index}`} /></div>
-        <div><Label>Responsibility</Label><Select value={row.responsibility || "__none__"} disabled={disabled} onValueChange={v => patch(index, { responsibility: v === "__none__" ? "" : v as "vendor" | "hlc" })}><SelectTrigger data-testid={`${testId}-responsibility-${index}`}><SelectValue placeholder="Select" /></SelectTrigger><SelectContent><SelectItem value="__none__">Not specified</SelectItem><SelectItem value="vendor">Vendor</SelectItem><SelectItem value="hlc">HLC</SelectItem></SelectContent></Select></div>
-        <div><Label>Repair cost by</Label><Select value={row.repairScope || "__none__"} disabled={disabled} onValueChange={v => patch(index, { repairScope: v === "__none__" ? "" : v as "vendor" | "hlc" })}><SelectTrigger data-testid={`${testId}-scope-${index}`}><SelectValue placeholder="Select" /></SelectTrigger><SelectContent><SelectItem value="__none__">Not specified</SelectItem><SelectItem value="vendor">Vendor's scope</SelectItem><SelectItem value="hlc">HLC's scope</SelectItem></SelectContent></Select></div>
+        <div><Label>Responsibility</Label><Select value={row.responsibility || "__none__"} disabled={disabled} onValueChange={v => patch(index, { responsibility: v === "__none__" ? "" : v as "vendor" | "hlc" })}><SelectTrigger data-testid={`${testId}-responsibility-${index}`}><SelectValue placeholder="Select" /></SelectTrigger><SelectContent><SelectItem value="__none__">Not specified</SelectItem><SelectItem value="vendor">Vendor</SelectItem><SelectItem value="hlc">{companyText("HLC")}</SelectItem></SelectContent></Select></div>
+        <div><Label>Repair cost by</Label><Select value={row.repairScope || "__none__"} disabled={disabled} onValueChange={v => patch(index, { repairScope: v === "__none__" ? "" : v as "vendor" | "hlc" })}><SelectTrigger data-testid={`${testId}-scope-${index}`}><SelectValue placeholder="Select" /></SelectTrigger><SelectContent><SelectItem value="__none__">Not specified</SelectItem><SelectItem value="vendor">Vendor's scope</SelectItem><SelectItem value="hlc">{companyText("HLC's scope")}</SelectItem></SelectContent></Select></div>
         <div><Label className="flex min-h-10 items-center gap-2"><input type="checkbox" checked={row.debitableToVendor} disabled={disabled} onChange={e => patch(index, { debitableToVendor: e.target.checked })} data-testid={`${testId}-debitable-${index}`} />Deduct from hire bill?</Label></div>
         <div><Label>Photo</Label><Input type="file" disabled={disabled} onChange={e => {
           const file = e.target.files?.[0];

@@ -12,6 +12,7 @@ import { chooseResourceItem, newResourceRow, todaysResourceActivities, resourceS
 import { readDprWriteTokens, requireDprWriteTokens, type DprWriteTokens } from "@/lib/dprSectionTokens";
 import { useLocation, useRoute, Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { ChevronLeft, Plus, Trash2, Save, Loader2, UserPlus, X, Shield, Check, Send, Camera, Image as ImageIcon, Paperclip } from "lucide-react";
 import { useUpload } from "@/hooks/use-upload";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
@@ -419,6 +420,7 @@ export function mapDprToFormState(dpr: any) {
 }
 
 export default function SiteEdit() {
+  const { companyShortName } = useFeatureFlags();
   const [, params] = useRoute("/site/edit/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -3182,7 +3184,7 @@ export default function SiteEdit() {
                       <p className="text-xs text-muted-foreground">
                         {master?.ownership === "hired"
                           ? `HIRED: ${master.vendorName || "VENDOR"}`
-                          : "HLC OWN"}
+                          : `${companyShortName} OWN`}
                       </p>
                       {isAmbiguous && (
                         <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300" data-testid={`dispatch-ambiguity-${usage.id}`}>
@@ -3283,7 +3285,7 @@ export default function SiteEdit() {
                   <SelectContent>
                     {activeEquipment.map((eq) => (
                       <SelectItem key={eq.id} value={String(eq.id)}>
-                        {eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""} — {eq.ownership === "hired" ? `HIRED: ${eq.vendorName}` : "HLC OWN"}
+                        {eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""} — {eq.ownership === "hired" ? `HIRED: ${eq.vendorName}` : `${companyShortName} OWN`}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -3518,7 +3520,7 @@ export default function SiteEdit() {
               </>
             );
             const stoppageSlot = (
-              <BreakdownStoppageEditor usageStatus={entry.usageStatus}
+              <BreakdownStoppageEditor usageStatus={entry.usageStatus} companyShortName={companyShortName}
                 draftOnly={isDraftMode}
                 value={entry.breakdowns ?? []}
                 onChange={(breakdowns) => setEquipment(rows => rows.map((row, rowIndex) => rowIndex === idx ? { ...row, breakdowns } : row))}

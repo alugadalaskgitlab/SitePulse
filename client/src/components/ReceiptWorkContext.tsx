@@ -10,6 +10,7 @@
  */
 import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -70,9 +71,9 @@ const fmtCh = (v: number | string | null | undefined) => {
   return `${km}+${String(Math.round((n - km) * 1000)).padStart(3, "0")}`;
 };
 
-export function arrangementLabel(a: ArrangementRow, showRate = true): string {
+export function arrangementLabel(a: ArrangementRow, showRate = true, companyShortName = "HLC"): string {
   if (a.arrangementType === "hlc_in_house") {
-    return "HLC — In-house / Self Execution";
+    return `${companyShortName} — In-house / Self Execution`;
   }
   const parts = [
     [a.agencyName, a.materialLabel ?? a.workDescription].filter(Boolean).join(" — "),
@@ -158,6 +159,7 @@ export function ReceiptWorkContext({
   testIdPrefix?: string;
   operationalDate: string;
 }) {
+  const { companyShortName } = useFeatureFlags();
   const siteId = useMemo(() => sitesList.find((s) => s.name === siteName)?.id ?? null, [sitesList, siteName]);
   const { data: projects = [] } = useQuery<Array<{ id: number; name: string }>>({
     queryKey: ["/api/boq/projects", siteId],
@@ -288,14 +290,14 @@ export function ReceiptWorkContext({
             <Label className="text-xs">Execution Arrangement</Label>
             {!manualOnly && historicalInactiveArrangement ? (
               <p className="text-xs mt-1.5 font-medium text-muted-foreground" data-testid={`${testIdPrefix}-arrangement-historical`}>
-                Historical arrangement: {arrangementLabel(historicalInactiveArrangement)}
+                Historical arrangement: {arrangementLabel(historicalInactiveArrangement, true, companyShortName)}
                 {cancelledEffectiveFromAsOf(historicalInactiveArrangement, operationalDate)
                   ? ` · Cancelled effective ${format(new Date(`${cancelledEffectiveFromAsOf(historicalInactiveArrangement, operationalDate)}T00:00:00`), "dd-MMM-yyyy")}`
                   : ` · ${arrangementStatusAsOf(historicalInactiveArrangement, operationalDate)}`}
               </p>
             ) : !manualOnly && resolution.applicable.length === 1 ? (
               <p className="text-xs mt-1.5 font-medium" data-testid={`${testIdPrefix}-arrangement-single`}>
-                {arrangementLabel(resolution.applicable[0])}
+                {arrangementLabel(resolution.applicable[0], true, companyShortName)}
                 {resolution.applicable[0].arrangementType === "client_supplied" && (
                   <Badge variant="outline" className="ml-1.5 text-[10px]">Client supplied</Badge>
                 )}
@@ -321,7 +323,7 @@ export function ReceiptWorkContext({
                 <SelectContent>
                   {manualOnly && <SelectItem value="none">No arrangement</SelectItem>}
                   {resolution.applicable.map((a) => (
-                    <SelectItem key={a.id} value={String(a.id)} disabled={manualOnly && a.id !== value.earthworkArrangementId && !canLinkTripArrangement(a, operationalDate)}>{arrangementLabel(a, !manualOnly)}{manualOnly ? ` · ${arrangementStatusAsOf(a, operationalDate)}${!canLinkTripArrangement(a, operationalDate) ? " · Not valid for new links on this trip date" : ""}` : ""}</SelectItem>
+                    <SelectItem key={a.id} value={String(a.id)} disabled={manualOnly && a.id !== value.earthworkArrangementId && !canLinkTripArrangement(a, operationalDate)}>{arrangementLabel(a, !manualOnly, companyShortName)}{manualOnly ? ` · ${arrangementStatusAsOf(a, operationalDate)}${!canLinkTripArrangement(a, operationalDate) ? " · Not valid for new links on this trip date" : ""}` : ""}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -378,7 +380,7 @@ export function TripWorkContextSummary({ trip, testIdPrefix = "trip-ctx" }: {
         <div>
           <span className="font-medium text-foreground">
             {trip.earthworkArrangementId != null && !["approved", "mobilisation_pending", "in_progress"].includes(arrangementStatusAsOf(arrangement, trip.date)) ? "Historical arrangement:" : "Arrangement:"}
-          </span> {arrangementLabel(arrangement)}
+          </span> {arrangementLabel(arrangement, true, companyShortName)}
           {cancelledEffectiveFromAsOf(arrangement, trip.date) && ` · Cancelled effective ${format(new Date(`${cancelledEffectiveFromAsOf(arrangement, trip.date)}T00:00:00`), "dd-MMM-yyyy")}`}
           {arrangement.arrangementType === "client_supplied" && <Badge variant="outline" className="ml-1 text-[10px]">Client supplied</Badge>}
         </div>

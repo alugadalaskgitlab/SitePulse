@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { boqProjectUpdateErrorMessage, prepareBoqProjectUpdate } from "@/lib/boqProjectEdit";
 import { ProgrammeLink as Link } from "@/components/ProgrammeLink";
@@ -71,6 +72,7 @@ function ProjectFormFields({
   set: (k: string, v: string) => void;
   sites: { id: number; name: string }[];
 }) {
+  const { companyShortName } = useFeatureFlags();
   const uppercaseOnBlur = (key: "name" | "client" | "contractor", value: string) => {
     set(key, uppercaseBusinessText(value));
   };
@@ -102,7 +104,7 @@ function ProjectFormFields({
           <Input value={form.contractor} onChange={e => set("contractor", e.target.value)}
             onBlur={e => uppercaseOnBlur("contractor", e.target.value)}
             className="uppercase"
-            placeholder="e.g. HLC" data-testid="input-contractor" />
+            placeholder={`e.g. ${companyShortName}`} data-testid="input-contractor" />
         </div>
         <div>
           <Label className="text-sm">LINKED SITE</Label>

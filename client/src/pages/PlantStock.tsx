@@ -64,7 +64,7 @@ const normLedger = (e: ReceiptDatedLedgerEntry): ReceiptDatedLedgerEntry => ({
 export default function PlantStock() {
   const { toast } = useToast();
   const { sectionCan, featureCan, user } = useAuth();
-  const { companyName, logoFile } = useFeatureFlags();
+  const { companyName, companyShortName, logoFile } = useFeatureFlags();
   const canExport = featureCan("issues_stock", "export");
   const canReconcile = featureCan("issues_stock", "verify");
   const isOwner = user?.isOwner === true;
@@ -1679,7 +1679,7 @@ export default function PlantStock() {
           {isOwner && (
             <TabsTrigger value="hlc-recon" className="gap-2 text-sm sm:text-sm" data-testid="tab-hlc-recon">
               <GitCompare className="w-4 h-4" />
-              <span className="hidden sm:inline">HLC Reconciliation</span>
+              <span className="hidden sm:inline">{companyShortName} Reconciliation</span>
               <span className="sm:hidden">Recon</span>
             </TabsTrigger>
           )}
@@ -2334,10 +2334,10 @@ export default function PlantStock() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <GitCompare className="w-5 h-5" />
-                HLC Borrow Reconciliation
+                {companyShortName} Borrow Reconciliation
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Compares "borrowed from HLC" as computed by the Party Statement against what HLC's own stock ledger recorded at dispatch time. Any mismatch (delta ≠ 0) may require a stock correction.
+                Compares "borrowed from {companyShortName}" as computed by the Party Statement against what {companyShortName}'s own stock ledger recorded at dispatch time. Any mismatch (delta ≠ 0) may require a stock correction.
               </p>
             </CardHeader>
             <CardContent>
@@ -2412,7 +2412,7 @@ export default function PlantStock() {
                   }).join('');
                   const w = window.open('', '_blank');
                   if (!w) return;
-                  w.document.write(`<!DOCTYPE html><html><head><title>HLC Borrow Reconciliation &#8212; ${escapeHtml(partyName)}</title>
+                  w.document.write(`<!DOCTYPE html><html><head><title>${escapeHtml(companyShortName)} Borrow Reconciliation &#8212; ${escapeHtml(partyName)}</title>
                     <style>body{font-family:sans-serif;padding:20px;font-size:11px}
                     h1{margin-bottom:2px;font-size:16px}h2{margin-bottom:4px;font-size:13px}p{margin:2px 0}
                     table{width:100%;border-collapse:collapse;margin-top:12px}
@@ -2421,13 +2421,13 @@ export default function PlantStock() {
                     .note{font-size:10px;color:#555;margin-top:6px}
                     .mismatch-banner{background:#fef3c7;border:1px solid #fbbf24;border-radius:4px;padding:6px 10px;margin:8px 0;font-weight:bold}</style></head><body>
                     <h1>${escapeHtml(PROJECT_NAME)}</h1>
-                    <h2>HLC Borrow Reconciliation</h2>
+                    <h2>${escapeHtml(companyShortName)} Borrow Reconciliation</h2>
                     <p><strong>Party:</strong> ${escapeHtml(partyName)} &nbsp;|&nbsp; <strong>Material:</strong> ${escapeHtml(materialName)} &nbsp;|&nbsp; <strong>Period:</strong> ${escapeHtml(dateRange)}</p>
                     ${hasMismatches ? '<div class="mismatch-banner">&#9888; Mismatches detected &#8212; highlighted rows require review</div>' : '<p style="color:#059669;font-weight:bold">&#10003; No mismatches detected &#8212; ledgers are reconciled</p>'}
                     <table><thead><tr>
                       <th>Date</th><th>Dispatch Site</th>
                       <th style="text-align:right">Party Stmt Borrowed (${escapeHtml(uom)})</th>
-                      <th style="text-align:right">HLC Ledger Dispatched (${escapeHtml(uom)})</th>
+                      <th style="text-align:right">${escapeHtml(companyShortName)} Ledger Dispatched (${escapeHtml(uom)})</th>
                       <th style="text-align:right">Delta (${escapeHtml(uom)})</th>
                     </tr></thead>
                     <tbody>${tableRows}</tbody>
@@ -2438,7 +2438,7 @@ export default function PlantStock() {
                       <td style="text-align:right"><strong>${escapeHtml((totals.delta >= 0 ? '+' : '') + totals.delta.toFixed(3))}</strong></td>
                     </tr></tfoot>
                     </table>
-                    <p class="note">* Delta = Party Statement Borrowed &#8722; HLC Ledger Dispatched. Positive = party owes more than HLC ledger shows; Negative = HLC ledger over-charges.</p>
+                    <p class="note">* Delta = Party Statement Borrowed &#8722; ${escapeHtml(companyShortName)} Ledger Dispatched. Positive = party owes more than ${escapeHtml(companyShortName)} ledger shows; Negative = ${escapeHtml(companyShortName)} ledger over-charges.</p>
                     </body></html>`);
                   w.document.close();
                   w.print();
@@ -2449,20 +2449,20 @@ export default function PlantStock() {
                   doc.setFontSize(16);
                   doc.text(PROJECT_NAME, 14, 13);
                   doc.setFontSize(12);
-                  doc.text('HLC Borrow Reconciliation', 14, 20);
+                  doc.text(`${companyShortName} Borrow Reconciliation`, 14, 20);
                   doc.setFontSize(9);
                   doc.text(`Party: ${partyName}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, 27);
                   doc.text(hasMismatches ? '⚠ Mismatches detected — highlighted rows require review' : '✓ No mismatches — ledgers are reconciled', 14, 33);
                   autoTable(doc, {
                     startY: 38,
-                    head: [['Date', 'Dispatch Site', `Party Stmt Borrowed\n(${uom})`, `HLC Ledger Dispatched\n(${uom})`, `Delta\n(${uom})`, 'Status']],
+                    head: [['Date', 'Dispatch Site', `Party Stmt Borrowed\n(${uom})`, `${companyShortName} Ledger Dispatched\n(${uom})`, `Delta\n(${uom})`, 'Status']],
                     body: rows.map(r => [
                       r.date,
                       r.site || '-',
                       r.partyStatementBorrowed.toFixed(3),
                       r.hlcLedgerDispatched != null ? r.hlcLedgerDispatched.toFixed(3) : 'unlinked',
                       r.delta != null ? ((r.delta >= 0 ? '+' : '') + r.delta.toFixed(3)) : 'N/A',
-                      r.isLegacy ? 'Legacy' : (r.delta != null && Math.abs(r.delta) > 0.001 ? (r.delta > 0 ? 'Party owes more' : 'HLC over-charges') : 'Match'),
+                      r.isLegacy ? 'Legacy' : (r.delta != null && Math.abs(r.delta) > 0.001 ? (r.delta > 0 ? 'Party owes more' : `${companyShortName} over-charges`) : 'Match'),
                     ]),
                     foot: [['', 'Totals (reconcilable)',
                       totals.partyStatementBorrowed.toFixed(3),
@@ -2491,7 +2491,7 @@ export default function PlantStock() {
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = `HLCRecon_${partyName.replace(/\s+/g, '')}_${materialName}_${ts}.pdf`;
+                  a.download = `${companyShortName}Recon_${partyName.replace(/\s+/g, '')}_${materialName}_${ts}.pdf`;
                   document.body.appendChild(a); a.click(); document.body.removeChild(a);
                   setTimeout(() => URL.revokeObjectURL(url), 100);
                   toast({ title: "PDF download started" });
@@ -2503,12 +2503,12 @@ export default function PlantStock() {
                     {hasMismatches ? (
                       <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-2 text-amber-700 dark:text-amber-300 text-sm font-medium">
                         <span className="text-base">⚠</span>
-                        Mismatches detected — {rows.filter(r => r.delta != null && Math.abs(r.delta) > 0.001).length} dispatch(es) have a discrepancy between the party statement and HLC ledger.
+                        Mismatches detected — {rows.filter(r => r.delta != null && Math.abs(r.delta) > 0.001).length} dispatch(es) have a discrepancy between the party statement and {companyShortName} ledger.
                       </div>
                     ) : !hasLegacy ? (
                       <div className="mb-2 flex items-center gap-2 rounded-md border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 px-4 py-2 text-green-700 dark:text-green-300 text-sm font-medium">
                         <span className="text-base">✓</span>
-                        No mismatches — party statement and HLC ledger are fully reconciled for this selection.
+                        No mismatches — party statement and {companyShortName} ledger are fully reconciled for this selection.
                       </div>
                     ) : (
                       <div className="mb-2 flex items-center gap-2 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/20 px-4 py-2 text-slate-600 dark:text-slate-400 text-sm font-medium">
@@ -2519,7 +2519,7 @@ export default function PlantStock() {
                     {hasLegacy && (
                       <div className="mb-4 flex items-center gap-2 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/20 px-4 py-2 text-slate-600 dark:text-slate-400 text-sm">
                         <span>ℹ</span>
-                        {rows.filter(r => r.isLegacy).length} legacy (unlinked) dispatch(es) require manual verification — these predate referenceId tracking and cannot be automatically matched to HLC ledger entries.
+                        {rows.filter(r => r.isLegacy).length} legacy (unlinked) dispatch(es) require manual verification — these predate referenceId tracking and cannot be automatically matched to {companyShortName} ledger entries.
                       </div>
                     )}
 
@@ -2531,7 +2531,7 @@ export default function PlantStock() {
                         <p className="text-sm text-muted-foreground">{uom}</p>
                       </div>
                       <div className="rounded-lg border p-3 text-center border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20">
-                        <p className="text-sm text-muted-foreground mb-1">HLC Ledger Dispatched</p>
+                        <p className="text-sm text-muted-foreground mb-1">{companyShortName} Ledger Dispatched</p>
                         <p className="text-lg font-bold text-indigo-700 dark:text-indigo-300">{totals.hlcLedgerDispatched.toFixed(3)}</p>
                         <p className="text-sm text-muted-foreground">{uom}</p>
                       </div>
@@ -2562,7 +2562,7 @@ export default function PlantStock() {
                             <th className="text-left p-3 font-semibold">Date</th>
                             <th className="text-left p-3 font-semibold">Dispatch Site</th>
                             <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Party Stmt Borrowed ({uom})</th>
-                            <th className="text-right p-3 font-semibold text-indigo-600 dark:text-indigo-400">HLC Ledger Dispatched ({uom})</th>
+                            <th className="text-right p-3 font-semibold text-indigo-600 dark:text-indigo-400">{companyShortName} Ledger Dispatched ({uom})</th>
                             <th className="text-right p-3 font-semibold">Delta ({uom})</th>
                             <th className="text-left p-3 font-semibold">Status</th>
                           </tr>
@@ -2592,7 +2592,7 @@ export default function PlantStock() {
                                     <span className="px-2 py-0.5 text-sm rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">Legacy — verify manually</span>
                                   ) : isMismatch ? (
                                     <span className="px-2 py-0.5 text-sm rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
-                                      {deltaPositive ? 'Party owes more' : 'HLC over-charges'}
+                                      {deltaPositive ? 'Party owes more' : `${companyShortName} over-charges`}
                                     </span>
                                   ) : (
                                     <span className="px-2 py-0.5 text-sm rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">Match</span>
@@ -2620,7 +2620,7 @@ export default function PlantStock() {
                     </div>
 
                     <p className="text-sm text-muted-foreground mt-3">
-                      * Delta = Party Statement Borrowed − HLC Ledger Dispatched (reconcilable rows only). <strong>Positive</strong> = party owes more than HLC's ledger shows; <strong>Negative</strong> = HLC ledger over-charges the party. Totals exclude legacy/unlinked rows. Any non-zero delta should be investigated and corrected via a stock correction.
+                      * Delta = Party Statement Borrowed − {companyShortName} Ledger Dispatched (reconcilable rows only). <strong>Positive</strong> = party owes more than {companyShortName}'s ledger shows; <strong>Negative</strong> = {companyShortName} ledger over-charges the party. Totals exclude legacy/unlinked rows. Any non-zero delta should be investigated and corrected via a stock correction.
                     </p>
                   </div>
                 );
@@ -2640,7 +2640,7 @@ export default function PlantStock() {
                 Party Supply Obligation Statement
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Select a party and material to see what they supplied, what was borrowed from HLC, and what is still outstanding.
+                Select a party and material to see what they supplied, what was borrowed from {companyShortName}, and what is still outstanding.
               </p>
             </CardHeader>
             <CardContent>
@@ -2701,7 +2701,7 @@ export default function PlantStock() {
                     case 'own_dispatch': return 'Material Consumed';
                     case 'correction': return 'Stock Correction';
                     case 'return': return 'Material Return';
-                    case 'replenishment': return 'Replenishment to HLC';
+                    case 'replenishment': return `Replenishment to ${companyShortName}`;
                     case 'transfer_in': return 'Transfer Received';
                     default: return 'Other';
                   }
@@ -2762,8 +2762,8 @@ export default function PlantStock() {
                     <div class="summary">
                       <div class="card"><div class="card-label">Total Received</div><div class="card-value">${summary.totalReceived.toFixed(3)} ${uom}</div></div>
                       <div class="card"><div class="card-label">From Own Stock</div><div class="card-value">${summary.dispatchedOwn.toFixed(3)} ${uom}</div></div>
-                      <div class="card"><div class="card-label">Borrowed from HLC</div><div class="card-value">${summary.borrowedFromHlc.toFixed(3)} ${uom}</div></div>
-                      <div class="card"><div class="card-label">Replenished to HLC</div><div class="card-value">${summary.replenishedToHlc.toFixed(3)} ${uom}</div></div>
+                      <div class="card"><div class="card-label">Borrowed from ${companyShortName}</div><div class="card-value">${summary.borrowedFromHlc.toFixed(3)} ${uom}</div></div>
+                      <div class="card"><div class="card-label">Replenished to ${companyShortName}</div><div class="card-value">${summary.replenishedToHlc.toFixed(3)} ${uom}</div></div>
                       <div class="card ${isSettled ? 'settled' : 'outstanding'}"><div class="card-label">Still Outstanding</div><div class="card-value">${summary.outstanding.toFixed(3)} ${uom}</div></div>
                     </div>
                     <table><thead><tr>
@@ -2771,7 +2771,7 @@ export default function PlantStock() {
                       <th>Received (${uom})</th>
                       <th>Template Qty (${uom})</th>
                       <th>From Own Stock (${uom})</th>
-                      <th>Borrowed from HLC (${uom})</th>
+                      <th>Borrowed from ${companyShortName} (${uom})</th>
                       <th>Own Stock Balance</th>
                       <th>Notes</th>
                     </tr></thead>
@@ -2786,7 +2786,7 @@ export default function PlantStock() {
                       <td></td>
                     </tr></tfoot>
                     </table>
-                    <p class="note">* Template Qty = full material consumption per dispatch as per mix template. From Own Stock = supplied from party's own inventory. Borrowed from HLC = balance covered by HLC. Outstanding = total borrowed − replenished to HLC.</p>
+                    <p class="note">* Template Qty = full material consumption per dispatch as per mix template. From Own Stock = supplied from party's own inventory. Borrowed from ${companyShortName} = balance covered by ${companyShortName}. Outstanding = total borrowed − replenished to ${companyShortName}.</p>
                     </body></html>`);
                   w.document.close();
                   w.print();
@@ -2804,8 +2804,8 @@ export default function PlantStock() {
                   doc.text([
                     `Received: ${summary.totalReceived.toFixed(3)} ${uom}`,
                     `From Own Stock: ${summary.dispatchedOwn.toFixed(3)} ${uom}`,
-                    `Borrowed from HLC: ${summary.borrowedFromHlc.toFixed(3)} ${uom}`,
-                    `Replenished to HLC: ${summary.replenishedToHlc.toFixed(3)} ${uom}`,
+                    `Borrowed from ${companyShortName}: ${summary.borrowedFromHlc.toFixed(3)} ${uom}`,
+                    `Replenished to ${companyShortName}: ${summary.replenishedToHlc.toFixed(3)} ${uom}`,
                     `Outstanding: ${summary.outstanding.toFixed(3)} ${uom}`,
                   ].join('    '), 14, 33);
                   autoTable(doc, {
@@ -2815,7 +2815,7 @@ export default function PlantStock() {
                       `Received\n(${uom})`,
                       `Template Qty\n(${uom})`,
                       `From Own\nStock (${uom})`,
-                      `Borrowed\nfrom HLC (${uom})`,
+                      `Borrowed\nfrom ${companyShortName} (${uom})`,
                       'Own Stock\nBalance',
                       'Notes',
                     ]],
@@ -2880,8 +2880,8 @@ export default function PlantStock() {
                       {[
                         { label: 'Total Received', value: summary.totalReceived, color: 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20', textColor: 'text-green-700 dark:text-green-300' },
                         { label: 'Dispatched (Own Stock)', value: summary.dispatchedOwn, color: 'border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20', textColor: 'text-orange-700 dark:text-orange-300' },
-                        { label: 'Borrowed from HLC', value: summary.borrowedFromHlc, color: 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20', textColor: 'text-red-700 dark:text-red-300' },
-                        { label: 'Replenished to HLC', value: summary.replenishedToHlc, color: 'border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/20', textColor: 'text-sky-700 dark:text-sky-300' },
+                        { label: `Borrowed from ${companyShortName}`, value: summary.borrowedFromHlc, color: 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20', textColor: 'text-red-700 dark:text-red-300' },
+                        { label: `Replenished to ${companyShortName}`, value: summary.replenishedToHlc, color: 'border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/20', textColor: 'text-sky-700 dark:text-sky-300' },
                         { label: 'Still Outstanding', value: summary.outstanding, color: isSettled ? 'border-green-300 dark:border-green-700 bg-green-100 dark:bg-green-900/30' : 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20', textColor: isSettled ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300' },
                       ].map(card => (
                         <div key={card.label} className={`rounded-lg border p-3 text-center ${card.color}`}>
@@ -2915,7 +2915,7 @@ export default function PlantStock() {
                             <th className="text-right p-3 font-semibold text-green-600 dark:text-green-400">Received ({uom})</th>
                             <th className="text-right p-3 font-semibold text-blue-600 dark:text-blue-400">Template Qty ({uom})</th>
                             <th className="text-right p-3 font-semibold text-orange-600 dark:text-orange-400">From Own Stock ({uom})</th>
-                            <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Borrowed from HLC ({uom})</th>
+                            <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Borrowed from {companyShortName} ({uom})</th>
                             <th className="text-right p-3 font-semibold">Own Balance</th>
                             <th className="text-left p-3 font-semibold">Notes</th>
                           </tr>
@@ -2977,7 +2977,7 @@ export default function PlantStock() {
 
                     {/* Footnote */}
                     <p className="text-sm text-muted-foreground mt-3">
-                      * Template Qty = material consumption per dispatch as per mix template{hasAdjustments ? ", adjusted for moisture content and wastage factor" : ""}. From Own Stock = supplied from party's own inventory. Borrowed from HLC = balance covered by HLC. Outstanding = total borrowed − replenished to HLC.
+                      * Template Qty = material consumption per dispatch as per mix template{hasAdjustments ? ", adjusted for moisture content and wastage factor" : ""}. From Own Stock = supplied from party's own inventory. Borrowed from {companyShortName} = balance covered by {companyShortName}. Outstanding = total borrowed − replenished to {companyShortName}.
                     </p>
                     {hasAdjustments && (
                       <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">

@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  appSettings,
   equipmentMaster,
   equipmentUsage,
   parties,
@@ -34,6 +35,12 @@ const fx = vi.hoisted(() => {
         return [state.dieselMaterial];
       case "parties":
         return [state.hlcParty];
+      case "appSettings":
+        return [
+          { key: "own_company_party_id", value: "3" },
+          { key: "company_name", value: "High Lane Constructions Pvt Ltd" },
+          { key: "company_short_name", value: "HLC" },
+        ];
       case "stockBalances":
         return [{ id: 1, balance: state.stockBalance, uom: "Liters" }];
       case "stockLedger":
@@ -45,19 +52,20 @@ const fx = vi.hoisted(() => {
 
   const tx = {
     select: vi.fn((projection?: Record<string, unknown>) => ({
-      from: (table: any) => ({
-        where: () => {
-          const rows = rowsFor(table);
-          return {
+      from: (table: any) => {
+        const rows = rowsFor(table);
+        return {
+          where: () => ({
           limit: async () => (
             state.tableKinds.get(table) === "equipmentUsage" && projection?.id
               ? (state.successorExists ? [{ id: 999 }] : [])
               : rows
           ),
           then: (resolve: any) => resolve(rows),
+          }),
+          then: (resolve: any) => resolve(rows),
         };
-        },
-      }),
+      },
     })),
     update: vi.fn((table: any) => ({
       set: (values: Record<string, any>) => ({
@@ -139,6 +147,7 @@ beforeAll(async () => {
   storage = new DatabaseStorage();
 
   fx.state.tableKinds.set(equipmentUsage, "equipmentUsage");
+  fx.state.tableKinds.set(appSettings, "appSettings");
   fx.state.tableKinds.set(equipmentMaster, "equipmentMaster");
   fx.state.tableKinds.set(plantMaterials, "plantMaterials");
   fx.state.tableKinds.set(parties, "parties");

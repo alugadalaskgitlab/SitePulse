@@ -367,12 +367,12 @@ export function pipeAdminGuidePdf(stream: NodeJS.WritableStream, plantName?: str
     numberedSteps(doc, [
       'Go to Plant → Masters → Party Master.',
       'Tap "+ Add Party".',
-      'Enter Party Name (full legal name or common site name) and a short Code (2-5 letters, e.g. HLC, ABC).',
+      'Enter Party Name (full legal name or common site name) and a short Code (2-5 letters, e.g. ABC, XYZ).',
       'Optionally add Contact and Notes.',
       'Tap Save.',
     ]);
     infoBox(doc, 'Why parties matter',
-      'When a truck dispatches aggregate, the system first uses the party\'s own aggregate stock. If the party has insufficient stock, it borrows from the default HLC (your own) stock and records the borrow. This is the "owner-first routing" logic. Correct party names ensure stock balances are accurate per contractor.');
+      'When a truck dispatches aggregate, the system first uses the party\'s own aggregate stock. If the party has insufficient stock, it borrows from the configured company stock and records the borrow. This is the "owner-first routing" logic. Correct party names ensure stock balances are accurate per contractor.');
 
     sectionHeading(doc, '2.2 — Material Master');
     body(doc, 'Materials are the raw inputs used in production (aggregate, sand, bitumen, etc.) and the outputs (BC, DBM, WBM, etc.).');
@@ -498,7 +498,7 @@ export function pipeAdminGuidePdf(stream: NodeJS.WritableStream, plantName?: str
       { label: 'Calculate component quantities from mix proportions × load MT', decision: true },
       { label: 'Does Party X have enough stock for each component?', decision: true },
       { label: 'YES → consume from Party X stock only', sub: 'Ledger entry: Party X, type=dispatch' },
-      { label: 'NO → consume available from X, borrow remainder from HLC', sub: 'Ledger entries: Party X (dispatch) + HLC (issue as borrow)' },
+      { label: 'NO → consume available from X, borrow remainder from company stock', sub: 'Ledger entries: Party X (dispatch) + company (issue as borrow)' },
     ], M + 40, CONTENT_W - 80);
 
     tipBox(doc, 'What a negative balance means',
@@ -605,7 +605,7 @@ export function pipeAdminGuidePdf(stream: NodeJS.WritableStream, plantName?: str
     body(doc, 'Toggle between "Party" and "Common" view using the filter above the ledger. Party view shows balances per contractor. Common view shows aggregate across all parties — useful for checking total material available at the plant regardless of ownership.');
 
     sectionHeading(doc, '4.2 — Borrowing Flow & Negative Balances');
-    body(doc, 'The borrowing mechanism ensures production never stops due to one party\'s low stock. The system borrows automatically from HLC (the default party) and records the debt. The borrowing is then settled via a Stock Transfer when the party receives new material.');
+    body(doc, 'The borrowing mechanism ensures production never stops due to one party\'s low stock. The system borrows from the configured company party and records the debt. The borrowing is then settled via a Stock Transfer when the party receives new material.');
     doc.moveDown(0.4);
     subHeading(doc, 'Borrowing Flow Diagram');
     flowChart(doc, [
@@ -613,19 +613,19 @@ export function pipeAdminGuidePdf(stream: NodeJS.WritableStream, plantName?: str
       { label: 'System calculates component needs (e.g. 40 MT aggregate, 5 MT bitumen)', decision: true },
       { label: 'Party A aggregate balance ≥ 40 MT?', decision: true },
       { label: 'YES → consume 40 MT from Party A', sub: 'Dispatch ledger entry for Party A' },
-      { label: 'NO → consume what Party A has, borrow rest from HLC', sub: 'Party A dispatch + HLC borrow transfer' },
-      { label: 'Party A balance goes negative (debt to HLC)' },
+      { label: 'NO → consume what Party A has, borrow rest from the company party', sub: 'Party A dispatch + company borrow transfer' },
+      { label: 'Party A balance goes negative (debt to the company)' },
       { label: 'Party A receives new aggregate (Material Receipt)' },
-      { label: 'Admin runs Stock Transfer: HLC → Party A to settle the debt' },
+      { label: 'Admin runs Stock Transfer: company → Party A to settle the debt' },
     ], M + 30, CONTENT_W - 60);
 
     sectionHeading(doc, '4.3 — Stock Transfer Between Parties');
-    body(doc, 'Used to return borrowed material — when Party A borrowed aggregate from HLC and has now received their own stock, transfer the equivalent quantity back from Party A → HLC to clear the debt.');
+    body(doc, 'Used to return borrowed material — when Party A borrowed aggregate from the company and has now received their own stock, transfer the equivalent quantity back from Party A → company to clear the debt.');
     doc.moveDown(0.3);
     numberedSteps(doc, [
       'Go to Plant → Management → Stock Transfer (or via the "Stock Transfer" button on the stock page).',
       'From Party — select the party giving the material (the one repaying the borrow: Party A).',
-      'To Party — select the party receiving (usually HLC).',
+      'To Party — select the receiving party (often your company party).',
       'Material — select the material type.',
       'Quantity — enter the quantity to transfer.',
       'Date — the date the debt is being settled.',
@@ -956,7 +956,7 @@ export function pipeAdminGuidePdf(stream: NodeJS.WritableStream, plantName?: str
         ['RED badge on Heating Sessions date', 'Session total ≠ shift log meter movement', 'Check session/shift log meter readings; correct the wrong one'],
         ['"Orphaned entries" warning', 'Session deleted after it was saved; ledger row left behind', 'LDO Mismatch page → Remove Orphaned Entries'],
         ['Orange dryer-source banner', 'Session and shift log show different fuel tanks', 'Update session "Dryer fed from" to match shift log'],
-        ['Party stock shows large negative', 'Borrows occurred and were never settled via Transfer', 'Stock Transfer: borrower → HLC, for the borrowed qty'],
+        ['Party stock shows large negative', 'Borrows occurred and were never settled via Transfer', 'Stock Transfer: borrower → company party, for the borrowed qty'],
         ['Variance Report shows > 5% gap', 'Unrecorded issue, spillage, or dip-reading error', 'Post a Stock Adjustment with reason, or correct the dip reading'],
         ['Vendor bill flagged as duplicate', 'Same bill number entered twice for same vendor', 'Delete the duplicate or merge into the correct entry'],
         ['Shift log cannot be edited', 'Log is finalised (locked)', 'Unlock with Admin/Manager PIN, edit, re-finalise'],

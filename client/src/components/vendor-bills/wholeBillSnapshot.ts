@@ -161,6 +161,7 @@ export function hireStatementExportFromData(data: EquipmentHireExportData): Hire
 }
 export type WholeBillSnapshot = {
   companyName: string;
+  companyShortName?: string;
   logoFile?: string;
   /** Set only while building a PDF; the Excel snapshot carries no image data. */
   logoDataUrl?: string | null;

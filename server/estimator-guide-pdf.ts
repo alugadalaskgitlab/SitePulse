@@ -334,7 +334,7 @@ export function pipeEstimatorGuidePdf(stream: NodeJS.WritableStream, plantName?:
     body(doc, 'Two sign-out options are available at the bottom of the Estimator Hub page:');
     doc.moveDown(0.3);
     bulletPoints(doc, [
-      '"Back to HLC Dashboard" — signs out of the Estimator Hub and returns to the main SiteLog home dashboard.',
+      '"Back to company dashboard" — signs out of the Estimator Hub and returns to the main SiteLog home dashboard.',
       '"Sign Out" — signs out of the Estimator Hub only; you are redirected to the Estimator Login page.',
     ]);
     warnBox(doc, 'Session is cookie-based',

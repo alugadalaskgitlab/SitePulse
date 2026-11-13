@@ -14,6 +14,7 @@ import { ChevronLeft, Loader2, Save, AlertTriangle, FileSpreadsheet, Lock, Wand2
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { LdoDipReading } from "@shared/schema";
@@ -21,7 +22,6 @@ import { getLdoVolumeAtDepth, getLdoMaxDepth, getLdoDeadStockVolume } from "@sha
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 
 const TANK_LABELS: Record<number, string> = { 1: "Boiler Tank", 2: "Dryer Tank" };
-const PLANT_OPTIONS = ["Main Plant"];
 const DEFAULT_FROM = "2026-02-25";
 
 type RowSource = "manual" | "backfill" | "empty";
@@ -148,6 +148,7 @@ function formatVolume(tank: number, depth: number | null): string {
 }
 
 export default function PlantLdoDipBackfill() {
+  const { defaultPlantName } = useFeatureFlags();
   const { user } = useAuth();
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
@@ -161,7 +162,8 @@ export default function PlantLdoDipBackfill() {
   const today = format(new Date(), "yyyy-MM-dd");
   const [from, setFrom] = useState(DEFAULT_FROM);
   const [to, setTo] = useState(today);
-  const [plant, setPlant] = useState(PLANT_OPTIONS[0]);
+  const [plantSelection, setPlant] = useState<string | null>(null);
+  const plant = plantSelection ?? defaultPlantName;
   const [autoChain, setAutoChain] = useState(true);
   const [csvText, setCsvText] = useState("");
   const [csvOpen, setCsvOpen] = useState(false);
@@ -491,7 +493,7 @@ export default function PlantLdoDipBackfill() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PLANT_OPTIONS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                  <SelectItem value={defaultPlantName}>{defaultPlantName}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -539,7 +541,7 @@ export default function PlantLdoDipBackfill() {
                 rows={6}
                 value={csvText}
                 onChange={e => setCsvText(e.target.value)}
-                placeholder={"2026-02-25,Main Plant,1,82.5,71.0,morning + evening dip\n2026-02-25,Main Plant,2,124,118,"}
+                placeholder={`2026-02-25,${defaultPlantName},1,82.5,71.0,morning + evening dip\n2026-02-25,${defaultPlantName},2,124,118,`}
                 data-testid="textarea-csv"
               />
               <div className="flex gap-2 justify-end">

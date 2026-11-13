@@ -52,6 +52,12 @@ beforeEach(() => {
     if (url.endsWith("status=confirmed")) return confirmed;
     throw new Error(`Unexpected query: ${url}`);
   } } } });
+  client.setQueryData(["/api/config"], {
+    companyName: "High Lane Constructions Pvt Ltd",
+    companyShortName: "HLC",
+    ownCompanyPartyId: 1,
+    ownCompanyPartyName: "HIGH LANE CONSTRUCTIONS",
+  });
 });
 afterEach(() => { cleanup(); client.clear(); vi.unstubAllGlobals(); });
 

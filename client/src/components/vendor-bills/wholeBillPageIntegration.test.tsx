@@ -16,7 +16,7 @@ vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({
   featureCan: (_feature: string, action: string) => action === "export" ? state.permission : true,
   sectionVisible: () => true,
 }) }));
-vi.mock("@/lib/featureFlags", () => ({ useFeatureFlags: () => ({ companyName: "HLC", logoFile: null }) }));
+vi.mock("@/lib/featureFlags", () => ({ useFeatureFlags: () => ({ companyName: "HLC", companyShortName: "HLC", logoFile: null }) }));
 vi.mock("@/hooks/use-origin", () => ({ useOrigin: () => ({ getPlantBackLink: () => "/plant" }) }));
 vi.mock("@/hooks/use-persisted-filters", () => ({
   usePersistedFilters: (_key: string, defaults: unknown) => [defaults, vi.fn(), vi.fn()],

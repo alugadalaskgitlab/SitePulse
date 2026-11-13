@@ -880,6 +880,7 @@ export interface HireActivityDay {
   movementReferences: readonly string[];
 }
 export interface HireGroupCalculationInput {
+  companyShortName?: string;
   terms: HireTerms;
   periodFrom: string;
   periodTo: string;
@@ -1410,7 +1411,7 @@ export function calculateHireGroup(input: HireGroupCalculationInput): HireGroupC
     : [];
   const recovery = input.dieselRecovery;
   if (recovery?.decision && String(input.terms.dieselResponsibility || "").toLowerCase() === "vendor") {
-    throw new Error("HSD recovery is available only where the Equipment Master assigns diesel responsibility to HLC.");
+    throw new Error(`HSD recovery is available only where the Equipment Master assigns diesel responsibility to ${input.companyShortName || "HLC"}.`);
   }
   if (recovery?.decision === "accept" && dieselPricing.suggestedRecoveryAmount === undefined) {
     throw new Error("A suggested diesel recovery cannot be accepted because the applicable HSD rate is unavailable.");

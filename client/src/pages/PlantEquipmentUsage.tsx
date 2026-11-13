@@ -57,7 +57,7 @@ export default function PlantEquipmentUsage() {
   const { toast } = useToast();
   const { uploadFile } = useUpload();
   const { sectionCan, featureCan, user } = useAuth();
-  const { companyName, logoFile } = useFeatureFlags();
+  const { companyName, companyShortName, logoFile } = useFeatureFlags();
   const canCreate = featureCan("equipment_usage", "add");
   const canCreateEquipmentMaster = featureCan("masters", "add");
   const canEdit = featureCan("equipment_usage", "edit");
@@ -940,7 +940,7 @@ export default function PlantEquipmentUsage() {
         ? "-"
         : (equip as any).ownership === "hired"
           ? `HIRED${equipmentVendorName ? `: ${equipmentVendorName}` : ""}`
-          : "HLC OWN";
+          : `${companyShortName} OWN`;
       const meterType = equip?.meterType || "hour_meter";
       const norm = equip?.consumptionNorm;
       const normLabel = norm != null ? `${norm} ${meterType === "hour_meter" ? "L/hr" : "L/km"}` : "-";
@@ -1600,13 +1600,13 @@ export default function PlantEquipmentUsage() {
                     <SelectValue placeholder="Select diesel source" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="plant_stock">Plant Stock (deducts from HLC)</SelectItem>
+                    <SelectItem value="plant_stock">Plant Stock (deducts from {companyShortName})</SelectItem>
                     <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
                     <SelectItem value="contractor">Contractor Provided (no stock impact)</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-sm text-muted-foreground">
-                  {dieselSource === "plant_stock" && !dieselIncluded && "Diesel will be deducted from plant HLC stock"}
+                  {dieselSource === "plant_stock" && !dieselIncluded && `Diesel will be deducted from ${companyShortName} plant stock`}
                   {dieselSource === "direct_purchase" && !dieselIncluded && "Track diesel purchased directly at site"}
                   {(dieselSource === "contractor" || dieselIncluded) && "Tracking only - diesel is contractor's responsibility"}
                 </p>
@@ -1781,7 +1781,7 @@ export default function PlantEquipmentUsage() {
                 <Label>Remarks</Label>
                 <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value.toUpperCase())} placeholder="Optional notes" data-testid="input-usage-remarks" />
               </div>
-              <BreakdownStoppageEditor value={breakdowns} onChange={setBreakdowns} testId="plant-usage-breakdown" />
+              <BreakdownStoppageEditor value={breakdowns} onChange={setBreakdowns} companyShortName={companyShortName} testId="plant-usage-breakdown" />
 
               <Button 
                 onClick={handleSubmit} 

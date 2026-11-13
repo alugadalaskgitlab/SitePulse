@@ -3,6 +3,7 @@ import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, addDays } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { requirementApprovalBlock, isRequirementDecision } from "@shared/siteRequirementApproval";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -261,6 +262,7 @@ export function RequirementCard({
   filterContext: string;
   allReqs: any[];
 }) {
+  const { companyText } = useFeatureFlags();
   const [open, setOpen] = useState(false);
   const [newStatus, setNewStatus] = useState(req.status);
   const [pmRemarks, setPmRemarks] = useState(req.pmRemarks ?? "");
@@ -853,7 +855,7 @@ export function RequirementCard({
               </p>
               {prevAllocRef.map((r: any, i: number) => (
                 <p key={i} className="text-[11px] text-amber-800 dark:text-amber-200">
-                  {r.materialName ?? "Material"}: {r.fulfilmentType === "hlc" ? "HLC / Internally Arranged" : r.agencyNameSnapshot ?? r.fulfilmentType}
+                  {r.materialName ?? "Material"}: {companyText(r.fulfilmentType === "hlc" ? "HLC / Internally Arranged" : r.agencyNameSnapshot ?? r.fulfilmentType)}
                   {r.fulfilmentType === "other_agency" ? " (other agency — daily exception)" : ""}
                 </p>
               ))}

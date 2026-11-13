@@ -12,8 +12,10 @@ import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, TrendingUp, TrendingDown, FileWarning } from "lucide-react";
 import { format } from "date-fns";
 import type { Party, MixTemplate, TruckDispatch } from "@shared/schema";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 export default function PlantVarianceReport() {
+  const { companyShortName } = useFeatureFlags();
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
 
@@ -56,7 +58,7 @@ export default function PlantVarianceReport() {
   });
 
   const getTemplateName = (id: number | null) => id ? templates?.find(t => t.id === id)?.name || "Unknown" : "Unknown";
-  const getPartyName = (id: number | null) => id ? parties?.find(p => p.id === id)?.name || `Party #${id}` : "HLC";
+  const getPartyName = (id: number | null) => id ? parties?.find(p => p.id === id)?.name || `Party #${id}` : companyShortName;
 
   // Distinct delivery sites from fetched dispatches
   const deliveredToOptions = useMemo(() => {

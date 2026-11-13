@@ -44,7 +44,7 @@ export default function SiteMaterialTrips() {
   const { toast } = useToast();
   const { sectionCan, featureCan, user } = useAuth();
   const canEdit = sectionCan("site_materials", "edit");
-  const { companyName, companyInfo, logoFile } = useFeatureFlags();
+  const { companyName, companyInfo, companyText, logoFile, companyShortName, defaultPlantName } = useFeatureFlags();
   const searchString = useSearch();
   const [currentPath, navigate] = useLocation();
   const piParams = (() => {
@@ -777,7 +777,7 @@ export default function SiteMaterialTrips() {
                       </div>
                       <MaterialReceiptSlipActions
                         record={savedTripForSlip}
-                        company={companyInfo}
+                        company={{ ...companyInfo, shortName: companyShortName, defaultPlantName }}
                         logoFile={logoFile}
                         sendLabel="Send on WhatsApp"
                       />
@@ -813,9 +813,9 @@ export default function SiteMaterialTrips() {
               {!isPILinked && fulfilmentSuggestion && (
                 <div className="rounded border border-indigo-200 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2 text-xs space-y-1" data-testid="receipt-fulfilment-suggestion">
                   <p className="font-semibold text-indigo-800 dark:text-indigo-200">
-                    Tomorrow's Requirement allocation: {fulfilmentLabel(fulfilmentSuggestion.entry)}
+                    Tomorrow's Requirement allocation: {companyText(fulfilmentLabel(fulfilmentSuggestion.entry) || "")}
                   </p>
-                  <p className="text-indigo-700 dark:text-indigo-300">{fulfilmentSuggestion.suggestion.note} ({fulfilmentSuggestion.materialName})</p>
+                  <p className="text-indigo-700 dark:text-indigo-300">{companyText(fulfilmentSuggestion.suggestion.note)} ({fulfilmentSuggestion.materialName})</p>
                   <div className="flex items-center gap-3 flex-wrap">
                     {newTrip.materialSourceType !== "own_source" && fulfilmentSuggestion.suggestion.supplierSuggestion && (
                       <button
@@ -1117,7 +1117,7 @@ export default function SiteMaterialTrips() {
                                 slipSendWindowOpen: (trip as any).slipSendWindowOpen,
                                 slipSendTrackingEnabled: (trip as any).slipSendTrackingEnabled,
                               }}
-                              company={companyInfo}
+                                company={{ ...companyInfo, shortName: companyShortName, defaultPlantName }}
                               logoFile={logoFile}
                             />
                             {(canEdit || isReviewPage) && <Button variant="outline" size="sm" onClick={() => setEditingRoleTrip(trip)} data-testid={`button-edit-trip-roles-${trip.id}`}>{canEdit ? "Edit" : "Details"}</Button>}

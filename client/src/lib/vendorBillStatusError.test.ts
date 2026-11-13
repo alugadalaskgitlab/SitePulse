@@ -24,4 +24,9 @@ describe("vendor bill HSD verification guidance", () => {
     expect(result.description).toContain("Accept Suggested, Edit, or No Recovery");
     expect(result.description).toContain("operator_unavailable on 2026-10-12");
   });
+
+  it("uses the configured company short name in displayed guidance", () => {
+    expect(vendorBillStatusError(error, "ABC").title).toBe("ABC diesel reconciliation needs a decision");
+    expect(vendorBillStatusError(error, "ABC").description).toContain("Complete the ABC diesel reconciliation");
+  });
 });

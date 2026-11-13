@@ -22,7 +22,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { FreeTextSuggestionInput } from "@/components/FreeTextSuggestionInput";
 import { useToast } from "@/hooks/use-toast";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { normalizeWeightUnit } from "@shared/stockUnits";
+import { formatCompanyText } from "@shared/companyIdentity";
 import { useUpload } from "@/hooks/use-upload";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -95,9 +97,12 @@ const ARRANGEMENT_TYPE_LABELS: Record<string, string> = {
   client_supplied: "Client Supplied",
   hlc_in_house: "HLC — In-house / Self Execution",
 };
-function arrangementTypeLabel(type: string | null | undefined): string {
+function arrangementTypeLabel(type: string | null | undefined, companyName = "Your company", companyShortName = "Your company"): string {
   if (!type) return "Arrangement";
-  return ARRANGEMENT_TYPE_LABELS[type] ?? type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return formatCompanyText(
+    ARRANGEMENT_TYPE_LABELS[type] ?? type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    { companyName, companyShortName },
+  );
 }
 
 export interface ActivityReceiptStripProps {
@@ -140,6 +145,7 @@ export interface ActivityReceiptStripProps {
 }
 
 export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
+  const { companyName, companyShortName } = useFeatureFlags();
   const { siteName, date, boqProjectId, boqItemId, programmeBarId, readOnly, testIdPrefix } = props;
   const { data: bomProfileData } = useQuery<{ items: Array<any> }>({
     queryKey: ["/api/boq/projects", boqProjectId, "bom"],
@@ -459,7 +465,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
         )}
         <p className="flex items-center gap-1.5">
           <Truck className="w-3.5 h-3.5" />
-          Execution: {arrangement.agencyName || "HLC"} · {arrangementTypeLabel(arrangement.arrangementType)}
+          Execution: {arrangement.agencyName || companyShortName} · {arrangementTypeLabel(arrangement.arrangementType, companyName, companyShortName)}
         </p>
         {arrangement.arrangementType === "reused_excavated" && arrangement.sourceExcavationBoqItemId != null && (
           <p data-testid={`${testIdPrefix}-fill-reuse-context`}>
@@ -518,7 +524,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
           </Badge>
         )}
         {arrangement?.arrangementType === "client_supplied" && (
-          <Badge variant="outline">Client supplied — not an HLC payable</Badge>
+          <Badge variant="outline">Client supplied — not a {companyShortName} payable</Badge>
         )}
       </div>
       {historicalPersistedArrangement && (
@@ -532,7 +538,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
           from the resolved arrangement + cumulative linked-trip aggregation. */}
       {arrangement && (
         <p className="text-xs text-muted-foreground" data-testid={`${testIdPrefix}-arranged-tag`}>
-          Arranged: {arrangement.agencyName || "HLC"}{arrangedQty != null ? ` · ${fmt(arrangedQty, arrangement.uom)}` : ""}
+          Arranged: {arrangement.agencyName || companyShortName}{arrangedQty != null ? ` · ${fmt(arrangedQty, arrangement.uom)}` : ""}
           {" — Supplied: "}
           {suppliedDisplay}
           {arrangedQty != null && (
@@ -569,7 +575,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
               {resolution.applicable.map((a) => (
                 <SelectItem key={a.id} value={String(a.id)}>
                   {a.arrangementType === "hlc_in_house"
-                    ? "HLC — In-house / Self Execution"
+                    ? `${companyShortName} — In-house / Self Execution`
                     : `${a.agencyName || `Arrangement #${a.id}`} — ${a.materialLabel ?? "Material"}`}
                 </SelectItem>
               ))}
@@ -612,7 +618,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
           and no responsibility line — the single message above covers it. */}
       {!arrangement && !dailyOverride ? null : !hlcResponsible ? (
         <p className="text-xs text-muted-foreground" data-testid={`${testIdPrefix}-pi-agency`}>
-          Supply responsibility: Agency — no HLC PI required.
+          Supply responsibility: Agency — no {companyShortName} PI required.
         </p>
       ) : piMatch ? (
         <p className="text-xs" data-testid={`${testIdPrefix}-pi-match`}>
@@ -627,7 +633,7 @@ export function ActivityReceiptStrip(props: ActivityReceiptStripProps) {
         </p>
       ) : piNone ? (
         <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`${testIdPrefix}-pi-none`}>
-          No approved/ordered Purchase Indent found for this HLC-supplied material.
+          No approved/ordered Purchase Indent found for this {companyShortName}-supplied material.
         </p>
       ) : null}
 
@@ -791,13 +797,14 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
   toast: any;
   testIdPrefix: string;
 }) {
+  const { companyShortName } = useFeatureFlags();
   // 06G §4: today's operational supplier. Daily override governs display;
   // other_agency must NEVER carry the standing earthworkArrangementId.
   const supplierToday =
     dailyOverride?.fulfilmentType === "other_agency"
       ? (dailyOverride.agencyNameSnapshot ?? "")
       : dailyOverride?.fulfilmentType === "hlc"
-        ? "HLC (Internal)"
+        ? `${companyShortName} (Internal)`
         : arrangement?.arrangementType === "client_supplied"
           ? (arrangement?.agencyName ? `${arrangement.agencyName} (client supplied)` : "Client supplied")
           : arrangement?.agencyName ?? "";
@@ -923,11 +930,11 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
             {(arrangement?.materialLabel || dailyMaterialName) && <p>Material: {arrangement?.materialLabel || dailyMaterialName}</p>}
             {supplierToday && <p>Supplier today: <span className="font-medium text-foreground">{supplierToday}</span></p>}
             {dailyOverride ? (
-              <p>Today's allocation: {dailyOverride.fulfilmentType === "hlc" ? "HLC / Internally Arranged" : "Other agency — daily exception"}{arrangement ? ` (standing: ${arrangement.agencyName ?? "arrangement"})` : ""}</p>
+              <p>Today's allocation: {dailyOverride.fulfilmentType === "hlc" ? `${companyShortName} / Internally Arranged` : "Other agency — daily exception"}{arrangement ? ` (standing: ${arrangement.agencyName ?? "arrangement"})` : ""}</p>
             ) : arrangement ? (
               <p>Execution Arrangement: {arrangement.agencyName ?? "—"}{arrangement.workDescription ? ` — ${arrangement.workDescription}` : ""}</p>
             ) : (
-              <p>HLC / Main Contractor — no execution arrangement</p>
+              <p>{companyShortName} / Main Contractor — no execution arrangement</p>
             )}
           </div>
           <p className="text-xs font-medium" data-testid={`${testIdPrefix}-rr-today-total`}>

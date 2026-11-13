@@ -141,3 +141,4 @@
 - [BOM plan vs actual](bom-plan-actual.md) — one source per BOQ item, exact store-issue linkage, shared plant stock, and material-owned conversion profiles prevent double-counting.
 - [Batch report delivery](batch-report-delivery.md) — write every batch report to reports/<BATCH-NAME>.md, commit and push it, then reply with the exact one-line path confirmation.
 - [Large DB copy via CodeExecution](large-db-copy-ptc.md) — source-key pagination, durable progress, bounded reads, per-table reconciliation, and current-call callbacks.
+- [Company settings in transactions](company-settings-transaction-executor.md) — read company identity through the caller's transaction executor, not a separate global database call.

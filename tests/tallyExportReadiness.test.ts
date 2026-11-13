@@ -4,6 +4,7 @@ import {
   defaultTallyVoucherMappings,
   emptyTallyComponentLedgerMappings,
   parseTallyExportConfig,
+  tallyCompanyNameBlocker,
   trimTallyMappingName,
   type TallyExportConfig,
 } from "@shared/tallyExportReadiness";
@@ -19,6 +20,15 @@ const config: TallyExportConfig = {
 };
 
 describe("Tally export readiness", () => {
+  it("gates exports only when the Tally company name is blank", () => {
+    expect(tallyCompanyNameBlocker("   ")).toBe("Set the Tally company name in Tally settings first.");
+    expect(tallyCompanyNameBlocker("High Lane Constructions Pvt Ltd - SK 2025-26")).toBeNull();
+    expect(tallyCompanyNameBlocker("Another Company Ltd")).toBeNull();
+  });
+
+  it("parses a blank Tally company name for the explicit export gate", () => {
+    expect(parseTallyExportConfig(JSON.stringify({ ...config, companyName: "" })).companyName).toBe("");
+  });
   it("keeps typed Tally names as entered except for surrounding whitespace", () => {
     expect(trimTallyMappingName("  Ledger  With Mixed Case  ")).toBe("Ledger  With Mixed Case");
     expect(trimTallyMappingName("   ")).toBeNull();

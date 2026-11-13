@@ -1,3 +1,5 @@
+import { companyPrefixSegment } from "./companyIdentity";
+
 export type DeliveryEvidence = {
   kind: "receipt" | "trip"; id: number; date: string; quantity: number;
   uom: string; reference: string | null; status: "active" | "cancelled" | "deleted";
@@ -50,8 +52,8 @@ export function validateDeliveryDestination(location: unknown, siteId: unknown) 
   return { receivingLocation: String(location), receivingSiteId: location === "site" ? Number(siteId) : null };
 }
 
-export function formatPurchaseIndentNumber(siteName: string, year: number, sequence: number) {
+export function formatPurchaseIndentNumber(siteName: string, year: number, sequence: number, companyShortName = "HLC") {
   const label = siteName.trim().toUpperCase().replace(/[\/\\]/g, "-");
   if (!label) throw new Error("Site or raised-from location is required");
-  return `HLC/PI/${label}/${year}/${String(sequence).padStart(4, "0")}`;
+  return `${companyPrefixSegment(companyShortName)}/PI/${label}/${year}/${String(sequence).padStart(4, "0")}`;
 }

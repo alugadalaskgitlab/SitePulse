@@ -80,6 +80,7 @@ const storage = {
     { id: "bank-main", name: "Bank of Baroda - OD", type: "OD", source: "own" },
   ]),
   getVendorNames: vi.fn(async () => ["VENDOR-1", "VENDOR-2", "SECRET VENDOR"]),
+  getDefaultPlantName: vi.fn(async () => "Main Plant"),
   getDailyPlantReportIndex: vi.fn(async () => ["A", "B"].map(letter => ({
     date: "2026-10-01", plantName: `Plant ${letter}`, totalLoads: 1, totalProductionMt: 10,
     sessionsCount: 1, hasDispatches: true, breakdown: [],

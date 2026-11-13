@@ -9,7 +9,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 export default function EstimatorHub() {
   const [, setLocation] = useLocation();
   const role = readEstimatorRole();
-  const { companyName } = useFeatureFlags();
+  const { companyName, companyShortName } = useFeatureFlags();
 
   useEffect(() => {
     if (!role) setLocation("/estimator-login");
@@ -140,7 +140,7 @@ export default function EstimatorHub() {
             data-testid="button-back-to-dashboard"
           >
             <Home className="w-5 h-5" />
-            Back to HLC Dashboard
+            Back to {companyShortName} Dashboard
           </Button>
           <Button
             variant="ghost"

@@ -66,6 +66,8 @@ beforeAll(async () => {
     }
   }
   state.db = drizzle(pg, { schema });
+  await state.db.insert(schema.appSettings).values({ key: "company_short_name", value: "HLC" });
+  await state.db.insert(schema.parties).values({ name: "HIGH LANE CONSTRUCTIONS", notes: "PLANT STOCK", isActive: 1 });
   ({ storage } = await import("../server/storage"));
   const { registerRoutes } = await import("../server/routes");
   app = express();

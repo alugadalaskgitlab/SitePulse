@@ -40,9 +40,11 @@ type IdleRow = { startTime: string; endTime?: string | null; reason: string; rem
 
 import { ReportExportGate } from "@/components/ReportExportGate";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 export default function PlantShiftLog() {
   const { toast } = useToast();
+  const { defaultPlantName } = useFeatureFlags();
   const { featureCan } = useAuth();
   const canVerify = featureCan("hmp_rmc", "verify");
   const { isFromPortal, appendPlantContext, getPlantBackLink } = useOrigin();
@@ -184,9 +186,9 @@ export default function PlantShiftLog() {
 
   const [isFinalized, setIsFinalized] = useState(0);
   const [plantName, setPlantName] = useState(() => {
-    if (typeof window === "undefined") return "Main Plant";
+    if (typeof window === "undefined") return defaultPlantName;
     const sp = new URLSearchParams(window.location.search);
-    return sp.get("plant") || "Main Plant";
+    return sp.get("plant") || defaultPlantName;
   });
   const [savedId, setSavedId] = useState<number | null>(null);
   const [autoFillT1Source, setAutoFillT1Source] = useState<string>("");
@@ -391,9 +393,8 @@ export default function PlantShiftLog() {
       startTime: e.startTime, endTime: e.endTime, reason: e.reason, remarks: e.remarks,
     })));
     setIsFinalized(log.isFinalized || 0);
-    setPlantName(log.plantName || "Main Plant");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    setPlantName(log.plantName || defaultPlantName);
+  }, [defaultPlantName]);
 
   type ShiftLogFormData = {
     shiftCode: string; plantStartTime: string; plantStopTime: string;
@@ -487,7 +488,7 @@ export default function PlantShiftLog() {
 
   const openEditForDate = (d: string, plant: string, row?: PlantShiftLogRow) => {
     setDate(d);
-    const resolvedPlant = plant || "Main Plant";
+    const resolvedPlant = plant || defaultPlantName;
     setPlantName(resolvedPlant);
     resetForNew();
 
@@ -513,7 +514,7 @@ export default function PlantShiftLog() {
   };
   const openNew = () => {
     setDate(today);
-    setPlantName("Main Plant");
+    setPlantName(defaultPlantName);
     resetForNew();
     setViewMode("edit");
   };
@@ -1027,7 +1028,7 @@ export default function PlantShiftLog() {
       const dryerLPerH = (ldo2 != null && dur && dur > 0) ? parseFloat((ldo2 / dur).toFixed(1)) : "";
       return {
         Date: r.date,
-        Plant: r.plantName || "Main Plant",
+        Plant: r.plantName || defaultPlantName,
         Shift: r.shiftCode || "",
         "Plant Start": r.plantStartTime || "",
         "Plant Stop": r.plantStopTime || "",
@@ -1183,7 +1184,7 @@ export default function PlantShiftLog() {
                                 <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{r.shiftCode}</span>
                                 <span className="font-medium text-sm">{r.plantStartTime || "—"} → {r.plantStopTime || "—"}</span>
                                 {dur != null && <span className="text-sm text-muted-foreground">({dur} h)</span>}
-                                {r.plantName !== "Main Plant" && <span className="text-sm text-muted-foreground">· {r.plantName}</span>}
+                                {r.plantName !== defaultPlantName && <span className="text-sm text-muted-foreground">· {r.plantName}</span>}
                                 {r.isFinalized
                                   ? <Badge variant="default" className="bg-green-600 text-sm px-1.5 py-0">✓ Done</Badge>
                                   : <Badge variant="secondary" className="text-sm px-1.5 py-0">Draft</Badge>
@@ -1318,7 +1319,7 @@ export default function PlantShiftLog() {
                 data-testid="switch-no-main-plant-ops"
               />
               <Label htmlFor="no-main-plant-ops" className="text-sm cursor-pointer">
-                No Main Plant Operations
+                No {defaultPlantName} Operations
               </Label>
             </div>
           </div>

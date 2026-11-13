@@ -9,7 +9,7 @@ vi.mock("@/components/vendor-bills/pdfExportStyle", () => ({
 import { buildMaterialReceiptSlipPdf, materialReceiptSlipCaption } from "./materialReceiptSlipPdf";
 
 const logoFileDataUrl = `data:image/jpeg;base64,${readFileSync(new URL("../../public/hlc-logo.jpg", import.meta.url)).toString("base64")}`;
-const company = { name: "High Lane Constructions Pvt Ltd", address: "", gstin: "", phone: "" };
+const company = { name: "High Lane Constructions Pvt Ltd", shortName: "HLC", defaultPlantName: "Main Plant", address: "", gstin: "", phone: "" };
 const receipt = {
   kind: "plant" as const,
   id: 64,
@@ -58,6 +58,20 @@ describe("material receipt slip PDF logo handling", () => {
     expect(await pdf.text()).not.toContain("/Subtype /Image");
   });
 
+  it("uses configured short and legal company names when the logo is unavailable", async () => {
+    loadLogo.mockResolvedValue(null);
+    const pdf = await buildMaterialReceiptSlipPdf(
+      { ...receipt, plantName: null },
+      { ...company, name: "Acme Roads Pvt Ltd", shortName: "ABC", defaultPlantName: "North Plant" },
+      null,
+    );
+    const text = await pdf.text();
+    expect(text).toContain("ABC");
+    expect(text).toContain("for Acme Roads Pvt Ltd");
+    expect(text).toContain("North Plant");
+    expect(text).not.toContain("Main Plant");
+  });
+
   it("uses a fitted portrait page, 12-hour time, and approximate CFT-to-MT text", async () => {
     loadLogo.mockResolvedValue(null);
     const pdf = await buildMaterialReceiptSlipPdf(receipt, company, null);
@@ -99,7 +113,7 @@ describe("material receipt slip PDF logo handling", () => {
     expect(text).not.toContain("Received in good order");
     expect(materialReceiptSlipCaption(receipt)).toContain("Driver: Praveen");
     expect(materialReceiptSlipCaption(receipt)).toContain("Received by: Sunil Kumar");
-    expect(materialReceiptSlipCaption(receipt)).toContain("*HLC · Material Receipt*");
+    expect(materialReceiptSlipCaption(receipt, "HLC")).toContain("*HLC · Material Receipt*");
   });
 
   it("keeps old null names blank without printing null or undefined", async () => {
@@ -157,7 +171,7 @@ describe("material receipt slip PDF logo handling", () => {
       materialName: "WMM",
       quantity: 90,
       uom: "MT",
-    })).toContain("*HLC · Site Material Receipt*");
+    }, "HLC")).toContain("*HLC · Site Material Receipt*");
   });
 
   it("uses Supplier/Vendor for site vendors and retains Source for own-source trips", async () => {

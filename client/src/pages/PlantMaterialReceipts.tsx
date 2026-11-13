@@ -43,7 +43,6 @@ import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 import { isPartyNonPurchaseReceipt } from "@shared/materialReceiptParty";
 import { formatPersonName } from "@shared/personName";
 import type { DieselReceiptState } from "@shared/dieselReceiptStatus";
-import { resolveHlcParty } from "@shared/hlcParty";
 import { formatEnteredByDisplay, type MaterialReceiptSlipData } from "@/lib/materialReceiptSlipTypes";
 import { dieselTotalIssued } from "@/lib/dieselIssued";
 
@@ -59,7 +58,7 @@ export default function PlantMaterialReceipts() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
   const { featureCan, user } = useAuth();
-  const { companyName, companyInfo, logoFile } = useFeatureFlags();
+  const { companyName, companyInfo, logoFile, companyShortName, defaultPlantName, ownCompanyPartyId } = useFeatureFlags();
   const canCreate = featureCan("plant_receipts", "add");
   const canEdit = featureCan("plant_receipts", "edit");
   const canDirectEditSubmittedReceipt = canEdit;
@@ -434,7 +433,7 @@ export default function PlantMaterialReceipts() {
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
   });
-  const selectedHlcPartyId = resolveHlcParty(parties || [])?.id ?? null;
+  const selectedHlcPartyId = ownCompanyPartyId;
   const isSelectedPartyNonPurchase = isPartyNonPurchaseReceipt(
     { partyId: partyId ? Number(partyId) : null, isPlantCommon: 0 },
     selectedHlcPartyId,
@@ -625,7 +624,7 @@ export default function PlantMaterialReceipts() {
         materialName: getMaterialName(receipt.materialId),
         quantity: receipt.quantity,
         uom: receipt.uom,
-        plantName: receipt.plantName || "Main Plant",
+        plantName: receipt.plantName || defaultPlantName,
         partyName: getPartyName(receipt.partyId, receipt.materialId),
         vehicleNumber: receipt.vehicleNumber,
         driverName: receipt.driverName,
@@ -704,7 +703,7 @@ export default function PlantMaterialReceipts() {
         materialName: getMaterialName(receipt.materialId),
         quantity: receipt.quantity,
         uom: receipt.uom,
-        plantName: receipt.plantName || "Main Plant",
+        plantName: receipt.plantName || defaultPlantName,
         partyName: getPartyName(receipt.partyId, receipt.materialId),
         vehicleNumber: receipt.vehicleNumber,
         driverName: receipt.driverName,
@@ -873,8 +872,8 @@ export default function PlantMaterialReceipts() {
         toast({
           title: "Select a Vendor Master entry",
           description: linkedDieselRequirementId == null
-            ? "For HLC stock, supplier and transporter names must be selected from Vendor Master."
-            : "For HLC stock, the transporter name must be selected from Vendor Master.",
+            ? `For ${companyShortName} stock, supplier and transporter names must be selected from Vendor Master.`
+            : `For ${companyShortName} stock, the transporter name must be selected from Vendor Master.`,
           variant: "destructive",
         });
         return;
@@ -917,6 +916,7 @@ export default function PlantMaterialReceipts() {
       const updateData = {
         date,
         time,
+        plantName: editingReceipt.plantName || defaultPlantName,
         partyId: parseInt(partyId),
         isPlantCommon: 0,
         materialId: parseInt(materialId),
@@ -943,6 +943,7 @@ export default function PlantMaterialReceipts() {
       const data = {
         date,
         time,
+        plantName: defaultPlantName,
         partyId: parseInt(partyId),
         isPlantCommon: 0,
         materialId: parseInt(materialId),
@@ -999,7 +1000,7 @@ export default function PlantMaterialReceipts() {
       materialName: material?.name || "Unknown",
       quantity: receipt.quantity,
       uom: receipt.uom,
-      plantName: (receipt as any).plantName || "Main Plant",
+      plantName: (receipt as any).plantName || defaultPlantName,
       partyName: getPartyName(receipt.partyId, receipt.materialId),
       vehicleNumber: receipt.vehicleNumber,
       driverName: receipt.driverName,
@@ -1395,7 +1396,7 @@ export default function PlantMaterialReceipts() {
                 {(savedReceiptAction === "created" || savedReceiptForSlip.slipSendWindowOpen) && (
                   <MaterialReceiptSlipActions
                     record={savedReceiptForSlip as MaterialReceiptSlipData}
-                    company={companyInfo}
+                    company={{ ...companyInfo, shortName: companyShortName, defaultPlantName }}
                     logoFile={logoFile}
                     sendLabel={savedReceiptAction === "updated" ? "Send revised on WhatsApp" : "Send on WhatsApp"}
                   />
@@ -2150,7 +2151,7 @@ export default function PlantMaterialReceipts() {
                                   <MaterialReceiptSlipActions
                                     mode="row"
                                     record={toReceiptSlipData(receipt)}
-                                    company={companyInfo}
+                                    company={{ ...companyInfo, shortName: companyShortName, defaultPlantName }}
                                     logoFile={logoFile}
                                   />
                                 </div>

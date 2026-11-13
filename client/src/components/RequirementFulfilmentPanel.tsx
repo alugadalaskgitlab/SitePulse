@@ -9,6 +9,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Building2 } from "lucide-react";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { useProjectArrangements } from "@/components/ExecutionStateBadge";
 import {
   resolveRequirementArrangements,
@@ -96,12 +97,13 @@ export function useRequirementFulfilmentContext(
 
 /** Compact display of a saved fulfilment decision (list rows / readiness). */
 export function FulfilmentBadge({ entry, testId }: { entry: AllocationEntryLike | null | undefined; testId?: string }) {
+  const { companyText } = useFeatureFlags();
   const label = fulfilmentLabel(entry);
   if (!label) return null;
   return (
     <div className="mt-0.5" data-testid={testId}>
       <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
-        <Building2 className="w-2.5 h-2.5" /> {label}
+        <Building2 className="w-2.5 h-2.5" /> {companyText(label)}
       </span>
       {entry?.exceptionReason && (
         <p className="text-[10px] text-slate-400 italic mt-0.5">Reason: {entry.exceptionReason}</p>
@@ -124,6 +126,7 @@ export function FulfilmentEditor({
   onChange: (v: FulfilmentValue) => void;
   testIdPrefix?: string;
 }) {
+  const { companyShortName, companyText } = useFeatureFlags();
   const [showOther, setShowOther] = useState(value.fulfilmentType === "other_agency");
   const candidates = resolution?.candidates ?? [];
   const suggested = resolution?.suggested ?? null;
@@ -164,7 +167,7 @@ export function FulfilmentEditor({
               )}
             </div>
             <p className="text-[10px] text-slate-400">
-              {ARRANGEMENT_TYPE_LABEL[a.arrangementType ?? ""] ?? a.arrangementType ?? ""}
+              {companyText(ARRANGEMENT_TYPE_LABEL[a.arrangementType ?? ""] ?? a.arrangementType ?? "")}
               {a.chainageFrom != null && a.chainageTo != null ? ` · Ch. ${fmtCh(a.chainageFrom)}–${fmtCh(a.chainageTo)}` : ""}
               {` · ${a.status.replace(/_/g, " ")}`}
             </p>
@@ -180,7 +183,7 @@ export function FulfilmentEditor({
         }`}
         data-testid={`${testIdPrefix}-hlc`}
       >
-        <span className="font-semibold">HLC / Internally Arranged</span>
+        <span className="font-semibold">{companyShortName} / Internally Arranged</span>
         <p className="text-[10px] text-slate-400">Handled through the normal internal process{candidates.length === 0 ? " (no execution arrangement — that's fine)" : ""}</p>
       </button>
 

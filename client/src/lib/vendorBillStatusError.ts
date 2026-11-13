@@ -30,7 +30,7 @@ export function vendorBillHsdRecoveryMonths(error: unknown): HsdRecoveryVerifica
   return Array.from(months.values()).sort((a, b) => a.key.localeCompare(b.key));
 }
 
-export function vendorBillStatusError(error: unknown): { title: string; description: string } {
+export function vendorBillStatusError(error: unknown, companyShortName = "HLC"): { title: string; description: string } {
   const { message } = parseApiError(error);
   if ([
     "Record the remaining equipment hire balance before marking this bill paid.",
@@ -50,8 +50,8 @@ export function vendorBillStatusError(error: unknown): { title: string; descript
       .map(gap => gap.trim())
       .filter(gap => gap && !/HSD recovery disposition/i.test(gap));
     return {
-      title: "HLC diesel reconciliation needs a decision",
-      description: `Complete the HLC diesel reconciliation for ${monthText}. In each month, choose Accept Suggested, Edit, or No Recovery.${otherGaps.length ? ` Other hire-review items also need attention: ${otherGaps.join("; ")}.` : ""}`,
+      title: `${companyShortName} diesel reconciliation needs a decision`,
+      description: `Complete the ${companyShortName} diesel reconciliation for ${monthText}. In each month, choose Accept Suggested, Edit, or No Recovery.${otherGaps.length ? ` Other hire-review items also need attention: ${otherGaps.join("; ")}.` : ""}`,
     };
   }
   return { title: "Could not update bill status", description: message };

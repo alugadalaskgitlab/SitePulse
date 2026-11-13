@@ -39,6 +39,7 @@ describe("PI-01 executable PostgreSQL and storage integration", () => {
   beforeEach(async () => {
     await pg.exec(`TRUNCATE app_settings,sites,purchase_indents,purchase_indent_items,pi_item_transactions,pending_plant_receipts,material_receipts,site_material_trips,plant_materials,stock_balances,stock_ledger,ldo_flow_readings RESTART IDENTITY;
       INSERT INTO plant_materials(id,name,default_uom,conversion_factor,conversion_from_uom,conversion_to_uom) VALUES(1,'WMM','MT',.001,'kg','MT');
+      INSERT INTO app_settings(key,value) VALUES('company_short_name','HLC');
       INSERT INTO vendors(id,name,is_active) VALUES(1,'WMM SUPPLIER',true) ON CONFLICT (id) DO NOTHING;
       INSERT INTO sites(id,name) VALUES(1,'Site A'),(2,'Site B');
       INSERT INTO purchase_indents(id,indent_no,site_id,pi_type,status,created_at) VALUES(1,'OLD/UNCHANGED',1,'material','ordered',now());
@@ -85,6 +86,16 @@ describe("PI-01 executable PostgreSQL and storage integration", () => {
     expect(new Set(values).size).toBe(2);
     await pg.exec("DELETE FROM purchase_indents WHERE site_id=2; UPDATE sites SET name='Renamed Site B' WHERE id=2");
     expect(await allocate(2, "stores")).toBe(`HLC/PI/RENAMED SITE B/${year}/0004`);
+  });
+
+  it("uses the configured company prefix and an independent sequence for another company", async () => {
+    const year = new Date().getFullYear();
+    await pg.exec("UPDATE app_settings SET value='ABC' WHERE key='company_short_name'");
+    const allocate = () => holder.db.transaction((tx: any) => storage.generateIndentNo(tx, 1, null));
+    expect(await allocate()).toBe(`ABC/PI/SITE A/${year}/0001`);
+    expect(await allocate()).toBe(`ABC/PI/SITE A/${year}/0002`);
+    expect((await pg.query<any>("SELECT indent_no FROM purchase_indents WHERE id=1")).rows[0].indent_no)
+      .toBe("OLD/UNCHANGED");
   });
 
   it("keeps every partial receipt and trip, deduplicates pointers, and converts kg", async () => {

@@ -173,6 +173,7 @@ export type EquipmentHireExportData = {
   billDate?: string;
   billStatus?: string;
   companyName?: string;
+  companyShortName?: string;
   logoFile?: string;
   logoDataUrl?: string | null;
   vendorName: string;
@@ -565,7 +566,8 @@ export function exportEquipmentHireBill(data: EquipmentHireExportData, rows: Bil
   const statementExport = hireStatementExportFromData(data);
   const gstAmount = data.gstAmount != null && Number.isFinite(data.gstAmount) ? data.gstAmount : 0;
   const billSnapshot: WholeBillSnapshot = {
-    companyName: data.companyName || "Highlane Constructions",
+    companyName: data.companyName || "Your company",
+    companyShortName: data.companyShortName || "Your company",
     logoFile: data.logoFile,
     logoDataUrl: data.logoDataUrl,
     vendorName: data.vendorName,
@@ -799,7 +801,8 @@ export function exportEquipmentHireCalendar(
   ].join(" · ");
   const header = {
     title: "ACTIVITY STATEMENT",
-    companyName: "Highlane Constructions",
+    companyName: data.companyName || "Your company",
+    companyShortName: data.companyShortName || "Your company",
     logoDataUrl: data.logoDataUrl,
     billNo: data.billNo || "Not yet saved",
     billDate: data.billDate,
@@ -908,7 +911,7 @@ export function exportEquipmentHireCalendar(
   doc.setFontSize(7);
   doc.setTextColor(45, 45, 45);
   doc.line(8, y + 15, 8 + signatureWidth, y + 15);
-  doc.text("Prepared · HLC", 8, y + 20);
+  doc.text(`Prepared · ${data.companyShortName || "Your company"}`, 8, y + 20);
   doc.line(16 + signatureWidth, y + 15, doc.internal.pageSize.getWidth() - 8, y + 15);
   doc.text("Received · Vendor", 16 + signatureWidth, y + 20);
 
@@ -994,7 +997,12 @@ export function EquipmentHireExportButtons({
 }
 
 /** Converts the persisted statement shape into the exact export model. */
-export function buildSavedEquipmentHireBillOutput(bill: any, logoFile?: string): { data: EquipmentHireExportData; rows: BillingDailyRow[]; hasFrozenDailyRows: boolean } | null {
+export function buildSavedEquipmentHireBillOutput(
+  bill: any,
+  logoFile?: string,
+  companyShortName?: string,
+  companyName?: string,
+): { data: EquipmentHireExportData; rows: BillingDailyRow[]; hasFrozenDailyRows: boolean } | null {
   const statement = Array.isArray(bill.hireStatements) ? bill.hireStatements[0] : null;
   const snapshot = statement?.calculationSnapshot || {};
   const equipmentId = Number(statement?.equipmentId || snapshot?.equipmentId || 0);
@@ -1094,7 +1102,8 @@ export function buildSavedEquipmentHireBillOutput(bill: any, logoFile?: string):
   const data: EquipmentHireExportData = {
     hireReview: bill.hireReview || projectHireReview(statement, bill),
     billNo: bill.billNo, billDate: bill.billDate, billStatus: bill.status,
-    companyName: bill.companyName,
+    companyName: companyName || bill.companyName || "Your company",
+    companyShortName: companyShortName || bill.companyShortName || "Your company",
     logoFile,
     vendorName: bill.vendorName,
     equipmentName: statement.equipmentName || snapshot.equipmentName || (equipmentId ? `Equipment #${equipmentId}` : "Equipment"),

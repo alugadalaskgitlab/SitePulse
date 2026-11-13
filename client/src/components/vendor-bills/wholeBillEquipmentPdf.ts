@@ -210,7 +210,8 @@ function makeHeader(snapshot: WholeBillSnapshot, statements: HireStatementExport
     .map(({ label, value }) => `${label}: ${value}`);
   return {
     title: "EQUIPMENT HIRE BILL",
-    companyName: "Highlane Constructions",
+    companyName: snapshot.companyName || "Your company",
+    companyShortName: snapshot.companyShortName || "Your company",
     logoDataUrl: snapshot.logoDataUrl,
     billNo: snapshot.saved ? snapshot.billNo : "Not yet saved",
     billDate: snapshot.billDate,
@@ -228,9 +229,9 @@ function makeHeader(snapshot: WholeBillSnapshot, statements: HireStatementExport
   };
 }
 
-function addSignatures(doc: jsPDF, y: number) {
+function addSignatures(doc: jsPDF, y: number, companyShortName: string) {
   const width = doc.internal.pageSize.getWidth();
-  const labels = ["Prepared · HLC", "Verified", "Approved", "Received · Vendor"];
+  const labels = [`Prepared · ${companyShortName}`, "Verified", "Approved", "Received · Vendor"];
   const left = 10;
   const gap = 4;
   const blockWidth = (width - 20 - gap * 3) / 4;
@@ -467,7 +468,7 @@ export function buildWholeBillEquipmentPdf(snapshot: WholeBillSnapshot): jsPDF {
       detailsY += wrapped.length * detailLineHeight;
     }
   }
-  addSignatures(doc, pageHeight - 42);
+  addSignatures(doc, pageHeight - 42, snapshot.companyShortName || "Your company");
 
   const hasHireData = statements.length > 0 || !!snapshot.hireReviews?.length || snapshot.billType.toLowerCase() === "equipment";
   const nonHireSections = populatedBillSections(snapshot).filter(section =>

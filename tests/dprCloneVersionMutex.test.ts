@@ -19,7 +19,7 @@ import {
   DprDraftMutationError,
   storage,
 } from "../server/storage";
-import { boqProjects, dprs, labourLogs, labourLogWorkers } from "@shared/schema";
+import { appSettings, boqProjects, dprs, labourLogs, labourLogWorkers, parties } from "@shared/schema";
 
 const DPR_ID = 901;
 const PROJECT_ID = 77;
@@ -61,10 +61,21 @@ function setupTransaction(status: "draft" | "submitted", mode: "clone" | "versio
     : [[lockedSource], [{ id: PROJECT_ID }], [lockedSource]];
   let selectCalls = 0;
   const select = vi.fn(() => {
-    let result: any[] = selectResults[selectCalls] ?? [];
-    selectCalls += 1;
+    let result: any[] = [];
     const q: any = {
       from(table: any) {
+        if (table === appSettings) {
+          result = [
+            { key: "own_company_party_id", value: "1" },
+            { key: "company_name", value: "High Lane Constructions Pvt Ltd" },
+            { key: "company_short_name", value: "HLC" },
+          ];
+        } else if (table === parties) {
+          result = [{ id: 1, name: "HLC", isActive: 1 }];
+        } else {
+          result = selectResults[selectCalls] ?? [];
+          selectCalls += 1;
+        }
         if (table === boqProjects) events.push("project-select");
         if (table === dprs) events.push("dpr-select");
         if (table === labourLogs) events.push("labour-select");

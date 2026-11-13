@@ -5,7 +5,8 @@ import type { WholeBillSnapshot } from "./wholeBillSnapshot";
 describe("whole bill PDF layout", () => {
   it("exports equipment hire as one portrait bill page without an Activity Statement", () => {
     const snapshot: WholeBillSnapshot = {
-      companyName: "Highlane Constructions",
+      companyName: "Acme Roads Pvt Ltd",
+      companyShortName: "ABC",
       vendorName: "Vendor",
       vendorMasterDetails: {
         name: "Vendor",
@@ -148,6 +149,8 @@ describe("whole bill PDF layout", () => {
     pdf.setPage(1);
     expect(pdf.internal.pageSize.getWidth()).toBeLessThan(pdf.internal.pageSize.getHeight());
     expect(pages[1].join("")).toContain("EQUIPMENT HIRE BILL");
+    expect(pdf.output()).toContain("Acme Roads Pvt Ltd");
+    expect(pdf.output()).toContain("Prepared · ABC");
     expect(pages[1].join("")).toContain("Excavator");
     expect(pages[1].join("")).toContain("EX-07");
     expect(pages[1].join("")).not.toContain("Equipment #49");

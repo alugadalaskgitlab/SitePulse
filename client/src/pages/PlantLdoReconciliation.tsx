@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch, useLocation } from "wouter";
 import { format, subDays } from "date-fns";
@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, Loader2, Download, AlertTriangle, TrendingDown, TrendingUp, Minus, Info } from "lucide-react";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import * as XLSX from "xlsx";
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 
@@ -65,6 +66,7 @@ function VarianceBadge({ pct, l }: { pct: number | null; l: number | null }) {
 }
 
 export default function PlantLdoReconciliation() {
+  const { defaultPlantName } = useFeatureFlags();
   const { getPlantBackLink } = useOrigin();
   const { sectionCan } = useAuth();
   const canExport = sectionCan("plant_stock", "export");
@@ -76,12 +78,16 @@ export default function PlantLdoReconciliation() {
   const pageRole: "manager" | "admin" | null = (urlRole === "manager" || urlRole === "admin") ? urlRole : null;
   const backLink = getPlantBackLink({ defaultTab: "stock", role: pageRole });
 
-  const urlPlant = sp.get("plant") || "Main Plant";
+  const urlPlant = sp.get("plant") || defaultPlantName;
 
   const today = format(new Date(), "yyyy-MM-dd");
   const defaultFrom = format(subDays(new Date(), 13), "yyyy-MM-dd");
 
   const [plant, setPlant] = useState(urlPlant);
+  const plantTouched = useRef(sp.has("plant"));
+  useEffect(() => {
+    if (!plantTouched.current && !sp.has("plant")) setPlant(defaultPlantName);
+  }, [defaultPlantName, searchString]);
   const [dateFrom, setDateFrom] = useState(defaultFrom);
   const [dateTo, setDateTo] = useState(today);
   const [threshold, setThreshold] = useState("2");
@@ -92,15 +98,15 @@ export default function PlantLdoReconciliation() {
     queryKey: ["/api/plant-module/shift-logs/plants"],
     queryFn: async () => {
       const res = await fetch("/api/plant-module/shift-logs/plants", { credentials: "include" });
-      if (!res.ok) return ["Main Plant"];
+      if (!res.ok) return [defaultPlantName];
       return res.json();
     },
   });
 
   const plantOptions = useMemo(() => {
-    const list = plantsList && plantsList.length ? plantsList : ["Main Plant"];
+    const list = plantsList && plantsList.length ? plantsList : [defaultPlantName];
     return list.includes(plant) ? list : [...list, plant];
-  }, [plantsList, plant]);
+  }, [plantsList, plant, defaultPlantName]);
 
   const { data: rows, isLoading, error } = useQuery<ReconRow[]>({
     queryKey: ["/api/plant-module/ldo-reconciliation", queryParams],
@@ -127,6 +133,7 @@ export default function PlantLdoReconciliation() {
   };
 
   const handlePlantChange = (newPlant: string) => {
+    plantTouched.current = true;
     setPlant(newPlant);
     const next = new URLSearchParams(searchString || window.location.search);
     next.set("plant", newPlant);

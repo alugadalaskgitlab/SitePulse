@@ -1,10 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { appSettings, parties } from "../shared/schema";
 
 const state: any = { selects: [], inserts: [], updates: [], deletes: [], transactions: 0 };
 
-function chain(result: any = []) {
+function chain(initialResult: any = []) {
+  let result = initialResult;
   const q: any = {
-    from: () => q, where: () => q, limit: () => q, orderBy: () => q,
+    from: (table: any) => {
+      if (table === appSettings) {
+        result = [
+          { key: "own_company_party_id", value: "1" },
+          { key: "company_name", value: "High Lane Constructions Pvt Ltd" },
+          { key: "company_short_name", value: "HLC" },
+        ];
+      } else if (table === parties) {
+        result = [{ id: 1, name: "HLC", isActive: 1 }];
+      } else {
+        result = state.selects.shift() ?? [];
+      }
+      return q;
+    },
+    where: () => q, limit: () => q, orderBy: () => q,
     innerJoin: () => q, leftJoin: () => q, for: () => q,
     values: (value: any) => { state.inserts.push(value); return q; },
     set: (value: any) => { state.updates.push(value); return q; },
@@ -15,7 +31,7 @@ function chain(result: any = []) {
 }
 
 const tx: any = {
-  select: vi.fn(() => chain(state.selects.shift() ?? [])),
+  select: vi.fn(() => chain()),
   insert: vi.fn(() => chain([{ id: 501 }])),
   update: vi.fn(() => chain([{ id: 501 }])),
   delete: vi.fn(() => {
@@ -79,7 +95,6 @@ describe("Task #1433 runtime diesel source boundary", () => {
     state.selects.push(
       [{ id: 1, name: "ROLLER", meterType: "hour_meter", consumptionNorm: 1 }],
       [{ id: 88, name: "HSD", defaultUom: "Liters", isActive: 1 }],
-      [{ id: 1, name: "HLC" }],
     );
     await (storage as any)._createEquipmentUsageTxn({
       equipmentId: 1, date: "2026-08-31", dieselIssued: 5,
@@ -158,7 +173,6 @@ describe("Task #1433 runtime diesel source boundary", () => {
       [{ id: 1, name: "ROLLER", meterType: "hour_meter", consumptionNorm: 1 }],
       [{ id: 90, transactionType: "equipment_usage", materialId: 88, partyId: 1, quantityOut: 5, uom: "Liters" }],
       [{ id: 88, name: "HSD", defaultUom: "Liters", isActive: 1 }],
-      [{ id: 1, name: "HLC" }],
     );
     await (storage as any)._updateEquipmentUsageTxn(7, { dieselIssued: 8 });
     expect(adjustments).toContainEqual({ materialId: 88, partyId: 1, delta: -3 });
@@ -182,7 +196,6 @@ describe("Task #1433 runtime diesel source boundary", () => {
       [{ id: 90, transactionType: "equipment_usage", materialId: 88, partyId: 1, quantityOut: 5, uom: "Liters" }],
       [{ id: 88, name: "HSD", defaultUom: "Liters", isActive: 1 }],
       [{ id: 12, name: "DIESEL", defaultUom: "Liters", isActive: 1 }],
-      [{ id: 1, name: "HLC" }],
     );
     await (storage as any)._updateEquipmentUsageTxn(7, { dieselSource: "direct_purchase" });
     expect(adjustments).toContainEqual({ materialId: 88, partyId: 1, delta: 5 });
@@ -206,7 +219,6 @@ describe("Task #1433 runtime diesel source boundary", () => {
       [{ id: 1, name: "ROLLER", meterType: "hour_meter", consumptionNorm: 1 }],
       [],
       [{ id: 12, name: "DIESEL", defaultUom: "Liters", isActive: 1 }],
-      [{ id: 1, name: "HLC" }],
     );
     await (storage as any)._updateEquipmentUsageTxn(7, { dieselIssued: 8 });
     expect(adjustments).toEqual([{ materialId: 12, partyId: 1, delta: -8 }]);
@@ -228,7 +240,6 @@ describe("Task #1433 runtime diesel source boundary", () => {
       [{ id: 1, name: "ROLLER", meterType: "hour_meter", consumptionNorm: 1 }],
       [{ id: 90, transactionType: "equipment_usage", materialId: 88, partyId: 77, quantityOut: 5, uom: "Liters" }],
       [{ id: 88, name: "HSD", defaultUom: "Liters", isActive: 1 }],
-      [{ id: 1, name: "HLC" }],
       [{ id: 3, balance: 27, uom: "Liters" }],
     );
     await (storage as any)._updateEquipmentUsageTxn(7, { dieselIssued: 8 });
@@ -246,7 +257,6 @@ describe("Task #1433 runtime diesel source boundary", () => {
       [],
       [{ id: 1, name: "ROLLER", meterType: "hour_meter", consumptionNorm: 1 }],
       [],
-      [{ id: 1, name: "HLC" }],
     );
     await (storage as any)._updateEquipmentUsageTxn(7, {
       entryType: "shifting",
@@ -268,7 +278,6 @@ describe("Task #1433 runtime diesel source boundary", () => {
       [],
       [{ id: 1, name: "ROLLER", meterType: "hour_meter", consumptionNorm: 1 }],
       [],
-      [{ id: 1, name: "HLC" }],
     );
     await expect((storage as any)._updateEquipmentUsageTxn(7, { dieselIssued: 6 })).resolves.toBeTruthy();
     expect((storage as any).resolveCanonicalDieselMaterial).not.toHaveBeenCalled();
@@ -293,7 +302,6 @@ describe("Task #1433 runtime diesel source boundary", () => {
       return { id: 1, oldBalance: 100, newBalance: 100 + delta };
     });
 
-    state.selects.push([{ id: 1, name: "HLC" }]);
     await (storage as any).processDprEquipmentDieselLedger(tx, [
       { id: 9, diesel: 10, dieselSource: "plant_stock", machine: "ROLLER" },
     ], "2026-08-31", "SITE");
@@ -306,7 +314,6 @@ describe("Task #1433 runtime diesel source boundary", () => {
       [{ id: 9, diesel: 10, dieselSource: "plant_stock" }],
       [{ id: 70, materialId: 88, quantityOut: 10 }],
       [{ id: 88, name: "HSD", defaultUom: "Liters" }],
-      [{ id: 1, name: "HLC" }],
     );
     await (storage as any).cleanupDprEquipmentDieselLedger(tx, 4);
     expect(adjustments.at(-1)).toMatchObject({ materialId: 88, delta: 10 });

@@ -40,6 +40,8 @@ export type MaterialReceiptSlipData = {
 
 export type MaterialReceiptSlipCompany = {
   name: string;
+  shortName?: string | null;
+  defaultPlantName?: string | null;
   address?: string | null;
   gstin?: string | null;
   phone?: string | null;

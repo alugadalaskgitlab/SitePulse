@@ -15,14 +15,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import type { RmcMixDesign } from "@shared/schema";
 
 const GRADES = ["M10","M15","M20","M25","M30","M35","M40","M45","M50","M55","M60"];
 
-function defaultForm() {
+function defaultForm(plantName = "Main Plant") {
   return {
     grade: "M25",
-    plantName: "Main Plant",
+    plantName,
     cementContent: "",
     wcr: "",
     admixtureName: "",
@@ -36,13 +37,14 @@ function defaultForm() {
 
 export default function RmcMixDesigns() {
   const { toast } = useToast();
+  const { defaultPlantName } = useFeatureFlags();
   const { sectionCan, featureCan } = useAuth();
   const canCreate = sectionCan("plant_production", "create");
   const canEdit = sectionCan("plant_production", "edit");
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState(defaultForm());
+  const [form, setForm] = useState(defaultForm(defaultPlantName));
 
   const { data: designs = [], isLoading } = useQuery<RmcMixDesign[]>({
     queryKey: ["/api/rmc/mix-designs"],
@@ -78,7 +80,7 @@ export default function RmcMixDesigns() {
 
   function openCreate() {
     setEditingId(null);
-    setForm(defaultForm());
+    setForm(defaultForm(defaultPlantName));
     setOpen(true);
   }
 

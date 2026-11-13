@@ -33,7 +33,7 @@ export default function PlantDispatches() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
   const { sectionCan, featureCan, user } = useAuth();
-  const { companyName, logoFile } = useFeatureFlags();
+  const { companyName, companyShortName, logoFile } = useFeatureFlags();
   const canCreate = featureCan("hmp_rmc", "add");
   const canEdit = featureCan("hmp_rmc", "edit");
   const canOverrideTolerance = featureCan("hmp_rmc", "verify");
@@ -1562,7 +1562,7 @@ export default function PlantDispatches() {
                                 {dispatch.transportEquipmentId && (() => {
                                   const eq = equipmentList?.find(e => e.id === dispatch.transportEquipmentId);
                                   if (!eq) return null;
-                                  const ownerInfo = eq.ownershipStatus === "hired" && eq.vendorName ? `HIRED: ${eq.vendorName}` : "HLC OWN";
+                                  const ownerInfo = eq.ownershipStatus === "hired" && eq.vendorName ? `HIRED: ${eq.vendorName}` : `${companyShortName} OWN`;
                                   return (
                                     <span className="text-sm text-muted-foreground block">{eq.name}{eq.registrationNumber ? ` (${eq.registrationNumber})` : ""} — {ownerInfo}</span>
                                   );
@@ -1642,7 +1642,7 @@ export default function PlantDispatches() {
               <p>
                 <span className="font-semibold">{shortageInfo.ownerPartyName}</span> does not have enough
                 stock for this dispatch. The shortfall would have to be borrowed from{" "}
-                <span className="font-semibold">{shortageInfo.fallbackPartyName || "HLC"}</span>.
+                <span className="font-semibold">{shortageInfo.fallbackPartyName || companyShortName}</span>.
               </p>
               <div className="rounded-md border bg-muted/40">
                 <table className="w-full text-sm">
@@ -1651,7 +1651,7 @@ export default function PlantDispatches() {
                       <th className="text-left p-2">Material</th>
                       <th className="text-right p-2">Required</th>
                       <th className="text-right p-2">Owner has</th>
-                      <th className="text-right p-2 text-amber-700 dark:text-amber-400">Borrow from HLC</th>
+                      <th className="text-right p-2 text-amber-700 dark:text-amber-400">Borrow from {companyShortName}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1669,7 +1669,7 @@ export default function PlantDispatches() {
                 </table>
               </div>
               <p className="text-sm text-muted-foreground">
-                Borrowed quantities will be tagged "(Borrowed from HLC)" in the stock ledger so they remain
+                Borrowed quantities will be tagged "(Borrowed from {companyShortName})" in the stock ledger so they remain
                 visible for later reconciliation. If this is wrong, cancel and check whether a recent
                 receipt is missing for {shortageInfo.ownerPartyName}.
               </p>
@@ -1686,7 +1686,7 @@ export default function PlantDispatches() {
               data-testid="button-confirm-borrow"
             >
               {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              Borrow from HLC and save
+              Borrow from {companyShortName} and save
             </Button>
           </DialogFooter>
         </DialogContent>

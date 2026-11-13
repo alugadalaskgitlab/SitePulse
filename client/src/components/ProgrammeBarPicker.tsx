@@ -19,6 +19,7 @@ import { barSideLabel, isDprSideCompatible } from "@shared/barSide";
 import { chainageOutsideBar, autoMatchBar, isBarCompatible, normalizeDprSideKey } from "@shared/dprProgrammeLink";
 import type { DprActualBalance } from "@/lib/dprActualBalance";
 import { OutOfRangeChainageModal } from "@/components/OutOfRangeChainageModal";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 export type PickerBar = {
   id: number;
@@ -120,6 +121,7 @@ export function ProgrammeBarPicker({
   fromKm?: number | null;
   toKm?: number | null;
 }) {
+  const { companyShortName } = useFeatureFlags();
   const {
     data: bars = [],
     isError: programmeQueryFailed,
@@ -588,12 +590,12 @@ export function BarLinkFeedback({
                   <SelectValue placeholder="Select…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hlc">HLC (own execution)</SelectItem>
+                  <SelectItem value="hlc">{companyShortName} (own execution)</SelectItem>
                   <SelectItem value="agency">{bar.arrangement.agency ? `Agency — ${bar.arrangement.agency}` : "Agency"}</SelectItem>
                 </SelectContent>
               </Select>
               {partlyOutsourced && !executedBy && (
-                <span className="text-[10px] font-semibold text-red-600" data-testid={`${testidPrefix}-flag-executed-by-required`}>Required — record HLC and agency work as separate rows</span>
+                <span className="text-[10px] font-semibold text-red-600" data-testid={`${testidPrefix}-flag-executed-by-required`}>Required — record {companyShortName} and agency work as separate rows</span>
               )}
             </div>
           )}

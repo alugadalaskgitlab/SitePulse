@@ -7,6 +7,7 @@
  */
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import {
   deriveExecutionState,
   EXECUTION_STATE_COLORS,
@@ -149,16 +150,18 @@ export function ExecutionStateBadge({
   compact?: boolean;
   testId?: string;
 }) {
+  const { companyText } = useFeatureFlags();
   const c = EXECUTION_STATE_COLORS[result.state];
+  const badgeLabel = companyText(result.badge);
   return (
     <button
       type="button"
       onClick={onClick}
-      title={`${result.badge}${result.pendingRevision ? " · Revision Pending" : ""} — click for the execution plan`}
+      title={`${badgeLabel}${result.pendingRevision ? " · Revision Pending" : ""} — click for the execution plan`}
       className={`inline-flex items-center gap-1 max-w-[220px] truncate whitespace-nowrap rounded border px-1.5 py-0.5 font-semibold ${c.bg} ${c.border} ${c.text} ${compact ? "text-[10px]" : "text-[11px]"} hover:brightness-95 transition`}
       data-testid={testId ?? "badge-execution-state"}
     >
-      <span className="truncate">{result.badge}</span>
+      <span className="truncate">{badgeLabel}</span>
       {result.pendingRevision && (
         <span className="shrink-0 rounded bg-purple-100 border border-purple-300 text-purple-700 px-1 text-[9px]" title="A material/commercial revision is awaiting approval">
           Rev

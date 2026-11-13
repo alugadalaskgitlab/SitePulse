@@ -19,8 +19,8 @@ export function tripMasterSelection(equipmentId: number | null | undefined, chan
   return changed ? { masterSelection: { equipmentId: equipmentId ?? null } } : {};
 }
 
-export function equipmentOwnershipLabel(equipment: { ownership?: string | null }, owner?: string | null) {
-  return equipment.ownership === "owned" ? "Owned — HLC"
+export function equipmentOwnershipLabel(equipment: { ownership?: string | null }, owner?: string | null, companyShortName = "HLC") {
+  return equipment.ownership === "owned" ? `Owned — ${companyShortName}`
     : equipment.ownership === "hired" ? `Hired — ${owner || "Owner not linked"}`
     : "Ownership not recorded";
 }

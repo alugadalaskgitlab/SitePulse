@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { Link } from "wouter";
 import { HubShell } from "@/components/HubShell";
 import { Button } from "@/components/ui/button";
@@ -46,11 +47,13 @@ function textInputClass() {
 function PostingMappingsCard({
   config,
   canConfirm,
+  companyShortName,
   onSave,
   saving,
 }: {
   config: TallyExportReadinessReport["config"];
   canConfirm: boolean;
+  companyShortName: string;
   onSave: (config: TallyExportReadinessReport["config"]) => void;
   saving: boolean;
 }) {
@@ -114,7 +117,7 @@ function PostingMappingsCard({
       </CardHeader>
       <CardContent className="space-y-5">
         <p className="text-sm text-muted-foreground">
-          Suggested names are not treated as confirmed. The Owner must verify each voucher type and ledger name against HLC Tally.
+          Suggested names are not treated as confirmed. The Owner must verify each voucher type and ledger name against {companyShortName} Tally.
           Any missing or unconfirmed mapping blocks the affected voucher.
         </p>
         <div className="grid gap-3 md:grid-cols-2">
@@ -157,7 +160,7 @@ function PostingMappingsCard({
                       },
                     }))}
                   />
-                  <span>I verified this voucher type and expense ledger in HLC Tally.</span>
+                  <span>I verified this voucher type and expense ledger in {companyShortName} Tally.</span>
                 </label>
               </div>
             );
@@ -195,16 +198,16 @@ function PostingMappingsCard({
                   },
                 }))}
               />
-              <span>I verified this voucher type in HLC Tally.</span>
+              <span>I verified this voucher type in {companyShortName} Tally.</span>
             </label>
           </div>
         </div>
 
         <div className="max-w-sm space-y-2 rounded-md border p-3">
           <label className="block text-sm">
-            HLC home-state GST code
+            {companyShortName} home-state GST code
             <input
-              aria-label="HLC home-state GST code"
+              aria-label={`${companyShortName} home-state GST code`}
               inputMode="numeric"
               maxLength={2}
               className={textInputClass()}
@@ -225,7 +228,7 @@ function PostingMappingsCard({
         <div>
           <h3 className="mb-3 font-medium">Separate component ledgers</h3>
           <p className="mb-3 text-sm text-muted-foreground">
-            GST is split once per bill by comparing the first two digits of the vendor GSTIN with the confirmed HLC home-state code.
+            GST is split once per bill by comparing the first two digits of the vendor GSTIN with the confirmed {companyShortName} home-state code.
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {([
@@ -270,7 +273,7 @@ function PostingMappingsCard({
                         },
                       }))}
                     />
-                    <span>Verified against HLC Tally</span>
+                    <span>Verified against {companyShortName} Tally</span>
                   </label>
                 </div>
               );
@@ -346,6 +349,7 @@ function CountCard({ label, count, detail }: { label: string; count: number; det
 }
 
 export default function VendorTallyReadiness() {
+  const { companyShortName } = useFeatureFlags();
   const readiness = useQuery({
     queryKey: ["/api/vendor-bills/tally-readiness"],
     queryFn: loadReadiness,
@@ -412,7 +416,7 @@ export default function VendorTallyReadiness() {
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = response.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] || "HLC-Tally-vouchers.xml";
+      anchor.download = response.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] || "company-Tally-vouchers.xml";
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -481,6 +485,7 @@ export default function VendorTallyReadiness() {
             <PostingMappingsCard
               config={readiness.data.config}
               canConfirm={!!readiness.data.canConfirmMappings}
+              companyShortName={companyShortName}
               saving={saveMappings.isPending}
               onSave={config => saveMappings.mutate(config)}
             />
@@ -555,7 +560,7 @@ export default function VendorTallyReadiness() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-                    Inspection only. No XML file is created until you confirm each bill below and select Download XML.
+                    Inspection only. Tally company: <strong>{exportPreview.companyName}</strong>. No XML file is created until you confirm each bill below and select Download XML.
                   </p>
                   {exportPreview.vouchers.map(voucher => (
                     <div key={voucher.billId} className="space-y-3 rounded-md border p-3">
