@@ -27,7 +27,7 @@ describe("display inventory completeness and safe provenance", () => {
     expect(inventory.systems).toHaveLength(297);
     expect(inventory.apiCalls).toHaveLength(2010);
     expect(inventory.cells).toHaveLength(SECTION_KEYS.length * ACTIONS.length);
-    expect(SECTION_KEYS).toHaveLength(93);
+    expect(SECTION_KEYS).toHaveLength(94);
   });
   it("maps every stored section and all 92 actual tiles to canonical functions", () => {
     for (const section of SECTION_KEYS) {

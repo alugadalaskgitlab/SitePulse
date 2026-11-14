@@ -123,7 +123,7 @@ function FeaturePermissionsDialogContent({
   const effective = (featureId: string, action: FeatureAction): boolean => {
     const override = (personalChanges ?? access?.personalChanges)?.[featureId as keyof FeatureTicks]?.[action];
     if (override !== undefined) return override;
-    return selectedRoles.some(role => role.ticks[featureId as keyof FeatureTicks]?.[action] === true);
+    return selectedRoles.some(role => role.ticks?.[featureId as keyof FeatureTicks]?.[action] === true);
   };
   const hasPersonalChange = (featureId: string, action: FeatureAction): boolean =>
     (personalChanges ?? access?.personalChanges)?.[featureId as keyof FeatureTicks]?.[action] !== undefined;
@@ -131,7 +131,7 @@ function FeaturePermissionsDialogContent({
     .some(ticks => Object.values(ticks ?? {}).some(value => value !== undefined));
 
   const setPermission = (featureId: string, action: FeatureAction, checked: boolean) => {
-    const defaults = selectedRoles.some(role => role.ticks[featureId as keyof FeatureTicks]?.[action] === true);
+    const defaults = selectedRoles.some(role => role.ticks?.[featureId as keyof FeatureTicks]?.[action] === true);
     setPersonalChanges(current => {
       const next = structuredClone(current ?? access?.personalChanges ?? {}) as FeatureTicks;
       next[featureId as keyof FeatureTicks] ??= {};
@@ -203,6 +203,7 @@ function FeaturePermissionsDialogContent({
                         <span className="text-sm font-medium">
                           {feature.label}
                           {feature.inactive && <span className="ml-2 text-xs text-muted-foreground">Inactive</span>}
+                          {feature.description && <span className="mt-0.5 block text-xs font-normal text-muted-foreground">{feature.description}</span>}
                         </span>
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
                         {ACTIONS.filter(action => feature.actions.includes(action)).map(action => (

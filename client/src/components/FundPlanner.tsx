@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle, ChevronDown, ChevronRight, CircleDollarSign,
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FUND_PLANNER_WORK_GROUPS, fundPlannerWorkGroup, type FundPlannerWorkGroup } from "@shared/fundPlannerGroups";
 
 type WorkValueRow = {
   boqItemId: number;
@@ -211,6 +212,25 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
     ),
     [workQuery.data?.rows],
   );
+  const itemMetadataById = useMemo(
+    () => new Map((workQuery.data?.materialItems ?? []).map(item => [materialItemId(item), item])),
+    [workQuery.data?.materialItems],
+  );
+  const workGroupForRow = (row: WorkValueRow): FundPlannerWorkGroup | null => {
+    const item = itemMetadataById.get(row.boqItemId) ?? {};
+    const layerConfig = item.layerConfig && typeof item.layerConfig === "object"
+      ? item.layerConfig as Record<string, unknown>
+      : {};
+    const settings = recipeSettingsFor(item);
+    return fundPlannerWorkGroup({
+      description: row.description,
+      categoryName: String(item.categoryName ?? item.fundPlannerCategory ?? ""),
+      workCategory: String(item.workCategory ?? ""),
+      planningWorkType: String(item.planningWorkType ?? ""),
+      layerType: String(layerConfig.layerType ?? settings.layerType ?? ""),
+      mixType: String(layerConfig.mixType ?? settings.mixType ?? ""),
+    });
+  };
   const latestPlan = useMemo(
     () => [...(plansQuery.data?.plans ?? [])].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0],
     [plansQuery.data?.plans],
@@ -238,11 +258,15 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
     });
   }, [rows]);
 
+  const hydratedPlanKey = useRef<string | null>(null);
   useEffect(() => {
-    if (!workQuery.data) return;
+    if (!workQuery.data || !plansQuery.data) return;
+    const hydrationKey = `${projectId}:${selectedPlanId}`;
+    if (hydratedPlanKey.current === hydrationKey) return;
+    hydratedPlanKey.current = hydrationKey;
     const saved = plansQuery.data?.plans?.find(item => String(item.id) === selectedPlanId);
     setPlan(normalizePlanData(saved?.data, rows, workQuery.data, latestPlan));
-  }, [workQuery.data, plansQuery.data, selectedPlanId, rows, latestPlan]);
+  }, [projectId, workQuery.data, plansQuery.data, selectedPlanId, rows, latestPlan]);
 
   const updatePlan = (updater: (current: PlanData) => PlanData) => setPlan(current => current ? updater(current) : current);
   const previewMutation = useMutation({
@@ -370,7 +394,7 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
       Number(material.totalQty) <= 0 || quotes[index].cheaperCost != null,
     );
     costs = materialsCost + otherCosts;
-    const alreadyDone = num(plan?.alreadyDone);
+    const alreadyDone = Number(workQuery.data?.totals.billEstimateWithinBoq) || 0;
     const alternateMaterialCosts = quotes.map(quote => quote.otherCost);
     const alternateArrange = alternateMaterialCosts.some(value => value == null)
       ? null
@@ -384,7 +408,7 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
       margin: pricesComplete ? bill - costs : null,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, plan?.works, plan?.alreadyDone, plan?.suppliers, materials]);
+  }, [rows, plan?.works, plan?.suppliers, materials, workQuery.data?.totals.billEstimateWithinBoq]);
 
   const invalidateAfterWrite = async () => {
     await Promise.all([
@@ -428,13 +452,18 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
     onError: error => toast({ title: "Could not delete fund plan", description: error.message, variant: "destructive" }),
   });
   const currentSavedPlan = plansQuery.data?.plans?.find(item => String(item.id) === selectedPlanId);
+  const currentWorkValue = Number(workQuery.data?.totals?.billEstimateWithinBoq) || 0;
+  const planWithCurrentWorkValue = () => ({
+    ...plan,
+    alreadyDone: String(currentWorkValue),
+  });
   const saveCurrent = () => {
     if (!plan || !currentSavedPlan) return;
-    saveMutation.mutate({ id: currentSavedPlan.id, name: currentSavedPlan.name, data: plan });
+    saveMutation.mutate({ id: currentSavedPlan.id, name: currentSavedPlan.name, data: planWithCurrentWorkValue() });
   };
   const createPlan = () => {
     if (!plan || !planName.trim()) return;
-    saveMutation.mutate({ name: planName.trim(), data: plan });
+    saveMutation.mutate({ name: planName.trim(), data: planWithCurrentWorkValue() });
   };
   const applyLength = (groupKey: string, length: number) => {
     updatePlan(current => {
@@ -458,6 +487,41 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
     const metres = Math.round(Number(value) * 1000);
     return `${Math.floor(metres / 1000)}+${String(metres % 1000).padStart(3, "0")}`;
   };
+  const subtotalForRows = (sourceRows: WorkValueRow[]) => {
+    const selected = sourceRows.filter(row => plan?.works[workKey(row)]?.selected);
+    const figures = selected.map(row => rowFinancials(row));
+    const total = (field: "bill" | "costA" | "costB" | "otherCost" | "margin") => {
+      if (figures.some(row => row[field] == null)) return null;
+      return figures.reduce((sum, row) => sum + Number(row[field] ?? 0), 0);
+    };
+    return {
+      selectedCount: selected.length,
+      bill: total("bill") ?? 0,
+      materialsA: total("costA"),
+      materialsB: total("costB"),
+      otherCosts: total("otherCost") ?? 0,
+      margin: total("margin"),
+    };
+  };
+  const setSelectionForRows = (sourceRows: WorkValueRow[], selected: boolean) => {
+    updatePlan(current => {
+      const works = { ...current.works };
+      sourceRows.forEach(row => {
+        const id = workKey(row);
+        works[id] = { ...(works[id] ?? { selected: false, quantity: "0", length: "", otherCostPerUnit: "0" }), selected };
+      });
+      return { ...current, works };
+    });
+  };
+  const toggleSelectionForRows = (sourceRows: WorkValueRow[]) => {
+    const allSelected = sourceRows.length > 0 && sourceRows.every(row => plan?.works[workKey(row)]?.selected);
+    setSelectionForRows(sourceRows, !allSelected);
+  };
+  const scrollToWorkBlock = (key: string) => {
+    document.getElementById(`fund-work-${key}`)?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  };
+  const jumpGroupTarget = (workGroup: FundPlannerWorkGroup) =>
+    groups.find(group => group.rows.some(row => workGroupForRow(row) === workGroup))?.key ?? null;
 
   if (workQuery.isLoading || plansQuery.isLoading) {
     return <section className="space-y-3 p-3" aria-label="Loading fund planner">
@@ -507,11 +571,11 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
         <div className="sticky top-0 z-20 -mx-3 mb-4 border-y border-stone-400 bg-[#f5f4f0]/95 px-3 py-2 shadow-sm backdrop-blur-sm sm:-mx-5 sm:px-5 print:static print:border-2 print:bg-white print:shadow-none">
           <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-5">
             <SummaryMetric label="Bill for ticked work" value={money(summary.bill)} hint={moneyLakh(summary.bill)} />
-            <div>
-              <FieldLabel>Already done</FieldLabel>
-              <Input aria-label="Already done bill estimate" type="number" min="0" step="0.01" value={plan.alreadyDone}
-                onChange={event => updatePlan(current => ({ ...current, alreadyDone: event.target.value }))}
-                className="mt-1 h-7 max-w-36 border-stone-300 bg-white px-2 font-mono text-sm print:border-0 print:p-0" data-testid="input-already-done" />
+            <div data-testid="fund-already-done">
+              <SummaryMetric label="Already done" value={money(summary.alreadyDone)} hint="from Work value" />
+              {currentSavedPlan && (currentSavedPlan.data as any)?.alreadyDone != null && (
+                <p className="mt-0.5 text-[9px] text-stone-500">Saved with plan: {money(num((currentSavedPlan.data as any).alreadyDone))}</p>
+              )}
             </div>
             <SummaryMetric label="Total bill after this" value={money(summary.total)} strong hint={moneyLakh(summary.total)} />
             <SummaryMetric
@@ -528,11 +592,34 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
           <span>Already done is prefilled from Work value’s bill estimate within BOQ. Planned bill uses selected quantities × BOQ rate; money to arrange and margin use the cheaper supplier price for each material, plus other costs.</span>
         </div>
 
+        <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-sm font-semibold">Work to plan</h3>
+          <nav aria-label="Jump to work block" className="flex flex-wrap gap-1 print:hidden">
+            {groups.map(group => (
+              <Button key={`jump-${group.key}`} type="button" size="sm" variant="outline" className="h-7 px-2 text-[10px]"
+                onClick={() => scrollToWorkBlock(group.key)} data-testid={`button-jump-${group.key}`}>
+                {group.key === "whole-road" ? "Whole road" : group.label}
+              </Button>
+            ))}
+            {jumpGroupTarget("structures") && (
+              <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[10px]"
+                onClick={() => scrollToWorkBlock(jumpGroupTarget("structures")!)} data-testid="button-jump-structures">CD / structures</Button>
+            )}
+            {jumpGroupTarget("furniture") && (
+              <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[10px]"
+                onClick={() => scrollToWorkBlock(jumpGroupTarget("furniture")!)} data-testid="button-jump-furniture">Road furniture</Button>
+            )}
+          </nav>
+        </div>
         <div className="space-y-4">
           {groups.map(group => {
             const reach = plan.reaches[group.key] ?? { start: group.start == null ? "" : String(group.start), end: group.end == null ? "" : String(group.end), leaveOut: "0" };
             const stretchLength = Math.max(0, (num(reach.end) - num(reach.start)) * 1000 - num(reach.leaveOut));
-            return <section key={group.key} className="overflow-hidden rounded-md border border-stone-300 bg-white" data-testid={`fund-reach-${group.key}`}>
+            const availableGroups = FUND_PLANNER_WORK_GROUPS.filter(workGroup =>
+              group.rows.some(row => workGroupForRow(row) === workGroup.id),
+            );
+            const reachSubtotal = subtotalForRows(group.rows);
+            return <section key={group.key} id={`fund-work-${group.key}`} className="scroll-mt-24 overflow-hidden rounded-md border border-stone-300 bg-white" data-testid={`fund-reach-${group.key}`}>
               <header className="flex flex-col gap-3 border-b border-stone-300 bg-[#eeece6] px-3 py-3 sm:flex-row sm:items-center sm:justify-between print:bg-white">
                 <div className="min-w-0">
                   <h3 className="text-sm font-semibold">{group.label}</h3>
@@ -540,6 +627,18 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
                     {group.key === "whole-road" ? "Whole road · fixed items" : `${group.label} · ${formatChainage(group.start)}–${formatChainage(group.end)}`}
                     <span className="ml-2 font-mono">{group.rows.length} item{group.rows.length === 1 ? "" : "s"}</span>
                   </p>
+                  <div className="mt-2 flex flex-wrap gap-1 print:hidden" data-testid={`fund-group-controls-${group.key}`}>
+                    {availableGroups.map(workGroup => (
+                      <Button key={workGroup.id} type="button" size="sm" variant="outline" className="h-6 px-2 text-[10px]"
+                        aria-pressed={group.rows.filter(row => workGroupForRow(row) === workGroup.id).every(row => plan.works[workKey(row)]?.selected)}
+                        onClick={() => toggleSelectionForRows(group.rows.filter(row => workGroupForRow(row) === workGroup.id))}
+                        data-testid={`button-select-${group.key}-${workGroup.id}`}>{workGroup.label}</Button>
+                    ))}
+                    <Button type="button" size="sm" variant="outline" className="h-6 px-2 text-[10px]"
+                      onClick={() => setSelectionForRows(group.rows, true)} data-testid={`button-select-${group.key}-all`}>All</Button>
+                    <Button type="button" size="sm" variant="outline" className="h-6 px-2 text-[10px]"
+                      onClick={() => setSelectionForRows(group.rows, false)} data-testid={`button-select-${group.key}-none`}>None</Button>
+                  </div>
                 </div>
                 {group.key !== "whole-road" && group.rows.some(row => !row.isFixed) && <div className="grid grid-cols-2 gap-2 print:hidden sm:flex sm:items-end">
                   <label><FieldLabel>Stretch start (km)</FieldLabel><Input type="number" step="0.001" value={reach.start} onChange={event => updatePlan(current => ({ ...current, reaches: { ...current.reaches, [group.key]: { ...reach, start: event.target.value } } }))} className="mt-1 h-8 w-full font-mono text-xs sm:w-24" /></label>
@@ -563,6 +662,14 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
               <div className="divide-y divide-stone-200 lg:hidden print:hidden">
                 {group.rows.map(row => <WorkCard key={workKey(row)} row={row} plan={plan} updatePlan={updatePlan} financial={rowFinancials(row)} />)}
               </div>
+              <div className="grid gap-1 border-t border-stone-300 bg-stone-50 px-3 py-2 text-[10px] sm:grid-cols-6" data-testid={`fund-reach-subtotal-${group.key}`}>
+                <strong>Subtotal · {reachSubtotal.selectedCount} ticked</strong>
+                <span>Bill {money(reachSubtotal.bill)}</span>
+                <span>Materials A {reachSubtotal.materialsA == null ? "—" : money(reachSubtotal.materialsA)}</span>
+                <span>Materials B {reachSubtotal.materialsB == null ? "—" : money(reachSubtotal.materialsB)}</span>
+                <span>Other {money(reachSubtotal.otherCosts)}</span>
+                <span>Margin {reachSubtotal.margin == null ? "—" : money(reachSubtotal.margin)}</span>
+              </div>
               {!group.rows.length && <p className="px-4 py-8 text-center text-sm text-stone-500">No work is available in this group.</p>}
             </section>;
           })}
@@ -574,7 +681,7 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
         {rows.length > 0 && <div className="mt-3 overflow-x-auto rounded-md border border-stone-500 bg-white print:border-black">
           <table className="w-full min-w-[760px] border-collapse text-[10px]" data-testid="fund-work-total">
             <tbody><tr className="bg-stone-100 font-semibold">
-              <th scope="row" className="px-3 py-2 text-left">Total for ticked work · {rows.filter(row => plan.works[workKey(row)]?.selected).length} rows</th>
+              <th scope="row" className="px-3 py-2 text-left">Grand total for ticked work · {rows.filter(row => plan.works[workKey(row)]?.selected).length} rows</th>
               <td className="px-3 py-2 text-right">Bill {money(summary.bill)}</td>
               <td className="px-3 py-2 text-right">Materials A {summary.materialsA == null ? "—" : money(summary.materialsA)}</td>
               <td className="px-3 py-2 text-right">Materials B {summary.materialsB == null ? "—" : money(summary.materialsB)}</td>

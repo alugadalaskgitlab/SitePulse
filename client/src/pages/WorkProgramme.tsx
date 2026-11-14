@@ -72,6 +72,7 @@ import { shortItemName, boqItemDisplayName } from "@/lib/itemName";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import { WorkValueTable } from "@/components/WorkValueTable";
 import FundPlanner from "@/components/FundPlanner";
+import { ScopeAlignmentApplySummary } from "@/components/ScopeAlignmentApplySummary";
 import type {
   BoqProject,
   BoqItemWithCategory,
@@ -3519,7 +3520,7 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
 
 export default function WorkProgramme() {
   const { toast } = useToast();
-  const { featureCan, user } = useAuth();
+  const { featureCan, sectionCan, sectionVisible, user } = useAuth();
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id);
   const deepLinkItemId = typeof window !== "undefined"
@@ -3546,6 +3547,11 @@ export default function WorkProgramme() {
     try { setActiveTab(sessionStorage.getItem(`wp-tab-${params.id}`) || "gantt"); } catch { /* ignore */ }
   }, [params.id]);
   useEffect(() => {
+    if (sectionVisible("fund_planner") || activeTab !== "fund-planner") return;
+    setActiveTab("gantt");
+    try { sessionStorage.setItem(`wp-tab-${params.id}`, "gantt"); } catch { /* ignore */ }
+  }, [activeTab, params.id, sectionVisible]);
+  useEffect(() => {
     if (!deepLinkItemId) return;
     setActiveTab("gantt");
     try { sessionStorage.setItem(`wp-tab-${params.id}`, "gantt"); } catch { /* ignore */ }
@@ -3558,6 +3564,10 @@ export default function WorkProgramme() {
   const [seqDialogOpen, setSeqDialogOpen] = useState(false);
   const [scopeAlignmentOpen, setScopeAlignmentOpen] = useState(false);
   const [scopeAlignmentConfirm, setScopeAlignmentConfirm] = useState(false);
+  const [scopeAlignmentApplyResult, setScopeAlignmentApplyResult] = useState<{
+    updatedCount: number;
+    notUpdated: Array<{ barId: number | null; itemName: string; reason: string }>;
+  } | null>(null);
   const [seqFronts, setSeqFronts] = useState("");         // "" = auto
   const [seqStagger, setSeqStagger] = useState("1");      // months (0 = concurrent)
   const [seqLag, setSeqLag] = useState("0.25");           // months
@@ -4006,6 +4016,17 @@ export default function WorkProgramme() {
     [items, bars, scopeSegments],
   );
   const scopeAlignmentRows = scopeAlignment.rows;
+  const scopeAlignmentUpdateCount = scopeAlignmentRows.filter(row => row.action === "update").length;
+  const scopeAlignmentOutsideRows = scopeAlignmentRows.filter(row => row.action === "suggest_remove");
+  const scopeAlignmentOutsideDisplayRows = scopeAlignmentOutsideRows.map(row => {
+    const bar = bars.find(candidate => Number(candidate.id) === row.barId);
+    return {
+      rowKey: row.rowKey,
+      barLabel: String((bar as any)?.label ?? "").trim() || `#${row.barId}`,
+      itemCode: row.itemCode,
+      itemName: row.itemName,
+    };
+  });
   const applyScopeAlignmentMutation = useMutation({
     mutationFn: async () => {
       if (!scopeVersionToken) throw new Error("Reload the scope preview before applying.");
@@ -4020,7 +4041,8 @@ export default function WorkProgramme() {
       });
       return response.json();
     },
-    onSuccess: async () => {
+    onSuccess: async result => {
+      setScopeAlignmentApplyResult(result);
       setScopeAlignmentConfirm(false);
       setScopeAlignmentOpen(false);
       await Promise.all([
@@ -4029,7 +4051,12 @@ export default function WorkProgramme() {
         queryClient.invalidateQueries({ queryKey: [`/api/boq/projects/${projectId}/scope-version`] }),
         queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "work-value"] }),
       ]);
-      toast({ title: "Programme bars updated", description: "Only chainage and planned quantity were changed." });
+      toast({
+        title: `${result.updatedCount} bars updated`,
+        description: result.notUpdated?.length
+          ? `${result.notUpdated.length} not updated. Review the reasons in the bar review.`
+          : "Only chainage and planned quantity were changed.",
+      });
     },
     onError: (error: any) => toast({
       title: "Could not update programme bars",
@@ -5257,17 +5284,16 @@ export default function WorkProgramme() {
         </Card>
       )}
 
-      {user?.isOwner && scopeAlignmentRows.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
-          <span className="font-medium">{scopeAlignmentRows.length} programme bars don't match the scope.</span>
-          <Button size="sm" variant="outline" onClick={() => {
-            setScopeAlignmentConfirm(false);
-            setScopeAlignmentOpen(true);
-          }}>
-            Review and update bars
-          </Button>
-        </div>
-      )}
+      {user?.isOwner && <ScopeAlignmentApplySummary
+        updateCount={scopeAlignmentUpdateCount}
+        outsideRows={scopeAlignmentOutsideDisplayRows}
+        result={scopeAlignmentApplyResult}
+        onReview={() => {
+          setScopeAlignmentApplyResult(null);
+          setScopeAlignmentConfirm(false);
+          setScopeAlignmentOpen(true);
+        }}
+      />}
 
       <Dialog open={scopeAlignmentOpen} onOpenChange={(open) => {
         setScopeAlignmentOpen(open);
@@ -5282,7 +5308,7 @@ export default function WorkProgramme() {
           </p>
           {scopeAlignment.blockedCount > 0 && (
             <div role="alert" className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
-              {scopeAlignment.blockedCount} bar(s) need a split or manual review. Resolve these before applying any updates.
+              {scopeAlignment.blockedCount} bar(s) need a split or manual review and will remain unchanged. Other Update rows can still be applied.
             </div>
           )}
           <div className="min-h-0 flex-1 overflow-auto rounded border">
@@ -5331,13 +5357,13 @@ export default function WorkProgramme() {
           </div>
           {scopeAlignmentConfirm && (
             <div role="alert" className="rounded border border-slate-300 bg-slate-50 p-3 text-sm">
-              Apply the listed chainage and planned-quantity changes? No bar will be deleted.
+              Apply all listed Update rows. Rows that cannot be saved will be listed with a reason. No bar will be deleted.
               <div className="mt-2 flex justify-end gap-2">
                 <Button size="sm" variant="outline" onClick={() => setScopeAlignmentConfirm(false)}>Keep preview</Button>
                 <Button
                   size="sm"
                   onClick={() => applyScopeAlignmentMutation.mutate()}
-                  disabled={applyScopeAlignmentMutation.isPending || scopeAlignment.blockedCount > 0 || !scopeVersionToken}
+                  disabled={applyScopeAlignmentMutation.isPending || !scopeVersionToken || !scopeAlignmentRows.some(row => row.action === "update")}
                 >
                   {applyScopeAlignmentMutation.isPending ? "Applying…" : "Confirm and save"}
                 </Button>
@@ -5350,7 +5376,7 @@ export default function WorkProgramme() {
                 <Button variant="outline" onClick={() => setScopeAlignmentOpen(false)}>Close</Button>
                 <Button
                   onClick={() => setScopeAlignmentConfirm(true)}
-                  disabled={scopeAlignment.blockedCount > 0 || !scopeVersionToken || !scopeAlignmentRows.some(row => row.action === "update")}
+                  disabled={!scopeVersionToken || !scopeAlignmentRows.some(row => row.action === "update")}
                 >
                   Apply updates
                 </Button>
@@ -5375,9 +5401,9 @@ export default function WorkProgramme() {
             <TabsTrigger value="work-value" className="flex items-center gap-1.5" data-testid="tab-work-value">
               <TableProperties className="w-3.5 h-3.5" /> Work value
             </TabsTrigger>
-            <TabsTrigger value="fund-planner" className="flex items-center gap-1.5" data-testid="tab-fund-planner">
+            {sectionVisible("fund_planner") && <TabsTrigger value="fund-planner" className="flex items-center gap-1.5" data-testid="tab-fund-planner">
               <CircleDollarSign className="w-3.5 h-3.5" /> Fund planner
-            </TabsTrigger>
+            </TabsTrigger>}
           </TabsList>
 
           <TabsContent value="gantt">
@@ -5414,9 +5440,9 @@ export default function WorkProgramme() {
           <TabsContent value="work-value">
             <WorkValueTable projectId={projectId} />
           </TabsContent>
-          <TabsContent value="fund-planner">
-            <FundPlanner projectId={projectId} canSave={featureCan("boq_programme", "edit")} />
-          </TabsContent>
+          {sectionVisible("fund_planner") && <TabsContent value="fund-planner">
+            <FundPlanner projectId={projectId} canSave={sectionCan("fund_planner", "edit")} />
+          </TabsContent>}
         </Tabs>
       )}
     </div>

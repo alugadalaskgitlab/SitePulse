@@ -3864,7 +3864,11 @@ export class DatabaseStorage implements IStorage {
     scopeVersionToken: string,
     expectedBars: Array<{ id: number; chainageFrom: number | null; chainageTo: number | null; plannedQty: number }>,
     actor: { userId: number; userName: string; userRole: string },
-  ): Promise<{ updatedCount: number; suggestedRemoveCount: number }> {
+  ): Promise<{
+    updatedCount: number;
+    notUpdated: Array<{ barId: number | null; itemName: string; reason: string }>;
+    suggestedRemoveCount: number;
+  }> {
     return db.transaction(async (tx) => {
       const project = await this.lockProjectAndCheckScopeTx(tx, boqProjectId, scopeVersionToken);
       if (!project) throw new Error("PROJECT_NOT_FOUND");
@@ -3907,14 +3911,67 @@ export class DatabaseStorage implements IStorage {
         bars: currentBars as any[],
         segments: currentSegments as any[],
       });
-      if (alignment.blockedCount > 0) throw new Error("SCOPE_ALIGNMENT_BLOCKED");
-
       const barsById = new Map(currentBars.map(bar => [Number(bar.id), bar]));
       let updatedCount = 0;
+      const notUpdated: Array<{ barId: number | null; itemName: string; reason: string }> = [];
       for (const change of alignment.rows) {
-        if (change.action !== "update" || change.barId == null) continue;
-        const current = barsById.get(change.barId);
-        if (!current || change.proposedQuantity == null) continue;
+        if (change.action === "suggest_remove" || change.action === "add_bar_needed") continue;
+        if (change.action === "blocked") {
+          const reason = change.reason || "This bar needs manual review before it can be updated.";
+          notUpdated.push({ barId: change.barId, itemName: change.itemName, reason });
+          await tx.insert(auditLogs).values({
+            module: "work_program_bar",
+            transactionId: change.barId ?? 0,
+            action: "scope_alignment_not_updated",
+            userId: actor.userId,
+            userName: actor.userName,
+            userRole: actor.userRole,
+            oldValues: null,
+            newValues: {
+              result: "not_updated",
+              boqItemId: change.boqItemId,
+              itemCode: change.itemCode,
+              itemName: change.itemName,
+              reason,
+            },
+            reason,
+          });
+          continue;
+        }
+        if (change.action !== "update") continue;
+        const current = change.barId == null ? undefined : barsById.get(Number(change.barId));
+        let failureReason: string | null = null;
+        if (change.barId == null) failureReason = "The preview row has no programme bar number.";
+        else if (!current) failureReason = "This bar is no longer in the project programme.";
+        else if (change.proposedQuantity == null) failureReason = "A planned quantity could not be calculated for this bar.";
+        if (failureReason) {
+          notUpdated.push({ barId: change.barId, itemName: change.itemName, reason: failureReason });
+          await tx.insert(auditLogs).values({
+            module: "work_program_bar",
+            transactionId: change.barId ?? 0,
+            action: "scope_alignment_not_updated",
+            userId: actor.userId,
+            userName: actor.userName,
+            userRole: actor.userRole,
+            oldValues: current ? {
+              chainageFrom: current.chainageFrom,
+              chainageTo: current.chainageTo,
+              plannedQty: current.plannedQty,
+            } : null,
+            newValues: {
+              result: "not_updated",
+              boqItemId: change.boqItemId,
+              itemCode: change.itemCode,
+              itemName: change.itemName,
+              proposedChainageFrom: change.proposedChainageFrom,
+              proposedChainageTo: change.proposedChainageTo,
+              proposedQuantity: change.proposedQuantity,
+              reason: failureReason,
+            },
+            reason: failureReason,
+          });
+          continue;
+        }
         const oldValues = {
           chainageFrom: current.chainageFrom,
           chainageTo: current.chainageTo,
@@ -3925,9 +3982,48 @@ export class DatabaseStorage implements IStorage {
           chainageTo: change.proposedChainageTo,
           plannedQty: change.proposedQuantity,
         };
-        await tx.update(workProgramBars)
-          .set(newValues)
-          .where(and(eq(workProgramBars.id, change.barId), eq(workProgramBars.boqProjectId, boqProjectId)));
+        let saved = false;
+        let saveError: unknown = null;
+        try {
+          saved = await tx.transaction(async rowTx => {
+            const [updated] = await rowTx.update(workProgramBars)
+              .set(newValues)
+              .where(and(eq(workProgramBars.id, change.barId!), eq(workProgramBars.boqProjectId, boqProjectId)))
+              .returning({ id: workProgramBars.id });
+            return !!updated;
+          });
+        } catch (error) {
+          saveError = error;
+          saved = false;
+        }
+        if (!saved) {
+          const saveDetail = saveError instanceof Error
+            ? saveError.message.replace(/\s+/g, " ").slice(0, 180)
+            : "database error";
+          const reason = saveError
+            ? `Save failed: ${saveDetail || "database error"}`
+            : "The update returned no saved row.";
+          notUpdated.push({ barId: change.barId, itemName: change.itemName, reason });
+          await tx.insert(auditLogs).values({
+            module: "work_program_bar",
+            transactionId: change.barId,
+            action: "scope_alignment_not_updated",
+            userId: actor.userId,
+            userName: actor.userName,
+            userRole: actor.userRole,
+            oldValues,
+            newValues: {
+              result: "not_updated",
+              ...newValues,
+              boqItemId: change.boqItemId,
+              itemCode: change.itemCode,
+              itemName: change.itemName,
+              reason,
+            },
+            reason,
+          });
+          continue;
+        }
         await tx.insert(auditLogs).values({
           module: "work_program_bar",
           transactionId: change.barId,
@@ -3937,6 +4033,7 @@ export class DatabaseStorage implements IStorage {
           userRole: actor.userRole,
           oldValues,
           newValues: {
+            result: "updated",
             ...newValues,
             boqItemId: change.boqItemId,
             itemCode: change.itemCode,
@@ -3949,6 +4046,7 @@ export class DatabaseStorage implements IStorage {
       }
       return {
         updatedCount,
+        notUpdated,
         suggestedRemoveCount: alignment.rows.filter(row => row.action === "suggest_remove").length,
       };
     });

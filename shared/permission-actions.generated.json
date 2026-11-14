@@ -795,6 +795,16 @@
       "edit": "Edit records in Work Programme — Review & Demand. This does not grant deletion or cancellation."
     }
   },
+  "fund_planner": {
+    "actions": [
+      "view",
+      "edit"
+    ],
+    "tooltips": {
+      "view": "Open Fund planner. Other action switches do not grant page access.",
+      "edit": "Edit records in Fund planner. This does not grant deletion or cancellation."
+    }
+  },
   "norms_library": {
     "actions": [
       "view",

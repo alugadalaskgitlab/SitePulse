@@ -170,11 +170,40 @@ describe("fund plan persistence routes", () => {
       data: { works: {} },
     });
     expect(forbidden.status).toBe(403);
+    const hiddenPlans = await request(app).get("/api/boq/projects/777001/fund-plans");
+    expect(hiddenPlans.status).toBe(403);
+    const hiddenPreview = await request(app).post("/api/boq/projects/777001/fund-plan-material-preview").send({ works: [] });
+    expect(hiddenPreview.status).toBe(403);
 
     await pg.exec("INSERT INTO users (id) VALUES (90)");
-    state.currentUser = { id: 89, fullName: "Programme Editor", isOwner: false, isAdmin: false, isActive: true };
+    state.currentUser = { id: 89, fullName: "Programme Viewer", isOwner: false, isAdmin: false, isActive: true };
     state.permissions = emptyMatrix();
-    state.permissions.work_programme.edit = true;
+    state.permissions.work_programme.view = true;
+    const oldWorkProgrammeGrant = await request(app).get("/api/boq/projects/777001/fund-plans");
+    expect(oldWorkProgrammeGrant.status).toBe(403);
+    const oldGrantCannotSave = await request(app).post("/api/boq/projects/777001/fund-plans").send({
+      name: "Should not save from programme grant",
+      data: { works: {} },
+    });
+    expect(oldGrantCannotSave.status).toBe(403);
+
+    state.permissions.fund_planner.view = true;
+    const viewOnlyPlans = await request(app).get("/api/boq/projects/777001/fund-plans");
+    expect(viewOnlyPlans.status).toBe(200);
+    const viewOnlyCannotSave = await request(app).post("/api/boq/projects/777001/fund-plans").send({
+      name: "Should not save from view grant",
+      data: { works: {} },
+    });
+    expect(viewOnlyCannotSave.status).toBe(403);
+    const viewOnlyCannotUpdate = await request(app).put(`/api/boq/projects/777001/fund-plans/${second.body.id}`).send({
+      name: "Should not update",
+      data: { works: {} },
+    });
+    expect(viewOnlyCannotUpdate.status).toBe(403);
+    const viewOnlyCannotDelete = await request(app).delete(`/api/boq/projects/777001/fund-plans/${second.body.id}`);
+    expect(viewOnlyCannotDelete.status).toBe(403);
+
+    state.permissions.fund_planner.edit = true;
     const editorSave = await request(app).post("/api/boq/projects/777001/fund-plans").send({
       name: "Editor plan",
       data: { works: {} },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { previewFundPlanMaterials, quantityForFundPlanLength } from "@shared/fundPlanner";
+import { fundPlannerWorkGroup } from "@shared/fundPlannerGroups";
 
 function sprayItem(waterAddedPerPart: number | null) {
   return {
@@ -44,5 +45,14 @@ describe("Fund Planner", () => {
   it("calculates planned quantity from a selected stretch length and reach share", () => {
     expect(quantityForFundPlanLength(1500, 2000, 22.5)).toBeCloseTo(16.875, 10);
     expect(quantityForFundPlanLength(1500, 0, 22.5)).toBe(0);
+  });
+
+  it("groups work from its BOQ category and recipe layer without item IDs", () => {
+    expect(fundPlannerWorkGroup({ description: "Clearing and grubbing road", categoryName: "Road Works" })).toBe("earthwork");
+    expect(fundPlannerWorkGroup({ description: "Providing wet mix macadam", layerType: "granular" })).toBe("base");
+    expect(fundPlannerWorkGroup({ description: "Applying prime coat", layerType: "spray_coat" })).toBe("bituminous");
+    expect(fundPlannerWorkGroup({ description: "Excavation for culvert", categoryName: "CD Works — Culvert" })).toBe("structures");
+    expect(fundPlannerWorkGroup({ description: "Providing sign board", categoryName: "Road Furniture" })).toBe("furniture");
+    expect(fundPlannerWorkGroup({ description: "Unclassified item", categoryName: "Road Works" })).toBeNull();
   });
 });

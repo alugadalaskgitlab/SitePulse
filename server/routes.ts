@@ -17797,10 +17797,10 @@ export async function registerRoutes(
       return res.json(result);
     } catch (err: any) {
       if (err instanceof ScopeChangedDuringPlanningError || err?.code === "SCOPE_CHANGED_DURING_PLANNING") {
-        return res.status(409).json({ error: "scope_changed", message: "The confirmed scope changed. Reload the preview." });
+        return res.status(409).json({ error: "scope_changed", message: "Scope changed since preview — open the review again." });
       }
       if (err?.message === "PROGRAMME_BARS_CHANGED") {
-        return res.status(409).json({ error: "programme_bars_changed", message: "Programme bars changed. Reload the preview." });
+        return res.status(409).json({ error: "programme_bars_changed", message: "Programme changed since preview — open the review again." });
       }
       if (err?.message === "SCOPE_ALIGNMENT_BLOCKED") {
         return res.status(409).json({ error: "scope_alignment_blocked", message: "Some bars need manual review before updates can be applied." });
@@ -22273,7 +22273,7 @@ export async function registerRoutes(
 
   app.get("/api/boq/projects/:id/fund-plans", async (req, res) => {
     try {
-      if (!assertView(req, res, "work_programme_review")) return;
+      if (!assertView(req, res, "fund_planner")) return;
       const projectId = Number(req.params.id);
       if (!Number.isSafeInteger(projectId) || projectId <= 0) return res.status(400).json({ message: "A BOQ project is required." });
       if (!(await assertOutcomeProjectScope(req, res, projectId))) return;
@@ -22295,7 +22295,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/projects/:id/fund-plans", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "work_programme")) return;
+      if (!assertEdit(req, res, "fund_planner")) return;
       const projectId = Number(req.params.id);
       const name = String(req.body?.name ?? "").trim();
       const data = fundPlanDataObject(req.body?.data);
@@ -22331,7 +22331,7 @@ export async function registerRoutes(
 
   app.put("/api/boq/projects/:id/fund-plans/:planId", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "work_programme")) return;
+      if (!assertEdit(req, res, "fund_planner")) return;
       const projectId = Number(req.params.id);
       const planId = Number(req.params.planId);
       const name = String(req.body?.name ?? "").trim();
@@ -22371,7 +22371,7 @@ export async function registerRoutes(
 
   app.delete("/api/boq/projects/:id/fund-plans/:planId", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "work_programme")) return;
+      if (!assertEdit(req, res, "fund_planner")) return;
       const projectId = Number(req.params.id);
       const planId = Number(req.params.planId);
       if (!Number.isSafeInteger(projectId) || projectId <= 0 || !Number.isSafeInteger(planId) || planId <= 0) {
@@ -22405,7 +22405,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/projects/:id/fund-plan-material-preview", async (req, res) => {
     try {
-      if (!assertView(req, res, "work_programme_review")) return;
+      if (!assertView(req, res, "fund_planner")) return;
       const projectId = Number(req.params.id);
       if (!Number.isSafeInteger(projectId) || projectId <= 0) return res.status(400).json({ message: "A BOQ project is required." });
       if (!(await assertOutcomeProjectScope(req, res, projectId))) return;

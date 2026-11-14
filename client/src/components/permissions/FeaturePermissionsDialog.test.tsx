@@ -109,16 +109,15 @@ describe("FeaturePermissionsDialog", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("contains a render failure inside the access window instead of replacing the page", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+  it("renders older roles with missing feature ticks without crashing", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       ...access,
       roles: [{ ...access.roles[0], ticks: undefined }],
     }))));
     renderDialog();
 
-    expect(await screen.findByText("Access window couldn’t be loaded")).toBeTruthy();
+    expect(await screen.findByTestId("feature-requirement_allocation_material-view")).toBeTruthy();
     expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(screen.getByRole("alert").textContent).toContain("No changes were saved");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

@@ -13,6 +13,7 @@ import { apiRequest } from "@/lib/queryClient";
 import {
   SECTION_KEYS,
   SECTION_LABELS,
+  SECTION_DESCRIPTIONS,
   ACTIONS,
   ACTION_LABELS,
   PERMISSION_GROUPS,
@@ -1226,6 +1227,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
                 <tr key={s} className="border-t hover:bg-muted/30" data-testid={`row-perm-${s}`}>
                   <td className="px-3 py-1.5 font-medium text-sm leading-tight">
                     {SECTION_LABELS[s]}
+                    {SECTION_DESCRIPTIONS[s] && <span className="block text-xs font-normal text-muted-foreground" data-testid={`description-${s}`}>{SECTION_DESCRIPTIONS[s]}</span>}
                     {LEGACY_NOTES[s] && <span className="block text-xs font-normal text-muted-foreground" data-testid={`note-${s}`}>{LEGACY_NOTES[s]}</span>}
                   </td>
                   {(HUB_SECTIONS.has(s) ? ["view"] as Action[] : ACTIONS).map((a) => {

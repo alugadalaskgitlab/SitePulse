@@ -98,6 +98,7 @@ export const SECTION_KEYS = [
   "planning_masters",
   "work_programme",
   "work_programme_review",
+  "fund_planner",
   "norms_library",
   "edit_requests_review",
   "project_scope",
@@ -231,6 +232,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   planning_masters: "Work Programme — Planning Masters",
   work_programme: "Work Programme — Programme & Execution Setup",
   work_programme_review: "Work Programme — Review & Demand",
+  fund_planner: "Fund planner",
   norms_library: "Norms Library (SNL)",
   edit_requests_review: "Edit Requests — Review & Approval",
   project_scope: "Project Scope & Working Reaches",
@@ -264,6 +266,10 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   reports_analysis: "Reports & Analysis (legacy)",
   estimates_manager: "Estimates Manager (legacy)",
   app_management: "App Management (legacy)",
+};
+
+export const SECTION_DESCRIPTIONS: Partial<Record<SectionKey, string>> = {
+  fund_planner: "Bill value, material cost and margin planning",
 };
 
 export const ACTIONS = ["view", "create", "edit", "delete", "view_reports", "export", "approve", "notify"] as const;
@@ -669,6 +675,11 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
     id: "calculators",
     label: "Rate Calculators & Estimator",
     sections: ["estimator_portal", "mix_calculator", "concrete_calculator", "qto_boq", "planning_masters", "work_programme", "work_programme_review", "norms_library", "project_scope", "rate_cards"],
+  },
+  {
+    id: "fund_planner",
+    label: "Work programme",
+    sections: ["fund_planner"],
   },
   {
     id: "masters",

@@ -8,8 +8,8 @@ import {
 } from "../shared/featureAccess";
 
 describe("feature permission catalog", () => {
-  it("defines the 28 features, 17 roles, and action columns from ACCESS-02C", () => {
-    expect(FEATURES).toHaveLength(28);
+  it("defines the 29 features, 17 roles, and action columns", () => {
+    expect(FEATURES).toHaveLength(29);
     expect(ROLE_NAMES).toHaveLength(17);
     expect(FEATURE_ACTIONS).toEqual([
       "view", "add", "edit", "cancel", "verify", "allocate", "technical_verify",
@@ -17,7 +17,7 @@ describe("feature permission catalog", () => {
     ]);
     expect(FEATURE_GROUPS.map(group => group.label)).toEqual([
       "Site work", "Stores", "Plant", "Equipment", "Procurement & billing",
-      "Planning & client billing", "Office",
+      "Planning & client billing", "Work programme", "Office",
     ]);
   });
 

@@ -13,6 +13,7 @@ export const FEATURE_GROUPS = [
   { id: "equipment", label: "Equipment" },
   { id: "procurement", label: "Procurement & billing" },
   { id: "planning", label: "Planning & client billing" },
+  { id: "work_programme", label: "Work programme" },
   { id: "office", label: "Office" },
 ] as const;
 
@@ -33,13 +34,14 @@ export type FeatureId =
   | "irn" | "purchase_indent" | "purchase_orders" | "vendor_bills"
   | "rate_cards" | "payables"
   | "boq_programme" | "progress_actual" | "ra_bills"
-  | "reports" | "masters" | "users_permissions" | "estimating";
+  | "fund_planner" | "reports" | "masters" | "users_permissions" | "estimating";
 
 export type FeatureDefinition = {
   id: FeatureId;
   label: string;
   group: FeatureGroupId;
   actions: readonly FeatureAction[];
+  description?: string;
   license?: "hmp" | "rmc" | "estimating";
   inactive?: boolean;
 };
@@ -70,6 +72,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
   { id: "payables", label: "Payables & vendor financials", group: "procurement", actions: ["view", "export"] },
   { id: "boq_programme", label: "BOQ & work programme", group: "planning", actions: ["view", "add", "edit", "cancel", "approve", "export"] },
   { id: "progress_actual", label: "Progress — planned vs actual", group: "planning", actions: ["view", "add", "edit", "export"] },
+  { id: "fund_planner", label: "Fund planner", group: "work_programme", actions: ["view", "edit"], description: "Bill value, material cost and margin planning" },
   { id: "ra_bills", label: "RA bills", group: "planning", actions: ["view", "add", "edit", "cancel", "verify", "approve", "export"], inactive: true },
   { id: "reports", label: "Reports", group: "office", actions: ["view", "export"] },
   { id: "masters", label: "Masters", group: "office", actions: viewAddEdit },
@@ -275,6 +278,7 @@ export const LEGACY_FEATURE_KEYS: Readonly<Record<FeatureId, readonly SectionKey
   payables: ["vendor_financials", "vendor_bills_view", "vendor_bills"],
   boq_programme: ["qto_boq", "work_programme", "work_programme_review", "planning_masters", "project_scope", "norms_library"],
   progress_actual: ["work_programme_review", "site_dprs"],
+  fund_planner: ["fund_planner"],
   ra_bills: [],
   reports: ["reports", "reports_hub", "report_management", "report_site_purchases", "plant_daily_reports", "plant_variance", "plant_audit", "plant_diesel_proc", "plant_stock", "plant_ldo_reconciliation", "stock_reconciliation", "equipment_performance_report", "rmc_daily_report", "plant_heating_trends", "reports_analysis"],
   masters: ["master_parties", "master_materials", "master_equipment", "master_personnel", "site_management", "sites_plants_manage", "vendor_masters_manage"],
@@ -355,6 +359,15 @@ export function can(
   if (!user || user.isActive === false || !definition || definition.inactive ||
       !isFeatureLicensed(feature, state.licensedModules)) return false;
   if (user.isOwner) return true;
+  // Fund planning is deliberately separate from broad Work programme access,
+  // including the legacy unconfigured-role Admin bypass.
+  if (feature === "fund_planner") {
+    if (!state.rolesConfigured) return legacyFeatureTick(state.legacyPermissions, feature, action);
+    let granted = (state.userRoles ?? []).some(roleId => state.roleTicks?.[roleId]?.[feature]?.[action] === true);
+    const personal = state.personalChanges?.[feature]?.[action];
+    if (personal !== undefined) granted = personal;
+    return granted;
+  }
   if (user.isAdmin && !state.rolesConfigured) return true;
   if (!state.rolesConfigured) {
     if (feature === "users_permissions" && user.canManagePermissions) {
@@ -438,6 +451,7 @@ export const FEATURE_ROUTE_ALIASES: Readonly<Partial<Record<SectionKey, readonly
   planning_masters: ["boq_programme"],
   work_programme: ["boq_programme"],
   work_programme_review: ["boq_programme", "progress_actual"],
+  fund_planner: ["fund_planner"],
   norms_library: ["boq_programme"],
   edit_requests_review: ["users_permissions"],
   project_scope: ["boq_programme"],
@@ -561,6 +575,14 @@ export function canLegacySection(
   state: FeatureAccessState,
   path?: string,
 ): boolean {
+  if (section === "fund_planner") {
+    if (!user || user.isActive === false) return false;
+    if (user.isOwner) return true;
+    const grantState = { ...state, legacyPermissions: state.legacyPermissions ?? matrix };
+    return featureActionsFromLegacy(action, path).some(featureAction =>
+      can(user, "fund_planner", featureAction, grantState),
+    );
+  }
   const pathFeatures = path ? featureForPath(path) : [];
   const sectionFeatures = FEATURE_ROUTE_ALIASES[section] ?? [];
   const relevantPathFeatures = pathFeatures.filter(feature => sectionFeatures.includes(feature));

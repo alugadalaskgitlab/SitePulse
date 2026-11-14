@@ -59,6 +59,8 @@ PostgreSQL is the primary database, managed with Drizzle ORM and `drizzle-zod` f
 ### Permission Gating
 All POST endpoints mapping to permission-managed sections use `assertCreate` for authorization. PATCH and DELETE operations on master data endpoints are protected by `assertEdit` and `assertAdmin` respectively.
 
+Every new screen or tab added in a batch must have its own permission entry under the relevant permission group, defaulted to Owner-only. Do not automatically grant it to existing users, including users who already have access to a related screen. Gate the client tab and its API with the same permission.
+
 ### Build System
 Development uses `tsx` and Vite; production builds use esbuild for the server and Vite for the client.
 
