@@ -63,6 +63,7 @@ type PreviewMaterial = {
 type MaterialPreview = { materials: PreviewMaterial[] };
 
 const money = (value: number) => `₹${Number.isFinite(value) ? value.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"}`;
+const moneyLakh = (value: number) => `₹${(value / 100000).toFixed(2)} lakh`;
 const qtyText = (value: number, digits = 2) => Number.isFinite(value)
   ? value.toLocaleString("en-IN", { maximumFractionDigits: digits })
   : "—";
@@ -191,11 +192,11 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [overridesOpen, setOverridesOpen] = useState(false);
-  const workKey = ["/api/boq/projects", projectId, "work-value"];
+  const workValueKey = ["/api/boq/projects", projectId, "work-value"];
   const plansKey = ["/api/boq/projects", projectId, "fund-plans"];
 
   const workQuery = useQuery<WorkValueResponse>({
-    queryKey: workKey,
+    queryKey: workValueKey,
     enabled: Number.isInteger(projectId) && projectId > 0,
     queryFn: async () => (await apiRequest("GET", `/api/boq/projects/${projectId}/work-value`)).json(),
   });
@@ -306,22 +307,24 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
     const cheaperName = cheaper === "A" ? (supplier.nameA || "Supplier A") : cheaper === "B" ? (supplier.nameB || "Supplier B") : "";
     return {
       supplier, units, unitA, unitB, effectiveUnitB, hasA, hasB, priceA, priceB, rateA, rateB,
-      costA, costB, cheaper, cheaperCost, cheaperRate, cheaperName,
+      costA, costB, cheaper, cheaperCost, otherCost, cheaperRate, cheaperName,
       savings: cheaperCost != null && otherCost != null ? Math.max(0, otherCost - cheaperCost) : null,
     };
   };
   const itemMaterialCosts = useMemo(() => {
-    const costs: Record<number, { A: number; B: number; best: number }> = {};
+    const costs: Record<number, { A: number; B: number; best: number; completeA: boolean; completeB: boolean; completeBest: boolean }> = {};
     materials.forEach(material => {
       const quote = supplierQuote(material);
-      if (quote.cheaperRate == null) return;
       material.byItem?.forEach(part => {
         const qty = Number(part.quantity) || 0;
         if (!rows.some(row => row.boqItemId === part.itemId && plan?.works[workKey(row)]?.selected)) return;
-        const entry = costs[part.itemId] ?? { A: 0, B: 0, best: 0 };
-        entry.A += qty * (quote.rateA ?? 0);
-        entry.B += qty * (quote.rateB ?? 0);
-        entry.best += qty * quote.cheaperRate!;
+        const entry = costs[part.itemId] ?? { A: 0, B: 0, best: 0, completeA: true, completeB: true, completeBest: true };
+        if (quote.rateA == null) entry.completeA = false;
+        else entry.A += qty * quote.rateA;
+        if (quote.rateB == null) entry.completeB = false;
+        else entry.B += qty * quote.rateB;
+        if (quote.cheaperRate == null) entry.completeBest = false;
+        else entry.best += qty * quote.cheaperRate;
         costs[part.itemId] = entry;
       });
     });
@@ -340,11 +343,17 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
         return sum + (otherPlan?.selected ? num(otherPlan.quantity) : 0);
       }, 0);
     const share = itemSelectedQuantity > 0 ? quantity / itemSelectedQuantity : 0;
-    const itemCosts = itemMaterialCosts[row.boqItemId] ?? { A: 0, B: 0, best: 0 };
+    const itemCosts = itemMaterialCosts[row.boqItemId] ?? { A: 0, B: 0, best: 0, completeA: true, completeB: true, completeBest: true };
     const costs = { A: itemCosts.A * share, B: itemCosts.B * share, best: itemCosts.best * share };
     const materialsCost = costs.best;
     const otherCost = quantity * num(work?.otherCostPerUnit);
-    return { quantity, bill, costA: costs.A, costB: costs.B, materialsCost, otherCost, margin: bill - materialsCost - otherCost };
+    return {
+      quantity, bill,
+      costA: itemCosts.completeA ? costs.A : null,
+      costB: itemCosts.completeB ? costs.B : null,
+      materialsCost, otherCost,
+      margin: itemCosts.completeBest ? bill - materialsCost - otherCost : null,
+    };
   };
   const summary = useMemo(() => {
     let bill = 0;
@@ -355,17 +364,32 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
       bill += financial.bill;
       otherCosts += financial.otherCost;
     });
-    const materialsCost = materials.reduce((sum, material) => sum + (supplierQuote(material).cheaperCost ?? 0), 0);
+    const quotes = materials.map(material => supplierQuote(material));
+    const materialsCost = quotes.reduce((sum, quote) => sum + (quote.cheaperCost ?? 0), 0);
+    const pricesComplete = materials.every((material, index) =>
+      Number(material.totalQty) <= 0 || quotes[index].cheaperCost != null,
+    );
     costs = materialsCost + otherCosts;
     const alreadyDone = num(plan?.alreadyDone);
-    return { bill, alreadyDone, total: bill + alreadyDone, arrange: costs, margin: bill - costs };
+    const alternateMaterialCosts = quotes.map(quote => quote.otherCost);
+    const alternateArrange = alternateMaterialCosts.some(value => value == null)
+      ? null
+      : alternateMaterialCosts.reduce((sum, value) => sum + Number(value), otherCosts);
+    return {
+      bill, alreadyDone, total: bill + alreadyDone,
+      arrange: pricesComplete ? costs : null,
+      materialsA: quotes.every(quote => quote.costA != null) ? quotes.reduce((sum, quote) => sum + (quote.costA ?? 0), 0) : null,
+      materialsB: quotes.every(quote => quote.costB != null) ? quotes.reduce((sum, quote) => sum + (quote.costB ?? 0), 0) : null,
+      otherCosts, alternateArrange,
+      margin: pricesComplete ? bill - costs : null,
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, plan?.works, plan?.alreadyDone, plan?.suppliers, materials]);
 
   const invalidateAfterWrite = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: plansKey }),
-      queryClient.invalidateQueries({ queryKey: workKey }),
+      queryClient.invalidateQueries({ queryKey: workValueKey }),
       queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "materials"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "fund-plan-material-preview"] }),
     ]);
@@ -429,7 +453,11 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
   const updateSupplier = (key: string, patch: Partial<SupplierPlan>) => updatePlan(current => ({
     ...current, suppliers: { ...current.suppliers, [key]: { ...(current.suppliers[key] ?? { nameA: "", nameB: "", priceA: "", priceB: "", unitA: "", unitB: "" }), ...patch } },
   }));
-  const formatKm = (value: number | null) => value == null ? "—" : Number(value).toLocaleString("en-IN", { maximumFractionDigits: 3 });
+  const formatChainage = (value: number | null) => {
+    if (value == null || !Number.isFinite(Number(value))) return "—";
+    const metres = Math.round(Number(value) * 1000);
+    return `${Math.floor(metres / 1000)}+${String(metres % 1000).padStart(3, "0")}`;
+  };
 
   if (workQuery.isLoading || plansQuery.isLoading) {
     return <section className="space-y-3 p-3" aria-label="Loading fund planner">
@@ -478,16 +506,20 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
 
         <div className="sticky top-0 z-20 -mx-3 mb-4 border-y border-stone-400 bg-[#f5f4f0]/95 px-3 py-2 shadow-sm backdrop-blur-sm sm:-mx-5 sm:px-5 print:static print:border-2 print:bg-white print:shadow-none">
           <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-5">
-            <SummaryMetric label="Bill for ticked work" value={money(summary.bill)} />
+            <SummaryMetric label="Bill for ticked work" value={money(summary.bill)} hint={moneyLakh(summary.bill)} />
             <div>
               <FieldLabel>Already done</FieldLabel>
               <Input aria-label="Already done bill estimate" type="number" min="0" step="0.01" value={plan.alreadyDone}
                 onChange={event => updatePlan(current => ({ ...current, alreadyDone: event.target.value }))}
                 className="mt-1 h-7 max-w-36 border-stone-300 bg-white px-2 font-mono text-sm print:border-0 print:p-0" data-testid="input-already-done" />
             </div>
-            <SummaryMetric label="Total bill after this" value={money(summary.total)} strong />
-            <SummaryMetric label="Money to arrange" value={money(summary.arrange)} />
-            <SummaryMetric label="Margin" value={money(summary.margin)} strong />
+            <SummaryMetric label="Total bill after this" value={money(summary.total)} strong hint={moneyLakh(summary.total)} />
+            <SummaryMetric
+              label="Money to arrange"
+              value={summary.arrange == null ? "Enter prices" : money(summary.arrange)}
+              hint={summary.alternateArrange == null ? "Other supplier comparison needs prices." : `Other supplier option: ${money(summary.alternateArrange)}`}
+            />
+            <SummaryMetric label="Margin" value={summary.margin == null ? "Enter prices" : money(summary.margin)} strong negative={summary.margin != null && summary.margin < 0} />
           </div>
         </div>
 
@@ -505,7 +537,7 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
                 <div className="min-w-0">
                   <h3 className="text-sm font-semibold">{group.label}</h3>
                   <p className="mt-0.5 text-[10px] text-stone-600">
-                    {group.key === "whole-road" ? "Whole road · fixed items" : `Ch ${formatKm(group.start)} km → ${formatKm(group.end)} km`}
+                    {group.key === "whole-road" ? "Whole road · fixed items" : `${group.label} · ${formatChainage(group.start)}–${formatChainage(group.end)}`}
                     <span className="ml-2 font-mono">{group.rows.length} item{group.rows.length === 1 ? "" : "s"}</span>
                   </p>
                 </div>
@@ -539,6 +571,18 @@ export default function FundPlanner({ projectId, canSave }: { projectId: number;
             <p className="mt-1 text-xs text-stone-500">Work value has no items available for a fund plan.</p>
           </div>}
         </div>
+        {rows.length > 0 && <div className="mt-3 overflow-x-auto rounded-md border border-stone-500 bg-white print:border-black">
+          <table className="w-full min-w-[760px] border-collapse text-[10px]" data-testid="fund-work-total">
+            <tbody><tr className="bg-stone-100 font-semibold">
+              <th scope="row" className="px-3 py-2 text-left">Total for ticked work · {rows.filter(row => plan.works[workKey(row)]?.selected).length} rows</th>
+              <td className="px-3 py-2 text-right">Bill {money(summary.bill)}</td>
+              <td className="px-3 py-2 text-right">Materials A {summary.materialsA == null ? "—" : money(summary.materialsA)}</td>
+              <td className="px-3 py-2 text-right">Materials B {summary.materialsB == null ? "—" : money(summary.materialsB)}</td>
+              <td className="px-3 py-2 text-right">Other {money(summary.otherCosts)}</td>
+              <td className={`px-3 py-2 text-right ${summary.margin != null && summary.margin < 0 ? "text-red-700" : ""}`}>Margin {summary.margin == null ? "—" : money(summary.margin)}</td>
+            </tr></tbody>
+          </table>
+        </div>}
 
         <section className="mt-5 overflow-hidden rounded-md border border-stone-300 bg-white" data-testid="fund-materials">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-300 bg-[#eeece6] px-3 py-3 print:bg-white">
@@ -709,32 +753,33 @@ function RecipeOverrides({
   </div>;
 }
 
-function SummaryMetric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
-  return <div><FieldLabel>{label}</FieldLabel><p className={`mt-1 font-mono text-sm ${strong ? "font-bold text-stone-950" : "font-semibold text-stone-800"}`}>{value}</p></div>;
+function SummaryMetric({ label, value, strong = false, negative = false, hint }: { label: string; value: string; strong?: boolean; negative?: boolean; hint?: string }) {
+  return <div><FieldLabel>{label}</FieldLabel><p className={`mt-1 font-mono text-sm ${strong ? "font-bold" : "font-semibold"} ${negative ? "text-red-700" : strong ? "text-stone-950" : "text-stone-800"}`}>{value}</p>{hint && <p className="mt-0.5 text-[9px] text-stone-500">{hint}</p>}</div>;
 }
 
 function WorkRow({ row, plan, updatePlan, financial }: {
   row: WorkValueRow;
   plan: PlanData;
   updatePlan: (updater: (current: PlanData) => PlanData) => void;
-  financial: { quantity: number; bill: number; costA: number; costB: number; otherCost: number; margin: number };
+  financial: { quantity: number; bill: number; costA: number | null; costB: number | null; otherCost: number; margin: number | null };
 }) {
   const id = workKey(row);
   const work = plan.works[id] ?? { selected: false, quantity: "0", length: "", otherCostPerUnit: "0" };
-  const over = num(work.quantity) > Number(row.balanceQuantity) + 0.0001;
+  const overAmount = Math.max(0, num(work.quantity) - Number(row.balanceQuantity));
+  const over = overAmount > 0.0001;
   const patch = (values: Partial<WorkPlan>) => updatePlan(current => ({ ...current, works: { ...current.works, [id]: { ...work, ...values } } }));
-  return <tr className={`border-b border-stone-100 align-middle ${work.selected ? "bg-white" : "bg-stone-50/60"}`}>
+  return <tr className={`border-b border-stone-100 align-middle ${work.selected ? "bg-white" : "bg-stone-50/60"}`} data-testid={`fund-work-row-${id}`}>
     <td className="px-2 py-2"><input aria-label={`Include ${row.description}`} type="checkbox" checked={work.selected} onChange={event => patch({ selected: event.target.checked })} className="h-4 w-4 accent-stone-800" /></td>
     <td className="max-w-[250px] px-2 py-2"><p className="truncate font-medium" title={row.description}>{row.itemCode ? `[${row.itemCode}] ` : ""}{row.description}</p><p className="mt-0.5 text-[9px] text-stone-500">{row.unit}{row.isFixed ? " · fixed" : ""}</p></td>
     <td className="px-2 py-2 text-right font-mono">{qtyText(Number(row.balanceQuantity), 3)} {row.unit}</td>
     <td className="px-2 py-2 text-right">{row.isFixed ? <span className="text-[9px] font-semibold uppercase text-stone-500">Fixed</span> : <Input aria-label={`Length for ${row.description}`} type="number" min="0" value={work.length} onChange={event => patch({ length: event.target.value, quantity: quantityForLength(row, event.target.value) })} className="ml-auto h-7 w-20 text-right font-mono text-[10px]" />}</td>
-    <td className="px-2 py-2 text-right"><Input type="number" min="0" step="any" value={work.quantity} onChange={event => patch({ quantity: event.target.value, length: "" })} className={`ml-auto h-7 w-24 text-right font-mono text-[10px] ${over ? "border-amber-500 bg-amber-50" : ""}`} />{over && <span className="mt-1 flex items-center justify-end gap-1 text-[9px] font-semibold text-amber-800"><AlertTriangle className="h-3 w-3" />Over balance</span>}</td>
+    <td className="px-2 py-2 text-right"><Input aria-label={`Planned quantity for ${row.description}`} type="number" min="0" step="any" value={work.quantity} onChange={event => patch({ quantity: event.target.value, length: "" })} className={`ml-auto h-7 w-24 text-right font-mono text-[10px] ${over ? "border-red-500 bg-red-50" : ""}`} />{over && <span className="mt-1 flex items-center justify-end gap-1 text-[9px] font-semibold text-red-700"><AlertTriangle className="h-3 w-3" />More than balance by {qtyText(overAmount, 3)} {row.unit}</span>}</td>
     <td className="px-2 py-2 text-right font-mono">{row.rate == null ? "—" : money(Number(row.rate))}</td>
     <td className="px-2 py-2 text-right font-mono font-semibold">{money(financial.bill)}</td>
-    <td className="px-2 py-2 text-right font-mono">{money(financial.costA)}</td>
-    <td className="px-2 py-2 text-right font-mono">{money(financial.costB)}</td>
-    <td className="px-2 py-2 text-right"><Input type="number" min="0" step="0.01" value={work.otherCostPerUnit} onChange={event => patch({ otherCostPerUnit: event.target.value })} className="ml-auto h-7 w-20 text-right font-mono text-[10px]" /></td>
-    <td className="px-2 py-2 text-right font-mono font-semibold">{money(financial.margin)}</td>
+    <td className="px-2 py-2 text-right font-mono">{financial.costA == null ? "—" : money(financial.costA)}</td>
+    <td className="px-2 py-2 text-right font-mono">{financial.costB == null ? "—" : money(financial.costB)}</td>
+    <td className="px-2 py-2 text-right"><Input aria-label={`Other cost per unit for ${row.description}`} type="number" min="0" step="0.01" value={work.otherCostPerUnit} onChange={event => patch({ otherCostPerUnit: event.target.value })} className="ml-auto h-7 w-20 text-right font-mono text-[10px]" /></td>
+    <td className="px-2 py-2 text-right font-mono font-semibold">{financial.margin == null ? "—" : money(financial.margin)}</td>
   </tr>;
 }
 
@@ -742,11 +787,12 @@ function WorkCard({ row, plan, updatePlan, financial }: {
   row: WorkValueRow;
   plan: PlanData;
   updatePlan: (updater: (current: PlanData) => PlanData) => void;
-  financial: { quantity: number; bill: number; costA: number; costB: number; otherCost: number; margin: number };
+  financial: { quantity: number; bill: number; costA: number | null; costB: number | null; otherCost: number; margin: number | null };
 }) {
   const id = workKey(row);
   const work = plan.works[id] ?? { selected: false, quantity: "0", length: "", otherCostPerUnit: "0" };
-  const over = num(work.quantity) > Number(row.balanceQuantity) + 0.0001;
+  const overAmount = Math.max(0, num(work.quantity) - Number(row.balanceQuantity));
+  const over = overAmount > 0.0001;
   const patch = (values: Partial<WorkPlan>) => updatePlan(current => ({ ...current, works: { ...current.works, [id]: { ...work, ...values } } }));
   return <article className={`p-3 ${work.selected ? "bg-white" : "bg-stone-50/70"}`} data-testid={`fund-work-card-${id}`}>
     <div className="flex items-start gap-2">
@@ -757,11 +803,11 @@ function WorkCard({ row, plan, updatePlan, financial }: {
     <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
       <div><FieldLabel>Balance</FieldLabel><p className="mt-1 font-mono text-[11px]">{qtyText(Number(row.balanceQuantity), 3)} {row.unit}</p></div>
       {row.isFixed ? <div><FieldLabel>Length</FieldLabel><p className="mt-1 text-[11px] font-semibold uppercase text-stone-500">Fixed</p></div> : <label><FieldLabel>Length (m)</FieldLabel><Input aria-label={`Length for ${row.description}`} type="number" min="0" value={work.length} onChange={event => patch({ length: event.target.value, quantity: quantityForLength(row, event.target.value) })} className="mt-1 h-8 font-mono text-xs" /></label>}
-      <label><FieldLabel>Planned quantity</FieldLabel><Input aria-label={`Planned quantity for ${row.description}`} type="number" min="0" step="any" value={work.quantity} onChange={event => patch({ quantity: event.target.value, length: "" })} className={`mt-1 h-8 font-mono text-xs ${over ? "border-amber-500 bg-amber-50" : ""}`} />{over && <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-amber-800"><AlertTriangle className="h-3 w-3" />Over balance</span>}</label>
+       <label><FieldLabel>Planned quantity</FieldLabel><Input aria-label={`Planned quantity for ${row.description}`} type="number" min="0" step="any" value={work.quantity} onChange={event => patch({ quantity: event.target.value, length: "" })} className={`mt-1 h-8 font-mono text-xs ${over ? "border-red-500 bg-red-50" : ""}`} />{over && <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-red-700"><AlertTriangle className="h-3 w-3" />More than balance by {qtyText(overAmount, 3)} {row.unit}</span>}</label>
       <label><FieldLabel>Other cost / unit</FieldLabel><Input aria-label={`Other cost per unit for ${row.description}`} type="number" min="0" step="0.01" value={work.otherCostPerUnit} onChange={event => patch({ otherCostPerUnit: event.target.value })} className="mt-1 h-8 font-mono text-xs" /></label>
-      <div><FieldLabel>Material cost · A / B</FieldLabel><p className="mt-1 font-mono text-[11px]">{money(financial.costA)} / {money(financial.costB)}</p></div>
-      <div><FieldLabel>Margin · cheaper materials</FieldLabel><p className="mt-1 font-mono text-xs font-semibold">{money(financial.margin)}</p></div>
+      <div><FieldLabel>Material cost · A / B</FieldLabel><p className="mt-1 font-mono text-[11px]">{financial.costA == null ? "—" : money(financial.costA)} / {financial.costB == null ? "—" : money(financial.costB)}</p></div>
+      <div><FieldLabel>Margin · cheaper materials</FieldLabel><p className={`mt-1 font-mono text-xs font-semibold ${financial.margin != null && financial.margin < 0 ? "text-red-700" : ""}`}>{financial.margin == null ? "—" : money(financial.margin)}</p></div>
     </div>
-    {over && <p className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] text-amber-900">Planned quantity exceeds the current work-value balance.</p>}
+    {over && <p className="mt-2 rounded border border-red-300 bg-red-50 px-2 py-1 text-[10px] font-medium text-red-800">More than balance by {qtyText(overAmount, 3)} {row.unit}</p>}
   </article>;
 }

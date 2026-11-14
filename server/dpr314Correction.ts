@@ -9,7 +9,7 @@ const editable = {
   labour: "category gender count hours task contractor boqItemId resourceScope structureId workerNames",
   materials: "type material quantity uom vehicleNumber supplier location receiptNumber boqItemId resourceScope structureId",
   sitePurchases: "itemDescription vendor quantity uom amount billNo",
-  progress: "activity side width thickness uom noSiteWork noSiteWorkDescription personnelIds boqItemId programmeBarId earthworkArrangementId executedBy layerNo isIncidental incidentalDescription materialOutcome reusableQty",
+  progress: "activity side width thickness uom noSiteWork noSiteWorkDescription personnelIds boqItemId programmeBarId earthworkArrangementId executedBy layerNo isIncidental incidentalDescription reworkNoNewMaterial materialOutcome reusableQty",
 };
 const permitted = ["chainageFrom", "chainageTo", "length", "quantity", "chainageOverrideReason", "lengthOverrideReason", "quantitySource", "quantitySourceNote"];
 const empty = (v: any): any => v === "" || v == null ? null
@@ -92,7 +92,7 @@ export function planDpr314Correction(saved: any, form: any, actor: any, confirma
     if (row.persistedId !== old.id) fail("Progress identity changed");
     for (const key of editable.progress.split(" ")) {
       // Legacy nullable booleans are rendered as false by SiteEdit.
-      const bool = ["noSiteWork", "isIncidental"].includes(key);
+      const bool = ["noSiteWork", "isIncidental", "reworkNoNewMaterial"].includes(key);
       if (!same(bool ? !!row[key] : row[key], bool ? !!old[key] : old[key])) fail(`Unrelated progress change: ${key}`);
     }
     if ((row.allocations ?? []).length) fail("Cut/fill allocations cannot change");
