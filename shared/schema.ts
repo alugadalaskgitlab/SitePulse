@@ -3764,11 +3764,28 @@ export const boqItemMaterials = pgTable("boq_item_materials", {
   isAuto: boolean("is_auto").default(false),                   // true = derived from layerConfig
   notes: text("notes"),
   applicationNote: text("application_note"),                   // e.g. "Dilute 1:1 before spraying"
+  waterAddedPerPart: real("water_added_per_part").default(0),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   itemIdx: index("boq_item_materials_item_idx").on(t.boqItemId),
 }));
+
+export const fundPlans = pgTable("fund_plans", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  data: jsonb("data").$type<Record<string, unknown>>().notNull().default({}),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  projectIdx: index("fund_plans_project_idx").on(table.boqProjectId),
+  updatedIdx: index("fund_plans_updated_idx").on(table.boqProjectId, table.updatedAt),
+}));
+export const insertFundPlanSchema = createInsertSchema(fundPlans).omit({ id: true, createdAt: true, updatedAt: true });
+export type FundPlan = typeof fundPlans.$inferSelect;
+export type InsertFundPlan = z.infer<typeof insertFundPlanSchema>;
 
 // ─── BOQ Program Settings (per-project planning configuration) ────────────────
 export const boqProgramSettings = pgTable("boq_program_settings", {

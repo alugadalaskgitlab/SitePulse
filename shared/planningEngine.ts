@@ -983,6 +983,7 @@ export interface BomInputItem {
     supplyType?: "direct" | "plant";
     sourceNote?: string;
     applicationNote?: string;
+    waterAddedPerPart?: number | null;
   }>;
   equipment: Array<{
     equipmentName: string;
@@ -1011,6 +1012,7 @@ export interface BomInputItem {
     isEarthworkBulkRequirement?: boolean;
     sourceNote?: string;
     applicationNote?: string;
+    waterAddedPerPart?: number | null;
   }>;
   /**
    * Instruction 024: DB column bulk_material_classification.
@@ -1102,6 +1104,7 @@ type KeyBomMaterialInputRow = {
   supplyType?: "direct" | "plant";
   sourceNote?: string;
   applicationNote?: string;
+  waterAddedPerPart?: number | null;
   /** Instruction 023: true for earthwork/bulk-fill BOQ items (Earth, Subgrade, Shoulder, etc.) */
   isEarthworkBulkRequirement?: boolean;
   /** Instruction 024: true for gravel/moorum items with no saved bulkMaterialClassification. */
@@ -1496,6 +1499,7 @@ function buildKeyMaterialRows(item: BomInputItem): KeyBomMaterialInputRow[] {
       supplyType: m.supplyType,
       sourceNote: m.sourceNote,
       applicationNote: m.applicationNote,
+      waterAddedPerPart: m.waterAddedPerPart,
       // Cut-to-fill routing: derived earthwork soil rows keep their arrangement flag
       // even when the BOQ item itself failed isEarthworkBoqItem (e.g. "trench cutting"
       // phrasing in MoRT&H 301 roadway-excavation descriptions trips the exclusion).
@@ -1517,6 +1521,7 @@ function buildKeyMaterialRows(item: BomInputItem): KeyBomMaterialInputRow[] {
       supplyType: m.supplyType,
       sourceNote: m.sourceNote,
       applicationNote: m.applicationNote,
+      waterAddedPerPart: m.waterAddedPerPart,
     };
 
     if (isDirectGranularSupplyMaterial(row)) {
@@ -1649,7 +1654,14 @@ export function calculateBomDemand(
     for (const m of keyMaterialRows) {
       if (m.isClientSupplied) continue;
 
-      const effQtyPerUnit = m.qtyPerBoqUnit * (1 + (m.wastagePct || 0) / 100);
+      const appliesWaterRatio =
+        String(item.layerConfig?.layerType ?? "").toLowerCase() === "spray_coat" &&
+        /emulsion/i.test(String(m.materialName ?? ""));
+      const waterAddedPerPart = appliesWaterRatio ? Math.max(0, Number(m.waterAddedPerPart) || 0) : 0;
+      const neatEmulsionQtyPerUnit = !appliesWaterRatio || m.waterAddedPerPart == null
+        ? m.qtyPerBoqUnit
+        : m.qtyPerBoqUnit / (1 + waterAddedPerPart);
+      const effQtyPerUnit = neatEmulsionQtyPerUnit * (1 + (m.wastagePct || 0) / 100);
       const lineQty = effQtyPerUnit * workQty;
       if (lineQty <= 0) continue;
 

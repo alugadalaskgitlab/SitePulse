@@ -1107,13 +1107,13 @@ function LabourTab({ boqItemId, boqUnit, labourTypeList, onPendingSave, onManual
 
 // ─── Materials Recipe Tab ───────────────────────────────────────────────────────
 
-interface MatRow { key: string; materialName: string; uom: string; qtyPerBoqUnit: string; notes: string; applicationNote: string; isAuto: boolean; }
+interface MatRow { key: string; materialName: string; uom: string; qtyPerBoqUnit: string; notes: string; applicationNote: string; isAuto: boolean; waterAddedPerPart: string; }
 
 function makeMatRow(r?: BoqItemMaterialsRow): MatRow {
-  return { key: Math.random().toString(36).slice(2), materialName: r?.materialName ?? "", uom: r?.uom ?? "", qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "", notes: r?.notes ?? "", applicationNote: r?.applicationNote ?? "", isAuto: r?.isAuto ?? false };
+  return { key: Math.random().toString(36).slice(2), materialName: r?.materialName ?? "", uom: r?.uom ?? "", qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "", notes: r?.notes ?? "", applicationNote: r?.applicationNote ?? "", isAuto: r?.isAuto ?? false, waterAddedPerPart: r?.waterAddedPerPart != null ? String(r.waterAddedPerPart) : "0" };
 }
 
-function MaterialsTab({ boqItemId, boqUnit, projectId, onPendingSave, onManualSave }: { boqItemId: number; boqUnit: string; projectId: number; onPendingSave?: (fn: (() => Promise<void>) | null) => void; onManualSave?: () => void }) {
+function MaterialsTab({ boqItemId, boqUnit, projectId, layerConfig, onPendingSave, onManualSave }: { boqItemId: number; boqUnit: string; projectId: number; layerConfig?: any; onPendingSave?: (fn: (() => Promise<void>) | null) => void; onManualSave?: () => void }) {
   const { toast } = useToast();
   const { data: existing = [], isLoading } = useQuery<BoqItemMaterialsRow[]>({
     queryKey: ["/api/boq/items", boqItemId, "materials"],
@@ -1133,6 +1133,7 @@ function MaterialsTab({ boqItemId, boqUnit, projectId, onPendingSave, onManualSa
       const payload: InsertBoqItemMaterials[] = rows.filter((r) => r.materialName.trim()).map((r, i) => ({
         boqItemId, materialName: r.materialName.trim(), uom: r.uom.trim() || null, qtyPerBoqUnit: r.qtyPerBoqUnit ? parseFloat(r.qtyPerBoqUnit) : 0,
         notes: r.notes || null, applicationNote: r.applicationNote || null, isAuto: r.isAuto, sortOrder: i,
+        waterAddedPerPart: r.waterAddedPerPart.trim() ? Number(r.waterAddedPerPart) : 0,
       }));
       await apiRequest("PUT", `/api/boq/items/${boqItemId}/materials`, { rows: payload });
     },
@@ -1154,7 +1155,7 @@ function MaterialsTab({ boqItemId, boqUnit, projectId, onPendingSave, onManualSa
     if (rows.some((r) => r.materialName.toLowerCase() === s.materialName.toLowerCase())) {
       toast({ title: "Already in recipe", variant: "destructive" }); return;
     }
-    setRows((prev) => [...prev, { key: Math.random().toString(36).slice(2), materialName: s.materialName, uom: s.uom ?? "", qtyPerBoqUnit: "", notes: "", applicationNote: "", isAuto: false }]);
+    setRows((prev) => [...prev, { key: Math.random().toString(36).slice(2), materialName: s.materialName, uom: s.uom ?? "", qtyPerBoqUnit: "", notes: "", applicationNote: "", isAuto: false, waterAddedPerPart: "0" }]);
     setDirty(true);
   }
 
@@ -1163,10 +1164,16 @@ function MaterialsTab({ boqItemId, boqUnit, projectId, onPendingSave, onManualSa
   const autoRows = rows.filter((r) => r.isAuto);
   const manualRows = rows.filter((r) => !r.isAuto);
   const filteredSuggestions = suggestions.filter((s) => !rows.some((r) => r.materialName.toLowerCase() === s.materialName.toLowerCase()));
+  const isSprayCoat = String(layerConfig?.layerType ?? "").toLowerCase() === "spray_coat";
+  const updateWaterRatio = (key: string, waterAddedPerPart: string) => {
+    setRows(previous => previous.map(row => row.key === key ? { ...row, waterAddedPerPart } : row));
+    setDirty(true);
+  };
 
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">Materials consumed per unit of this BOQ item (drives BOM demand).</p>
+      {isSprayCoat && <p className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-700">Spray rate is the diluted rate. Neat emulsion needed = spray rate ÷ (1 + water).</p>}
 
       {filteredSuggestions.length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-2">
@@ -1203,6 +1210,21 @@ function MaterialsTab({ boqItemId, boqUnit, projectId, onPendingSave, onManualSa
                   <Info className="w-3 h-3 shrink-0" />{row.applicationNote}
                 </p>
               )}
+              {isSprayCoat && /emulsion/i.test(row.materialName) && (
+                <label className="mt-2 flex max-w-sm items-center gap-2 text-[11px] text-slate-600">
+                  <span className="shrink-0">Water added per 1 part emulsion</span>
+                  <Input
+                    aria-label={`Water added per 1 part emulsion for ${row.materialName}`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={row.waterAddedPerPart}
+                    onChange={event => updateWaterRatio(row.key, event.target.value)}
+                    className="h-7 w-24 bg-white text-xs"
+                    data-testid={`input-spray-water-${row.key}`}
+                  />
+                </label>
+              )}
             </div>
           ))}
         </div>
@@ -1226,6 +1248,21 @@ function MaterialsTab({ boqItemId, boqUnit, projectId, onPendingSave, onManualSa
                 <Label className="text-[12px]">QTY / {boqUnit}</Label>
                 <Input type="number" step="0.001" className="h-8 text-sm" value={row.qtyPerBoqUnit} onChange={(e) => { setRows((p) => p.map((r) => r.key === row.key ? { ...r, qtyPerBoqUnit: e.target.value } : r)); setDirty(true); }} data-testid={`input-mat-qty-${row.key}`} />
               </div>
+              {isSprayCoat && /emulsion/i.test(row.materialName) && (
+                <div className="col-span-full">
+                  <Label className="text-[11px]">Water added per 1 part emulsion</Label>
+                  <Input
+                    aria-label={`Water added per 1 part emulsion for ${row.materialName}`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={row.waterAddedPerPart}
+                    onChange={event => updateWaterRatio(row.key, event.target.value)}
+                    className="h-8 max-w-48 text-sm"
+                    data-testid={`input-spray-water-${row.key}`}
+                  />
+                </div>
+              )}
               <button className="mb-0.5 p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" onClick={() => { setRows((p) => p.filter((r) => r.key !== row.key)); setDirty(true); }} data-testid={`button-remove-mat-${row.key}`}>
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -1680,7 +1717,7 @@ export function BoqItemRecipeDialog({
               <TabsContent value="layer-config"><LayerConfigTab item={currentItem} projectId={currentItem.boqProjectId} onLayerConfigChange={setLocalLayerConfig} onPendingSave={handlePendingSave} onManualSave={handleManualRecipeSave} /></TabsContent>
               <TabsContent value="equipment"><EquipmentTab boqItemId={currentItem.id} boqUnit={(currentItem as any).canonicalUnit ?? currentItem.unit} masterList={masterList} layerConfig={localLayerConfig} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} onManualSave={handleManualRecipeSave} /></TabsContent>
               <TabsContent value="labour"><LabourTab boqItemId={currentItem.id} boqUnit={(currentItem as any).canonicalUnit ?? currentItem.unit} labourTypeList={labourTypeList} onPendingSave={handlePendingSave} onManualSave={handleManualRecipeSave} /></TabsContent>
-              <TabsContent value="materials"><MaterialsTab boqItemId={currentItem.id} boqUnit={(currentItem as any).canonicalUnit ?? currentItem.unit} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} onManualSave={handleManualRecipeSave} /></TabsContent>
+              <TabsContent value="materials"><MaterialsTab boqItemId={currentItem.id} boqUnit={(currentItem as any).canonicalUnit ?? currentItem.unit} projectId={currentItem.boqProjectId} layerConfig={localLayerConfig} onPendingSave={handlePendingSave} onManualSave={handleManualRecipeSave} /></TabsContent>
             </Tabs>
           </div>
           <DialogFooter className="pt-2 border-t flex items-center justify-between">

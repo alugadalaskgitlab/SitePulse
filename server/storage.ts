@@ -34146,11 +34146,30 @@ export class DatabaseStorage implements IStorage {
   ): Promise<BoqItemMaterialsRow[]> {
     return await db.transaction(async (tx) => {
       await lockBoqItemForRecipeWrite(tx, boqItemId, manualEdit);
+      const existing = await tx
+        .select({ materialName: boqItemMaterials.materialName, waterAddedPerPart: boqItemMaterials.waterAddedPerPart })
+        .from(boqItemMaterials)
+        .where(eq(boqItemMaterials.boqItemId, boqItemId));
+      const priorWaterByName = new Map(existing.map(row => [
+        String(row.materialName ?? "").trim().toLocaleLowerCase(),
+        row.waterAddedPerPart,
+      ]));
+      const priorEmulsionValues = existing
+        .filter(row => /emulsion/i.test(String(row.materialName ?? "")) && row.waterAddedPerPart != null)
+        .map(row => Number(row.waterAddedPerPart));
+      const uniquePriorEmulsionValue = new Set(priorEmulsionValues).size === 1 ? priorEmulsionValues[0] : undefined;
+      const rowsWithWater = rows.map(row => {
+        if (row.waterAddedPerPart != null) return row;
+        const key = String(row.materialName ?? "").trim().toLocaleLowerCase();
+        const exact = priorWaterByName.get(key);
+        const preserved = exact ?? (/emulsion/i.test(String(row.materialName ?? "")) ? uniquePriorEmulsionValue : undefined);
+        return { ...row, waterAddedPerPart: preserved ?? 0 };
+      });
       await tx.delete(boqItemMaterials).where(eq(boqItemMaterials.boqItemId, boqItemId));
-      if (!rows.length) return [];
+      if (!rowsWithWater.length) return [];
       return tx
         .insert(boqItemMaterials)
-        .values(rows.map((r, i) => ({ ...r, boqItemId, sortOrder: r.sortOrder ?? i })))
+        .values(rowsWithWater.map((r, i) => ({ ...r, boqItemId, sortOrder: r.sortOrder ?? i })))
         .returning();
     });
   }

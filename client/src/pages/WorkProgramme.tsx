@@ -10,7 +10,7 @@ import {
   Scissors, BookOpen, ChevronDown, ChevronUp, Info,
   GanttChartSquare, TableProperties, ArrowLeftRight, Settings2, Sparkles,
   Undo2, Redo2, Upload, MapPin, Building2, Handshake,
-  Pencil, MoreHorizontal, X, History, LockKeyhole, ArrowUpDown,
+  Pencil, MoreHorizontal, X, History, LockKeyhole, ArrowUpDown, CircleDollarSign,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -71,6 +71,7 @@ import { boqDisplaySourceKey, buildBoqDisplayHierarchy } from "@shared/boqDispla
 import { shortItemName, boqItemDisplayName } from "@/lib/itemName";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import { WorkValueTable } from "@/components/WorkValueTable";
+import FundPlanner from "@/components/FundPlanner";
 import type {
   BoqProject,
   BoqItemWithCategory,
@@ -5374,6 +5375,9 @@ export default function WorkProgramme() {
             <TabsTrigger value="work-value" className="flex items-center gap-1.5" data-testid="tab-work-value">
               <TableProperties className="w-3.5 h-3.5" /> Work value
             </TabsTrigger>
+            <TabsTrigger value="fund-planner" className="flex items-center gap-1.5" data-testid="tab-fund-planner">
+              <CircleDollarSign className="w-3.5 h-3.5" /> Fund planner
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="gantt">
@@ -5409,6 +5413,9 @@ export default function WorkProgramme() {
           </TabsContent>
           <TabsContent value="work-value">
             <WorkValueTable projectId={projectId} />
+          </TabsContent>
+          <TabsContent value="fund-planner">
+            <FundPlanner projectId={projectId} canSave={featureCan("boq_programme", "edit")} />
           </TabsContent>
         </Tabs>
       )}

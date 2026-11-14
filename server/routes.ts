@@ -89,6 +89,7 @@ import { computeItemEntries, computeItemAbstract, progressReportEntryMatchesSite
 import { isLayerCapableItem } from "@shared/layerDisplay";
 import { boqItemDisplayName, shortItemName as sharedShortItemName, trustedCanonicalBoqName } from "@shared/boqItemName";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, monthIndexToDate, dateToMonthIndex, dateToMonthBucket, isContractCutToFillDescription, validateBarAllocation, executionArrangementCategoryForItem, type LayerConfig, type ResolutionReason } from "@shared/planningEngine";
+import { fundPlans } from "@shared/schema";
 import { classifyArrangementEdit } from "@shared/executionState";
 import { arrangementTripRatesSchema } from "@shared/arrangementTripRates";
 import { appendArrangementStatusChange, arrangementStatusAsOf, hasRecordedArrangementStatusChange, isValidArrangementEffectiveDate } from "@shared/arrangementStatusHistory";
@@ -213,7 +214,8 @@ import { materializedEquipmentLogChanged } from "@shared/equipmentMovement";
 import { hasDprBoqReferences, hasPreservedDprBoqReferences } from "@shared/dprBoqReferences";
 import { isEvidenceBasedDprNullProjectRecovery, normalizeDprSiteName } from "@shared/dprBoqSelection";
 import { SCOPE_SEGMENT_TYPES, SCOPE_APPLICABILITY_MODES, resolveEligibleScope, coverageForStretch, evaluateDprScope, segmentAppliesToItem, type ScopeSegmentLike } from "@shared/projectScope";
-import { allocateBoqQuantityToWorkingReaches, quantityForWorkingReach, workingValueCategory } from "@shared/workingReachValue";
+import { allocateBoqQuantityToWorkingReaches, defaultsToFixedQuantity, quantityForWorkingReach, workingValueCategory } from "@shared/workingReachValue";
+import { previewFundPlanMaterials, type FundRecipeOverrides, type FundPlanWork } from "@shared/fundPlanner";
 import { directGranularMasterHint, isClearanceOrScarifyingSoilRecipe } from "@shared/materialUseEligibility";
 import { dprSaveErrorMetadata } from "./dprSaveError";
 import { boqConversionConfigError } from "./boqConversionConfig";
@@ -20762,6 +20764,8 @@ export async function registerRoutes(
                 : lc.layerType === "earthwork"
                   ? profileFromMaterialName(earthworkMaster?.name ?? "Soil / Earth")
                   : null;
+          const savedSprayWater = (item.materials as any[])
+            .find((row: any) => /emulsion/i.test(String(row.materialName ?? "")) && row.waterAddedPerPart != null)?.waterAddedPerPart;
 
           if (derived.length > 0) {
             const derivedRows = derived.map(dm => ({
@@ -20774,6 +20778,9 @@ export async function registerRoutes(
               supplyType: derivedSupplyType,
               sourceNote: dm.sourceNote,
               applicationNote: dm.applicationNote,
+              waterAddedPerPart: lc.layerType === "spray_coat" && /emulsion/i.test(String(dm.materialName ?? ""))
+                ? Math.max(0, Number(savedSprayWater) || 0)
+                : null,
               // Cut-to-fill: earthwork layer-config rows route to the arrangement flow
               isEarthworkBulkRequirement: dm.isEarthworkBulkRequirement ?? false,
             }));
@@ -21911,6 +21918,73 @@ export async function registerRoutes(
     }
   });
 
+  const fundPlannerRecipeSettingsFor = (item: any) => {
+    const layerConfig = item?.layerConfig ?? {};
+    const layerType = String(layerConfig.layerType ?? "").toLowerCase();
+    const rows = Array.isArray(item?.derivedKeyMaterials) && item.derivedKeyMaterials.length
+      ? item.derivedKeyMaterials
+      : Array.isArray(item?.materials) ? item.materials : [];
+    const massFactor = (uom: unknown) => {
+      const unit = String(uom ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (["MT", "T", "TON", "TONS", "TONNE", "TONNES"].includes(unit)) return 1;
+      if (["KG", "KGS"].includes(unit)) return 0.001;
+      return null;
+    };
+    const totalMixMt = rows.reduce((sum: number, row: any) => {
+      if (/ldo|diesel|fuel/i.test(String(row.materialName ?? ""))) return sum;
+      const factor = massFactor(row.uom);
+      return factor == null ? sum : sum + (Number(row.qtyPerBoqUnit) || 0) * factor;
+    }, 0);
+    const binderMt = rows.reduce((sum: number, row: any) => {
+      if (!/bitumen|binder|vg\s*-?\s*\d+|emulsion/i.test(String(row.materialName ?? ""))) return sum;
+      const factor = massFactor(row.uom);
+      return factor == null ? sum : sum + (Number(row.qtyPerBoqUnit) || 0) * factor;
+    }, 0);
+    const volumePerBoqUnit = (() => {
+      const unit = String(item?.canonicalUnit ?? item?.unit ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (["CUM", "M3", "CBM"].includes(unit)) return 1;
+      const thickness = Number(layerConfig.thicknessMm);
+      if (["SQM", "SM", "M2", "M2SQUARE"].includes(unit) && thickness > 0) return thickness / 1000;
+      return null;
+    })();
+    const profile = item?.layerQuantityProfile ?? {};
+    const profileDensity = Number(profile.rolledDensity) > 0 && Number(profile.rollingPct) > 0
+      ? Number(profile.rolledDensity) * Number(profile.rollingPct) / 100
+      : null;
+    const derivedDensity = volumePerBoqUnit && totalMixMt > 0 ? totalMixMt / volumePerBoqUnit : null;
+    const density = profileDensity ?? derivedDensity;
+    const fuelLitres = rows.reduce((sum: number, row: any) => {
+      if (!/ldo|diesel|fuel/i.test(String(row.materialName ?? ""))) return sum;
+      const unit = String(row.uom ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const factor = ["L", "LITER", "LITRE", "LITERS", "LITRES"].includes(unit) ? 1 : unit === "KL" ? 1000 : null;
+      return factor == null ? sum : sum + (Number(row.qtyPerBoqUnit) || 0) * factor;
+    }, 0);
+    const emulsionRows = rows.filter((row: any) => /emulsion/i.test(String(row.materialName ?? "")));
+    const sprayRate = Number(layerConfig.coverageRateKgPerSqm);
+    const computedSprayRate = totalMixMt > 0 && volumePerBoqUnit === 1 && emulsionRows.length
+      ? emulsionRows.reduce((sum: number, row: any) => sum + (Number(row.qtyPerBoqUnit) || 0) * (massFactor(row.uom) ?? 0) * 1000, 0)
+      : null;
+    const waterValues = emulsionRows
+      .map((row: any) => row.waterAddedPerPart == null ? null : Number(row.waterAddedPerPart))
+      .filter((value: number | null) => value != null && Number.isFinite(value));
+    const settings: Record<string, unknown> = {
+      layerType,
+      mixType: layerConfig.mixType ?? null,
+      compactedDensity: layerType === "bituminous" ? density : null,
+      bitumenPercent: layerType === "bituminous" && totalMixMt > 0 && binderMt > 0 ? binderMt / totalMixMt * 100 : null,
+      dryerLdoPerMt: layerType === "bituminous" && totalMixMt > 0 && fuelLitres > 0 ? fuelLitres / totalMixMt : null,
+      wmmDensity: layerType === "granular" && /wmm|wet\s*mix/i.test(String(layerConfig.mixType ?? "")) ? density : null,
+      soilLooseFactor: layerType === "earthwork" && Number(profile.looseFactor) > 0 ? Number(profile.looseFactor) : null,
+      sprayRateKgPerSqm: layerType === "spray_coat"
+        ? (Number.isFinite(sprayRate) && sprayRate > 0 ? sprayRate : computedSprayRate)
+        : null,
+      waterAddedPerPart: layerType === "spray_coat" && emulsionRows.length
+        ? (waterValues.length ? waterValues[0] : 0)
+        : null,
+    };
+    return settings;
+  };
+
   app.get("/api/boq/projects/:id/work-value", async (req, res) => {
     try {
       if (!assertView(req, res, "work_programme_review")) return;
@@ -21967,7 +22041,7 @@ export async function registerRoutes(
       type ValueRow = {
         boqItemId: number; itemCode: string | null; description: string; unit: string;
         reachId: number | null; reachLabel: string; chainageFrom: number | null; chainageTo: number | null; side: string | null;
-        scopeQuantity: number; doneQuantity: number; incidentalQuantity: number; reworkQuantity: number;
+        scopeQuantity: number; scopeLengthM: number; isFixed: boolean; doneQuantity: number; incidentalQuantity: number; reworkQuantity: number;
          balanceQuantity: number; overQuantity: number; overBoqQuantity: number;
          overBoqSummaryRow: boolean; overBoqValue: number | null;
          claimedAboveEstimate: boolean; claimedAboveEstimateNote: string | null; rate: number | null;
@@ -22012,6 +22086,8 @@ export async function registerRoutes(
               ? null
               : scopeSegments.find(segment => Number(segment.id) === Number(share.reachId))?.side ?? null,
             scopeQuantity: share.quantity,
+            scopeLengthM: Math.max(0, Number(share.effectiveLengthKm) * 1000),
+            isFixed: Boolean(item.fixedQuantity ?? defaultsToFixedQuantity(item)),
             doneQuantity: 0,
             incidentalQuantity: 0,
             reworkQuantity: 0,
@@ -22104,6 +22180,8 @@ export async function registerRoutes(
             chainageFrom: null, chainageTo: null,
              side: null,
             scopeQuantity: allocation.notNeededQuantity,
+             scopeLengthM: 0,
+             isFixed: Boolean(item.fixedQuantity ?? defaultsToFixedQuantity(item)),
             doneQuantity: 0, incidentalQuantity: 0, reworkQuantity: 0,
             balanceQuantity: allocation.notNeededQuantity, overQuantity: 0, rate,
              overBoqQuantity: 0, overBoqSummaryRow: false,
@@ -22159,7 +22237,10 @@ export async function registerRoutes(
         projectId, projectName: project.name, siteName: site.name,
         scopeBasis: "Confirmed working reaches and no-scope/withdrawn corridor length; programme bars do not determine BOQ shares.",
         rows: valueRows,
-        materialItems: bom.expandedItems,
+         materialItems: (bom.expandedItems as any[]).map(item => ({
+           ...item,
+           fundPlannerRecipeSettings: fundPlannerRecipeSettingsFor(item),
+         })),
         reachTotals,
         totals: {
           billEstimateWithinBoq: sumKnown("valueDone"),
@@ -22179,6 +22260,210 @@ export async function registerRoutes(
     } catch (error) {
       console.error("GET /api/boq/projects/:id/work-value:", error);
       res.status(500).json({ message: "Could not load the working-reach value report." });
+    }
+  });
+
+  const fundPlanDataObject = (value: unknown): Record<string, unknown> | null =>
+    value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  const fundPlanActor = (req: any) => ({
+    userId: Number.isInteger(Number(req.authUser?.id)) ? Number(req.authUser.id) : null,
+    userName: currentUserName(req),
+    userRole: req.authUser?.isOwner ? "owner" : req.authUser?.isAdmin ? "admin" : null,
+  });
+
+  app.get("/api/boq/projects/:id/fund-plans", async (req, res) => {
+    try {
+      if (!assertView(req, res, "work_programme_review")) return;
+      const projectId = Number(req.params.id);
+      if (!Number.isSafeInteger(projectId) || projectId <= 0) return res.status(400).json({ message: "A BOQ project is required." });
+      if (!(await assertOutcomeProjectScope(req, res, projectId))) return;
+      const plans = await db.select({
+        id: fundPlans.id,
+        boqProjectId: fundPlans.boqProjectId,
+        name: fundPlans.name,
+        data: fundPlans.data,
+        updatedAt: fundPlans.updatedAt,
+      }).from(fundPlans)
+        .where(eq(fundPlans.boqProjectId, projectId))
+        .orderBy(desc(fundPlans.updatedAt), desc(fundPlans.id));
+      res.json({ plans });
+    } catch (error) {
+      console.error("GET project fund plans:", error);
+      res.status(500).json({ message: "Could not load saved fund plans." });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/fund-plans", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "work_programme")) return;
+      const projectId = Number(req.params.id);
+      const name = String(req.body?.name ?? "").trim();
+      const data = fundPlanDataObject(req.body?.data);
+      if (!Number.isSafeInteger(projectId) || projectId <= 0) return res.status(400).json({ message: "A BOQ project is required." });
+      if (!name || name.length > 120 || !data || JSON.stringify(data).length > 500_000) {
+        return res.status(400).json({ message: "Enter a plan name and valid plan data." });
+      }
+      if (!(await assertOutcomeProjectScope(req, res, projectId))) return;
+      const actor = fundPlanActor(req);
+      const created = await db.transaction(async tx => {
+        const [row] = await tx.insert(fundPlans).values({
+          boqProjectId: projectId,
+          name,
+          data,
+          createdBy: actor.userId,
+          updatedAt: new Date(),
+        }).returning();
+        await storage.logAudit({
+          module: "fund_plan",
+          transactionId: row.id,
+          action: "create",
+          ...actor,
+          newValues: { boqProjectId: projectId, name, data },
+        }, tx);
+        return row;
+      });
+      res.status(201).json(created);
+    } catch (error) {
+      console.error("POST project fund plan:", error);
+      res.status(500).json({ message: "Could not save the fund plan." });
+    }
+  });
+
+  app.put("/api/boq/projects/:id/fund-plans/:planId", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "work_programme")) return;
+      const projectId = Number(req.params.id);
+      const planId = Number(req.params.planId);
+      const name = String(req.body?.name ?? "").trim();
+      const data = fundPlanDataObject(req.body?.data);
+      if (!Number.isSafeInteger(projectId) || projectId <= 0 || !Number.isSafeInteger(planId) || planId <= 0) {
+        return res.status(400).json({ message: "A valid project and plan are required." });
+      }
+      if (!name || name.length > 120 || !data || JSON.stringify(data).length > 500_000) {
+        return res.status(400).json({ message: "Enter a plan name and valid plan data." });
+      }
+      if (!(await assertOutcomeProjectScope(req, res, projectId))) return;
+      const actor = fundPlanActor(req);
+      const updated = await db.transaction(async tx => {
+        const [old] = await tx.select().from(fundPlans).where(and(
+          eq(fundPlans.id, planId),
+          eq(fundPlans.boqProjectId, projectId),
+        )).for("update");
+        if (!old) return null;
+        const [row] = await tx.update(fundPlans).set({ name, data, updatedAt: new Date() }).where(eq(fundPlans.id, planId)).returning();
+        await storage.logAudit({
+          module: "fund_plan",
+          transactionId: planId,
+          action: "update",
+          ...actor,
+          oldValues: { name: old.name, data: old.data },
+          newValues: { name, data },
+        }, tx);
+        return row;
+      });
+      if (!updated) return res.status(404).json({ message: "Saved fund plan not found." });
+      res.json(updated);
+    } catch (error) {
+      console.error("PUT project fund plan:", error);
+      res.status(500).json({ message: "Could not update the fund plan." });
+    }
+  });
+
+  app.delete("/api/boq/projects/:id/fund-plans/:planId", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "work_programme")) return;
+      const projectId = Number(req.params.id);
+      const planId = Number(req.params.planId);
+      if (!Number.isSafeInteger(projectId) || projectId <= 0 || !Number.isSafeInteger(planId) || planId <= 0) {
+        return res.status(400).json({ message: "A valid project and plan are required." });
+      }
+      if (!(await assertOutcomeProjectScope(req, res, projectId))) return;
+      const actor = fundPlanActor(req);
+      const deleted = await db.transaction(async tx => {
+        const [old] = await tx.select().from(fundPlans).where(and(
+          eq(fundPlans.id, planId),
+          eq(fundPlans.boqProjectId, projectId),
+        )).for("update");
+        if (!old) return false;
+        await storage.logAudit({
+          module: "fund_plan",
+          transactionId: planId,
+          action: "delete",
+          ...actor,
+          oldValues: { name: old.name, data: old.data },
+        }, tx);
+        await tx.delete(fundPlans).where(eq(fundPlans.id, planId));
+        return true;
+      });
+      if (!deleted) return res.status(404).json({ message: "Saved fund plan not found." });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("DELETE project fund plan:", error);
+      res.status(500).json({ message: "Could not delete the fund plan." });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/fund-plan-material-preview", async (req, res) => {
+    try {
+      if (!assertView(req, res, "work_programme_review")) return;
+      const projectId = Number(req.params.id);
+      if (!Number.isSafeInteger(projectId) || projectId <= 0) return res.status(400).json({ message: "A BOQ project is required." });
+      if (!(await assertOutcomeProjectScope(req, res, projectId))) return;
+      if (!Array.isArray(req.body?.works) || req.body.works.length > 2000) {
+        return res.status(400).json({ message: "Invalid work selection." });
+      }
+      const bom = await computeProjectBom(projectId, true);
+      if (!bom.project) return res.status(404).json({ message: "BOQ project not found." });
+      const previewSegments = await storage.getProjectScopeSegments(projectId);
+      const itemIds = new Set((bom.expandedItems as any[])
+        .filter(item => allocateBoqQuantityToWorkingReaches({
+          boqItemId: Number(item.id),
+          categoryId: item.categoryId ?? null,
+          isLinear: item.isLinear ?? null,
+          currentQty: Number(item.currentQty) || 0,
+          fixedQuantity: item.fixedQuantity ?? null,
+          fixedQuantityReachId: item.fixedQuantityReachId ?? null,
+        }, previewSegments).shares.length > 0)
+        .map(item => Number(item.id)));
+      const works: FundPlanWork[] = [];
+      for (const row of req.body.works) {
+        const itemId = Number(row?.itemId);
+        const quantity = Number(row?.quantity);
+        if (!Number.isSafeInteger(itemId) || !itemIds.has(itemId) || !Number.isFinite(quantity) || quantity < 0) {
+          return res.status(400).json({ message: "A work item or planned quantity is invalid." });
+        }
+        works.push({ itemId, quantity });
+      }
+      const allowedOverrideFields = new Set([
+        "compactedDensity", "bitumenPercent", "dryerLdoPerMt", "wmmDensity",
+        "soilLooseFactor", "sprayRateKgPerSqm", "waterAddedPerPart",
+      ]);
+      const rawOverrides = fundPlanDataObject(req.body?.recipeOverrides) ?? {};
+      const recipeOverrides: FundRecipeOverrides = {};
+      for (const [itemKey, rawValue] of Object.entries(rawOverrides)) {
+        const itemId = Number(itemKey);
+        if (!Number.isSafeInteger(itemId) || !itemIds.has(itemId)) return res.status(400).json({ message: "A recipe override references an unknown BOQ item." });
+        const valueObject = fundPlanDataObject(rawValue);
+        if (!valueObject) return res.status(400).json({ message: "Recipe overrides must be grouped by BOQ item." });
+        const clean: Record<string, number> = {};
+        for (const [field, rawNumber] of Object.entries(valueObject)) {
+          const value = Number(rawNumber);
+          if (!allowedOverrideFields.has(field) || !Number.isFinite(value) || value < 0 ||
+              (field === "bitumenPercent" && value > 100)) {
+            return res.status(400).json({ message: "A recipe override value is invalid." });
+          }
+          clean[field] = value;
+        }
+        recipeOverrides[String(itemId)] = clean as FundRecipeOverrides[string];
+      }
+      const items = (bom.expandedItems as any[]).map(item => ({
+        ...item,
+        fundPlannerRecipeSettings: fundPlannerRecipeSettingsFor(item),
+      }));
+      res.json(previewFundPlanMaterials(items as any, works, recipeOverrides));
+    } catch (error) {
+      console.error("POST fund plan material preview:", error);
+      res.status(500).json({ message: "Could not calculate fund plan material needs." });
     }
   });
 
