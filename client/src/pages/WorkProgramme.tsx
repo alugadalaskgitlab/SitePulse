@@ -5294,8 +5294,8 @@ export default function WorkProgramme() {
               </thead>
               <tbody>
                 {scopeAlignmentRows.map(row => (
-                  <tr key={row.barId} className="border-t align-top">
-                    <td className="p-2 font-mono">#{row.barId}</td>
+                  <tr key={row.rowKey} className="border-t align-top">
+                    <td className="p-2 font-mono">{row.barId == null ? "—" : `#${row.barId}`}</td>
                     <td className="p-2" title={row.itemName}>{row.itemCode ? `[${row.itemCode}] ` : ""}{row.itemName}</td>
                     <td className="p-2">{row.reachLabel || "—"}</td>
                     <td className="p-2 font-mono">
@@ -5310,11 +5310,17 @@ export default function WorkProgramme() {
                       )}
                     </td>
                     <td className="p-2 text-right font-mono">
-                      {fmtQty(row.currentQuantity)}
+                      {row.action === "add_bar_needed" ? "—" : fmtQty(row.currentQuantity)}
                       {row.proposedQuantity != null && <>{" → "}{fmtQty(row.proposedQuantity)}</>}
                     </td>
                     <td className="p-2">
-                      {row.action === "suggest_remove" ? "Suggest remove" : row.action === "blocked" ? "Needs manual review" : "Update"}
+                      {row.action === "suggest_remove"
+                        ? "Suggest remove"
+                        : row.action === "blocked"
+                          ? "Needs manual review"
+                          : row.action === "add_bar_needed"
+                            ? "Add a bar"
+                            : "Update"}
                       {row.reason && <span className="block text-[10px] text-muted-foreground">{row.reason}</span>}
                     </td>
                   </tr>

@@ -124,6 +124,170 @@ describe("scope-driven BOM quantities and timing", () => {
     expect(result.blockedCount).toBe(0);
   });
 
+  it("gives a fixed item its full allocated quantity on its only remaining trimmed bar", () => {
+    const result = buildScopeProgrammeAlignment({
+      items: [item({
+        currentQty: 500,
+        itemName: "Forming Embankment with material",
+        fixedQuantity: true,
+      })],
+      bars: [bar({
+        id: 932,
+        chainageFrom: 1.9,
+        chainageTo: 3.2,
+        plannedQty: 384.6,
+      })],
+      segments: [reach(11, 1.9, 2.9)],
+    });
+
+    expect(result.rows).toMatchObject([{
+      barId: 932,
+      proposedChainageFrom: 1.9,
+      proposedChainageTo: 2.9,
+      proposedQuantity: 500,
+      action: "update",
+    }]);
+  });
+
+  it("splits a fixed quantity across remaining bars by their trimmed lengths", () => {
+    const result = buildScopeProgrammeAlignment({
+      items: [item({ currentQty: 100, fixedQuantity: true })],
+      bars: [
+        bar({ id: 51, chainageFrom: 0, chainageTo: 1, plannedQty: 40 }),
+        bar({ id: 52, chainageFrom: 1.1, chainageTo: 2, plannedQty: 60 }),
+      ],
+      segments: [
+        reach(11, 0, 0.9),
+        { ...reach(12, 0.9, 1.1), segmentType: "no_scope" },
+        reach(13, 1.1, 2),
+      ],
+    });
+
+    expect(result.rows.find(row => row.barId === 51)).toMatchObject({
+      proposedChainageTo: 0.9,
+      proposedQuantity: 50,
+    });
+    expect(result.rows.find(row => row.barId === 52)).toMatchObject({
+      proposedQuantity: 50,
+    });
+    expect(result.rows.filter(row => row.barId != null).reduce((sum, row) =>
+      sum + (row.proposedQuantity ?? 0), 0)).toBe(100);
+  });
+
+  it("keeps a whole-road fixed count in whole numbers that sum to the BOQ quantity", () => {
+    const result = buildScopeProgrammeAlignment({
+      items: [item({
+        currentQty: 17,
+        unit: "Nos",
+        canonicalUnit: "Nos",
+        fixedQuantity: true,
+      })],
+      bars: [
+        bar({ id: 61, chainageFrom: 0, chainageTo: 0.5, plannedQty: 4 }),
+        bar({ id: 62, chainageFrom: 2, chainageTo: 3, plannedQty: 13 }),
+      ],
+      segments: [reach(11, 0, 1), reach(12, 2, 3)],
+    });
+
+    const proposed = result.rows.filter(row => row.barId != null);
+    expect(proposed.map(row => row.proposedQuantity)).toEqual([6, 11]);
+    expect(proposed.every(row => Number.isInteger(row.proposedQuantity))).toBe(true);
+    expect(proposed.reduce((sum, row) => sum + (row.proposedQuantity ?? 0), 0)).toBe(17);
+  });
+
+  it("shows an add-a-bar message when a fixed item has no bar in its reach", () => {
+    const result = buildScopeProgrammeAlignment({
+      items: [item({ currentQty: 100, fixedQuantity: true })],
+      bars: [bar({ id: 71, chainageFrom: 2, chainageTo: 3 })],
+      segments: [reach(11, 0, 1)],
+    });
+
+    expect(result.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        barId: null,
+        action: "add_bar_needed",
+        reason: "Test road work has no programme bar in its reach — add a bar",
+      }),
+    ]));
+  });
+
+  it("recognizes default-fixed Road Safety items without changing linear-item quantities", () => {
+    const fixedResult = buildScopeProgrammeAlignment({
+      items: [item({
+        currentQty: 9,
+        unit: "Sqm",
+        canonicalUnit: "Sqm",
+        workCategory: "Road Safety Interventions",
+        fixedQuantity: null,
+      })],
+      bars: [bar({ id: 81, chainageFrom: 0, chainageTo: 1.2, plannedQty: 6 })],
+      segments: [reach(11, 0, 1)],
+    });
+    expect(fixedResult.rows.find(row => row.barId === 81)?.proposedQuantity).toBe(9);
+
+    const linearResult = buildScopeProgrammeAlignment({
+      items: [item({
+        currentQty: 100,
+        itemName: "Dense Bituminous Macadam",
+        unit: "Cum",
+        workCategory: "Road Works",
+        fixedQuantity: false,
+      })],
+      bars: [bar({ id: 82, chainageFrom: 0, chainageTo: 1.2, plannedQty: 5 })],
+      segments: [reach(11, 0, 1)],
+    });
+    expect(linearResult.rows.find(row => row.barId === 82)).toMatchObject({
+      proposedChainageTo: 1,
+      proposedQuantity: 100,
+    });
+  });
+
+  it("keeps the linear DGBM bar 937 preview quantity at 187.5", () => {
+    const result = buildScopeProgrammeAlignment({
+      items: [item({
+        id: 20,
+        currentQty: 543.75,
+        itemName: "Providing and laying 50",
+        workCategory: "BITUMINOUS",
+        fixedQuantity: null,
+        layerConfig: { layerType: "bituminous" } as any,
+      })],
+      bars: [bar({
+        id: 937,
+        boqItemId: 20,
+        chainageFrom: 1.9,
+        chainageTo: 3.2,
+        plannedQty: 243.75,
+      })],
+      segments: [
+        {
+          id: 5,
+          segmentType: "working_reach",
+          chainageFrom: 0,
+          chainageTo: 1.6,
+          status: "confirmed",
+          applicability: "items",
+          itemIds: [20],
+        },
+        {
+          id: 8,
+          segmentType: "no_scope",
+          chainageFrom: 1.6,
+          chainageTo: 1.9,
+          status: "confirmed",
+          applicability: "all_linear",
+        },
+        reach(11, 1.9, 2.9),
+      ],
+    });
+
+    expect(result.rows.find(row => row.barId === 937)).toMatchObject({
+      proposedChainageTo: 2.9,
+      proposedQuantity: 187.5,
+      action: "update",
+    });
+  });
+
   it("blocks a single bar whose scope overlap would require splitting it", () => {
     const result = buildScopeProgrammeAlignment({
       items: [item()],

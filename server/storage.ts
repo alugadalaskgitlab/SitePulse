@@ -3912,7 +3912,7 @@ export class DatabaseStorage implements IStorage {
       const barsById = new Map(currentBars.map(bar => [Number(bar.id), bar]));
       let updatedCount = 0;
       for (const change of alignment.rows) {
-        if (change.action !== "update") continue;
+        if (change.action !== "update" || change.barId == null) continue;
         const current = barsById.get(change.barId);
         if (!current || change.proposedQuantity == null) continue;
         const oldValues = {

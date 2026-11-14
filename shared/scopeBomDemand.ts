@@ -17,6 +17,7 @@ import {
 } from "./projectScope";
 import {
   allocateBoqQuantityToWorkingReaches,
+  defaultsToFixedQuantity,
   type WorkingReachAllocation,
   type WorkingReachItem,
 } from "./workingReachValue";
@@ -37,7 +38,8 @@ type ScopeBomBar = BomInputBar & {
 };
 
 export type ScopeProgrammeAlignmentRow = {
-  barId: number;
+  barId: number | null;
+  rowKey: string;
   boqItemId: number;
   itemCode: string | null;
   itemName: string;
@@ -48,7 +50,7 @@ export type ScopeProgrammeAlignmentRow = {
   proposedChainageTo: number | null;
   currentQuantity: number;
   proposedQuantity: number | null;
-  action: "update" | "suggest_remove" | "blocked";
+  action: "update" | "suggest_remove" | "blocked" | "add_bar_needed";
   reason?: string;
 };
 
@@ -185,6 +187,87 @@ function makeItemScopePlan(
     ? []
     : parts.filter(part => !part.fullBoq).flatMap(part => part.ranges);
   return { item, allocation, query, workingSegments, masks, unrestricted, parts, allowedRanges };
+}
+
+function normalizedCategoryForFixedDefault(item: ScopeBomItem): string {
+  return String(item.workCategory ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function isFixedForAlignment(item: ScopeBomItem): boolean {
+  if (item.fixedQuantity != null) return item.fixedQuantity;
+  return defaultsToFixedQuantity({
+    ...toWorkingReachItem(item),
+    workCategory: normalizedCategoryForFixedDefault(item),
+  });
+}
+
+function alignmentFixedAllocation(
+  item: ScopeBomItem,
+  segments: ScopeSegmentLike[],
+): WorkingReachAllocation {
+  return allocateBoqQuantityToWorkingReaches(
+    { ...toWorkingReachItem(item), fixedQuantity: true },
+    segments,
+  );
+}
+
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function isWholeCountUnit(item: ScopeBomItem): boolean {
+  const unit = String(item.canonicalUnit ?? item.unit ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "");
+  return ["NO", "NOS", "EACH", "EA", "SET", "SETS", "PC", "PCS"].includes(unit);
+}
+
+function distributeFixedQuantity(
+  quantity: number,
+  item: ScopeBomItem,
+  candidates: Array<{ barId: number; weight: number }>,
+): Map<number, number> {
+  const result = new Map<number, number>();
+  const positive = candidates
+    .filter(candidate => candidate.weight > QUANTITY_EPSILON)
+    .sort((a, b) => a.barId - b.barId);
+  const totalWeight = positive.reduce((sum, candidate) => sum + candidate.weight, 0);
+  if (!positive.length || totalWeight <= QUANTITY_EPSILON) return result;
+
+  if (isWholeCountUnit(item)) {
+    const total = Math.max(0, Math.round(quantity));
+    const rows = positive.map(candidate => {
+      const exact = total * candidate.weight / totalWeight;
+      const base = Math.floor(exact);
+      return { ...candidate, value: base, remainder: exact - base };
+    });
+    let remaining = total - rows.reduce((sum, row) => sum + row.value, 0);
+    const byRemainder = [...rows].sort((a, b) =>
+      b.remainder - a.remainder || a.barId - b.barId,
+    );
+    for (let index = 0; remaining > 0; index = (index + 1) % byRemainder.length) {
+      byRemainder[index].value += 1;
+      remaining -= 1;
+    }
+    for (const row of rows) result.set(row.barId, row.value);
+    return result;
+  }
+
+  const total = Math.max(0, round2(quantity));
+  let assigned = 0;
+  positive.forEach((candidate, index) => {
+    const value = index === positive.length - 1
+      ? round2(Math.max(0, total - assigned))
+      : Math.min(round2(total * candidate.weight / totalWeight), Math.max(0, total - assigned));
+    assigned = round2(assigned + value);
+    result.set(candidate.barId, value);
+  });
+  return result;
 }
 
 function barWeightWithinRanges(bar: ScopeBomBar, ranges: CorridorRange[]): number {
@@ -411,7 +494,17 @@ export function buildScopeProgrammeAlignment(input: {
   const bars = input.bars as ScopeBomBar[];
   const itemById = new Map(items.map(item => [Number(item.id), item]));
   const { plansByItem, quantityByBarId } = calculateScopeBarQuantities(items, bars, input.segments);
-  const rows: ScopeProgrammeAlignmentRow[] = [];
+  const states: Array<{
+    bar: ScopeBomBar;
+    item: ScopeBomItem;
+    plan: ItemScopePlan;
+    currentFrom: number | null;
+    currentTo: number | null;
+    proposedFrom: number | null;
+    proposedTo: number | null;
+    action: ScopeProgrammeAlignmentRow["action"];
+    reason?: string;
+  }> = [];
 
   for (const bar of bars) {
     if (bar.id == null) continue;
@@ -422,19 +515,9 @@ export function buildScopeProgrammeAlignment(input: {
     const currentTo = finite(bar.chainageTo);
     const point = finite(bar.structureChainageKm);
     if ((currentFrom == null || currentTo == null || currentTo <= currentFrom) && point == null) {
-      rows.push({
-        barId: Number(bar.id),
-        boqItemId: Number(bar.boqItemId),
-        itemCode: item.itemCode ?? null,
-        itemName: item.itemName || item.description,
-        reachLabel: "Location missing",
-        currentChainageFrom: currentFrom,
-        currentChainageTo: currentTo,
-        proposedChainageFrom: null,
-        proposedChainageTo: null,
-        currentQuantity: Number(bar.plannedQty) || 0,
-        proposedQuantity: null,
-        action: "blocked",
+      states.push({
+        bar, item, plan, currentFrom, currentTo,
+        proposedFrom: null, proposedTo: null, action: "blocked",
         reason: "This bar has no chainage or structure location; set its location before applying scope alignment.",
       });
       continue;
@@ -477,9 +560,54 @@ export function buildScopeProgrammeAlignment(input: {
       }
     }
 
+    states.push({ bar, item, plan, currentFrom, currentTo, proposedFrom, proposedTo, action, reason });
+  }
+
+  const fixedQuantityByBarId = new Map<number, number>();
+  const noRemainingFixedItems = new Set<number>();
+  for (const item of items) {
+    if (!isFixedForAlignment(item)) continue;
+    const allocation = alignmentFixedAllocation(item, input.segments);
+    if (allocation.workingQuantity <= QUANTITY_EPSILON) continue;
+    const itemStates = states.filter(state => Number(state.item.id) === Number(item.id));
+    const remaining = itemStates.filter(state => state.action !== "suggest_remove");
+    if (!remaining.length) {
+      noRemainingFixedItems.add(Number(item.id));
+      continue;
+    }
+    const candidates = remaining.flatMap(state => {
+      if (state.bar.id == null) return [];
+      const from = state.action === "update" ? state.proposedFrom : state.currentFrom;
+      const to = state.action === "update" ? state.proposedTo : state.currentTo;
+      const weight = fullBarWeight({
+        ...state.bar,
+        chainageFrom: from,
+        chainageTo: to,
+      });
+      return weight > QUANTITY_EPSILON
+        ? [{ barId: Number(state.bar.id), weight }]
+        : [];
+    });
+    if (!candidates.length) continue;
+    const allocated = distributeFixedQuantity(allocation.workingQuantity, item, candidates);
+    for (const [barId, quantity] of allocated) fixedQuantityByBarId.set(barId, quantity);
+  }
+
+  const rows: ScopeProgrammeAlignmentRow[] = [];
+  for (const state of states) {
+    const { bar, item, plan, currentFrom, currentTo, proposedFrom, proposedTo, action, reason } = state;
+    if (bar.id == null) continue;
+    const barId = Number(bar.id);
+    const fixed = isFixedForAlignment(item);
+    const proposedQuantity = action === "suggest_remove" || action === "blocked"
+      ? null
+      : fixed
+        ? fixedQuantityByBarId.get(barId) ?? null
+        : round6(quantityByBarId.get(barId) ?? 0);
     if (action === "suggest_remove") {
       rows.push({
-        barId: Number(bar.id),
+        barId,
+        rowKey: `bar-${barId}`,
         boqItemId: Number(bar.boqItemId),
         itemCode: item.itemCode ?? null,
         itemName: item.itemName || item.description,
@@ -497,7 +625,8 @@ export function buildScopeProgrammeAlignment(input: {
     }
     if (action === "blocked") {
       rows.push({
-        barId: Number(bar.id),
+        barId,
+        rowKey: `bar-${barId}`,
         boqItemId: Number(bar.boqItemId),
         itemCode: item.itemCode ?? null,
         itemName: item.itemName || item.description,
@@ -507,23 +636,24 @@ export function buildScopeProgrammeAlignment(input: {
         proposedChainageFrom: null,
         proposedChainageTo: null,
         currentQuantity: Number(bar.plannedQty) || 0,
-        proposedQuantity: null,
+        proposedQuantity,
         action,
         reason,
       });
       continue;
     }
 
-    const proposedQuantity = round6(quantityByBarId.get(Number(bar.id)) ?? 0);
     const chainageChanged =
       (currentFrom == null) !== (proposedFrom == null) ||
       (currentTo == null) !== (proposedTo == null) ||
       (currentFrom != null && proposedFrom != null && Math.abs(currentFrom - proposedFrom) > CHAINAGE_EPSILON) ||
       (currentTo != null && proposedTo != null && Math.abs(currentTo - proposedTo) > CHAINAGE_EPSILON);
-    const quantityChanged = Math.abs((Number(bar.plannedQty) || 0) - proposedQuantity) > QUANTITY_EPSILON;
+    const quantityChanged = proposedQuantity != null &&
+      Math.abs((Number(bar.plannedQty) || 0) - proposedQuantity) > QUANTITY_EPSILON;
     if (!chainageChanged && !quantityChanged) continue;
     rows.push({
-      barId: Number(bar.id),
+      barId,
+      rowKey: `bar-${barId}`,
       boqItemId: Number(bar.boqItemId),
       itemCode: item.itemCode ?? null,
       itemName: item.itemName || item.description,
@@ -535,6 +665,29 @@ export function buildScopeProgrammeAlignment(input: {
       currentQuantity: Number(bar.plannedQty) || 0,
       proposedQuantity,
       action: "update",
+    });
+  }
+
+  for (const itemId of noRemainingFixedItems) {
+    const item = itemById.get(itemId);
+    if (!item) continue;
+    const allocation = alignmentFixedAllocation(item, input.segments);
+    const itemName = item.itemName || item.description;
+    rows.push({
+      barId: null,
+      rowKey: `item-${itemId}-add-bar`,
+      boqItemId: itemId,
+      itemCode: item.itemCode ?? null,
+      itemName,
+      reachLabel: allocation.shares.map(share => share.label).join(", ") || null,
+      currentChainageFrom: null,
+      currentChainageTo: null,
+      proposedChainageFrom: null,
+      proposedChainageTo: null,
+      currentQuantity: 0,
+      proposedQuantity: null,
+      action: "add_bar_needed",
+      reason: `${itemName} has no programme bar in its reach — add a bar`,
     });
   }
 
