@@ -137,7 +137,7 @@ export default function DataSync() {
               <ChevronLeft className="w-4 h-4 mr-1" /> BACK
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold">Data Export / Import</h1>
+          <h1 className="text-2xl font-bold">Data export / import</h1>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -147,7 +147,7 @@ export default function DataSync() {
                 <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
                   <Download className="w-8 h-8 text-emerald-600" />
                 </div>
-                <h2 className="text-xl font-bold">Export Data</h2>
+                <h2 className="text-xl font-bold">Export data</h2>
                 <p className="text-muted-foreground">Download selected tables as a JSON file. Use this to back up your data or transfer it to another environment.</p>
               </CardContent>
             </Card>
@@ -159,7 +159,7 @@ export default function DataSync() {
                 <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
                   <Upload className="w-8 h-8 text-blue-600" />
                 </div>
-                <h2 className="text-xl font-bold">Import Data</h2>
+                <h2 className="text-xl font-bold">Import data</h2>
                 <p className="text-muted-foreground">Upload a previously exported JSON file to update records. Vendor-bill retries retain only matching existing IDs; conflicting records are rejected rather than overwritten.</p>
               </CardContent>
             </Card>
@@ -176,7 +176,7 @@ export default function DataSync() {
           <Button variant="ghost" size="sm" onClick={() => setMode("menu")} data-testid="button-back-menu">
             <ChevronLeft className="w-4 h-4 mr-1" /> BACK
           </Button>
-          <h1 className="text-2xl font-bold">Export Data</h1>
+          <h1 className="text-2xl font-bold">Export data</h1>
         </div>
 
         <Card>
@@ -237,7 +237,7 @@ export default function DataSync() {
         <Button variant="ghost" size="sm" onClick={() => { setMode("menu"); setImportData(null); setResults(null); setImportFileName(""); }} data-testid="button-back-menu">
           <ChevronLeft className="w-4 h-4 mr-1" /> BACK
         </Button>
-        <h1 className="text-2xl font-bold">Import Data</h1>
+        <h1 className="text-2xl font-bold">Import data</h1>
       </div>
 
       {!results ? (

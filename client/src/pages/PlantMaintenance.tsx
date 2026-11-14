@@ -285,13 +285,13 @@ function LogForm({
           <Input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="input-maint-date" />
         </div>
         <div className="space-y-1">
-          <Label>Event Type *</Label>
+          <Label>Event type *</Label>
           <Select value={eventType} onValueChange={setEventType}>
             <SelectTrigger data-testid="select-maint-event-type"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="breakdown">Breakdown</SelectItem>
-              <SelectItem value="service">Scheduled Service</SelectItem>
-              <SelectItem value="pm">Preventive Maintenance</SelectItem>
+              <SelectItem value="service">Scheduled service</SelectItem>
+              <SelectItem value="pm">Preventive maintenance</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -324,29 +324,29 @@ function LogForm({
         </div>
         {eventType === "breakdown" && (
           <div className="space-y-1">
-            <Label>Downtime Hours</Label>
+            <Label>Downtime hours</Label>
             <Input type="number" min="0" step="0.5" value={downtimeHours} onChange={e => setDowntimeHours(e.target.value)} placeholder="e.g. 4" data-testid="input-maint-downtime" />
           </div>
         )}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label>Serviced By</Label>
+          <Label>Serviced by</Label>
           <Input value={servicedBy} onChange={e => setServicedBy(e.target.value)} placeholder="Technician name" data-testid="input-maint-serviced-by" />
         </div>
         <div className="space-y-1">
-          <Label>Reported By</Label>
+          <Label>Reported by</Label>
           <Input value={reportedBy} onChange={e => setReportedBy(e.target.value)} placeholder="Your name" data-testid="input-maint-reported-by" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label>Next Service Due</Label>
+          <Label>Next service due</Label>
           <Input type="date" value={nextServiceDue} onChange={e => setNextServiceDue(e.target.value)} data-testid="input-maint-next-service" />
         </div>
         {status === "resolved" && (
           <div className="space-y-1">
-            <Label>Resolved At</Label>
+            <Label>Resolved at</Label>
             <Input type="date" value={resolvedAt} onChange={e => setResolvedAt(e.target.value)} data-testid="input-maint-resolved-at" />
           </div>
         )}
@@ -506,13 +506,13 @@ function EditLogForm({
           <Input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="input-edit-date" />
         </div>
         <div className="space-y-1">
-          <Label>Event Type</Label>
+          <Label>Event type</Label>
           <Select value={eventType} onValueChange={setEventType}>
             <SelectTrigger data-testid="select-edit-event-type"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="breakdown">Breakdown</SelectItem>
-              <SelectItem value="service">Scheduled Service</SelectItem>
-              <SelectItem value="pm">Preventive Maintenance</SelectItem>
+              <SelectItem value="service">Scheduled service</SelectItem>
+              <SelectItem value="pm">Preventive maintenance</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -537,29 +537,29 @@ function EditLogForm({
         </div>
         {eventType === "breakdown" && (
           <div className="space-y-1">
-            <Label>Downtime Hours</Label>
+            <Label>Downtime hours</Label>
             <Input type="number" min="0" step="0.5" value={downtimeHours} onChange={e => setDowntimeHours(e.target.value)} data-testid="input-edit-downtime" />
           </div>
         )}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label>Serviced By</Label>
+          <Label>Serviced by</Label>
           <Input value={servicedBy} onChange={e => setServicedBy(e.target.value)} data-testid="input-edit-serviced-by" />
         </div>
         <div className="space-y-1">
-          <Label>Reported By</Label>
+          <Label>Reported by</Label>
           <Input value={reportedBy} onChange={e => setReportedBy(e.target.value)} data-testid="input-edit-reported-by" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label>Next Service Due</Label>
+          <Label>Next service due</Label>
           <Input type="date" value={nextServiceDue} onChange={e => setNextServiceDue(e.target.value)} data-testid="input-edit-next-service" />
         </div>
         {status === "resolved" && (
           <div className="space-y-1">
-            <Label>Resolved At</Label>
+            <Label>Resolved at</Label>
             <Input type="date" value={resolvedAt} onChange={e => setResolvedAt(e.target.value)} data-testid="input-edit-resolved-at" />
           </div>
         )}
@@ -797,7 +797,7 @@ function LogCard({
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Edit Maintenance Log #{log.id}</DialogTitle>
+            <DialogTitle>Edit maintenance log #{log.id}</DialogTitle>
           </DialogHeader>
           <EditLogForm log={log} onClose={() => setEditOpen(false)} onSaved={() => setEditOpen(false)} />
         </DialogContent>
@@ -990,7 +990,7 @@ export default function PlantMaintenance() {
             <Button variant="ghost" size="icon" data-testid="button-back-maintenance"><ChevronLeft className="w-5 h-5" /></Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold font-display tracking-tight">Equipment Maintenance</h1>
+            <h1 className="text-2xl font-bold font-display tracking-tight">Equipment maintenance</h1>
             <p className="text-sm text-muted-foreground">Breakdown register, service logs, and equipment health</p>
           </div>
         </div>

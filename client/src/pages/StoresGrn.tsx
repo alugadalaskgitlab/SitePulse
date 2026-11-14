@@ -852,7 +852,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     <span className="text-sm text-muted-foreground">{format(new Date(selectedGrn.date + "T00:00:00"), "dd MMM yyyy")}</span>
                     {/* Primary status badge — one per card */}
                     {!selectedGrn.isCancelled && selectedGrn.status === "draft" && selectedGrn.sourcePiIndentId != null && (
-                      <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-pending-receipt">Awaiting Stores Verification</Badge>
+                      <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-pending-receipt">Awaiting stores verification</Badge>
                     )}
                     {!selectedGrn.isCancelled && selectedGrn.status === "draft" && selectedGrn.sourcePiIndentId == null && !selectedGrn.indentRef && (
                       <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-awaiting-pi">Awaiting PI</Badge>
@@ -1013,7 +1013,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     </p>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <Label className="text-sm">Indent Reference (optional)</Label>
+                        <Label className="text-sm">Indent reference (optional)</Label>
                         {draftFirstItemName && draftItemApprovedIndents.length > 0 && !draftFinaliseIndentRef && (
                           <span className="text-[12px] text-violet-600 dark:text-violet-400">
                             {draftItemApprovedIndents.length} approved match{draftItemApprovedIndents.length !== 1 ? "es" : ""}
@@ -1165,7 +1165,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               {/* Inline acceptance editor */}
               {editingAcceptance ? (
                 <div className="border rounded-md p-3 space-y-3 bg-muted/40" data-testid="panel-acceptance-edit">
-                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Edit Acceptance Status</p>
+                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Edit acceptance status</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-sm">Status</Label>

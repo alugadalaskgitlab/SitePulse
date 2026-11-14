@@ -177,7 +177,7 @@ function PlanCard({ plan }: { plan: any }) {
 
         {/* Allocation status from PM */}
         <div className="pt-0.5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Arrangement Status</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Arrangement status</p>
           <AllocationDots alloc={plan.allocationStatus} />
         </div>
       </div>
@@ -215,7 +215,7 @@ export default function MyPlans() {
               </a>
             </Link>
             <div className="flex-1 min-w-0">
-              <h1 className="text-sm font-bold text-gray-900">My Plans</h1>
+              <h1 className="text-sm font-bold text-gray-900">My plans</h1>
               <p className="text-xs text-gray-400">Your submitted tomorrow's plans</p>
             </div>
             <Link href="/site/requirements/new?returnTo=/my-plans">

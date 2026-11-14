@@ -150,11 +150,11 @@ export default function RoadGeometry() {
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Link href="/work-program" className="hover:underline">Work Programme</Link>
+        <Link href="/work-program" className="hover:underline">Work programme</Link>
         <ChevronRight className="h-4 w-4" />
         <Link href={`/work-program/${projectId}`} className="hover:underline">{project?.name ?? `Project ${projectId}`}</Link>
         <ChevronRight className="h-4 w-4" />
-        <span className="text-foreground font-medium">Road Geometry &amp; Quantities</span>
+        <span className="text-foreground font-medium">Road geometry &amp; quantities</span>
       </div>
 
       <h1 className="text-xl font-semibold flex items-center gap-2"><Ruler className="h-5 w-5" /> Road Geometry &amp; Quantities</h1>
@@ -194,7 +194,7 @@ export default function RoadGeometry() {
           {/* 01A — Formation Width: explicit design input, suggested once when blank, never auto-overwritten */}
           <div className="flex flex-wrap items-end gap-3">
             <div>
-              <Label className="text-xs">Formation Width (m) — design input</Label>
+            <Label className="text-xs">Formation width (m) — design input</Label>
               <Input className="w-40" value={widths.formation} inputMode="decimal" placeholder="e.g. 12.0"
                 onChange={e => setWidths(w => ({ ...w, formation: e.target.value }))} data-testid="input-width-formation" />
             </div>
@@ -284,7 +284,7 @@ export default function RoadGeometry() {
           {preview.status === "corridor_unconfirmed" && (
             <div className="flex items-start gap-2 rounded px-3 py-2 bg-amber-50 text-amber-800 text-sm" data-testid="text-corridor-unconfirmed">
               <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-              <span>{preview.message} <Link href={`/work-program/${projectId}/scope`} className="underline">Open Project Scope</Link></span>
+              <span>{preview.message} <Link href={`/work-program/${projectId}/scope`} className="underline">Open project scope</Link></span>
             </div>
           )}
           {preview.status === "ok" && (
@@ -301,7 +301,7 @@ export default function RoadGeometry() {
                         <th className="text-left px-3 py-1.5">Calculation</th>
                         <th className="text-left px-3 py-1.5">Width source</th>
                         <th className="text-right px-3 py-1.5">BOQ Qty</th>
-                        <th className="text-right px-3 py-1.5">Geometry Calculated Qty</th>
+                        <th className="text-right px-3 py-1.5">Geometry calculated quantity</th>
                         <th className="text-right px-3 py-1.5">Difference</th>
                         <th className="text-left px-3 py-1.5">How calculated</th>
                       </tr>

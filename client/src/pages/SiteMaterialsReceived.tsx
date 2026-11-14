@@ -155,7 +155,7 @@ export default function SiteMaterialsReceived() {
           </Link>
           <div className="flex items-center gap-2">
             <Package className="w-6 h-6 text-emerald-600" />
-            <h1 className="text-2xl font-bold">Materials Received</h1>
+            <h1 className="text-2xl font-bold">Materials received</h1>
           </div>
         </div>
 
@@ -181,11 +181,11 @@ export default function SiteMaterialsReceived() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <div className="space-y-2">
-                <Label className="text-sm">From Date</Label>
+                <Label className="text-sm">From date</Label>
                 <Input type="date" value={filters.dateFrom} onChange={(e) => setFilters(f => ({ ...f, dateFrom: e.target.value }))} data-testid="input-date-from" />
               </div>
               <div className="space-y-2">
-                <Label className="text-sm">To Date</Label>
+                <Label className="text-sm">To date</Label>
                 <Input type="date" value={filters.dateTo} onChange={(e) => setFilters(f => ({ ...f, dateTo: e.target.value }))} data-testid="input-date-to" />
               </div>
               <div className="space-y-2">
@@ -193,7 +193,7 @@ export default function SiteMaterialsReceived() {
                 <Select value={filters.site || "__all__"} onValueChange={(v) => setFilters(f => ({ ...f, site: v === "__all__" ? "" : v }))}>
                   <SelectTrigger data-testid="select-site-filter"><SelectValue placeholder="All Sites" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__">All Sites</SelectItem>
+                    <SelectItem value="__all__">All sites</SelectItem>
                     {uniqueSites.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -203,7 +203,7 @@ export default function SiteMaterialsReceived() {
                 <Select value={filters.material || "__all__"} onValueChange={(v) => setFilters(f => ({ ...f, material: v === "__all__" ? "" : v }))}>
                   <SelectTrigger data-testid="select-material-filter"><SelectValue placeholder="All Materials" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__">All Materials</SelectItem>
+                    <SelectItem value="__all__">All materials</SelectItem>
                     {MATERIAL_OPTIONS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -213,17 +213,17 @@ export default function SiteMaterialsReceived() {
                 <Select value={filters.supplier || "__all__"} onValueChange={(v) => setFilters(f => ({ ...f, supplier: v === "__all__" ? "" : v }))}>
                   <SelectTrigger data-testid="select-supplier-filter"><SelectValue placeholder="All Parties" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__">All Parties</SelectItem>
+                    <SelectItem value="__all__">All parties</SelectItem>
                     {supplierList.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="text-sm">Work Type</Label>
+                <Label className="text-sm">Work type</Label>
                 <Select value={filters.workType || "__all__"} onValueChange={(v) => setFilters(f => ({ ...f, workType: v === "__all__" ? "" : v }))}>
                   <SelectTrigger data-testid="select-worktype-filter"><SelectValue placeholder="All Types" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__">All Types</SelectItem>
+                    <SelectItem value="__all__">All types</SelectItem>
                     <SelectItem value="road">Road</SelectItem>
                     <SelectItem value="structure">Structure</SelectItem>
                   </SelectContent>
@@ -278,9 +278,9 @@ export default function SiteMaterialsReceived() {
                       <th className="text-left p-2 border text-sm">Material</th>
                       <th className="text-right p-2 border text-sm">Qty / UOM</th>
                       <th className="text-left p-2 border text-sm">Unloaded at</th>
-                      <th className="text-left p-2 border text-sm">Material Source</th>
-                      <th className="text-left p-2 border text-sm">Receipt No.</th>
-                      <th className="text-center p-2 border text-sm">Work Type</th>
+                      <th className="text-left p-2 border text-sm">Material source</th>
+                      <th className="text-left p-2 border text-sm">Receipt no.</th>
+                      <th className="text-center p-2 border text-sm">Work type</th>
                       <th className="text-center p-2 border text-sm">Source</th>
                       <th className="text-left p-2 border text-sm">Photos</th>
                       <th className="text-center p-2 border text-sm w-16"></th>
@@ -423,7 +423,7 @@ export default function SiteMaterialsReceived() {
                     <p className="font-semibold mt-0.5">{unloadingLabel(selectedTrip)}{selectedTrip.source === "trip" && selectedTrip.unloadedAt === "yard" && selectedTrip.yardLabel ? ` · ${selectedTrip.yardLabel}` : ""}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Vehicle No.</p>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Vehicle no.</p>
                     <p className="font-semibold mt-0.5">{selectedTrip.vehicleNumber || "—"}</p>
                   </div>
                   <div>
@@ -431,7 +431,7 @@ export default function SiteMaterialsReceived() {
                     <p className="font-semibold mt-0.5">{selectedTrip.supplier || "—"}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Material Source / Supplier</p>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Material source / supplier</p>
                     <p className="font-semibold mt-0.5" data-testid="detail-material-source-supplier">{selectedTrip.materialSourceType === "own_source" ? "Our own borrow area" : selectedTrip.materialSourceSupplier || "—"}</p>
                     {selectedTrip.materialSourceType === "own_source" && selectedTrip.materialSourceLabel && <p className="mt-1 text-sm text-muted-foreground" data-testid="detail-material-source-label">{selectedTrip.materialSourceLabel}</p>}
                   </div>
@@ -440,7 +440,7 @@ export default function SiteMaterialsReceived() {
                     <p className="font-semibold mt-0.5">{selectedTrip.receiptNumber || "—"}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Work Type</p>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Work type</p>
                     <div className="mt-0.5"><WorkTypeBadge workType={selectedTrip.workType} /></div>
                   </div>
                   <div>
@@ -455,7 +455,7 @@ export default function SiteMaterialsReceived() {
                   )}
                   {selectedTrip.source === "trip" && (selectedTrip.boqItemId != null || selectedTrip.earthworkArrangementId != null || selectedTrip.programmeBarId != null) && (
                     <div className="col-span-2">
-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Linked Work Context</p>
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Linked work context</p>
                       <TripWorkContextSummary trip={selectedTrip} testIdPrefix="received-detail-ctx" />
                     </div>
                   )}

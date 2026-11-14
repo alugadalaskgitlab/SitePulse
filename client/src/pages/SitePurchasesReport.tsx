@@ -194,7 +194,7 @@ export default function SitePurchasesReport() {
           </Link>
           <div className="flex items-center gap-2">
             <ShoppingCart className="w-6 h-6 text-teal-600" />
-            <h1 className="text-2xl font-bold" data-testid="text-page-title">Site Purchases Report</h1>
+            <h1 className="text-2xl font-bold" data-testid="text-page-title">Site purchases report</h1>
           </div>
         </div>
 
@@ -212,7 +212,7 @@ export default function SitePurchasesReport() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <Label className="text-sm">From Date</Label>
+                <Label className="text-sm">From date</Label>
                 <Input
                   type="date"
                   value={filters.dateFrom}
@@ -221,7 +221,7 @@ export default function SitePurchasesReport() {
                 />
               </div>
               <div>
-                <Label className="text-sm">To Date</Label>
+                <Label className="text-sm">To date</Label>
                 <Input
                   type="date"
                   value={filters.dateTo}
@@ -236,7 +236,7 @@ export default function SitePurchasesReport() {
                     <SelectValue placeholder="All Sites" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Sites</SelectItem>
+                    <SelectItem value="all">All sites</SelectItem>
                     {uniqueSites.map(site => (
                       <SelectItem key={site} value={site}>{site}</SelectItem>
                     ))}
@@ -244,13 +244,13 @@ export default function SitePurchasesReport() {
                 </Select>
               </div>
               <div>
-                <Label className="text-sm">Work Type</Label>
+                <Label className="text-sm">Work type</Label>
                 <Select value={filters.workType || "all"} onValueChange={(v) => setFilters(f => ({ ...f, workType: v === "all" ? "" : v }))}>
                   <SelectTrigger data-testid="select-worktype-filter">
                     <SelectValue placeholder="All Types" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="all">All types</SelectItem>
                     <SelectItem value="road">Road</SelectItem>
                     <SelectItem value="structure">Structure</SelectItem>
                   </SelectContent>
@@ -263,13 +263,13 @@ export default function SitePurchasesReport() {
         <div className="grid grid-cols-2 gap-4">
           <Card>
             <CardContent className="pt-6">
-              <p className="text-sm text-muted-foreground">Total Purchases</p>
+              <p className="text-sm text-muted-foreground">Total purchases</p>
               <p className="text-2xl font-bold" data-testid="text-total-items">{totalItems}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-sm text-muted-foreground">Total Amount</p>
+              <p className="text-sm text-muted-foreground">Total amount</p>
               <p className="text-2xl font-bold text-teal-600" data-testid="text-total-amount">
                 {totalAmount.toFixed(3)}
               </p>
@@ -293,14 +293,14 @@ export default function SitePurchasesReport() {
                       <th className="text-left p-2 font-medium">Date</th>
                       <th className="text-left p-2 font-medium">Site</th>
                       <th className="text-center p-2 font-medium">Source</th>
-                      <th className="text-center p-2 font-medium">Work Type</th>
+                      <th className="text-center p-2 font-medium">Work type</th>
                       <th className="text-left p-2 font-medium">Item</th>
                       <th className="text-left p-2 font-medium">Vendor</th>
-                      <th className="text-left p-2 font-medium">Bill No</th>
+                      <th className="text-left p-2 font-medium">Bill no.</th>
                       <th className="text-right p-2 font-medium">Qty</th>
                       <th className="text-left p-2 font-medium">UOM</th>
                       <th className="text-right p-2 font-medium">Amount</th>
-                      <th className="text-left p-2 font-medium">Reported By</th>
+                      <th className="text-left p-2 font-medium">Reported by</th>
                       <th className="text-center p-2 font-medium">Status</th>
                       <th className="text-center p-2 font-medium">Actions</th>
                     </tr>
@@ -420,11 +420,11 @@ export default function SitePurchasesReport() {
       <Dialog open={!!editingItem} onOpenChange={(open) => { if (!open) setEditingItem(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Purchase Entry</DialogTitle>
+            <DialogTitle>Edit purchase entry</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-sm">Item Description</Label>
+              <Label className="text-sm">Item description</Label>
               <Input
                 value={editForm.itemDescription}
                 onChange={(e) => setEditForm(f => ({ ...f, itemDescription: e.target.value.toUpperCase() }))}
@@ -461,7 +461,7 @@ export default function SitePurchasesReport() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-sm">Bill No</Label>
+                <Label className="text-sm">Bill no.</Label>
                 <Input
                   value={editForm.billNo}
                   onChange={(e) => setEditForm(f => ({ ...f, billNo: e.target.value.toUpperCase() }))}

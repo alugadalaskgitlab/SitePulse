@@ -39,6 +39,7 @@ export type BalanceMaterialRow = {
   looseCum: number | null;
   looseCft: number | null;
   mtPerCum: number | null;
+  compactedMtPerCum: number | null;
   monthlyUnit: string;
   monthly: Record<number, number>;
   overdue: number;
@@ -250,6 +251,7 @@ function mergeMaterial(
   hasUnscheduledWork: boolean,
   valuesUnavailable = false,
   mtPerCum: number | null = null,
+  compactedMtPerCum: number | null = null,
   contributor?: BalanceMaterialRow["contributors"][number],
 ) {
   const key = `${normaliseName(materialName)}|${normaliseName(uom)}`;
@@ -271,6 +273,7 @@ function mergeMaterial(
       hasUnscheduledWork,
       valuesUnavailable,
       contributors: contributor ? [{ ...contributor }] : [],
+      compactedMtPerCum,
     });
     return;
   }
@@ -289,6 +292,10 @@ function mergeMaterial(
     Math.abs(existing.mtPerCum - mtPerCum) > 0.000001
     ? null
     : existing.mtPerCum;
+  existing.compactedMtPerCum = existing.compactedMtPerCum == null || compactedMtPerCum == null ||
+    Math.abs(existing.compactedMtPerCum - compactedMtPerCum) > 0.000001
+    ? null
+    : existing.compactedMtPerCum;
   if (contributor) {
     const previousContributor = existing.contributors.find(row => row.boqItemId === contributor.boqItemId);
     if (previousContributor) previousContributor.quantity += contributor.quantity;
@@ -433,6 +440,9 @@ export function buildBalanceWorkByReach(input: ReachBuildInput): BalanceWorkByRe
         mixProfileResult && compactedCum && compactedCum > 0
           ? mixProfileResult.looseWeightPerCum
           : null,
+        mixProfileResult && compactedCum && compactedCum > 0
+          ? mixProfileResult.compactedMt / compactedCum
+          : null,
         {
           boqItemId: row.boqItemId,
           itemCode: row.itemCode,
@@ -503,6 +513,7 @@ export function buildBalanceWorkByReach(input: ReachBuildInput): BalanceWorkByRe
         schedule.notScheduledWork > 0.000001,
         unconvertedCft,
         looseResult?.looseWeightPerCum ?? null,
+        looseResult && totalQty > 0 ? looseResult.compactedMt / totalQty : null,
         {
           boqItemId: row.boqItemId,
           itemCode: row.itemCode,

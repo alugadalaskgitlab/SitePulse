@@ -251,10 +251,10 @@ export default function ConcreteEstimates() {
                     <table className="w-full text-sm border-collapse">
                       <thead>
                         <tr className="bg-muted/40 text-muted-foreground text-sm uppercase tracking-wide">
-                          <th className="text-left px-5 py-2.5 font-semibold">Estimate Name</th>
+                          <th className="text-left px-5 py-2.5 font-semibold">Estimate name</th>
                           <th className="text-left px-4 py-2.5 font-semibold">Type</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Volume (m³)</th>
-                          <th className="text-right px-4 py-2.5 font-semibold">Total Cost</th>
+                          <th className="text-right px-4 py-2.5 font-semibold">Total cost</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Rate ₹/m³</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Saved</th>
                           <th className="px-4 py-2.5"></th>
@@ -354,7 +354,7 @@ export default function ConcreteEstimates() {
       <AlertDialog open={confirmDeleteId !== null} onOpenChange={(open) => { if (!open) setConfirmDeleteId(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Estimate</AlertDialogTitle>
+            <AlertDialogTitle>Delete estimate</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete this estimate? This cannot be undone.
             </AlertDialogDescription>

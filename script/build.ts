@@ -1,6 +1,7 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
+import { execFileSync } from "node:child_process";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -34,6 +35,8 @@ const allowlist = [
 
 async function buildAll() {
   await rm("dist", { recursive: true, force: true });
+  const revision = process.env.REPLIT_GIT_COMMIT_SHA || execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  process.env.APP_BUILD_ID = `${revision}-${Date.now().toString(36)}`;
 
   console.log("building client...");
   await viteBuild();
@@ -54,6 +57,7 @@ async function buildAll() {
     outfile: "dist/index.cjs",
     define: {
       "process.env.NODE_ENV": '"production"',
+      "process.env.APP_BUILD_ID": JSON.stringify(process.env.APP_BUILD_ID),
     },
     minify: true,
     external: externals,

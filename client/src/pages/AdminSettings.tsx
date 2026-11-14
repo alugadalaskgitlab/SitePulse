@@ -352,13 +352,16 @@ export default function AdminSettings() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold font-display">Admin Settings</h1>
+          <h1 className="text-2xl font-bold font-display">Admin settings</h1>
           <p className="text-muted-foreground text-sm">Manage system security settings</p>
         </div>
       </div>
 
       <Link href="/admin/settings/roles">
         <Button variant="outline" data-testid="button-access-roles">Access roles</Button>
+      </Link>
+      <Link href="/admin/settings/names-tidy-up">
+        <Button variant="outline" data-testid="button-names-tidy-up">Names tidy-up</Button>
       </Link>
 
       <StockUnitAdminPanel visible={user?.isOwner === true} />

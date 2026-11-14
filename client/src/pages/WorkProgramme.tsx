@@ -4465,7 +4465,7 @@ export default function WorkProgramme() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Work Programme</h1>
+          <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Work programme</h1>
             <ShortageIndicatorBadge projectId={projectId} />
           </div>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -4633,7 +4633,7 @@ export default function WorkProgramme() {
               >
                 <Upload className="w-3.5 h-3.5 mr-2" />
                 <div className="flex flex-col">
-                  <span>Import Structures</span>
+                  <span>Import structures</span>
                   {!hasStructureItems && <span className="text-[10px] text-slate-400">No structure items in this project</span>}
                 </div>
               </DropdownMenuItem>
@@ -4655,7 +4655,7 @@ export default function WorkProgramme() {
               >
                 <Scissors className="w-3.5 h-3.5 mr-2" />
                 <div className="flex flex-col">
-                  <span>Clean Structure Bars</span>
+                  <span>Clean structure bars</span>
                   {!hasStrayStructureBars && <span className="text-[10px] text-slate-400">No stray road-style bars on structure items</span>}
                 </div>
               </DropdownMenuItem>
@@ -5260,7 +5260,7 @@ export default function WorkProgramme() {
               >
                 {seqDryRunPending
                   ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Checking…</>
-                  : <><ArrowLeftRight className="w-3.5 h-3.5 mr-1" />Run Sequence</>}
+                  : <><ArrowLeftRight className="w-3.5 h-3.5 mr-1" />Run sequence</>}
               </Button>
             )}
           </DialogFooter>

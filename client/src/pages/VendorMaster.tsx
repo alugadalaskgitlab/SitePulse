@@ -211,7 +211,7 @@ export default function VendorMaster() {
   };
   return <main className="max-w-6xl mx-auto p-5 space-y-5">
     <Link href="/masters/hub" className="text-sm text-blue-700 hover:underline">← Master Data</Link>
-    <div><h1 className="text-2xl font-bold">Vendor Master</h1><p className="text-sm text-slate-600">One party, one Vendor Master. Material supplier, transporter and equipment owner remain separate roles. Linking preserves recorded names and existing bills.</p></div>
+    <div><h1 className="text-2xl font-bold">Vendor master</h1><p className="text-sm text-slate-600">One party, one vendor master. Material supplier, transporter and equipment owner remain separate roles. Linking preserves recorded names and existing bills.</p></div>
     <div className="flex gap-2 border-b">{(["master", "review"] as const).map(t => <button key={t} onClick={() => { setTab(t); setMessage(""); }} className={`px-4 py-2 ${tab === t ? "border-b-2 border-blue-700 font-semibold" : ""}`}>{t === "master" ? "Vendors" : "Link Vendors"}</button>)}</div>
      {message && <p role="alert" className="rounded border bg-amber-50 p-3 text-sm whitespace-pre-line">{message}</p>}
     {tab === "master" ? <>
@@ -304,7 +304,7 @@ export default function VendorMaster() {
                event.target.checked ? Array.from(new Set([...current, selectKey])) : current.filter(item => item !== selectKey))} />}
           <div className="flex-1 min-w-52"><strong>{p.name || "Owner name missing"}</strong><p className="text-sm text-slate-600">{roleLabels[p.role]} · {p.count} record(s) · {p.registration}{p.linkedVendorId ? " · Linked" : " · Unlinked"}{p.hint ? ` · Alias hint: ${p.hint}` : ""}</p>
             {p.registration && <p className="mt-1 font-mono font-semibold">{p.registration}</p>}
-            {p.linkedVendorId && <p className="text-sm font-medium">Vendor Master: {p.linkedVendorName || available.find(v => v.id === p.linkedVendorId)?.name || `#${p.linkedVendorId}`}</p>}
+            {p.linkedVendorId && <p className="text-sm font-medium">Vendor master: {p.linkedVendorName || available.find(v => v.id === p.linkedVendorId)?.name || `#${p.linkedVendorId}`}</p>}
              {suggestedVendorId && <p className="text-sm font-medium text-blue-800">Suggested existing master: {suggestedVendorName || `#${suggestedVendorId}`} — excluded from select-all; select deliberately.</p>}
              {blockedPlaceholder && <p className="text-sm font-medium text-red-700">Not eligible: {companyText(`${companyShortName}/self/own placeholder names cannot be added to the Vendor Master.`)}</p>}
             {p.conflict && <p className="text-sm text-amber-700">{p.conflict}</p>}
@@ -347,6 +347,6 @@ export default function VendorMaster() {
            confirm(creating, undefined, form);
          }} />
       </div></div>}
-    </> : <p role="alert">Only Administrator / Owner reviewers can view pending or confirmed vendor identity reviews. Operational trip links are available in Trip Details / Review Links.</p>}
+    </> : <p role="alert">Only Administrator / Owner reviewers can view pending or confirmed vendor identity reviews. Operational trip links are available in Trip details / Review links.</p>}
   </main>;
 }

@@ -91,6 +91,7 @@ export function TripTransportRoleFields({
           onChange={(name, id) => onChange({
             ...value, materialSourceSupplier: name, materialSourceVendorId: id,
             materialSourceManual: id == null ? value.materialSourceManual : false,
+            ...(id !== value.materialSourceVendorId || name !== value.materialSourceSupplier ? { equipmentId: null, internalEquipmentId: null } : {}),
           })}
           disabled={vendorsDisabled || (!allowManualParties && (vendorsLoading || vendorsError))}
           testId={`input-${testIdPrefix}-material-source-supplier`}
@@ -120,6 +121,7 @@ export function TripTransportRoleFields({
             onChange={(supplier, id) => onChange({
               ...value, supplier, supplierVendorId: id,
               supplierManual: id == null ? value.supplierManual : false,
+              ...(id !== value.supplierVendorId || supplier !== value.supplier ? { equipmentId: null, internalEquipmentId: null } : {}),
             })}
             disabled={vendorsDisabled || (!allowManualParties && (vendorsLoading || vendorsError))} testId={`input-${testIdPrefix}-supplier`}
             manual={value.supplierManual}
@@ -127,6 +129,7 @@ export function TripTransportRoleFields({
             requireRecordedNameMatch={preserveRecordedVendorNames}
             onManualChange={allowManualParties ? (manual, name) => onChange({
               ...value, supplier: name, supplierManual: manual, supplierVendorId: null,
+              ...(value.supplierVendorId != null || name !== value.supplier ? { equipmentId: null, internalEquipmentId: null } : {}),
             }) : undefined} />
         </div>
       )}

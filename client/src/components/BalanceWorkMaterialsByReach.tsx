@@ -131,7 +131,8 @@ export function BalanceWorkMaterialsByReach({
                             <th className="px-2 py-1.5 text-left">Material</th>
                             <th className="px-2 py-1.5 text-right">Quantity</th>
                             <th className="px-2 py-1.5 text-right">Compacted (cum)</th>
-                            <th className="px-2 py-1.5 text-right">MT per cum</th>
+                            <th className="px-2 py-1.5 text-right">MT per compacted cum</th>
+                            <th className="px-2 py-1.5 text-right">MT per loose cum</th>
                             <th className="px-2 py-1.5 text-right">MT</th>
                             <th className="px-2 py-1.5 text-right">Loose cum</th>
                             <th className="px-2 py-1.5 text-right">Loose CFT</th>
@@ -144,6 +145,7 @@ export function BalanceWorkMaterialsByReach({
                                 <td className="px-2 py-1.5 text-slate-700">{material.materialName}</td>
                                 <td className="px-2 py-1.5 text-right font-mono">{numberText(material.totalQty)} {material.uom}</td>
                                 <td className="px-2 py-1.5 text-right font-mono">{numberText(material.compactedCum)}</td>
+                                <td className="px-2 py-1.5 text-right font-mono">{numberText(material.compactedMtPerCum)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono">{numberText(material.mtPerCum)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono">{numberText(material.mt)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono">{numberText(material.looseCum)}</td>

@@ -138,7 +138,7 @@ export default function PendingPlantReceipts() {
           <Inbox className="w-6 h-6 text-amber-600" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Pending Plant Receipts</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Pending plant receipts</h1>
           <p className="text-sm text-slate-500">Bulk plant material receipts awaiting confirmation before entering stock</p>
         </div>
       </div>

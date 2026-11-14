@@ -118,7 +118,7 @@ export default function RmcDailyReport() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200">
               <CardContent className="p-4 text-center">
-                <p className="text-sm text-muted-foreground">Total Volume</p>
+                <p className="text-sm text-muted-foreground">Total volume</p>
                 <p className="text-2xl font-bold text-blue-700 dark:text-blue-300" data-testid="text-total-volume">{report.totalVolumeM3.toFixed(2)} m³</p>
               </CardContent>
             </Card>
@@ -130,13 +130,13 @@ export default function RmcDailyReport() {
             </Card>
             <Card className="bg-green-50 dark:bg-green-950/20 border-green-200">
               <CardContent className="p-4 text-center">
-                <p className="text-sm text-muted-foreground">Cube Tests</p>
+                <p className="text-sm text-muted-foreground">Cube tests</p>
                 <p className="text-2xl font-bold">{report.cubeTests.length}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <p className="text-sm text-muted-foreground">Grades Produced</p>
+                <p className="text-sm text-muted-foreground">Grades produced</p>
                 <p className="text-2xl font-bold">{report.gradeBreakdown.length}</p>
               </CardContent>
             </Card>
@@ -177,7 +177,7 @@ export default function RmcDailyReport() {
           {/* Batch Records */}
           {report.batchRecords.length > 0 && (
             <Card>
-              <CardHeader><CardTitle className="text-base">Batch Dispatches</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">Batch dispatches</CardTitle></CardHeader>
               <CardContent>
                 <table className="w-full text-sm">
                   <thead>
@@ -215,7 +215,7 @@ export default function RmcDailyReport() {
             const consumedMap = new Map(report.materialConsumed.map(c => [c.materialName, c.consumedQty]));
             return (
               <Card>
-                <CardHeader><CardTitle className="text-base">Raw Materials — Received vs Consumed</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-base">Raw materials — received vs consumed</CardTitle></CardHeader>
                 <CardContent>
                   <table className="w-full text-sm">
                     <thead>
@@ -256,7 +256,7 @@ export default function RmcDailyReport() {
           {/* Cube Tests */}
           {report.cubeTests.length > 0 && (
             <Card>
-              <CardHeader><CardTitle className="text-base">Cube Test Results</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">Cube test results</CardTitle></CardHeader>
               <CardContent>
                 <table className="w-full text-sm">
                   <thead>

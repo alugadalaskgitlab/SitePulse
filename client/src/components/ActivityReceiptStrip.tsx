@@ -760,7 +760,7 @@ function ViewReceiptsDialog({ open, onOpenChange, trips, testIdPrefix }: { open:
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Linked Site Receipts</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Linked site receipts</DialogTitle></DialogHeader>
         {trips.length === 0 && <p className="text-sm text-muted-foreground">No receipts linked to this activity today.</p>}
         {trips.map((t) => (
           <div key={t.id} className="rounded border p-2 text-sm space-y-1" data-testid={`${testIdPrefix}-receipt-${t.id}`}>
@@ -922,7 +922,7 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Record Material Receipt</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Record material receipt</DialogTitle></DialogHeader>
         <div className="space-y-3 text-sm">
           <div className="rounded bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground space-y-0.5" data-testid={`${testIdPrefix}-rr-context`}>
             <p><span className="font-medium text-foreground">{props.siteName}</span> · {props.date}</p>
@@ -932,7 +932,7 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
             {dailyOverride ? (
               <p>Today's allocation: {dailyOverride.fulfilmentType === "hlc" ? `${companyShortName} / Internally Arranged` : "Other agency — daily exception"}{arrangement ? ` (standing: ${arrangement.agencyName ?? "arrangement"})` : ""}</p>
             ) : arrangement ? (
-              <p>Execution Arrangement: {arrangement.agencyName ?? "—"}{arrangement.workDescription ? ` — ${arrangement.workDescription}` : ""}</p>
+              <p>Execution arrangement: {arrangement.agencyName ?? "—"}{arrangement.workDescription ? ` — ${arrangement.workDescription}` : ""}</p>
             ) : (
               <p>{companyShortName} / Main Contractor — no execution arrangement</p>
             )}
@@ -1035,8 +1035,8 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
               <Select value={form.unloadedAt} onValueChange={(v) => setForm({ ...form, unloadedAt: v as "stretch" | "yard" })}>
                 <SelectTrigger data-testid={`${testIdPrefix}-rr-unloaded-at`}><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="stretch">Work Stretch</SelectItem>
-                  <SelectItem value="yard">Temporary Yard</SelectItem>
+                  <SelectItem value="stretch">Work stretch</SelectItem>
+                  <SelectItem value="yard">Temporary yard</SelectItem>
                 </SelectContent>
               </Select>
             </div>

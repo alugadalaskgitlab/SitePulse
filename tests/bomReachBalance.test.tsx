@@ -122,6 +122,8 @@ describe("balance material requirements by working reach", () => {
     const reach3Soil = reach3.materials.find(material => /shoulder.*soil/i.test(material.materialName))!;
     expect(reach1Soil.compactedCum).toBe(10);
     expect(reach1Soil.mt).toBeCloseTo(21.56, 2);
+    expect(reach1Soil.compactedMtPerCum).toBeCloseTo(2.156, 3);
+    expect(reach1Soil.mtPerCum).toBeCloseTo(1.7967, 3);
     expect(reach1Soil.looseCum).toBe(12);
     expect(reach1Soil.looseCft).toBeCloseTo(423.7764, 2);
     expect(reach3Soil.looseCum).toBe(24);
@@ -176,7 +178,8 @@ describe("balance material requirements by working reach", () => {
     );
     expect(screen.getByText("Balance work — materials by reach")).toBeInTheDocument();
     expect(screen.getByText("All reaches — balance total")).toBeInTheDocument();
-    expect(screen.getByText("MT per cum")).toBeInTheDocument();
+    expect(screen.getByText("MT per compacted cum")).toBeInTheDocument();
+    expect(screen.getByText("MT per loose cum")).toBeInTheDocument();
     expect(screen.getByText("Overdue", { exact: true })).toBeInTheDocument();
     expect(screen.queryByText(/Overdue \(/)).not.toBeInTheDocument();
     expect(screen.getByText("10", { exact: true })).toBeInTheDocument();

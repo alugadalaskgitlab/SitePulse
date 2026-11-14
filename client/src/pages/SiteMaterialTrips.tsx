@@ -616,7 +616,7 @@ export default function SiteMaterialTrips() {
                 </div>
               </div>
 
-              {!newTrip.site && <p className="text-sm text-muted-foreground">Choose Site to search Vendor Master.</p>}
+              {!newTrip.site && <p className="text-sm text-muted-foreground">Choose a site to search the vendor master.</p>}
               <TripTransportRoleFields
                 allowManualParties
                 choice={roleChoice}
@@ -676,7 +676,7 @@ export default function SiteMaterialTrips() {
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <Label className="text-sm">Work Type</Label>
+                  <Label className="text-sm">Work type</Label>
                   <Select value={newTrip.workType} onValueChange={(v) => setNewTrip({ ...newTrip, workType: v })}>
                     <SelectTrigger data-testid="select-trip-worktype"><SelectValue placeholder="Select work type" /></SelectTrigger>
                     <SelectContent>
@@ -686,12 +686,12 @@ export default function SiteMaterialTrips() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-sm">Unloaded At</Label>
+                  <Label className="text-sm">Unloaded at</Label>
                   <Select value={newTrip.unloadedAt} onValueChange={(v) => setNewTrip({ ...newTrip, unloadedAt: v })}>
                     <SelectTrigger data-testid="select-trip-unloaded-at"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="stretch">Work Stretch</SelectItem>
-                      <SelectItem value="yard">Temporary Yard</SelectItem>
+                      <SelectItem value="stretch">Work stretch</SelectItem>
+                      <SelectItem value="yard">Temporary yard</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -965,7 +965,7 @@ export default function SiteMaterialTrips() {
                 <Select value={siteFilter} onValueChange={setSiteFilter}>
                   <SelectTrigger data-testid="select-filter-site"><SelectValue placeholder="All Sites" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Sites</SelectItem>
+                    <SelectItem value="all">All sites</SelectItem>
                     {activeSites.map((s) => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -975,7 +975,7 @@ export default function SiteMaterialTrips() {
                 <Select value={materialFilter} onValueChange={setMaterialFilter}>
                   <SelectTrigger data-testid="select-filter-material"><SelectValue placeholder="All Materials" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Materials</SelectItem>
+                    <SelectItem value="all">All materials</SelectItem>
                     {SITE_MATERIAL_TRIP_MATERIAL_OPTIONS.map((material) => <SelectItem key={material} value={material}>{material}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -1037,7 +1037,7 @@ export default function SiteMaterialTrips() {
                       <th className="text-left p-2">Site</th>
                       <th className="text-left p-2">Material</th>
                       <th className="text-left p-2">Transporter</th>
-                      <th className="text-left p-2">Material Source</th>
+                      <th className="text-left p-2">Material source</th>
                       <th className="text-left p-2">Vehicle</th>
                       <th className="text-right p-2">Qty</th>
                       <th className="text-left p-2">UOM</th>

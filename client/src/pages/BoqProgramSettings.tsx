@@ -214,7 +214,7 @@ function MixLinksSection({ projectId }: { projectId: number }) {
       {/* Add new link */}
       {availableTypes.length > 0 && (
         <div className="rounded-md border border-dashed border-slate-300 bg-white p-3 space-y-2">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add Mix Link</p>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add mix link</p>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-[12px]">MIX TYPE</Label>
@@ -549,7 +549,7 @@ export default function BoqProgramSettings() {
             <a className="hover:text-slate-700 transition-colors truncate max-w-[180px]">{project.name}</a>
           </Link>
           <ChevronRight className="w-3 h-3 flex-shrink-0" />
-          <span className="text-slate-700 font-medium">Program Settings</span>
+          <span className="text-slate-700 font-medium">Programme settings</span>
         </nav>
 
         {/* Header */}
@@ -557,7 +557,7 @@ export default function BoqProgramSettings() {
           <div className="flex items-center gap-2">
             <Settings2 className="w-5 h-5 text-teal-600 flex-shrink-0" />
             <div>
-              <h1 className="text-xl font-bold text-slate-800">Program Settings</h1>
+              <h1 className="text-xl font-bold text-slate-800">Programme settings</h1>
               <p className="text-sm text-muted-foreground mt-0.5">{project.name}</p>
             </div>
           </div>
@@ -691,7 +691,7 @@ export default function BoqProgramSettings() {
                 />
               </FormControl>
               <div>
-                <FormLabel className="text-sm font-semibold text-slate-700">Double Shift</FormLabel>
+                <FormLabel className="text-sm font-semibold text-slate-700">Double shift</FormLabel>
                 <FormDescription className="text-[12px]">
                   Enables 2× effective hours per day — duration calculations use shift hrs × 2.
                 </FormDescription>
@@ -892,7 +892,7 @@ export default function BoqProgramSettings() {
                   </SelectItem>
                   <SelectItem value="company">
                     <div>
-                      <p className="font-medium">Company Norms</p>
+                      <p className="font-medium">Company norms</p>
                       <p className="text-[12px] text-muted-foreground">Uses company-configured standard outputs</p>
                     </div>
                   </SelectItem>

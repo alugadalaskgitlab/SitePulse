@@ -84,6 +84,7 @@ import { arrangementBillingTermsSchema, tripBillIdentity } from "@shared/vendorB
 import { arrangementBillValidationError } from "@shared/vendorBillArrangementValidation";
 import { normalizeSiteTripHistorySite } from "@shared/siteTripHistory";
 import { normalizeVehicleSupplierVehicle } from "@shared/vehicleSupplierAssociation";
+import { suggestTidyName, type NameTidyKind } from "@shared/nameTidy";
 import { calculateHireBilling, planHireRegisterRows, type HireExceptionDecisionInput } from "@shared/hireBilling";
 import { computeItemEntries, computeItemAbstract, progressReportEntryMatchesSite, progressReportSiteOptions } from "@shared/progressReport";
 import { isLayerCapableItem } from "@shared/layerDisplay";
@@ -718,6 +719,180 @@ export async function registerRoutes(
     }
   });
 
+  const namesTidyUpPreview = async () => {
+    const queries: Array<{ table: string; kind: NameTidyKind; canApply: boolean; blockedReason?: string; query: ReturnType<typeof sql> }> = [
+      {
+        table: "boq_display_name", kind: "sentence", canApply: true,
+        query: sql`SELECT b.id, b.display_name AS current_name,
+          ((SELECT COUNT(*) FROM dprs d WHERE d.boq_item_id = b.id) +
+           (SELECT COUNT(*) FROM work_program_bars w WHERE w.boq_item_id = b.id) +
+           (SELECT COUNT(*) FROM boq_item_materials m WHERE m.boq_item_id = b.id))::int AS usage_count
+          FROM boq_items b WHERE NULLIF(TRIM(b.display_name), '') IS NOT NULL`,
+      },
+      {
+        table: "material_master", kind: "sentence", canApply: true,
+        query: sql`SELECT m.id, m.name AS current_name,
+          ((SELECT COUNT(*) FROM material_receipts r WHERE r.material_id = m.id) +
+           (SELECT COUNT(*) FROM stock_ledger l WHERE l.material_id = m.id) +
+           (SELECT COUNT(*) FROM stock_balances s WHERE s.material_id = m.id) +
+           (SELECT COUNT(*) FROM mix_template_components c WHERE c.material_id = m.id) +
+           (SELECT COUNT(*) FROM boq_item_materials b WHERE UPPER(TRIM(b.material_name)) = UPPER(TRIM(m.name))))::int AS usage_count
+          FROM plant_materials m`,
+      },
+      {
+        table: "equipment_master", kind: "sentence", canApply: false,
+        blockedReason: "The master name is a matching key for equipment and plant logs; no separate display field exists.",
+        query: sql`SELECT e.id, e.name AS current_name,
+          ((SELECT COUNT(*) FROM equipment_usage u WHERE u.equipment_id = e.id) +
+           (SELECT COUNT(*) FROM equipment_logs l WHERE l.equipment_id = e.id OR UPPER(TRIM(l.machine)) = UPPER(TRIM(e.name))))::int AS usage_count
+          FROM equipment_master e`,
+      },
+      {
+        table: "site", kind: "site", canApply: false,
+        blockedReason: "The master name is stored as a site matching key on trips and DPRs; no separate display field exists.",
+        query: sql`SELECT s.id, s.name AS current_name,
+          ((SELECT COUNT(*) FROM dprs d WHERE UPPER(TRIM(d.site)) = UPPER(TRIM(s.name))) +
+           (SELECT COUNT(*) FROM site_material_trips t WHERE UPPER(TRIM(t.site)) = UPPER(TRIM(s.name))) +
+           (SELECT COUNT(*) FROM site_purchases p JOIN dprs d ON d.id = p.dpr_id WHERE UPPER(TRIM(d.site)) = UPPER(TRIM(s.name))))::int AS usage_count
+          FROM sites s`,
+      },
+      {
+        table: "vendor_master", kind: "title", canApply: true,
+        query: sql`SELECT v.id, v.name AS current_name,
+          ((SELECT COUNT(*) FROM vendor_bills b WHERE b.vendor_id = v.id) +
+           (SELECT COUNT(*) FROM site_material_trips t WHERE t.supplier_vendor_id = v.id OR t.material_source_vendor_id = v.id) +
+           (SELECT COUNT(*) FROM purchase_indent_items p WHERE p.vendor_id = v.id))::int AS usage_count
+          FROM vendors v`,
+      },
+      {
+        table: "party", kind: "title", canApply: false,
+        blockedReason: "Party names can be used as stock-owner matching keys; no separate display field exists.",
+        query: sql`SELECT p.id, p.name AS current_name,
+          ((SELECT COUNT(*) FROM stock_balances b WHERE b.party_id = p.id) +
+           (SELECT COUNT(*) FROM stock_ledger l WHERE l.party_id = p.id) +
+           (SELECT COUNT(*) FROM material_opening_stocks o WHERE o.party_id = p.id) +
+           (SELECT COUNT(*) FROM material_receipts r WHERE r.party_id = p.id))::int AS usage_count
+          FROM parties p`,
+      },
+    ];
+    const result = [];
+    for (const source of queries) {
+      const raw = await db.execute(source.query);
+      const rows = (raw as any).rows ?? raw;
+      for (const row of rows as Array<{ id: number; current_name: string | null; usage_count: number | string }>) {
+        const currentName = String(row.current_name ?? "").trim();
+        if (!currentName) continue;
+        const suggestedName = suggestTidyName(currentName, source.kind);
+        if (suggestedName === currentName) continue;
+        result.push({
+          table: source.table,
+          id: Number(row.id),
+          currentName,
+          suggestedName,
+          usageCount: Number(row.usage_count) || 0,
+          canApply: source.canApply,
+          blockedReason: source.blockedReason ?? null,
+        });
+      }
+    }
+    return result;
+  };
+
+  app.get("/api/admin/names-tidy-up/preview", async (req, res) => {
+    if (!assertFeatureAction(req, res, "names_tidy_up", "view")) return;
+    res.setHeader("Cache-Control", "private, no-store");
+    try {
+      res.json({ rows: await namesTidyUpPreview() });
+    } catch (error) {
+      console.error("Names tidy-up preview failed:", error);
+      res.status(500).json({ message: "Could not prepare the names preview." });
+    }
+  });
+
+  app.post("/api/admin/names-tidy-up/apply", async (req, res) => {
+    if (!assertFeatureAction(req, res, "names_tidy_up", "edit")) return;
+    res.setHeader("Cache-Control", "private, no-store");
+    const body = z.object({
+      changes: z.array(z.object({
+        table: z.enum(["boq_display_name", "material_master", "vendor_master"]),
+        id: z.number().int().positive(),
+        expectedCurrent: z.string().trim().min(1).max(240),
+        name: z.string().trim().min(1).max(240),
+      }).strict()).min(1).max(1000),
+    }).strict().safeParse(req.body);
+    if (!body.success) return res.status(400).json({ message: "Choose valid, previewed names to apply." });
+    const results: Array<{ table: string; id: number; ok: boolean; reason?: string }> = [];
+    for (const change of body.data.changes) {
+      if (change.name === change.expectedCurrent) {
+        results.push({ table: change.table, id: change.id, ok: false, reason: "The suggested name is unchanged." });
+        continue;
+      }
+      try {
+        await db.transaction(async tx => {
+          let current: any;
+          if (change.table === "boq_display_name") {
+            [current] = await tx.select().from(boqItems).where(eq(boqItems.id, change.id)).limit(1);
+          } else if (change.table === "material_master") {
+            [current] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, change.id)).limit(1);
+          } else {
+            const [vendor] = await tx.select().from(vendors).where(eq(vendors.id, change.id)).limit(1);
+            current = vendor;
+          }
+          if (!current) throw new Error("The row no longer exists; refresh the preview.");
+          const currentName = change.table === "boq_display_name" ? current.displayName : current.name;
+          if (currentName !== change.expectedCurrent) throw new Error("The row changed since the preview; refresh it.");
+          const duplicate = change.table === "boq_display_name"
+            ? await tx.select({ id: boqItems.id }).from(boqItems).where(and(eq(boqItems.boqProjectId, current.boqProjectId), sql`UPPER(TRIM(${boqItems.displayName})) = ${change.name.toUpperCase()}`, sql`${boqItems.id} <> ${change.id}`)).limit(1)
+            : change.table === "material_master"
+              ? await tx.select({ id: plantMaterials.id }).from(plantMaterials).where(and(sql`UPPER(TRIM(${plantMaterials.name})) = ${change.name.toUpperCase()}`, sql`${plantMaterials.id} <> ${change.id}`)).limit(1)
+              : await tx.select({ id: vendors.id }).from(vendors).where(and(sql`UPPER(TRIM(${vendors.name})) = ${change.name.toUpperCase()}`, sql`${vendors.id} <> ${change.id}`)).limit(1);
+          if (duplicate.length) throw new Error("That name is already used by another master row.");
+          const oldValues = { name: currentName };
+          const newValues = { name: change.name };
+          if (change.table === "boq_display_name") {
+            const [updated] = await tx.update(boqItems).set({ displayName: change.name }).where(eq(boqItems.id, change.id)).returning();
+            if (!updated) throw new Error("The BOQ display name was not updated.");
+          } else if (change.table === "material_master") {
+            let aliases: string[] = [];
+            try {
+              const parsed = JSON.parse(current.aliases || "[]");
+              if (Array.isArray(parsed)) aliases = parsed.filter((item: unknown): item is string => typeof item === "string");
+            } catch {}
+            if (!aliases.some(alias => alias.trim().toUpperCase() === currentName.trim().toUpperCase())) aliases.push(currentName);
+            const [updated] = await tx.update(plantMaterials).set({ name: change.name, aliases: JSON.stringify(aliases) }).where(eq(plantMaterials.id, change.id)).returning();
+            if (!updated) throw new Error("The material name was not updated.");
+          } else {
+            const existingAlias = await tx.execute(sql`SELECT id, canonical_name FROM vendor_aliases WHERE UPPER(TRIM(alias)) = UPPER(TRIM(${currentName})) LIMIT 1`);
+            const aliasRows = (existingAlias as any).rows ?? existingAlias;
+            if (aliasRows.length && String(aliasRows[0].canonical_name).trim().toUpperCase() !== currentName.trim().toUpperCase()) {
+              throw new Error("The old name is already an alias for another vendor.");
+            }
+            const [updated] = await tx.update(vendors).set({ name: change.name, updatedAt: new Date() }).where(eq(vendors.id, change.id)).returning();
+            if (!updated) throw new Error("The vendor name was not updated.");
+            await tx.update(vendorAliases).set({ canonicalName: change.name }).where(eq(vendorAliases.canonicalName, currentName));
+            if (!aliasRows.length) await tx.insert(vendorAliases).values({ canonicalName: change.name, alias: currentName });
+          }
+          const actor = req.authUser!;
+          await tx.insert(auditLogsTable).values({
+            module: "names_tidy_up",
+            transactionId: change.id,
+            action: "name_changed",
+            userId: actor.id,
+            userName: actor.fullName?.trim() || actor.email?.trim() || "Unknown",
+            userRole: actor.isOwner ? "owner" : actor.isAdmin ? "admin" : actor.businessRole || null,
+            oldValues,
+            newValues,
+            reason: "Owner-confirmed name tidy-up",
+          });
+        });
+        results.push({ table: change.table, id: change.id, ok: true });
+      } catch (error) {
+        results.push({ table: change.table, id: change.id, ok: false, reason: error instanceof Error ? error.message : "The name was not updated." });
+      }
+    }
+    res.json({ results });
+  });
+
   app.post("/api/admin/branding", requireAuth, async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
@@ -757,6 +932,11 @@ export async function registerRoutes(
   app.use("/objects", requireAuth);
   app.use("/api/uploads", requireAuth);
   registerObjectStorageRoutes(app);
+
+  app.get("/api/version", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({ buildId: process.env.APP_BUILD_ID || "development" });
+  });
 
   // Global API auth middleware. Applies to every /api/* request except the
   // public auth + estimator endpoints. Populates req.authUser, req.authPermissions.

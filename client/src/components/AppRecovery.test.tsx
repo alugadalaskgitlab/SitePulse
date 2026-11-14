@@ -6,6 +6,8 @@ import { AppErrorBoundary, AppUpdateNotice, handleVitePreloadError } from "./App
 afterEach(() => {
   cleanup();
   sessionStorage.removeItem("sp_chunk_reload_at");
+  sessionStorage.removeItem("sp_worker_reload_at");
+  vi.unstubAllGlobals();
 });
 
 describe("app recovery", () => {
@@ -35,9 +37,34 @@ describe("app recovery", () => {
     expect(firstFailure.defaultPrevented).toBe(true);
     expect(reload).toHaveBeenCalledOnce();
     expect(screen.getByTestId("app-update-notice").textContent)
-      .toContain("A new version is ready — tap to refresh");
+      .toContain("A new version of SitePulse is ready — Refresh");
     act(() => handleVitePreloadError(new Event("vite:preloadError", { cancelable: true }), reload));
     expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("waits to reload a failed chunk until the active form field is left", async () => {
+    const reload = vi.fn();
+    render(<AppUpdateNotice />);
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+    act(() => handleVitePreloadError(new Event("vite:preloadError", { cancelable: true }), reload));
+    expect(reload).not.toHaveBeenCalled();
+    await act(async () => {
+      input.blur();
+      await new Promise(resolve => setTimeout(resolve, 5));
+    });
+    expect(reload).toHaveBeenCalledOnce();
+    input.remove();
+  });
+
+  it("offers a refresh when the public build version changes", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ buildId: "new-build" }),
+    }));
+    render(<AppUpdateNotice />);
+    expect(await screen.findByRole("button", { name: "A new version of SitePulse is ready — Refresh" })).toBeTruthy();
   });
 
   it("uses an update recovery message rather than the generic screen error for chunk failures", () => {

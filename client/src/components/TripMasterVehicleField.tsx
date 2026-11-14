@@ -20,22 +20,28 @@ export function TripMasterVehicleField({ value, onChange, onChoice, vendors, cho
   const selected = master.data?.find(e => e.id === selectedId);
   const owner = owners.data?.find(e => e.id === selectedId);
   const needle = value.vehicleNumber.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const matches = (master.data || []).filter(e => !!e.isActive && (!needle || (e.registrationNumber || "").toUpperCase().replace(/[^A-Z0-9]/g, "").includes(needle)));
+  const transporterId = choice === "same_party" ? value.materialSourceVendorId : value.supplierVendorId;
+  const matches = (master.data || []).filter(e => {
+    if (!e.isActive || (needle && !(e.registrationNumber || "").toUpperCase().replace(/[^A-Z0-9]/g, "").includes(needle))) return false;
+    if ((choice === "different_parties" || choice === "same_party") && transporterId != null) {
+      return e.ownership === "hired" && owners.data?.some(item => item.id === e.id && item.vendorId === transporterId);
+    }
+    return true;
+  });
   const equipmentLabel = (e: NonNullable<typeof master.data>[number]) => {
     const reviewedOwner = owners.data?.find(item => item.id === e.id);
     const vendor = vendors.find(item => item.id === reviewedOwner?.vendorId);
     return `${e.equipmentType || e.name} · ${e.registrationNumber || "Registration missing"} · ${equipmentOwnershipLabel(e, vendor?.businessName?.trim() || reviewedOwner?.linkedVendorName || vendor?.name, companyShortName)}`;
   };
-  const transporterId = choice === "same_party" ? value.materialSourceVendorId : value.supplierVendorId;
   return <div className="space-y-2">
     <Label htmlFor={id}>Vehicle / Tipper *</Label>
     {allowOutside && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={!!value.vehicleManual} onChange={e => {
       onChange({ ...value, vehicleManual: e.target.checked, equipmentId: null, internalEquipmentId: null });
       if (e.target.checked && choice === "in_house") onChoice("different_parties");
-    }} />Other / Not in Master</label>}
+    }} />Other / not in master</label>}
     {value.vehicleManual ? <Input id={id} value={value.vehicleNumber} onChange={e => onChange({ ...value, vehicleNumber: e.target.value.toUpperCase() })} placeholder="Outside vehicle registration" data-testid={`input-${testIdPrefix}-vehicle`} /> : <>
-      {master.isLoading && <div className="h-10 animate-pulse rounded bg-muted" role="status" aria-label="Loading Equipment Master" />}
-      {master.isError ? <p role="alert" className="text-sm text-destructive">Equipment Master unavailable. <button type="button" className="underline" onClick={() => master.refetch()}>Retry</button></p> :
+      {master.isLoading && <div className="h-10 animate-pulse rounded bg-muted" role="status" aria-label="Loading equipment master" />}
+      {master.isError ? <p role="alert" className="text-sm text-destructive">Equipment master unavailable. <button type="button" className="underline" onClick={() => master.refetch()}>Retry</button></p> :
       <TripMasterCombobox id={id} value={selected ? equipmentLabel(selected) : value.vehicleNumber}
         selectedId={selectedId} disabled={master.isLoading} placeholder="Search registration, including last four digits"
         testId={`input-${testIdPrefix}-vehicle-search`} options={matches.map(e => ({ id: e.id, label: equipmentLabel(e) }))}
@@ -49,6 +55,7 @@ export function TripMasterVehicleField({ value, onChange, onChoice, vendors, cho
         onChange(next);
         onChoice(equipment.ownership === "owned" ? "in_house" : choice === "in_house" || !choice || (choice === "same_party" && !hasSameParty) ? "different_parties" : choice);
       }} />}
+      {owners.isLoading && transporterId != null && <p role="status" className="text-xs text-muted-foreground">Loading this transporter’s vehicles…</p>}
       {owners.isError && <p className="text-xs text-destructive">Confirmed owner unavailable. <button type="button" className="underline" onClick={() => owners.refetch()}>Retry</button></p>}
     </>}
     {selected?.ownership === "hired" && owner?.vendorId && owner.linkedVendorName && transporterId != null && transporterId !== owner.vendorId && <p role="status" className="text-sm text-amber-700">Transporter differs from the confirmed vehicle owner. Authorised review may be required.</p>}

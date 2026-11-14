@@ -209,7 +209,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
           </Link>
           <div className="flex items-center gap-2 flex-1">
             <ArrowUpFromLine className="w-5 h-5 text-orange-600" />
-            <h1 className="text-xl font-bold">Issue Vouchers</h1>
+            <h1 className="text-xl font-bold">Issue vouchers</h1>
           </div>
           {!showForm && !selectedId && (
             <Button size="sm" className="gap-1 bg-orange-600 hover:bg-orange-700" onClick={() => setShowForm(true)} data-testid="button-new-issue">
@@ -311,7 +311,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                     <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required data-testid="input-issue-date" />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-sm">Issued To (Section) *</Label>
+                    <Label className="text-sm">Issued to (section) *</Label>
                     <Select value={form.issuedToSection} onValueChange={handleSectionChange}>
                       <SelectTrigger data-testid="select-section"><SelectValue /></SelectTrigger>
                       <SelectContent>{SECTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>

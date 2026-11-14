@@ -145,11 +145,11 @@ export default function ProgressReport() {
       {/* Breadcrumb + title (Reports Hub > Progress Report) */}
       <div>
         <div className="flex items-center gap-1.5 text-sm text-slate-500">
-          <Link href="/reports/hub" className="hover:text-slate-800 hover:underline" data-testid="link-reports-hub">Reports Hub</Link>
+          <Link href="/reports/hub" className="hover:text-slate-800 hover:underline" data-testid="link-reports-hub">Reports hub</Link>
           <Crumb className="w-3.5 h-3.5 text-slate-400" />
-          <span className="text-slate-700 font-medium">Progress Report</span>
+          <span className="text-slate-700 font-medium">Progress report</span>
         </div>
-        <h1 className="text-2xl font-bold font-display mt-1">Progress Report</h1>
+        <h1 className="text-2xl font-bold font-display mt-1">Progress report</h1>
         <p className="text-sm text-slate-600">RA-style rollup of submitted DPR actuals</p>
       </div>
 
@@ -167,7 +167,7 @@ export default function ProgressReport() {
           <Select value={state.site || "__all"} onValueChange={(v) => update({ site: v === "__all" ? "" : v })}>
             <SelectTrigger className="w-44" data-testid="select-site"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="__all">All Sites</SelectItem>
+              <SelectItem value="__all">All sites</SelectItem>
               {(report?.sites ?? []).map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -219,8 +219,8 @@ function ItemWise({ abstracts, from, to, state, update, draftOverlaps }: {
   return (
     <div className="space-y-2">
       <div className="flex justify-end gap-1">
-        <Button size="sm" variant={view === "measurement" ? "default" : "outline"} onClick={() => update({ view: "measurement" })} data-testid="toggle-measurement">Measurement View</Button>
-        <Button size="sm" variant={view === "abstract" ? "default" : "outline"} onClick={() => update({ view: "abstract" })} data-testid="toggle-abstract">Abstract View</Button>
+        <Button size="sm" variant={view === "measurement" ? "default" : "outline"} onClick={() => update({ view: "measurement" })} data-testid="toggle-measurement">Measurement view</Button>
+        <Button size="sm" variant={view === "abstract" ? "default" : "outline"} onClick={() => update({ view: "abstract" })} data-testid="toggle-abstract">Abstract view</Button>
       </div>
       <Card><CardContent className="p-0 overflow-x-auto">
         <table className="w-full text-sm text-slate-900">
@@ -228,7 +228,7 @@ function ItemWise({ abstracts, from, to, state, update, draftOverlaps }: {
             <tr className="[&>th]:px-3 [&>th]:py-2 [&>th]:text-left [&>th]:font-semibold">
               <th>Sl.</th><th>BOQ Item</th><th>UoM</th>
               <th className="text-right">BOQ Qty</th><th className="text-right">Previous</th>
-              <th className="text-right">This Period</th><th className="text-right">Cumulative</th>
+              <th className="text-right">This period</th><th className="text-right">Cumulative</th>
               <th className="text-right">Balance</th><th className="text-right">%</th>
               <th className="text-right">DPRs</th><th></th>
             </tr>
@@ -371,8 +371,8 @@ function MeasurementSheet({ item, from, to, state, update }: { item: ReportItem;
             <tr className="[&>th]:px-2 [&>th]:py-1.5 [&>th]:text-left [&>th]:font-semibold">
               <th>Sl.</th><th>Date</th><th>Side</th><th>From</th><th>To</th>
               <th className="text-right">L</th><th className="text-right">W</th><th className="text-right">T</th>
-              {anyConverted ? <><th className="text-right">Measured Qty</th><th className="text-right">BOQ Qty</th></> : <th className="text-right">BOQ Qty</th>}
-              <th className="text-right">Cumulative</th><th>DPR</th><th>Prepared By</th><th>Remarks</th>
+              {anyConverted ? <><th className="text-right">Measured quantity</th><th className="text-right">BOQ quantity</th></> : <th className="text-right">BOQ quantity</th>}
+              <th className="text-right">Cumulative</th><th>DPR</th><th>Prepared by</th><th>Remarks</th>
             </tr>
           </thead>
           <tbody>

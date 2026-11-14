@@ -733,7 +733,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
   if (!canViewRateCards) {
     return <div role="alert" className="mx-auto max-w-md py-20 text-center">
       <h2 className="text-xl font-semibold">No access</h2>
-      <p className="mt-2 text-sm text-muted-foreground">Rate Cards View access is required.</p>
+      <p className="mt-2 text-sm text-muted-foreground">Rate cards View access is required.</p>
     </div>;
   }
 
@@ -763,7 +763,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
       <Card>
         <CardContent className="pt-4 space-y-3">
           <div>
-            <Label className="text-sm uppercase font-semibold">Vendor Master (preferred)</Label>
+            <Label className="text-sm uppercase font-semibold">Vendor master (preferred)</Label>
             <Select value={selectedVendorMaster ? String(selectedVendorMaster.id) : "unmatched"} onValueChange={value => {
               const vendor = vendorMasters.find(candidate => String(candidate.id) === value);
               if (vendor) resetSelectedVendorData(vendor.name);
@@ -874,7 +874,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                     ) : (
                       <div className="flex items-end gap-2 flex-wrap">
                         <div className="space-y-1">
-                          <Label className="text-[12px] uppercase">Machine Type</Label>
+                          <Label className="text-[12px] uppercase">Machine type</Label>
                           <Select value={addEqType} onValueChange={setAddEqType}>
                             <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-add-eq-type">
                               <SelectValue placeholder="Select type..." />
@@ -887,7 +887,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                           </Select>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-[12px] uppercase">Billing Mode</Label>
+                          <Label className="text-[12px] uppercase">Billing mode</Label>
                           <Select value={addEqMode} onValueChange={setAddEqMode}>
                             <SelectTrigger className="w-40 h-8 text-sm" data-testid="select-add-eq-mode">
                               <SelectValue placeholder="Select mode..." />
@@ -1008,7 +1008,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                     ) : (
                       <div className="flex items-end gap-2 flex-wrap">
                         <div className="space-y-1">
-                          <Label className="text-[12px] uppercase">Transport Type</Label>
+                          <Label className="text-[12px] uppercase">Transport type</Label>
                           <Select value={addTransKind} onValueChange={(value: "machine" | "material") => setAddTransKind(value)}>
                             <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-add-transport-kind">
                               <SelectValue />
@@ -1022,7 +1022,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                         {addTransKind === "machine" ? (
                           <>
                             <div className="space-y-1">
-                              <Label className="text-[12px] uppercase">Machine Type</Label>
+                              <Label className="text-[12px] uppercase">Machine type</Label>
                               <Select value={addTransType} onValueChange={setAddTransType}>
                                 <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-add-trans-type">
                                   <SelectValue placeholder="Select type..." />
@@ -1035,7 +1035,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                               </Select>
                             </div>
                             <div className="space-y-1">
-                              <Label className="text-[12px] uppercase">Billing Mode</Label>
+                              <Label className="text-[12px] uppercase">Billing mode</Label>
                               <Select value={addTransMode} onValueChange={setAddTransMode}>
                                 <SelectTrigger className="w-40 h-8 text-sm" data-testid="select-add-trans-mode">
                                   <SelectValue placeholder="Select mode..." />
@@ -1114,7 +1114,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                     ) : (
                       <div className="flex items-end gap-2 flex-wrap">
                         <div className="space-y-1">
-                          <Label className="text-[12px] uppercase">Labour Category</Label>
+                          <Label className="text-[12px] uppercase">Labour category</Label>
                           <Select value={addLabCategory} onValueChange={setAddLabCategory}>
                             <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-add-lab-category">
                               <SelectValue placeholder="Select category..." />

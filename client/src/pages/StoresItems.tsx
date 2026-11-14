@@ -119,7 +119,7 @@ export default function StoresItems() {
           </Link>
           <div className="flex items-center gap-2 flex-1">
             <Package className="w-5 h-5 text-blue-600" />
-            <h1 className="text-xl font-bold">Item Master</h1>
+            <h1 className="text-xl font-bold">Item master</h1>
           </div>
           <Button variant="outline" size="sm" onClick={() => setShowInactive(!showInactive)} className="text-sm" data-testid="button-toggle-inactive">
             {showInactive ? "Hide Inactive" : "Show All"}
@@ -154,7 +154,7 @@ export default function StoresItems() {
               <SelectValue placeholder="All Categories" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
+              <SelectItem value="all">All categories</SelectItem>
               {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -173,8 +173,8 @@ export default function StoresItems() {
                     <th className="text-left px-4 py-3 text-sm font-semibold text-muted-foreground">Name</th>
                     <th className="text-left px-4 py-3 text-sm font-semibold text-muted-foreground">Category</th>
                     <th className="text-left px-4 py-3 text-sm font-semibold text-muted-foreground">UOM</th>
-                    <th className="text-right px-4 py-3 text-sm font-semibold text-muted-foreground">Min Stock</th>
-                    <th className="text-right px-4 py-3 text-sm font-semibold text-muted-foreground">Current Stock</th>
+                    <th className="text-right px-4 py-3 text-sm font-semibold text-muted-foreground">Minimum stock</th>
+                    <th className="text-right px-4 py-3 text-sm font-semibold text-muted-foreground">Current stock</th>
                     <th className="text-center px-4 py-3 text-sm font-semibold text-muted-foreground">Status</th>
                     <th className="px-4 py-3 w-20"></th>
                   </tr>
@@ -258,7 +258,7 @@ export default function StoresItems() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Minimum Stock Level <span className="text-muted-foreground text-sm">(optional — triggers low-stock alert)</span></Label>
+              <Label>Minimum stock level <span className="text-muted-foreground text-sm">(optional — triggers low-stock alert)</span></Label>
               <Input type="number" min="0" step="any" value={form.minStockQty} onChange={e => setForm(f => ({ ...f, minStockQty: e.target.value }))} placeholder="Leave blank for no alert" data-testid="input-min-stock" />
             </div>
             <div className="flex justify-end gap-2 pt-2">

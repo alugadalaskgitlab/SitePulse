@@ -203,10 +203,10 @@ export default function EarthworkControl() {
         </Link>
       </div>
       <div className="text-[11px] text-slate-400" data-testid="text-breadcrumb">
-        Work Programme › Earthwork Classification & Cut/Fill
+        Work programme › Earthwork classification & cut/fill
       </div>
       <div>
-        <h1 className="text-xl font-bold text-slate-800">Earthwork Classification & Cut/Fill</h1>
+        <h1 className="text-xl font-bold text-slate-800">Earthwork classification & cut/fill</h1>
         <Link href={`/work-program/${projectId}/execution-arrangements`} className="text-[12px] text-teal-600 hover:underline ml-2">
           Open register →
         </Link>
@@ -252,7 +252,7 @@ export default function EarthworkControl() {
       {!isLoading && earthworkRows.length > 0 && (
         <div className="grid grid-cols-4 gap-3">
           <Card className="p-3">
-            <p className="text-[11px] text-slate-500 uppercase font-semibold tracking-wide">Total Earthwork Qty</p>
+            <p className="text-[11px] text-slate-500 uppercase font-semibold tracking-wide">Total earthwork quantity</p>
             <p className="text-lg font-bold text-slate-800 font-mono">{totalQty.toLocaleString()} <span className="text-sm font-normal text-slate-500">CUM</span></p>
           </Card>
           <Card className="p-3">
@@ -303,8 +303,8 @@ export default function EarthworkControl() {
           <Table>
             <TableHeader>
               <TableRow className="bg-slate-50">
-                <TableHead className="text-[11px] font-semibold text-slate-600 w-[220px]">Material / BOQ Item</TableHead>
-                <TableHead className="text-[11px] font-semibold text-slate-600 text-right w-[100px]">Total Qty (CUM)</TableHead>
+                <TableHead className="text-[11px] font-semibold text-slate-600 w-[220px]">Material / BOQ item</TableHead>
+                <TableHead className="text-[11px] font-semibold text-slate-600 text-right w-[100px]">Total quantity (cum)</TableHead>
                 <TableHead className="text-[11px] font-semibold text-slate-600 text-right w-[90px]">Allocated</TableHead>
                 <TableHead className="text-[11px] font-semibold text-slate-600 text-right w-[90px]">Completed</TableHead>
                 <TableHead className="text-[11px] font-semibold text-slate-600 text-right w-[90px]">Balance</TableHead>

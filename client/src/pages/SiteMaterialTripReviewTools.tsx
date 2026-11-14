@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { BulkTripArrangement } from "@/components/BulkTripArrangement";
 import { filterTripsByRole } from "@/components/trip-role-utils";
+import { TripMasterCombobox } from "@/components/TripMasterCombobox";
+import { normalizeVehicleSupplierName, normalizeVehicleSupplierVehicle } from "@shared/vehicleSupplierAssociation";
 
 type Filters = {
   dateFrom: string; dateTo: string; site: string; material: string; vehicleNumber: string;
@@ -49,8 +51,46 @@ function queryFor(filters: Filters) {
   if (filters.onlyWithoutArrangement) p.set("onlyWithoutArrangement", "true");
   return p;
 }
+function normalizedOptions(values: Array<string | null | undefined>, vehicle = false) {
+  const normalize = vehicle ? normalizeVehicleSupplierVehicle : normalizeVehicleSupplierName;
+  const seen = new Set<string>();
+  return values.flatMap(value => {
+    const label = String(value ?? "").trim().replace(/\s+/g, " ");
+    const key = normalize(label);
+    if (!key || seen.has(key)) return [];
+    seen.add(key);
+    return [label];
+  }).sort((a, b) => a.localeCompare(b));
+}
+function filterTextOptions(options: string[], query: string, vehicle = false) {
+  const normalize = vehicle ? normalizeVehicleSupplierVehicle : normalizeVehicleSupplierName;
+  const needle = normalize(query);
+  if (!needle) return options;
+  return options.filter(option => normalize(option).includes(needle));
+}
+function SearchableFilter({
+  id, label, value, options, onChange, vehicle = false,
+}: {
+  id: string; label: string; value: string; options: string[]; onChange: (value: string) => void; vehicle?: boolean;
+}) {
+  const visible = filterTextOptions(options, value, vehicle);
+  return <div>
+    <Label htmlFor={id}>{label}</Label>
+    <TripMasterCombobox
+      id={id}
+      value={value}
+      options={visible.map((option, index) => ({ id: index + 1, label: option }))}
+      onChange={onChange}
+      onSelect={id => onChange(visible[id - 1] || "")}
+      placeholder={`Type to search ${label.toLowerCase()}`}
+      testId={`tool-${id}`}
+      emptyMessage={`No matching saved value. You can still type to search.`}
+    />
+  </div>;
+}
 function roleLabel(role: string) {
-  return role.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
+  const words = role.replaceAll("_", " ").toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 function ReviewToolFrame({ title, children }: { title: string; children: ReactNode }) {
   const search = useSearch();
@@ -77,6 +117,35 @@ function ToolFilterBar({ filters, search }: { filters: Filters; search: string }
   const [path, navigate] = useLocation();
   const [draft, setDraft] = useState(filters);
   useEffect(() => setDraft(filters), [filters.dateFrom, filters.dateTo, filters.site, filters.material, filters.vehicleNumber, filters.supplier, filters.onlyUnassigned, filters.onlyWithoutArrangement, filters.roleFilter]);
+  const optionParams = new URLSearchParams();
+  if (draft.dateFrom) optionParams.set("dateFrom", draft.dateFrom);
+  if (draft.dateTo) optionParams.set("dateTo", draft.dateTo);
+  const tripOptionsQuery = useQuery<SiteMaterialTrip[]>({
+    queryKey: [`/api/site-material-trips${optionParams.size ? `?${optionParams}` : ""}`],
+    enabled: !!(draft.dateFrom || draft.dateTo),
+  });
+  const aliasesQuery = useQuery<Array<{ canonicalName: string; alias: string }>>({ queryKey: ["/api/vendor-aliases"] });
+  const optionTrips = Array.isArray(tripOptionsQuery.data) ? tripOptionsQuery.data : [];
+  const dateSites = normalizedOptions(optionTrips.map(trip => trip.site));
+  const selectedSiteOption = dateSites.find(site => normalizeVehicleSupplierName(site) === normalizeVehicleSupplierName(draft.site));
+  const selectedSiteTrips = selectedSiteOption
+    ? optionTrips.filter(trip => normalizeVehicleSupplierName(trip.site) === normalizeVehicleSupplierName(selectedSiteOption))
+    : optionTrips;
+  const transporterValues = normalizedOptions(selectedSiteTrips.flatMap(trip => [
+    trip.supplier,
+    (trip as SiteMaterialTrip & { linkedTransporterName?: string | null }).linkedTransporterName,
+  ]));
+  const actualTransporterKeys = new Set(transporterValues.map(normalizeVehicleSupplierName));
+  const relevantAliases = (aliasesQuery.data || []).filter(row =>
+    actualTransporterKeys.has(normalizeVehicleSupplierName(row.alias)) ||
+    actualTransporterKeys.has(normalizeVehicleSupplierName(row.canonicalName)),
+  );
+  const transporterOptions = normalizedOptions([
+    ...transporterValues,
+    ...relevantAliases.flatMap(row => [row.canonicalName, row.alias]),
+  ]);
+  const materialOptions = normalizedOptions(selectedSiteTrips.map(trip => trip.material));
+  const vehicleOptions = normalizedOptions(selectedSiteTrips.map(trip => trip.vehicleNumber), true);
   const set = (key: keyof Filters, value: string | boolean) => setDraft(old => ({ ...old, [key]: value }));
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -91,12 +160,14 @@ function ToolFilterBar({ filters, search }: { filters: Filters; search: string }
     navigate(`${path}${params.size ? `?${params}` : ""}`);
   };
   return <form onSubmit={submit} className="grid grid-cols-1 gap-3 rounded-xl border bg-card p-4 sm:grid-cols-2 lg:grid-cols-4">
+    {tripOptionsQuery.isError && <p role="alert" className="text-xs text-destructive sm:col-span-2 lg:col-span-4">Saved trip filter choices could not be loaded. You can still type a filter value.</p>}
+    {!draft.dateFrom && !draft.dateTo && <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-4">Choose a date range to load saved filter choices. You can still type a value.</p>}
     <div><Label htmlFor="tool-date-from">From date</Label><Input id="tool-date-from" type="date" value={draft.dateFrom} onChange={event => set("dateFrom", event.target.value)} /></div>
     <div><Label htmlFor="tool-date-to">To date</Label><Input id="tool-date-to" type="date" value={draft.dateTo} onChange={event => set("dateTo", event.target.value)} /></div>
-    <div><Label htmlFor="tool-site">Site</Label><Input id="tool-site" value={draft.site} onChange={event => set("site", event.target.value)} /></div>
-    <div><Label htmlFor="tool-material">Material</Label><Input id="tool-material" value={draft.material} onChange={event => set("material", event.target.value)} /></div>
-    <div><Label htmlFor="tool-vehicle">Vehicle number</Label><Input id="tool-vehicle" value={draft.vehicleNumber} onChange={event => set("vehicleNumber", event.target.value)} /></div>
-    <div><Label htmlFor="tool-supplier">Transporter</Label><Input id="tool-supplier" value={draft.supplier} onChange={event => set("supplier", event.target.value)} /></div>
+    <SearchableFilter id="tool-site" label="Site" value={draft.site} options={dateSites} onChange={value => set("site", value)} />
+    <SearchableFilter id="tool-material" label="Material" value={draft.material} options={materialOptions} onChange={value => set("material", value)} />
+    <SearchableFilter id="tool-vehicle" label="Vehicle number" value={draft.vehicleNumber} options={vehicleOptions} onChange={value => set("vehicleNumber", value)} vehicle />
+    <SearchableFilter id="tool-supplier" label="Transporter" value={draft.supplier} options={transporterOptions} onChange={value => set("supplier", value)} />
     <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={draft.onlyUnassigned} onChange={event => set("onlyUnassigned", event.target.checked)} />Only without material source</label>
     <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={draft.onlyWithoutArrangement} onChange={event => set("onlyWithoutArrangement", event.target.checked)} />Only without arrangement</label>
     <div><Label htmlFor="tool-role">Transport/source role</Label><select id="tool-role" className="w-full rounded-md border bg-background p-2 text-sm" value={draft.roleFilter} onChange={event => set("roleFilter", event.target.value)}><option value="all">All</option><option value="same_party">Same party</option><option value="different_parties">Different parties</option><option value="in_house">Our own vehicle</option><option value="own_source_agency">Our own source · Another transporter</option><option value="own_source_in_house">Our own source · Our own vehicle</option><option value="unresolved">Roles not confirmed</option></select></div>

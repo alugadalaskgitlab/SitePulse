@@ -13093,17 +13093,24 @@ export class DatabaseStorage implements IStorage {
       conditions.push(sql`upper(regexp_replace(trim(${siteMaterialTrips.vehicleNumber}), '[[:space:]-]+', '', 'g')) = ${vehicleKey}`);
     }
     if (filters?.supplier?.trim()) {
-      conditions.push(supplierMatch
-        ? vendorNameIdentityCondition(siteMaterialTrips.supplier, siteMaterialTrips.supplierVendorId, supplierMatch)
-        : sql`UPPER(TRIM(${siteMaterialTrips.supplier})) = ${normalizeVehicleSupplierName(filters.supplier)}`);
+      const normalizedSupplier = sql`UPPER(REGEXP_REPLACE(TRIM(${siteMaterialTrips.supplier}), '[[:space:]]+', ' ', 'g'))`;
+      if (supplierMatch) {
+        const variants = supplierMatch.variants.map(normalizeVehicleSupplierName).filter(Boolean);
+        const textMatch = variants.length
+          ? sql`${normalizedSupplier} IN (${sql.join(variants.map(value => sql`${value}`), sql`, `)})`
+          : sql`false`;
+        conditions.push(sql`(${siteMaterialTrips.supplierVendorId} = ${supplierMatch.vendorId} OR (${siteMaterialTrips.supplierVendorId} IS NULL AND ${textMatch}))`);
+      } else {
+        conditions.push(sql`${normalizedSupplier} = ${normalizeVehicleSupplierName(filters.supplier)}`);
+      }
     }
     if (filters?.onlyUnassigned) {
       conditions.push(sql`${siteMaterialTrips.materialSourceType} IS DISTINCT FROM 'own_source'`);
       conditions.push(or(isNull(siteMaterialTrips.materialSourceSupplier), sql`TRIM(${siteMaterialTrips.materialSourceSupplier}) = ''`)!);
     }
     
-    if (filters?.site) conditions.push(eq(siteMaterialTrips.site, filters.site));
-    if (filters?.material) conditions.push(eq(siteMaterialTrips.material, filters.material));
+    if (filters?.site) conditions.push(sql`UPPER(REGEXP_REPLACE(TRIM(${siteMaterialTrips.site}), '[[:space:]]+', ' ', 'g')) = ${normalizeVehicleSupplierName(filters.site)}`);
+    if (filters?.material) conditions.push(sql`UPPER(REGEXP_REPLACE(TRIM(${siteMaterialTrips.material}), '[[:space:]]+', ' ', 'g')) = ${normalizeVehicleSupplierName(filters.material)}`);
     if (filters?.dateFrom) conditions.push(gte(siteMaterialTrips.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(siteMaterialTrips.date, filters.dateTo));
     if (filters?.indentItemId) conditions.push(eq(siteMaterialTrips.indentItemId, filters.indentItemId));
@@ -13119,7 +13126,10 @@ export class DatabaseStorage implements IStorage {
     }
     if (filters?.permittedSiteNames !== undefined) {
       if (filters.permittedSiteNames.length === 0) return [];
-      conditions.push(inArray(siteMaterialTrips.site, filters.permittedSiteNames));
+      const allowedSiteKeys = filters.permittedSiteNames.map(normalizeVehicleSupplierName).filter(Boolean);
+      if (!allowedSiteKeys.length) return [];
+      const normalizedSite = sql`UPPER(REGEXP_REPLACE(TRIM(${siteMaterialTrips.site}), '[[:space:]]+', ' ', 'g'))`;
+      conditions.push(sql`${normalizedSite} IN (${sql.join(allowedSiteKeys.map(value => sql`${value}`), sql`, `)})`);
     }
     
     const trips = await db.select()

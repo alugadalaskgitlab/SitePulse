@@ -1,12 +1,12 @@
-// SitePulse Service Worker v5
+// SitePulse Service Worker v6
 // Strategy:
 //   /api/*          → network-only (never cached — always live data)
-//   navigate (HTML) → network-first, fallback to cached shell
+//   navigate (HTML) → network-first without the HTTP cache, fallback only offline
 //   immutable assets (.js/.css with content hash) → cache-first
 //   icons / manifest → cache-first from install pre-cache
 //   everything else → network-first, cache fallback
 
-const CACHE_NAME = 'hlc-sitepulse-v5';
+const CACHE_NAME = 'hlc-sitepulse-v6';
 const STATIC_PRECACHE = [
   '/',
   '/manifest.json',
@@ -61,11 +61,14 @@ self.addEventListener('fetch', (event) => {
   // 3. Navigation (HTML shell) — network first, fallback to cached '/'
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
+      fetch(new Request(request, { cache: 'no-store' }))
         .then((res) => {
-          // Cache the fresh shell
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then((c) => c.put(request, clone));
+          // Cache only a successful fresh shell; an HTTP error must not replace
+          // a previously cached offline fallback.
+          if (res && res.ok) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(request, clone));
+          }
           return res;
         })
         .catch(() => caches.match('/').then((r) => r || caches.match(request))),

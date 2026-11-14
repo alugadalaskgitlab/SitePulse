@@ -1,6 +1,8 @@
-import { Component, useEffect, useState } from "react";
+import { Component, useEffect, useRef, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+
+declare const __APP_BUILD_ID__: string;
 
 type AppErrorBoundaryState = { hasError: boolean; chunkLoadFailure: boolean };
 
@@ -8,6 +10,17 @@ let preloadFailureDetected = false;
 const preloadFailureSubscribers = new Set<() => void>();
 const CHUNK_RELOAD_GUARD_KEY = "sp_chunk_reload_at";
 const CHUNK_RELOAD_GUARD_MS = 60_000;
+const WORKER_RELOAD_GUARD_KEY = "sp_worker_reload_at";
+const APP_BUILD_ID = typeof __APP_BUILD_ID__ === "string" ? __APP_BUILD_ID__ : "development";
+let pendingChunkReload = false;
+let pendingChunkReloadCallback: (() => void) | undefined;
+
+function userIsTypingNow() {
+  if (typeof document === "undefined") return false;
+  const active = document.activeElement;
+  return active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ||
+    active instanceof HTMLSelectElement || !!(active instanceof HTMLElement && active.isContentEditable);
+}
 
 function isChunkLoadFailure(error: unknown) {
   const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
@@ -21,6 +34,11 @@ function flagPreloadFailure() {
 
 function reloadAfterChunkFailure(reload = () => window.location.reload()) {
   if (typeof window === "undefined") return false;
+  if (userIsTypingNow()) {
+    pendingChunkReload = true;
+    pendingChunkReloadCallback = reload;
+    return false;
+  }
   const now = Date.now();
   let lastReload: number;
   try {
@@ -39,6 +57,11 @@ function reloadAfterChunkFailure(reload = () => window.location.reload()) {
 export function handleVitePreloadError(event: Event, reload?: () => void) {
   event.preventDefault();
   flagPreloadFailure();
+  if (userIsTypingNow()) {
+    pendingChunkReload = true;
+    pendingChunkReloadCallback = reload;
+    return false;
+  }
   return reloadAfterChunkFailure(reload);
 }
 
@@ -103,6 +126,7 @@ export class AppErrorBoundary extends Component<{ children: ReactNode; fallback?
 
 export function AppUpdateNotice() {
   const [updateReady, setUpdateReady] = useState(preloadFailureDetected);
+  const pendingWorkerReload = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -112,24 +136,89 @@ export function AppUpdateNotice() {
     const showUpdate = () => {
       if (mounted) setUpdateReady(true);
     };
+    const reloadForWorkerTakeover = () => {
+      if (userIsTypingNow()) {
+        pendingWorkerReload.current = true;
+        showUpdate();
+        return;
+      }
+      let previous = 0;
+      try {
+        previous = Number(sessionStorage.getItem(WORKER_RELOAD_GUARD_KEY) || "0");
+        if (previous > 0 && Date.now() - previous < CHUNK_RELOAD_GUARD_MS) {
+          showUpdate();
+          return;
+        }
+        sessionStorage.setItem(WORKER_RELOAD_GUARD_KEY, String(Date.now()));
+      } catch {
+        showUpdate();
+        return;
+      }
+      window.location.reload();
+    };
+    const checkForUpdates = async () => {
+      try {
+        const response = await fetch("/api/version", { cache: "no-store", credentials: "include" });
+        if (!response.ok) return;
+        const version = await response.json() as { buildId?: unknown };
+        if (typeof version.buildId === "string" && version.buildId !== APP_BUILD_ID) showUpdate();
+      } catch {
+        // Update checks are advisory; offline and temporary network failures are safe.
+      }
+      try {
+        await registration?.update();
+      } catch {
+        // A failed worker check must not affect normal app use.
+      }
+    };
+    const onWindowFocus = () => { void checkForUpdates(); };
+    const onFocusOut = () => {
+      window.setTimeout(() => {
+        if (pendingChunkReload) {
+          pendingChunkReload = false;
+          const reload = pendingChunkReloadCallback;
+          pendingChunkReloadCallback = undefined;
+          if (!reloadAfterChunkFailure(reload)) showUpdate();
+        }
+        if (pendingWorkerReload.current && !userIsTypingNow()) reloadForWorkerTakeover();
+      }, 0);
+    };
     preloadFailureSubscribers.add(showUpdate);
+    document.addEventListener("focusout", onFocusOut, true);
+    window.addEventListener("focus", onWindowFocus);
+    void checkForUpdates();
+    const updateInterval = window.setInterval(() => { void checkForUpdates(); }, 10 * 60 * 1000);
+    const pendingWorkerInterval = window.setInterval(() => {
+      if (pendingChunkReload && !userIsTypingNow()) {
+        pendingChunkReload = false;
+        const reload = pendingChunkReloadCallback;
+        pendingChunkReloadCallback = undefined;
+        if (!reloadAfterChunkFailure(reload)) showUpdate();
+      }
+      if (pendingWorkerReload.current && !userIsTypingNow()) reloadForWorkerTakeover();
+    }, 1000);
 
     const serviceWorker = typeof navigator !== "undefined" ? navigator.serviceWorker : undefined;
     if (!serviceWorker) {
       return () => {
         mounted = false;
         preloadFailureSubscribers.delete(showUpdate);
+        document.removeEventListener("focusout", onFocusOut, true);
+        window.removeEventListener("focus", onWindowFocus);
+        window.clearInterval(updateInterval);
+        window.clearInterval(pendingWorkerInterval);
       };
     }
 
     const onControllerChange = () => {
-      if (updateInProgress) showUpdate();
+      if (updateInProgress) reloadForWorkerTakeover();
     };
     serviceWorker.addEventListener("controllerchange", onControllerChange);
 
     const attachRegistration = (nextRegistration: ServiceWorkerRegistration | undefined) => {
       if (!mounted || !nextRegistration || registration === nextRegistration) return;
       registration = nextRegistration;
+      void registration.update().catch(() => {});
 
       if (registration.waiting && registration.active) {
         updateInProgress = true;
@@ -159,6 +248,10 @@ export function AppUpdateNotice() {
     return () => {
       mounted = false;
       preloadFailureSubscribers.delete(showUpdate);
+      document.removeEventListener("focusout", onFocusOut, true);
+      window.removeEventListener("focus", onWindowFocus);
+      window.clearInterval(updateInterval);
+      window.clearInterval(pendingWorkerInterval);
       serviceWorker.removeEventListener("controllerchange", onControllerChange);
       cleanups.forEach(cleanup => cleanup());
     };
@@ -180,7 +273,7 @@ export function AppUpdateNotice() {
         className="w-full whitespace-normal text-center"
         onClick={() => window.location.reload()}
       >
-        A new version is ready — tap to refresh
+        A new version of SitePulse is ready — Refresh
       </Button>
     </div>
   );

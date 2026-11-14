@@ -117,10 +117,11 @@ function CompactedLooseDemand({
           <thead className="bg-slate-100 text-slate-600">
             <tr>
               <th className="px-3 py-2 text-left">BOQ layer / mix</th>
-              <th className="px-2 py-2 text-right">Compacted Cum</th>
-              <th className="px-2 py-2 text-right">MT per cum</th>
+              <th className="px-2 py-2 text-right">Compacted cum</th>
+              <th className="px-2 py-2 text-right">MT per compacted cum</th>
+              <th className="px-2 py-2 text-right">MT per loose cum</th>
               <th className="px-2 py-2 text-right">MT (if set)</th>
-              <th className="px-2 py-2 text-right">Loose Cum / loose CFT</th>
+              <th className="px-2 py-2 text-right">Loose cum / loose CFT</th>
               <th className="px-2 py-2 text-right">Wastage MT / loose Cum</th>
             </tr>
           </thead>
@@ -138,6 +139,9 @@ function CompactedLooseDemand({
               const result = compactedCum == null
                 ? null
                 : calculateCompactedLooseQuantity(compactedCum, profile);
+              const compactedWeightPerCum = result && compactedCum && compactedCum > 0
+                ? result.compactedMt / compactedCum
+                : null;
               const state = compactedCum == null
                 ? "Needs conversion"
                 : !result
@@ -174,6 +178,7 @@ function CompactedLooseDemand({
                     />
                   </td>
                   <td className="px-2 py-2 text-right font-mono">{numberOrDash(compactedCum)}</td>
+                  <td className="px-2 py-2 text-right font-mono">{numberOrDash(compactedWeightPerCum)}</td>
                   <td className="px-2 py-2 text-right font-mono">{numberOrDash(looseWeightPerCumFromProfile(profile))}</td>
                   <td className={`px-2 py-2 text-right font-mono ${item.layerConfig?.layerType === "earthwork" ? "text-[10px] text-slate-500" : ""}`}>
                     {numberOrDash(result?.compactedMt)}
@@ -578,7 +583,7 @@ function EquipmentTable({
                         <table className="text-xs w-full border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
-                              <th className="text-left px-3 py-1.5 font-semibold text-slate-500 w-[40%]">Source Item</th>
+                              <th className="text-left px-3 py-1.5 font-semibold text-slate-500 w-[40%]">Source item</th>
                               <th className="px-3 py-1.5 font-semibold text-slate-500 text-right">Formula (hr/unit × qty = total hrs)</th>
                             </tr>
                           </thead>
@@ -658,7 +663,7 @@ function LabourTable({
       <table className="text-sm border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 110 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>
-            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[220px]" style={{ background: "#0F5F64" }}>Labour Category</th>
+            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[220px]" style={{ background: "#0F5F64" }}>Labour category</th>
             <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px]">Unit</th>
             {allMonths.map((m) => (
               <th key={m} className="px-2 py-2 font-semibold text-white text-right whitespace-nowrap min-w-[72px]">
@@ -1144,12 +1149,12 @@ function EquipLabourPlanVsActualTable({
           <thead>
             <tr style={{ background: "#0F5F64" }}>
               <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[240px]" style={{ background: "#0F5F64" }}>Item</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Planned Equip Hrs</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Actual Equip Hrs</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px]">Actual Km</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Planned equipment hours</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Actual equipment hours</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px]">Actual km</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Variance</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Planned Labour Days</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Actual Labour Days</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Planned labour days</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Actual labour days</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Variance</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Materials</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px]">Productivity</th>
@@ -1271,9 +1276,9 @@ function EquipLabourPlanVsActualTable({
                                 <thead>
                                   <tr className="bg-teal-50 text-teal-800">
                                     <th className="text-left px-3 py-1.5 font-semibold">Structure / Reach</th>
-                                    <th className="text-right px-3 py-1.5 font-semibold">Equip Hrs</th>
-                                    <th className="text-right px-3 py-1.5 font-semibold">Equip Km</th>
-                                    <th className="text-right px-3 py-1.5 font-semibold">Labour Days</th>
+                                    <th className="text-right px-3 py-1.5 font-semibold">Equipment hours</th>
+                                    <th className="text-right px-3 py-1.5 font-semibold">Equipment km</th>
+                                    <th className="text-right px-3 py-1.5 font-semibold">Labour days</th>
                                     <th className="text-left px-3 py-1.5 font-semibold">Materials</th>
                                   </tr>
                                 </thead>
@@ -1439,7 +1444,7 @@ function ItemWiseTable({
                   <thead><tr className="text-[12px] text-muted-foreground border-b">
                     <th className="text-left py-0.5 font-medium">Material</th>
                     <th className="text-right py-0.5 font-medium">Rate/Unit</th>
-                    <th className="text-right py-0.5 font-medium">Work Qty</th>
+                    <th className="text-right py-0.5 font-medium">Work quantity</th>
                     <th className="text-right py-0.5 font-medium">Total</th>
                     <th className="text-right py-0.5 font-medium">UOM</th>
                   </tr></thead>
@@ -1464,7 +1469,7 @@ function ItemWiseTable({
                   <thead><tr className="text-[12px] text-muted-foreground border-b">
                     <th className="text-left py-0.5 font-medium">Equipment</th>
                     <th className="text-right py-0.5 font-medium">hr/Unit</th>
-                    <th className="text-right py-0.5 font-medium">Work Qty</th>
+                    <th className="text-right py-0.5 font-medium">Work quantity</th>
                     <th className="text-right py-0.5 font-medium">Total hrs</th>
                   </tr></thead>
                   <tbody>{row.equipment.map(e => (
@@ -1487,7 +1492,7 @@ function ItemWiseTable({
                   <thead><tr className="text-[12px] text-muted-foreground border-b">
                     <th className="text-left py-0.5 font-medium">Category</th>
                     <th className="text-right py-0.5 font-medium">day/Unit</th>
-                    <th className="text-right py-0.5 font-medium">Work Qty</th>
+                    <th className="text-right py-0.5 font-medium">Work quantity</th>
                     <th className="text-right py-0.5 font-medium">Total days</th>
                   </tr></thead>
                   <tbody>{row.labour.map(l => (
@@ -1842,7 +1847,7 @@ function ResolveMappingDialog({
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Resolve Material Mapping</DialogTitle>
+          <DialogTitle>Resolve material mapping</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2 text-sm">
           <div className="bg-amber-50 border border-amber-200 rounded p-3">
@@ -1860,7 +1865,7 @@ function ResolveMappingDialog({
             )}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="mat-search">Search Plant Materials</Label>
+            <Label htmlFor="mat-search">Search plant materials</Label>
             <Input
               id="mat-search"
               placeholder="Type at least 2 characters…"
@@ -1951,7 +1956,7 @@ function ResolveMappingDialog({
                   ))}
                 </ul>
                 <p className="text-orange-600 mt-1 text-[11px]">
-                  Deactivate all but one in <a href="/plant?tab=home" className="underline font-medium" target="_blank">Plant Material Master</a>.
+                  Deactivate all but one in <a href="/plant?tab=home" className="underline font-medium" target="_blank">Plant material master</a>.
                 </p>
               </div>
             ) : hasProfileCompat && profileForBomUom ? (
@@ -1971,7 +1976,7 @@ function ResolveMappingDialog({
                   Material found, but no approved conversion exists between <strong>{row.uom}</strong> and <strong>{selected.defaultUom ?? "?"}</strong>.
                 </p>
                 <p className="text-red-600 mt-0.5 text-[11px]">
-                  Add bulk density in <a href="/plant?tab=home" className="underline font-medium" target="_blank">Plant Material Master</a> for automatic mass-volume conversion, or add an explicit UOM Conversion Profile for other cases.
+                  Add bulk density in <a href="/plant?tab=home" className="underline font-medium" target="_blank">Plant material master</a> for automatic mass-volume conversion, or add an explicit UOM conversion profile for other cases.
                 </p>
               </div>
             )
@@ -2462,7 +2467,7 @@ function SuggestionBadge({
                 {/* v2 breakdown */}
                 <p className="text-gray-600">Demand to horizon: <span className="font-mono font-semibold">{fmtN(row.demandUpToSelectedDate)} {row.uom}</span></p>
                 <p className="text-gray-600">{companyShortName} Stock: <span className="font-mono font-semibold">{fmtN(row.hlcRecordedStock)}</span> · Confirmed Incoming: <span className="font-mono font-semibold">{fmtN(row.confirmedIncomingPurchase)}</span></p>
-                <p className="text-gray-700 font-medium">Actionable Shortfall: <span className="font-mono text-red-700">{fmtN(row.actionableShortfall)} {row.uom}</span></p>
+                <p className="text-gray-700 font-medium">Actionable shortfall: <span className="font-mono text-red-700">{fmtN(row.actionableShortfall)} {row.uom}</span></p>
                 {row.futureRequirement > 0 && <p className="text-gray-500 text-[12px]">Future requirement (after horizon): {fmtN(row.futureRequirement)} {row.uom}</p>}
                 {row.requiredByDate && <p className="text-gray-500 text-[12px]">Required by: <span className="font-medium">{row.requiredByDate}</span></p>}
                 {row.materialId == null && (
@@ -2478,7 +2483,7 @@ function SuggestionBadge({
                     <SelectItem value="hmp">HMP Plant</SelectItem>
                     <SelectItem value="rmc">RMC Plant</SelectItem>
                     <SelectItem value="site">Site</SelectItem>
-                    <SelectItem value="store">Central Store</SelectItem>
+                    <SelectItem value="store">Central store</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2521,7 +2526,7 @@ function SuggestionBadge({
 
           {/* Step 2a: awaiting review */}
           {step === "awaiting_review" && (<>
-            <DialogHeader><DialogTitle>Requirement Created</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>Requirement created</DialogTitle></DialogHeader>
             <div className="py-4 space-y-3 text-sm">
               <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded p-3">
                 <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
@@ -2569,7 +2574,7 @@ function SuggestionBadge({
 
           {/* Step 2b: split (raise_both) */}
           {step === "authorize_alloc" && pendingAction === "both" && (<>
-            <DialogHeader><DialogTitle>Review Internal + Purchase Split</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>Review internal + purchase split</DialogTitle></DialogHeader>
             <div className="py-3 space-y-3 text-sm">
               <div className="bg-gray-50 rounded p-3 space-y-1">
                 <p className="text-[12px] text-muted-foreground">Requirement REQ-{createdReqId} created ✓</p>
@@ -2584,7 +2589,7 @@ function SuggestionBadge({
               </div>
               {/* Internal qty */}
               <div className="space-y-1">
-                <Label className="text-[12px]">Internal Transfer Qty (IRN){!canApproveIrn ? " — no IRN approve permission" : ""}</Label>
+                <Label className="text-[12px]">Internal transfer quantity (IRN){!canApproveIrn ? " — no IRN approve permission" : ""}</Label>
                 <div className="flex items-center gap-2">
                   <Input type="number" min="0" step="0.001" value={internalQtyStr} onChange={(e) => setInternalQtyStr(e.target.value)}
                     disabled={!canApproveIrn || splitAllocInternal != null} className="font-mono" />
@@ -2594,7 +2599,7 @@ function SuggestionBadge({
               </div>
               {/* Procurement qty */}
               <div className="space-y-1">
-                <Label className="text-[12px]">Procurement Qty (PI){!canApprovePi ? " — no PI approve permission" : ""}</Label>
+                <Label className="text-[12px]">Procurement quantity (PI){!canApprovePi ? " — no PI approve permission" : ""}</Label>
                 <div className="flex items-center gap-2">
                   <Input type="number" min="0" step="0.001" value={procQtyStr} onChange={(e) => setProcQtyStr(e.target.value)}
                     disabled={!canApprovePi || splitAllocProc != null} className="font-mono" />
@@ -2671,15 +2676,15 @@ function HorizonSelector({
   return (
     <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-slate-50 border border-slate-200 text-sm">
       <CalendarDays className="w-4 h-4 text-slate-500 flex-shrink-0" />
-      <span className="font-semibold text-slate-700 shrink-0">Procurement Horizon:</span>
+      <span className="font-semibold text-slate-700 shrink-0">Procurement horizon:</span>
       <Select value={mode} onValueChange={(v) => onChange(v as HorizonMode, customDate)}>
         <SelectTrigger className="h-7 text-[12px] w-[210px]"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="current_month">Up to Current Programme Month</SelectItem>
           <SelectItem value="next_30_days">Next 30 Days</SelectItem>
-          <SelectItem value="next_programme_month">Next Programme Month</SelectItem>
-          <SelectItem value="custom">Custom Date</SelectItem>
-          <SelectItem value="entire_programme">Entire Programme</SelectItem>
+          <SelectItem value="next_programme_month">Next programme month</SelectItem>
+          <SelectItem value="custom">Custom date</SelectItem>
+          <SelectItem value="entire_programme">Entire programme</SelectItem>
         </SelectContent>
       </Select>
       {mode === "custom" && (
@@ -2812,7 +2817,7 @@ function ProcurementTable({
               <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[180px]" style={{ background: "#0F5F64" }}>Material</th>
               <th className="px-2 py-2 font-semibold text-white text-left min-w-[140px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>BOQ Work Item(s)</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Unit</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Total Demand</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Total demand</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>
                 {(() => {
                   const mode = data.selectedHorizonMode;
@@ -2826,10 +2831,10 @@ function ProcurementTable({
                 })()}
               </th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>{companyShortName} Stock</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Other Parties</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Confirmed Incoming</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Other parties</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Confirmed incoming</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>To buy — whole project</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Future Req.</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Future requirement</th>
               <th className="px-3 py-2 font-semibold text-white text-left min-w-[150px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Status / Action</th>
             </tr>
           </thead>
@@ -2853,7 +2858,7 @@ function ProcurementTable({
                     <div className="flex items-center gap-1 flex-wrap">
                       <span className="text-slate-700">{row.materialName}</span>
                       {row.materialMappingAmbiguous && (
-                        <span className="text-[10px] font-semibold text-orange-700 bg-orange-100 border border-orange-300 rounded px-1 py-0.5" title={`Ambiguous: ${(row.ambiguousCandidates ?? []).map(c => c.name).join(", ")}`}>Multiple Matches</span>
+                        <span className="text-[10px] font-semibold text-orange-700 bg-orange-100 border border-orange-300 rounded px-1 py-0.5" title={`Ambiguous: ${(row.ambiguousCandidates ?? []).map(c => c.name).join(", ")}`}>Multiple matches</span>
                       )}
                       {row.programmingStatus === "not_programmed" && (
                         <span className="text-[10px] text-slate-400 italic">(not programmed)</span>

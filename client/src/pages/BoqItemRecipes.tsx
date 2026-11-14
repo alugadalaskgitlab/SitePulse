@@ -368,7 +368,7 @@ function LayerConfigTab({
 
       {layerType === "bituminous" && (
         <div className="rounded-lg border border-teal-100 p-3 space-y-3">
-          <p className="text-[12px] font-medium text-teal-700">Bituminous Layer Settings</p>
+          <p className="text-[12px] font-medium text-teal-700">Bituminous layer settings</p>
 
           {/* Mix template links — project-level links defined in Programme Settings */}
           {mixLinks.length > 0 && (
@@ -434,7 +434,7 @@ function LayerConfigTab({
 
       {layerType === "granular" && (
         <div className="rounded-lg border border-amber-100 p-3 space-y-2">
-          <p className="text-[12px] font-medium text-amber-700">Granular Layer Source</p>
+          <p className="text-[12px] font-medium text-amber-700">Granular layer source</p>
           <div className="flex gap-3">
             {(["quarry", "plant"] as const).map((src) => (
               <button key={src} onClick={() => setGranularSource(src)} className={`flex-1 rounded border text-xs py-2 font-medium transition-colors ${granularSource === src ? "bg-amber-600 text-white border-amber-600" : "border-slate-200 text-slate-600 hover:border-amber-400"}`} data-testid={`btn-granular-${src}`}>
@@ -447,7 +447,7 @@ function LayerConfigTab({
 
       {layerType === "spray_coat" && (
         <div className="rounded-lg border border-blue-100 p-3 space-y-3">
-          <p className="text-[12px] font-medium text-blue-700">Spray Coat Settings</p>
+          <p className="text-[12px] font-medium text-blue-700">Spray coat settings</p>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-[12px]">COVERAGE RATE (kg/SQM)</Label>
@@ -470,7 +470,7 @@ function LayerConfigTab({
       {/* Live preview */}
       {derivedRows.length > 0 && (
         <div className="rounded-lg border border-teal-200 bg-teal-50/30 p-3">
-          <p className="text-[12px] font-semibold text-teal-700 mb-2 flex items-center gap-1"><Zap className="w-3 h-3" />Derived Material Preview ({(item as any).canonicalUnit ?? item.unit})</p>
+          <p className="text-[12px] font-semibold text-teal-700 mb-2 flex items-center gap-1"><Zap className="w-3 h-3" />Derived material preview ({(item as any).canonicalUnit ?? item.unit})</p>
           <div className="space-y-1">
             {derivedRows.map((r, i) => (
               <div key={i} className="flex items-center gap-2 text-xs">
@@ -1709,7 +1709,7 @@ export function BoqItemRecipeDialog({
           <div className="flex-1 overflow-y-auto" key={currentItem.id}>
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="mb-3">
-                <TabsTrigger value="layer-config" className="flex items-center gap-1.5 text-sm"><Layers className="w-3.5 h-3.5" />Layer Config</TabsTrigger>
+                <TabsTrigger value="layer-config" className="flex items-center gap-1.5 text-sm"><Layers className="w-3.5 h-3.5" />Layer config</TabsTrigger>
                 <TabsTrigger value="equipment" className="flex items-center gap-1.5 text-sm"><Wrench className="w-3.5 h-3.5" />Equipment</TabsTrigger>
                 <TabsTrigger value="labour" className="flex items-center gap-1.5 text-sm"><Users className="w-3.5 h-3.5" />Labour</TabsTrigger>
                 <TabsTrigger value="materials" className="flex items-center gap-1.5 text-sm"><Package className="w-3.5 h-3.5" />Materials</TabsTrigger>

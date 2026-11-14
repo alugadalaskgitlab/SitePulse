@@ -407,7 +407,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                     <table className="w-full text-sm border-collapse">
                       <thead>
                         <tr className="bg-muted/40 text-muted-foreground text-sm uppercase tracking-wide">
-                          <th className="text-left px-5 py-2.5 font-semibold">Site Name</th>
+                          <th className="text-left px-5 py-2.5 font-semibold">Site name</th>
                           <th className="text-right px-4 py-2.5 font-semibold">MT</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Amount</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Saved</th>
@@ -557,7 +557,7 @@ export default function MixEstimates({ embedded = false }: Props) {
       <AlertDialog open={confirmDeleteEst !== null} onOpenChange={(open) => { if (!open) setConfirmDeleteEst(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Estimate</AlertDialogTitle>
+            <AlertDialogTitle>Delete estimate</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmDeleteEst ? `Delete "${confirmDeleteEst.name}"? This cannot be undone.` : "Are you sure you want to delete this estimate?"}
             </AlertDialogDescription>
