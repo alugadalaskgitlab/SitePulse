@@ -1,5 +1,6 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
 import { effectiveMaterialBulkDensity, withEffectiveMaterialDensity } from "../shared/compactedLoose";
+import { buildScopeProgrammeAlignment } from "../shared/scopeBomDemand";
 import { buildPiTimeline } from "../shared/piTimeline";
 import { confirmTripHireLink, readTripHireLinks, guardTripHireOrdinaryItems, type NewTripHireLink } from "./tripHireLink";
 import { prepareTripMasterSelection, saveTripMasterSelection, type TripMasterSelection } from "./tripMasterSelection";
@@ -718,6 +719,12 @@ export interface IStorage {
   updateDraftDpr(id: number, dpr: CreateDprRequest, actorUserId?: number | null, scopeVersionToken?: string | null, _legacyRecoveryHint?: boolean, sectionGuard?: any): Promise<Dpr | undefined>;
   submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit, scopeVersionToken?: string | null, _legacyRecoveryHint?: boolean, sectionGuard?: any): Promise<Dpr | undefined>;
   getProjectScopeVersionToken(boqProjectId: number): Promise<string>;
+  applyProgrammeScopeAlignment(
+    boqProjectId: number,
+    scopeVersionToken: string,
+    expectedBars: Array<{ id: number; chainageFrom: number | null; chainageTo: number | null; plannedQty: number }>,
+    actor: { userId: number; userName: string; userRole: string },
+  ): Promise<{ updatedCount: number; suggestedRemoveCount: number }>;
   assertProjectScopeVersionToken(boqProjectId: number, expectedToken: string): Promise<void>;
   getProjectScopeSegments(boqProjectId: number): Promise<ProjectScopeSegment[]>;
   getInitialScopeCorrectionEligibility(segmentId: number): Promise<{
@@ -3850,6 +3857,101 @@ export class DatabaseStorage implements IStorage {
 
   async getProjectScopeVersionToken(boqProjectId: number): Promise<string> {
     return this.getProjectScopeVersionTokenTx(db, boqProjectId);
+  }
+
+  async applyProgrammeScopeAlignment(
+    boqProjectId: number,
+    scopeVersionToken: string,
+    expectedBars: Array<{ id: number; chainageFrom: number | null; chainageTo: number | null; plannedQty: number }>,
+    actor: { userId: number; userName: string; userRole: string },
+  ): Promise<{ updatedCount: number; suggestedRemoveCount: number }> {
+    return db.transaction(async (tx) => {
+      const project = await this.lockProjectAndCheckScopeTx(tx, boqProjectId, scopeVersionToken);
+      if (!project) throw new Error("PROJECT_NOT_FOUND");
+      const currentBars = await tx.select().from(workProgramBars)
+        .where(eq(workProgramBars.boqProjectId, boqProjectId))
+        .orderBy(asc(workProgramBars.id))
+        .for("update");
+      const expectedById = new Map(expectedBars.map(bar => [Number(bar.id), bar]));
+      if (expectedById.size !== currentBars.length || currentBars.some(bar => {
+        const expected = expectedById.get(Number(bar.id));
+        return !expected ||
+          Math.abs((Number(bar.chainageFrom) || 0) - (Number(expected.chainageFrom) || 0)) > 0.000001 ||
+          Math.abs((Number(bar.chainageTo) || 0) - (Number(expected.chainageTo) || 0)) > 0.000001 ||
+          Math.abs((Number(bar.plannedQty) || 0) - (Number(expected.plannedQty) || 0)) > 0.000001;
+      })) {
+        throw new Error("PROGRAMME_BARS_CHANGED");
+      }
+      const currentItems = await tx.select({
+        id: boqItems.id,
+        categoryId: boqItems.categoryId,
+        itemCode: boqItems.itemCode,
+        itemName: boqItems.itemName,
+        description: boqItems.description,
+        unit: boqItems.unit,
+        canonicalUnit: boqItems.canonicalUnit,
+        currentQty: boqItems.currentQty,
+        workCategory: boqCategories.name,
+        layerConfig: boqItems.layerConfig,
+        fixedQuantity: boqItems.fixedQuantity,
+        fixedQuantityReachId: boqItems.fixedQuantityReachId,
+        planningWorkType: boqItems.planningWorkType,
+      }).from(boqItems)
+        .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
+        .where(eq(boqItems.boqProjectId, boqProjectId));
+      const currentSegments = await tx.select().from(projectScopeSegments)
+        .where(eq(projectScopeSegments.boqProjectId, boqProjectId))
+        .orderBy(asc(projectScopeSegments.id));
+      const alignment = buildScopeProgrammeAlignment({
+        items: currentItems as any[],
+        bars: currentBars as any[],
+        segments: currentSegments as any[],
+      });
+      if (alignment.blockedCount > 0) throw new Error("SCOPE_ALIGNMENT_BLOCKED");
+
+      const barsById = new Map(currentBars.map(bar => [Number(bar.id), bar]));
+      let updatedCount = 0;
+      for (const change of alignment.rows) {
+        if (change.action !== "update") continue;
+        const current = barsById.get(change.barId);
+        if (!current || change.proposedQuantity == null) continue;
+        const oldValues = {
+          chainageFrom: current.chainageFrom,
+          chainageTo: current.chainageTo,
+          plannedQty: current.plannedQty,
+        };
+        const newValues = {
+          chainageFrom: change.proposedChainageFrom,
+          chainageTo: change.proposedChainageTo,
+          plannedQty: change.proposedQuantity,
+        };
+        await tx.update(workProgramBars)
+          .set(newValues)
+          .where(and(eq(workProgramBars.id, change.barId), eq(workProgramBars.boqProjectId, boqProjectId)));
+        await tx.insert(auditLogs).values({
+          module: "work_program_bar",
+          transactionId: change.barId,
+          action: "scope_alignment",
+          userId: actor.userId,
+          userName: actor.userName,
+          userRole: actor.userRole,
+          oldValues,
+          newValues: {
+            ...newValues,
+            boqItemId: change.boqItemId,
+            itemCode: change.itemCode,
+            itemName: change.itemName,
+            reachLabel: change.reachLabel,
+          },
+          reason: "Owner aligned programme bar chainage and quantity to confirmed working scope",
+        });
+        updatedCount += 1;
+      }
+      return {
+        updatedCount,
+        suggestedRemoveCount: alignment.rows.filter(row => row.action === "suggest_remove").length,
+      };
+    });
   }
 
   async assertProjectScopeVersionToken(boqProjectId: number, expectedToken: string): Promise<void> {

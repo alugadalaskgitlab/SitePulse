@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("MaterialsBuyAndWorkDone", () => {
-  it("loads the project material report from the actual endpoint and renders both tables", async () => {
+  it("compares submitted-work recipe use with site receipts and keeps Work done separate", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       projectId: 42,
       projectName: "Road Project",
@@ -27,10 +27,11 @@ describe("MaterialsBuyAndWorkDone", () => {
         forLabels: ["WMM layer"],
         uom: "MT",
         sourceType: "site",
-        hasPlantMix: true,
+        hasPlantMix: false,
+        hasSiteSupply: true,
         needToBuy: 100,
         needToBuyCft: null,
-        boughtSoFar: 10,
+        boughtSoFar: 15,
         boughtSoFarCft: null,
         used: 20,
         usedCft: null,
@@ -44,7 +45,19 @@ describe("MaterialsBuyAndWorkDone", () => {
         excess: null,
         excessCft: null,
         monthlyNeed: {},
-        lines: [],
+        lines: [{
+          boqItemId: 9,
+          itemCode: "WMM",
+          itemName: "Wet mix macadam",
+          description: "Wet mix macadam, 250 mm thick",
+          boqQuantity: 200,
+          boqUom: "CUM",
+          materialNeed: 100,
+          workDoneQuantity: 40,
+          shouldHaveUsed: 20,
+          materialNeedCft: null,
+          unit: "MT",
+        }],
         sourceNotes: ["Used: DPR × recipe"],
         attributions: ["Bought by site"],
         setupAction: null,
@@ -74,14 +87,17 @@ describe("MaterialsBuyAndWorkDone", () => {
     expect(screen.getByLabelText("Actuals from")).toHaveValue("2026-07-01");
     expect(screen.getByTestId("table-materials-buy-use")).toBeInTheDocument();
     expect(screen.getByTestId("table-work-done")).toBeInTheDocument();
+    expect(screen.getByText("Should have used")).toBeInTheDocument();
+    expect(screen.getByText("Actually received / dispatched to site")).toBeInTheDocument();
+    expect(screen.getByText("20 MT")).toBeInTheDocument();
+    expect(screen.getByText("15 MT")).toBeInTheDocument();
+    expect(screen.getByText("−5 MT — less used")).toBeInTheDocument();
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringMatching(/^\/api\/boq\/projects\/42\/material-buy-use\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/),
         { credentials: "include" },
       );
     });
-    expect(screen.getByText("Bought by site")).toBeInTheDocument();
-    expect(screen.getByText(/of which incidental:/)).toHaveTextContent("of which incidental: 5 MT");
-    expect(screen.getByText("Used more than received — check receipts or mix template")).toBeInTheDocument();
+    expect(screen.queryByText("Need for working reaches")).not.toBeInTheDocument();
   });
 });

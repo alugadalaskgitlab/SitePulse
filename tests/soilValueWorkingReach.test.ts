@@ -16,11 +16,11 @@ describe("SOIL-VALUE working-reach shares", () => {
     expect(defaultsToFixedQuantity({ unit: "Cum", workCategory: "ROAD_FURNITURE", planningWorkType: "road", layerConfig: null })).toBe(true);
     expect(allocateBoqQuantityToWorkingReaches({
       boqItemId: 10, categoryId: null, isLinear: true, currentQty: 5, unit: "Nos",
-    }, reaches).shares).toMatchObject([{ label: "Whole project", quantity: 5 }]);
+    }, reaches).shares).toMatchObject([{ label: "Whole road", quantity: 5 }]);
     expect(allocateBoqQuantityToWorkingReaches({
       boqItemId: 15, categoryId: null, isLinear: true, currentQty: 500, unit: "Cum",
       itemName: "Forming Embankment with material",
-    }, reaches).shares).toMatchObject([{ label: "Whole project", quantity: 500 }]);
+    }, reaches).shares).toMatchObject([{ label: "Whole road", quantity: 500 }]);
     const selected = allocateBoqQuantityToWorkingReaches({
       boqItemId: 10, categoryId: null, isLinear: true, currentQty: 5, unit: "Cum",
       fixedQuantity: true, fixedQuantityReachId: 3,

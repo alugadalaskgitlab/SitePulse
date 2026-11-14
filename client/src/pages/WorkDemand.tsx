@@ -23,6 +23,7 @@ import {
   calculateBomDemand,
   monthLabel,
   fmtQty,
+  getShortName,
   derivePlanningMode,
   type BomDemand,
   type BomInputItem,
@@ -32,9 +33,11 @@ import {
   deriveEarthworkSourcingBadge,
 } from "@shared/planningEngine";
 import { boqItemDisplayName } from "@/lib/itemName";
+import { buildScopeBasedBomSchedule } from "@shared/scopeBomDemand";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import {
   calculateCompactedLooseQuantity,
+  looseWeightPerCumFromProfile,
   boqQuantityToCompactedCum,
   type CompactedLooseProfile,
 } from "@shared/compactedLoose";
@@ -115,6 +118,7 @@ function CompactedLooseDemand({
             <tr>
               <th className="px-3 py-2 text-left">BOQ layer / mix</th>
               <th className="px-2 py-2 text-right">Compacted Cum</th>
+              <th className="px-2 py-2 text-right">MT per cum</th>
               <th className="px-2 py-2 text-right">MT (if set)</th>
               <th className="px-2 py-2 text-right">Loose Cum / loose CFT</th>
               <th className="px-2 py-2 text-right">Wastage MT / loose Cum</th>
@@ -170,6 +174,7 @@ function CompactedLooseDemand({
                     />
                   </td>
                   <td className="px-2 py-2 text-right font-mono">{numberOrDash(compactedCum)}</td>
+                  <td className="px-2 py-2 text-right font-mono">{numberOrDash(looseWeightPerCumFromProfile(profile))}</td>
                   <td className={`px-2 py-2 text-right font-mono ${item.layerConfig?.layerType === "earthwork" ? "text-[10px] text-slate-500" : ""}`}>
                     {numberOrDash(result?.compactedMt)}
                     {result && result.wastageMt > 0 && <div className="text-[10px] text-slate-400">+ {numberOrDash(result.wastageMt)} wastage</div>}
@@ -300,10 +305,12 @@ function MaterialsTable({
   demand,
   project,
   structureItemDescriptions,
+  unprogrammedDescriptions,
 }: {
   demand: BomDemand;
   project: BoqProject;
   structureItemDescriptions: Set<string>;
+  unprogrammedDescriptions: Set<string>;
 }) {
   const mats = demand.materials;
   const [expandedMat, setExpandedMat] = useState<Set<string>>(() => new Set());
@@ -336,6 +343,9 @@ function MaterialsTable({
         <tbody>
           {mats.map((row) => {
             const isExpanded = expandedMat.has(row.materialName);
+            const unscheduledBreakdown = row.breakdown.filter(b =>
+              unprogrammedDescriptions.has(b.fullDescription ?? b.itemDescription),
+            );
             return (
               <Fragment key={row.materialName}>
                 <tr
@@ -354,6 +364,9 @@ function MaterialsTable({
                         : <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />
                       }
                       <span className="font-medium text-slate-700">{row.materialName}</span>
+                      {unscheduledBreakdown.length === row.breakdown.length && unscheduledBreakdown.length > 0 && (
+                        <span className="rounded border border-amber-200 bg-amber-50 px-1 text-[10px] font-semibold text-amber-700">Not scheduled</span>
+                      )}
                       {(row.sourceNotes?.length ?? 0) > 0 && (
                         <span className="text-[10px] text-slate-500">
                           {row.sourceNotes!.join(" · ")}
@@ -414,6 +427,9 @@ function MaterialsTable({
                                 <span className="ml-1 inline-flex items-center rounded px-1 py-0.5 text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200" title="Composite bituminous item — demand split across sub-layers">
                                   {b.compositeLabel}
                                 </span>
+                              )}
+                              {unprogrammedDescriptions.has(b.fullDescription ?? b.itemDescription) && (
+                                <span className="ml-1 rounded border border-amber-200 bg-amber-50 px-1 text-[10px] font-semibold text-amber-700">Not scheduled</span>
                               )}
                               {(b.sourceNote || b.applicationNote) && (
                                 <span className="ml-1 text-[10px] text-slate-500">
@@ -2965,6 +2981,16 @@ export default function WorkDemand() {
   });
 
   const {
+    data: demandScopeSegments = [],
+    isLoading: demandScopeLoading,
+    isError: demandScopeError,
+  } = useQuery<any[]>({
+    queryKey: [`/api/boq/projects/${projectId}/scope-segments`],
+    enabled: Number.isInteger(projectId) && projectId > 0,
+    retry: 1,
+  });
+
+  const {
     data: workValueData,
     isLoading: workValueLoading,
     isError: workValueError,
@@ -2978,7 +3004,7 @@ export default function WorkDemand() {
       if (!res.ok) throw new Error("Could not load Work value balances.");
       return res.json();
     },
-    enabled: !isNaN(projectId) && activeTab === "materials",
+    enabled: !isNaN(projectId) && (activeTab === "materials" || activeTab === "plan-vs-actual"),
     retry: 1,
   });
 
@@ -3058,16 +3084,33 @@ export default function WorkDemand() {
   });
   const procurementPlanRows = procurementPlanReport?.rows ?? [];
 
-  const demand = useMemo((): BomDemand | null => {
-    if (!bomData || !project) return null;
-    const { items, bars } = bomData;
-    if (!items.length) return null;
-    // Allow demand even with no bars — items without bars use their currentQty
-    // Instruction 025: active execution arrangements reduce HLC equipment/labour/diesel demand
-    return calculateBomDemand(items, bars ?? [], project.totalMonths ?? 12, {
-      arrangements: (bomData as any).earthworkArrangements ?? [],
+  const scopeSchedule = useMemo(() => {
+    if (!bomData || !project || demandScopeLoading || demandScopeError || !bomData.items.length) return null;
+    const scheduleMonths = Math.max(
+      project.totalMonths ?? 12,
+      ...bomData.bars.map(bar => Math.ceil(Number(bar.endMonth) || 0)),
+    );
+    return buildScopeBasedBomSchedule({
+      items: bomData.items,
+      bars: bomData.bars ?? [],
+      segments: demandScopeSegments,
+      projectStartDate: project.startDate ?? null,
+      totalMonths: scheduleMonths,
     });
-  }, [bomData, project]);
+  }, [bomData, project, demandScopeSegments, demandScopeLoading, demandScopeError]);
+
+  const demand = useMemo((): BomDemand | null => {
+    if (!scopeSchedule || !project) return null;
+    // Work Programme bars supply dates and chainage only. Their saved quantities
+    // are replaced by the shared reach allocation before monthly demand is built.
+    return calculateBomDemand(
+      scopeSchedule.items,
+      scopeSchedule.bars,
+      project.totalMonths ?? 12,
+      { arrangements: (bomData as any)?.earthworkArrangements ?? [] },
+    );
+  }, [scopeSchedule, project, bomData]);
+  const demandLoading = isLoading || demandScopeLoading;
 
   // Build set of short descriptions for structure-type BOQ items (point-location, non-linear)
   const structureItemDescriptions = useMemo((): Set<string> => {
@@ -3081,14 +3124,18 @@ export default function WorkDemand() {
 
   // Build set of descriptions for items that have no programme bars
   const unprogrammedDescriptions = useMemo((): Set<string> => {
-    if (!bomData?.unprogrammedItemIds?.length || !bomData.items.length) return new Set();
-    const unprogrammedIds = new Set(bomData.unprogrammedItemIds);
+    if (!bomData?.items.length) return new Set();
+    const programmedIds = new Set(
+      (scopeSchedule?.bars ?? [])
+        .filter(bar => bar.id != null && bar.isProgrammed !== false && Number(bar.plannedQty) > 0)
+        .map(bar => Number(bar.boqItemId)),
+    );
     const descs = new Set<string>();
     for (const item of bomData.items) {
-      if (unprogrammedIds.has(item.id)) descs.add(item.description);
+      if (!programmedIds.has(item.id)) descs.add(item.description);
     }
     return descs;
-  }, [bomData]);
+  }, [bomData, scopeSchedule]);
 
   const materialReadiness = useMemo(() => {
     const items = bomData?.items ?? [];
@@ -3188,19 +3235,21 @@ export default function WorkDemand() {
       </div>
 
       {/* Loading */}
-      {isLoading && (
+      {demandLoading && (
         <div className="flex justify-center py-12 text-muted-foreground">
           <Loader2 className="w-6 h-6 animate-spin mr-2" /> Computing demand…
         </div>
       )}
 
-      {!isLoading && !demand && (
+      {!demandLoading && !demand && (
         <Card>
           <CardContent className="p-10 text-center text-muted-foreground space-y-2">
             <BookOpen className="w-10 h-10 text-slate-200 mx-auto" />
             <p className="text-sm font-medium">No data to compute BOM</p>
             <p className="text-sm">
-              {bomError
+              {demandScopeError
+                ? "Confirmed project scope could not be loaded, so scope-based demand is unavailable."
+                : bomError
                 ? "BOM data could not be loaded — please refresh the page or check server logs."
                 : !bomData?.hasItems
                 ? "No BOQ items found for this project. Add items in the BOQ setup first."
@@ -3214,7 +3263,7 @@ export default function WorkDemand() {
         </Card>
       )}
 
-      {!isLoading && demand && project && (
+      {!demandLoading && demand && project && (
         <>
           {/* Summary cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -3309,6 +3358,39 @@ export default function WorkDemand() {
               >
                 Open Material Balance report
               </a>
+              <MaterialsTable
+                demand={demand}
+                project={project}
+                structureItemDescriptions={structureItemDescriptions}
+                unprogrammedDescriptions={unprogrammedDescriptions}
+              />
+              <CompactedLooseDemand items={scopeSchedule?.items ?? []} demand={demand} />
+              {workValueLoading && (
+                <div className="my-3 flex justify-center py-6 text-muted-foreground">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading work balances…
+                </div>
+              )}
+              {workValueError && !workValueLoading && (
+                <div role="alert" className="my-3 rounded border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
+                  Work value balances could not be loaded, so reach material requirements are not shown.
+                </div>
+              )}
+              {workValueData && (
+                <BalanceWorkMaterialsByReach
+                  items={scopeSchedule?.items ?? bomData?.items ?? []}
+                  workValueItems={workValueData.materialItems}
+                  bars={scopeSchedule?.bars ?? []}
+                  workRows={workValueData.rows}
+                  totalMonths={project.totalMonths ?? 12}
+                  projectStartDate={shortageData?.projectStartDate ?? project.startDate ?? null}
+                  currentMonth={shortageData?.currentMonth ?? 1}
+                  endMonth={shortageData?.maxProgrammeMonth ?? project.totalMonths ?? undefined}
+                  demandMaterials={demand.materials}
+                  stockRows={shortageData?.rows ?? []}
+                  stockLoading={shortageLoading}
+                  arrangements={(bomData as any)?.earthworkArrangements ?? []}
+                />
+              )}
               {materialReadiness.total > 0 && (
                 <div className="mb-3 rounded-lg border border-slate-200 bg-white p-3" data-testid="material-readiness-panel">
                   <div className="flex items-center justify-between gap-3">
@@ -3378,34 +3460,6 @@ export default function WorkDemand() {
                   )}
                 </div>
               )}
-              <CompactedLooseDemand items={bomData?.items ?? []} demand={demand} />
-              {workValueLoading && (
-                <div className="my-3 flex justify-center py-6 text-muted-foreground">
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading work balances…
-                </div>
-              )}
-              {workValueError && !workValueLoading && (
-                <div role="alert" className="my-3 rounded border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
-                  Work value balances could not be loaded, so reach material requirements are not shown.
-                </div>
-              )}
-              {workValueData && (
-                <BalanceWorkMaterialsByReach
-                  items={bomData?.items ?? []}
-                  workValueItems={workValueData.materialItems}
-                  bars={bomData?.bars ?? []}
-                  workRows={workValueData.rows}
-                  totalMonths={project.totalMonths ?? 12}
-                  projectStartDate={shortageData?.projectStartDate ?? project.startDate ?? null}
-                  currentMonth={shortageData?.currentMonth ?? 1}
-                  endMonth={shortageData?.maxProgrammeMonth ?? project.totalMonths ?? undefined}
-                  demandMaterials={demand.materials}
-                  stockRows={shortageData?.rows ?? []}
-                  stockLoading={shortageLoading}
-                  arrangements={(bomData as any)?.earthworkArrangements ?? []}
-                />
-              )}
-              <MaterialsTable demand={demand} project={project} structureItemDescriptions={structureItemDescriptions} />
             </TabsContent>
 
             <TabsContent value="equipment" className="mt-3">
@@ -3496,7 +3550,7 @@ export default function WorkDemand() {
       )}
 
       {/* Procurement tab when demand not yet loaded — still show shortage panel */}
-      {!isLoading && !demand && activeTab === "procurement" && (
+      {!demandLoading && !demand && activeTab === "procurement" && (
         <div className="space-y-3">
           <SectionHeader icon={ShoppingCart} title="Material Procurement Intelligence" />
           <EmptyState label="Add Work Programme bars and material recipes to enable shortage analysis." />

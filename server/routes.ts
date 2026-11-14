@@ -17761,6 +17761,53 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/boq/projects/:id/scope-version", async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      if (!canViewScope(req)) return res.status(403).json({ error: "forbidden", section: "project_scope", action: "view" });
+      const projectId = Number(req.params.id);
+      if (!Number.isInteger(projectId) || projectId <= 0) return res.status(400).json({ error: "invalid_project_id" });
+      const scopeVersionToken = await storage.getProjectScopeVersionToken(projectId);
+      return res.json({ scopeVersionToken });
+    } catch (err) {
+      console.error("GET scope-version:", err);
+      return res.status(500).json({ error: "Failed to read scope version" });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/scope-alignment/apply", async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      if (!req.authUser.isOwner) return res.status(403).json({ error: "owner_only" });
+      const projectId = Number(req.params.id);
+      const scopeVersionToken = String(req.body?.scopeVersionToken ?? "");
+      const expectedBars = req.body?.expectedBars;
+      if (!Number.isInteger(projectId) || projectId <= 0) return res.status(400).json({ error: "invalid_project_id" });
+      if (!scopeVersionToken || !Array.isArray(expectedBars)) {
+        return res.status(400).json({ error: "scope_version_and_bar_snapshot_required" });
+      }
+      const actor = {
+        userId: Number(req.authUser.id),
+        userName: String(req.authUser.fullName ?? req.authUser.email ?? "Owner"),
+        userRole: "Owner",
+      };
+      const result = await storage.applyProgrammeScopeAlignment(projectId, scopeVersionToken, expectedBars, actor);
+      return res.json(result);
+    } catch (err: any) {
+      if (err instanceof ScopeChangedDuringPlanningError || err?.code === "SCOPE_CHANGED_DURING_PLANNING") {
+        return res.status(409).json({ error: "scope_changed", message: "The confirmed scope changed. Reload the preview." });
+      }
+      if (err?.message === "PROGRAMME_BARS_CHANGED") {
+        return res.status(409).json({ error: "programme_bars_changed", message: "Programme bars changed. Reload the preview." });
+      }
+      if (err?.message === "SCOPE_ALIGNMENT_BLOCKED") {
+        return res.status(409).json({ error: "scope_alignment_blocked", message: "Some bars need manual review before updates can be applied." });
+      }
+      console.error("POST scope-alignment/apply:", err);
+      return res.status(500).json({ error: "Failed to apply programme scope alignment" });
+    }
+  });
+
   // Narrow administrative preflight for correcting an eligible original
   // confirmed segment. Ordinary confirmed edits must continue through PATCH
   // and its revision/supersede workflow.
@@ -21183,7 +21230,10 @@ export async function registerRoutes(
         boughtComplete: boolean;
         used: number;
         usedBySource: Record<"plant_mix" | "site", number>;
+        usedCompleteBySource: Record<"plant_mix" | "site", boolean>;
         usedComplete: boolean;
+        siteIssued: number;
+        siteIssuedComplete: boolean;
         incidentalUsed: number;
         incidentalUsedComplete: boolean;
         lyingAtSite: number | null;
@@ -21203,6 +21253,8 @@ export async function registerRoutes(
           reachQuantities: Array<{ reachId: number | null; label: string; quantity: number; effectiveLengthKm: number }>;
           notNeededQuantity: number;
           materialNeed: number | null;
+          workDoneQuantity: number;
+          shouldHaveUsed: number | null;
           valueOfBalanceWork: number | null;
           sourceNote: string | null;
         }>;
@@ -21214,6 +21266,22 @@ export async function registerRoutes(
       };
       const planRows = new Map<string, PlanRow>();
       const itemById = new Map<number, any>(bom.expandedItems.map((item: any) => [Number(item.id), item]));
+      const dprWorkDoneByItem = new Map<number, { quantity: number; complete: boolean }>();
+      for (const progress of dprRows as any[]) {
+        if (progress.reworkNoNewMaterial === true || progress.boqItemId == null) continue;
+        const itemId = Number(progress.boqItemId);
+        const item = itemById.get(itemId);
+        if (!item) continue;
+        const quantity = Number(progress.quantity);
+        const factor = item.dprConversionFactor == null ? 1 : Number(item.dprConversionFactor);
+        const current = dprWorkDoneByItem.get(itemId) ?? { quantity: 0, complete: true };
+        if (!Number.isFinite(quantity) || !Number.isFinite(factor) || factor < 0) {
+          current.complete = false;
+        } else {
+          current.quantity += quantity * factor;
+        }
+        dprWorkDoneByItem.set(itemId, current);
+      }
       const itemMaterialsByGroup = new Map<string, Set<number>>();
       const rowKeyFor = (name: string, masterId: number | null, uom: string) =>
         `${masterId != null ? `master:${masterId}` : normalisePlanMaterialName(name)}|${uom}`;
@@ -21340,7 +21408,10 @@ export async function registerRoutes(
             boughtComplete: true,
             used: 0,
             usedBySource: { plant_mix: 0, site: 0 },
+            usedCompleteBySource: { plant_mix: true, site: true },
             usedComplete: true,
+            siteIssued: 0,
+            siteIssuedComplete: true,
             incidentalUsed: 0,
             incidentalUsedComplete: true,
             lyingAtSite: null,
@@ -21403,6 +21474,12 @@ export async function registerRoutes(
             })),
             notNeededQuantity: scopeAllocation.notNeededQuantity,
             materialNeed: need,
+            workDoneQuantity: dprWorkDoneByItem.get(Number(item.id))?.quantity ?? 0,
+            shouldHaveUsed: (() => {
+              const workDone = dprWorkDoneByItem.get(Number(item.id));
+              if (need == null || workDone?.complete === false || scopeAllocation.workingQuantity <= 0) return null;
+              return need * (workDone?.quantity ?? 0) / scopeAllocation.workingQuantity;
+            })(),
             valueOfBalanceWork: null,
             sourceNote: lineSourceNote,
           });
@@ -21515,7 +21592,10 @@ export async function registerRoutes(
         for (const component of split) {
           for (const row of rowsBySourceName(component.materialName, "plant_mix")) {
             const converted = toMaterialUnit(component.quantityMt, "MT", row.uom, row.master, "loose");
-            if (converted == null) row.usedComplete = false;
+            if (converted == null) {
+              row.usedComplete = false;
+              row.usedCompleteBySource.plant_mix = false;
+            }
             else {
               row.used += converted;
               row.usedBySource.plant_mix += converted;
@@ -21598,7 +21678,10 @@ export async function registerRoutes(
               (1 + (Number(material.wastagePct) || 0) / 100);
             const sourceRow = { uom: material.uom, isEarthworkBulkRequirement: item.layerConfig?.layerType === "earthwork" };
             const converted = toPlanQuantity(item, sourceRow, rawUse, row.master, row.uom === "cum loose" ? "CUM" : row.uom);
-            if (converted == null) row.usedComplete = false;
+            if (converted == null) {
+              row.usedComplete = false;
+              row.usedCompleteBySource.site = false;
+            }
             else {
               row.used += converted;
               row.usedBySource.site += converted;
@@ -21635,8 +21718,14 @@ export async function registerRoutes(
             row.master,
             row.uom === "cum loose" ? "CUM" : row.uom,
           );
-          if (converted == null) row.usedComplete = false;
-          else row.used += converted;
+          if (converted == null) {
+            row.usedComplete = false;
+            row.usedCompleteBySource.site = false;
+            row.siteIssuedComplete = false;
+          } else {
+            row.used += converted;
+            row.siteIssued += converted;
+          }
           row.attributions.add("Used by site (linked project/item)");
         }
       }
@@ -21769,6 +21858,10 @@ export async function registerRoutes(
           boughtSoFar: row.hasSiteSupply ? bought : null,
           boughtSoFarCft: row.hasSiteSupply ? cft(bought) : null,
           used,
+          usedBySource: { ...row.usedBySource },
+          usedCompleteBySource: { ...row.usedCompleteBySource },
+          siteIssued: row.siteIssuedComplete ? row.siteIssued : null,
+          siteIssuedComplete: row.siteIssuedComplete,
           usedCft: cft(used),
           lyingAtSite,
           lyingAtSiteCft: cft(lyingAtSite),

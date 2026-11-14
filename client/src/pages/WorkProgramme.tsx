@@ -60,10 +60,11 @@ import { BarArrangementPanel } from "@/components/BarArrangementPanel";
 import { useBarExecutionState, useProjectArrangements, deriveBarExecutionStateFromProject } from "@/components/ExecutionStateBadge";
 import { EXECUTION_STATE_COLORS } from "@shared/executionState";
 import { SEQUENCE_RULES, validateStretches, type RoadStretchInput } from "@shared/programmeSequencer";
-import { BAR_SIDES, BAR_SIDE_LABELS, barSideLabel, geometryApplicability, areSidesDistinctCorridors } from "@shared/barSide";
+import { BAR_SIDES, BAR_SIDE_LABELS, barSideLabel, geometryApplicability, areSidesDistinctCorridors, formatChainageKm } from "@shared/barSide";
 import { scopeReachesToStretchRows, scopeConstraints, scopeFingerprint } from "@shared/autoSequenceScope";
 import { SCOPE_SEGMENT_TYPE_LABELS } from "@shared/projectScope";
 import { allocateBoqQuantityToWorkingReaches } from "@shared/workingReachValue";
+import { buildScopeProgrammeAlignment } from "@shared/scopeBomDemand";
 import { isStructureOrLocationScheduledItem, isShoulderDesc, classifyShoulderLayer, SHOULDER_DEPENDENCY_NOTES, SHOULDER_CLASSES, type ShoulderClass } from "@shared/workTypeRecipes";
 import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { boqDisplaySourceKey, buildBoqDisplayHierarchy } from "@shared/boqDisplayOrder";
@@ -3517,7 +3518,7 @@ function SnlRelinkButton({ projectId }: { projectId: number }) {
 
 export default function WorkProgramme() {
   const { toast } = useToast();
-  const { featureCan } = useAuth();
+  const { featureCan, user } = useAuth();
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id);
   const deepLinkItemId = typeof window !== "undefined"
@@ -3554,6 +3555,8 @@ export default function WorkProgramme() {
   const [bulkSideChoice, setBulkSideChoice] = useState("full_width");
   const [bulkSideSelected, setBulkSideSelected] = useState<Set<number>>(new Set());
   const [seqDialogOpen, setSeqDialogOpen] = useState(false);
+  const [scopeAlignmentOpen, setScopeAlignmentOpen] = useState(false);
+  const [scopeAlignmentConfirm, setScopeAlignmentConfirm] = useState(false);
   const [seqFronts, setSeqFronts] = useState("");         // "" = auto
   const [seqStagger, setSeqStagger] = useState("1");      // months (0 = concurrent)
   const [seqLag, setSeqLag] = useState("0.25");           // months
@@ -3985,7 +3988,53 @@ export default function WorkProgramme() {
   // ── Part B: confirmed Project Scope → stretch rows ─────────────────────────
   const { data: scopeSegments = [] } = useQuery<any[]>({
     queryKey: [`/api/boq/projects/${projectId}/scope-segments`],
-    enabled: !isNaN(projectId) && seqDialogOpen,
+    enabled: !isNaN(projectId),
+  });
+  const { data: scopeVersionToken } = useQuery<string>({
+    queryKey: [`/api/boq/projects/${projectId}/scope-version`],
+    queryFn: async () => {
+      const response = await fetch(`/api/boq/projects/${projectId}/scope-version`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not check the current scope version.");
+      const body = await response.json();
+      return String(body.scopeVersionToken ?? "");
+    },
+    enabled: !isNaN(projectId) && !!user?.isOwner,
+  });
+  const scopeAlignment = useMemo(
+    () => buildScopeProgrammeAlignment({ items: items as any[], bars: bars as any[], segments: scopeSegments }),
+    [items, bars, scopeSegments],
+  );
+  const scopeAlignmentRows = scopeAlignment.rows;
+  const applyScopeAlignmentMutation = useMutation({
+    mutationFn: async () => {
+      if (!scopeVersionToken) throw new Error("Reload the scope preview before applying.");
+      const response = await apiRequest("POST", `/api/boq/projects/${projectId}/scope-alignment/apply`, {
+        scopeVersionToken,
+        expectedBars: bars.map(bar => ({
+          id: Number(bar.id),
+          chainageFrom: bar.chainageFrom == null ? null : Number(bar.chainageFrom),
+          chainageTo: bar.chainageTo == null ? null : Number(bar.chainageTo),
+          plannedQty: Number(bar.plannedQty) || 0,
+        })),
+      });
+      return response.json();
+    },
+    onSuccess: async () => {
+      setScopeAlignmentConfirm(false);
+      setScopeAlignmentOpen(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "bom"] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/boq/projects/${projectId}/scope-version`] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "work-value"] }),
+      ]);
+      toast({ title: "Programme bars updated", description: "Only chainage and planned quantity were changed." });
+    },
+    onError: (error: any) => toast({
+      title: "Could not update programme bars",
+      description: error instanceof Error ? error.message : "Reload the preview and try again.",
+      variant: "destructive",
+    }),
   });
   const confirmedScopeRows = useMemo(() => scopeReachesToStretchRows(scopeSegments as any[]), [scopeSegments]);
   const scopeConstraintList = useMemo(() => scopeConstraints(scopeSegments as any[]), [scopeSegments]);
@@ -5206,6 +5255,103 @@ export default function WorkProgramme() {
           </CardContent>
         </Card>
       )}
+
+      {user?.isOwner && scopeAlignmentRows.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
+          <span className="font-medium">{scopeAlignmentRows.length} programme bars don't match the scope.</span>
+          <Button size="sm" variant="outline" onClick={() => {
+            setScopeAlignmentConfirm(false);
+            setScopeAlignmentOpen(true);
+          }}>
+            Review and update bars
+          </Button>
+        </div>
+      )}
+
+      <Dialog open={scopeAlignmentOpen} onOpenChange={(open) => {
+        setScopeAlignmentOpen(open);
+        if (!open) setScopeAlignmentConfirm(false);
+      }}>
+        <DialogContent className="max-h-[90vh] max-w-6xl flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Review and update bars</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Preview only. Applying changes updates chainage and planned quantity; dates, progress and manual notes stay as saved. “Suggest remove” is only a suggestion—no bar is deleted.
+          </p>
+          {scopeAlignment.blockedCount > 0 && (
+            <div role="alert" className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {scopeAlignment.blockedCount} bar(s) need a split or manual review. Resolve these before applying any updates.
+            </div>
+          )}
+          <div className="min-h-0 flex-1 overflow-auto rounded border">
+            <table className="min-w-[1050px] w-full text-xs">
+              <thead className="sticky top-0 bg-slate-100 text-left">
+                <tr>
+                  <th className="p-2">Bar</th><th className="p-2">Item</th><th className="p-2">Reach</th>
+                  <th className="p-2">Chainage now → proposed</th><th className="p-2 text-right">Qty now → proposed</th><th className="p-2">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scopeAlignmentRows.map(row => (
+                  <tr key={row.barId} className="border-t align-top">
+                    <td className="p-2 font-mono">#{row.barId}</td>
+                    <td className="p-2" title={row.itemName}>{row.itemCode ? `[${row.itemCode}] ` : ""}{row.itemName}</td>
+                    <td className="p-2">{row.reachLabel || "—"}</td>
+                    <td className="p-2 font-mono">
+                      {row.currentChainageFrom == null ? "—" : formatChainageKm(row.currentChainageFrom)}
+                      {"–"}
+                      {row.currentChainageTo == null ? "—" : formatChainageKm(row.currentChainageTo)}
+                      {row.action === "update" && (
+                        <>
+                          {" → "}{row.proposedChainageFrom == null ? "—" : formatChainageKm(row.proposedChainageFrom)}
+                          {"–"}{row.proposedChainageTo == null ? "—" : formatChainageKm(row.proposedChainageTo)}
+                        </>
+                      )}
+                    </td>
+                    <td className="p-2 text-right font-mono">
+                      {fmtQty(row.currentQuantity)}
+                      {row.proposedQuantity != null && <>{" → "}{fmtQty(row.proposedQuantity)}</>}
+                    </td>
+                    <td className="p-2">
+                      {row.action === "suggest_remove" ? "Suggest remove" : row.action === "blocked" ? "Needs manual review" : "Update"}
+                      {row.reason && <span className="block text-[10px] text-muted-foreground">{row.reason}</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {scopeAlignmentConfirm && (
+            <div role="alert" className="rounded border border-slate-300 bg-slate-50 p-3 text-sm">
+              Apply the listed chainage and planned-quantity changes? No bar will be deleted.
+              <div className="mt-2 flex justify-end gap-2">
+                <Button size="sm" variant="outline" onClick={() => setScopeAlignmentConfirm(false)}>Keep preview</Button>
+                <Button
+                  size="sm"
+                  onClick={() => applyScopeAlignmentMutation.mutate()}
+                  disabled={applyScopeAlignmentMutation.isPending || scopeAlignment.blockedCount > 0 || !scopeVersionToken}
+                >
+                  {applyScopeAlignmentMutation.isPending ? "Applying…" : "Confirm and save"}
+                </Button>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            {!scopeAlignmentConfirm && (
+              <>
+                <Button variant="outline" onClick={() => setScopeAlignmentOpen(false)}>Close</Button>
+                <Button
+                  onClick={() => setScopeAlignmentConfirm(true)}
+                  disabled={scopeAlignment.blockedCount > 0 || !scopeVersionToken || !scopeAlignmentRows.some(row => row.action === "update")}
+                >
+                  Apply updates
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {!isLoading && items.length > 0 && effectiveProject && (
         <Tabs value={activeTab} onValueChange={handleTabChange}>

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import React from "react";
@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("WorkValueTable", () => {
-  it("shows working-reach shares, keeps incidental and rework quantities valueless, and flags unchanged bars", async () => {
+  it("groups reach and no-scope rows with subtotals while keeping exception details expandable", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       projectId: 2,
       projectName: "ALLADURG",
@@ -33,6 +33,20 @@ describe("WorkValueTable", () => {
           scopeQuantity: 100, doneQuantity: 0, incidentalQuantity: 0, reworkQuantity: 0,
           balanceQuantity: 100, overQuantity: 0, rate: 1000,
           valueDone: 0, valueBalance: 100000, overValue: 0, rowType: "no_scope",
+        },
+        {
+          boqItemId: 8, itemCode: "WMM", description: "Wet mix macadam", unit: "MT",
+          reachId: 3, reachLabel: "Reach 3", chainageFrom: 1.9, chainageTo: 2.9,
+          scopeQuantity: 50, doneQuantity: 5, incidentalQuantity: 0, reworkQuantity: 0,
+          balanceQuantity: 45, overQuantity: 0, rate: 200,
+          valueDone: 1000, valueBalance: 9000, overValue: 0, rowType: "working_reach",
+        },
+        {
+          boqItemId: 12, itemCode: "FIX", description: "One-time setup", unit: "LS",
+          reachId: null, reachLabel: "Whole road", chainageFrom: null, chainageTo: null,
+          scopeQuantity: 60, doneQuantity: 6, incidentalQuantity: 0, reworkQuantity: 0,
+          balanceQuantity: 54, overQuantity: 0, rate: 300,
+          valueDone: 1800, valueBalance: 16200, overValue: 0, rowType: "working_reach",
         },
       ],
       reachTotals: [{
@@ -62,14 +76,20 @@ describe("WorkValueTable", () => {
     );
 
     expect(await screen.findByTestId("work-value-report")).toBeInTheDocument();
-    expect(screen.getByText("Incidental · no value")).toBeInTheDocument();
-    expect(screen.getByText("Rework · no value")).toBeInTheDocument();
+    expect(screen.getByText("Scope amount")).toBeInTheDocument();
+    expect(screen.getByText("Done amount")).toBeInTheDocument();
+    expect(screen.getByText("Balance amount")).toBeInTheDocument();
     expect(within(screen.getByTestId("work-value-reach-totals")).getByText(/Reach 1/))
       .toHaveTextContent("Ch 0+000–1+600");
-    expect(screen.getAllByText("100 CUM")).toHaveLength(3);
-    expect(screen.getByText("20 CUM")).toBeInTheDocument();
-    expect(screen.getByText("30 CUM")).toBeInTheDocument();
-    expect(screen.getAllByText("₹1,00,000.00")).toHaveLength(4);
+    expect(screen.getByTestId("work-value-row-reach-1-4")).toHaveTextContent("Earthen shoulders");
+    expect(screen.getByTestId("work-value-subtotal-reach-1")).toHaveTextContent("₹6,00,000.00");
+    expect(screen.getByTestId("work-value-subtotal-reach-3")).toHaveTextContent("₹10,000.00");
+    expect(screen.getByTestId("work-value-subtotal-whole-road")).toHaveTextContent("₹18,000.00");
+    expect(screen.getByTestId("work-value-subtotal-no-scope-4-0")).toHaveTextContent("₹1,00,000.00");
+    expect(screen.getByTestId("work-value-grand-total")).toHaveTextContent("₹7,28,000.00");
+    fireEvent.click(within(screen.getByTestId("work-value-row-reach-1-4"))
+      .getByRole("button", { name: /Expand details for Earthen shoulders/ }));
+    expect(screen.getByText(/Incidental: 20 CUM · Rework: 30 CUM/)).toBeInTheDocument();
     expect(screen.getByTestId("bars-beyond-corridor")).toHaveTextContent("3+200");
     expect(screen.getByTestId("work-value-reach-totals")).toHaveTextContent("Totals by reach");
     await waitFor(() => {

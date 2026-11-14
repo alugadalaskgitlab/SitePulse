@@ -105,7 +105,7 @@ export function allocateBoqQuantityToWorkingReaches(
   const fixed = item.fixedQuantity ?? defaultsToFixedQuantity(item);
   if (fixed) {
     const selected = item.fixedQuantityReachId == null
-      ? null
+      ? workingSegments.length === 1 ? workingSegments[0] : null
       : workingSegments.find(segment => Number(segment.id) === Number(item.fixedQuantityReachId));
     if (item.fixedQuantityReachId != null && !selected) {
       return {
@@ -113,19 +113,25 @@ export function allocateBoqQuantityToWorkingReaches(
         notNeededQuantity: currentQty, scoped: denominatorKm > 0, shares: [],
       };
     }
+    const masks = segments.filter(segment =>
+      segment.segmentType === "no_scope" || segment.segmentType === "withdrawn" || segment.segmentType === "temporary_block",
+    );
+    const selectedLength = (segment: ScopeSegmentLike) =>
+      resolveEligibleScope([segment, ...masks], query).contractualSideLenKm;
+    const wholeRoadLengthKm = workingSegments.reduce((sum, segment) => sum + selectedLength(segment), 0);
     const share: WorkingReachShare = selected
       ? {
         reachId: selected.id ?? null,
-        label: selected.label?.trim() || "Selected reach",
+        label: selected.label?.trim() || `Reach ${workingSegments.indexOf(selected) + 1}`,
         chainageFrom: Number(selected.chainageFrom),
         chainageTo: Number(selected.chainageTo),
-        effectiveLengthKm: Math.max(0, Number(selected.chainageTo) - Number(selected.chainageFrom)),
+        effectiveLengthKm: selectedLength(selected),
         quantity: currentQty,
       }
-      : { reachId: null, label: "Whole project", chainageFrom: null, chainageTo: null, effectiveLengthKm: 0, quantity: currentQty };
+      : { reachId: null, label: "Whole road", chainageFrom: null, chainageTo: null, effectiveLengthKm: wholeRoadLengthKm, quantity: currentQty };
     return {
       denominatorKm,
-      workingLengthKm: selected ? share.effectiveLengthKm : 0,
+      workingLengthKm: selected ? share.effectiveLengthKm : wholeRoadLengthKm,
       workingQuantity: currentQty,
       notNeededQuantity: 0,
       scoped: denominatorKm > 0,

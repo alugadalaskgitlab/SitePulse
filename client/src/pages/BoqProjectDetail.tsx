@@ -373,14 +373,14 @@ function ItemEditDialog({
                   <SelectItem value="share">Share by working-reach length</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="mt-1 text-xs text-muted-foreground">Fixed items are not reduced by no-scope reaches. Leave the reach blank to assign the full quantity to the whole project.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Fixed items are not reduced by no-scope reaches. Leave the reach blank to assign the full quantity to the whole road.</p>
             </div>
             {form.fixedQuantityMode === "fixed" && <div>
               <Label className="text-sm">Assign fixed quantity to</Label>
               <Select value={form.fixedQuantityReachId} onValueChange={value => setForm(p => ({ ...p, fixedQuantityReachId: value }))}>
                 <SelectTrigger data-testid="select-fixed-quantity-reach"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__whole__">Whole project</SelectItem>
+                  <SelectItem value="__whole__">Whole road</SelectItem>
                   {scopeSegments.filter(segment => segment.segmentType === "working_reach" && segment.status === "confirmed").map(segment => (
                     <SelectItem key={segment.id} value={String(segment.id)}>{segment.label || `Reach ${segment.id}`}</SelectItem>
                   ))}

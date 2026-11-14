@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { Package } from "lucide-react";
+import { useMemo, useState, Fragment } from "react";
+import { ChevronDown, ChevronRight, Package } from "lucide-react";
 import { fmtQty, getShortName, monthLabel, type BomInputBar, type BomInputItem } from "@shared/planningEngine";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import { boqItemDisplayName } from "@/lib/itemName";
@@ -59,18 +59,20 @@ export function BalanceWorkMaterialsByReach({
   stockLoading = false,
   arrangements = [],
 }: Props) {
+  const [expandedMonthRows, setExpandedMonthRows] = useState<Set<string>>(() => new Set());
   const sourceItems = workValueItems?.length ? workValueItems : items;
   const result = useMemo(() => buildBalanceWorkByReach({
     items: sourceItems,
     bars,
     workRows,
     totalMonths,
+    projectStartDate,
     currentMonth,
     endMonth,
     demandMaterials,
     stockRows,
     arrangements,
-  }), [sourceItems, bars, workRows, totalMonths, currentMonth, endMonth, demandMaterials, stockRows, arrangements]);
+  }), [sourceItems, bars, workRows, totalMonths, projectStartDate, currentMonth, endMonth, demandMaterials, stockRows, arrangements]);
   const labelById = useMemo(
     () => new Map(sourceItems.map(item => [Number(item.id), boqItemDisplayName(item)])),
     [sourceItems],
@@ -123,11 +125,13 @@ export function BalanceWorkMaterialsByReach({
                     <p className="text-xs text-muted-foreground">No material recipe is available for this balance.</p>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="w-full min-w-[470px] text-xs" data-testid={`balance-materials-${group.key}`}>
+                      <table className="w-full min-w-[620px] text-xs" data-testid={`balance-materials-${group.key}`}>
                         <thead className="bg-slate-100 text-slate-600">
                           <tr>
                             <th className="px-2 py-1.5 text-left">Material</th>
+                            <th className="px-2 py-1.5 text-right">Quantity</th>
                             <th className="px-2 py-1.5 text-right">Compacted (cum)</th>
+                            <th className="px-2 py-1.5 text-right">MT per cum</th>
                             <th className="px-2 py-1.5 text-right">MT</th>
                             <th className="px-2 py-1.5 text-right">Loose cum</th>
                             <th className="px-2 py-1.5 text-right">Loose CFT</th>
@@ -135,19 +139,12 @@ export function BalanceWorkMaterialsByReach({
                         </thead>
                         <tbody>
                           {group.materials.map((material, index) => {
-                            const isUnconvertedCft = ["CFT", "CUFT"].includes(canonicalizeUnit(material.uom).toUpperCase());
-                            const showQuantityInName = material.compactedCum == null && material.mt == null && !isUnconvertedCft;
                             return (
                               <tr key={`${material.materialName}-${material.uom}-${index}`} className="border-t border-slate-100">
-                                <td className="px-2 py-1.5 text-slate-700">
-                                  <span>{material.materialName}</span>
-                                  {showQuantityInName && (
-                                    <span className="ml-1 font-mono text-slate-500">
-                                      {numberText(material.totalQty)} {material.uom}
-                                    </span>
-                                  )}
-                                </td>
+                                <td className="px-2 py-1.5 text-slate-700">{material.materialName}</td>
+                                <td className="px-2 py-1.5 text-right font-mono">{numberText(material.totalQty)} {material.uom}</td>
                                 <td className="px-2 py-1.5 text-right font-mono">{numberText(material.compactedCum)}</td>
+                                <td className="px-2 py-1.5 text-right font-mono">{numberText(material.mtPerCum)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono">{numberText(material.mt)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono">{numberText(material.looseCum)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono">{numberText(material.looseCft, 0)}</td>
@@ -170,7 +167,7 @@ export function BalanceWorkMaterialsByReach({
                         <tr>
                           <th className="px-2 py-1.5 text-left">Material</th>
                           <th className="px-2 py-1.5 text-left">Unit</th>
-                          <th className="px-2 py-1.5 text-right">Overdue (planned earlier, not done)</th>
+                          <th className="px-2 py-1.5 text-right">Overdue</th>
                           {result.monthColumns.map(month => (
                             <th key={month} className="px-2 py-1.5 text-right">{monthLabel(month, projectStartDate)}</th>
                           ))}
@@ -180,19 +177,54 @@ export function BalanceWorkMaterialsByReach({
                       <tbody>
                         {group.materials.map((material, index) => {
                           const unit = material.monthlyUnit;
-                            const looseValuesMissing = material.valuesUnavailable || (unit === "loose cum" && material.looseCum == null);
+                          const looseValuesMissing = material.valuesUnavailable || (unit === "loose cum" && material.looseCum == null);
+                          const expandKey = `${group.key}|${material.materialName}|${material.uom}|${index}`;
+                          const isExpanded = expandedMonthRows.has(expandKey);
                           return (
-                            <tr key={`${material.materialName}-${material.uom}-${index}`} className="border-t border-slate-100">
-                              <td className="px-2 py-1.5 text-slate-700">{material.materialName}</td>
-                              <td className="px-2 py-1.5 text-slate-500">{unit}</td>
-                              <td className="px-2 py-1.5 text-right font-mono">{looseValuesMissing ? "—" : numberText(material.overdue)}</td>
-                              {result.monthColumns.map(month => (
-                                <td key={month} className="px-2 py-1.5 text-right font-mono">{looseValuesMissing ? "—" : numberText(material.monthly[month] ?? 0)}</td>
-                              ))}
-                              {result.hasNotScheduled && (
-                                <td className="px-2 py-1.5 text-right font-mono">{looseValuesMissing ? "—" : numberText(material.notScheduled)}</td>
+                            <Fragment key={expandKey}>
+                              <tr className="border-t border-slate-100">
+                                <td className="px-2 py-1.5 text-slate-700">
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1 text-left"
+                                    onClick={() => setExpandedMonthRows(current => {
+                                      const next = new Set(current);
+                                      if (next.has(expandKey)) next.delete(expandKey); else next.add(expandKey);
+                                      return next;
+                                    })}
+                                    aria-label={`${isExpanded ? "Collapse" : "Expand"} ${material.materialName} contributors`}
+                                  >
+                                    {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                    {getShortName(material.materialName, 32)}
+                                  </button>
+                                </td>
+                                <td className="px-2 py-1.5 text-slate-500">{unit}</td>
+                                <td className="px-2 py-1.5 text-right font-mono">{looseValuesMissing ? "—" : numberText(material.overdue)}</td>
+                                {result.monthColumns.map(month => (
+                                  <td key={month} className="px-2 py-1.5 text-right font-mono">{looseValuesMissing ? "—" : numberText(material.monthly[month] ?? 0)}</td>
+                                ))}
+                                {result.hasNotScheduled && (
+                                  <td className="px-2 py-1.5 text-right font-mono">{looseValuesMissing ? "—" : numberText(material.notScheduled)}</td>
+                                )}
+                              </tr>
+                              {isExpanded && (
+                                <tr className="border-t bg-slate-50">
+                                  <td colSpan={2 + result.monthColumns.length + (result.hasNotScheduled ? 1 : 0)} className="px-4 py-2">
+                                    {material.contributors.map(contributor => (
+                                      <p
+                                        key={contributor.boqItemId}
+                                        className="text-[11px] text-slate-600"
+                                        title={contributor.description}
+                                      >
+                                        {contributor.itemCode ? `[${contributor.itemCode}] ` : ""}
+                                        {getShortName(labelById.get(contributor.boqItemId) || contributor.label, 48)}
+                                        {" · "}{numberText(contributor.quantity)} {contributor.unit}
+                                      </p>
+                                    ))}
+                                  </td>
+                                </tr>
                               )}
-                            </tr>
+                            </Fragment>
                           );
                         })}
                       </tbody>

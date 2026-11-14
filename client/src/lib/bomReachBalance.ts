@@ -12,6 +12,7 @@ import {
 } from "@shared/compactedLoose";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import { formatChainageKm, parseChainageKm } from "@shared/barSide";
+import { corridorsForSide } from "@shared/projectScope";
 
 export type WorkValueBalanceRow = {
   boqItemId: number;
@@ -37,12 +38,21 @@ export type BalanceMaterialRow = {
   mt: number | null;
   looseCum: number | null;
   looseCft: number | null;
+  mtPerCum: number | null;
   monthlyUnit: string;
   monthly: Record<number, number>;
   overdue: number;
   notScheduled: number;
   hasUnscheduledWork: boolean;
   valuesUnavailable: boolean;
+  contributors: Array<{
+    boqItemId: number;
+    itemCode: string | null;
+    label: string;
+    description: string;
+    quantity: number;
+    unit: string;
+  }>;
 };
 
 export type BalanceWorkItem = {
@@ -99,6 +109,7 @@ type ReachBuildInput = {
   bars: BomInputBar[];
   workRows: WorkValueBalanceRow[];
   totalMonths: number;
+  projectStartDate?: string | null;
   currentMonth: number;
   endMonth?: number;
   demandMaterials?: DemandMaterialRow[];
@@ -139,26 +150,35 @@ function isSoilOrGranular(item: BomInputItem, material: BomMaterialRow): boolean
   );
 }
 
-function chainageOverlapRatio(
-  bar: BomInputBar,
-  row: WorkValueBalanceRow,
-): number {
-  const from = numberOrNull(row.chainageFrom);
-  const to = numberOrNull(row.chainageTo);
-  if (from == null || to == null || to <= from) return 0;
-
+function barWeightForWorkRow(bar: BomInputBar, row: WorkValueBalanceRow): number {
+  const barCorridors = corridorsForSide((bar as any).side);
+  const rowCorridors = row.reachId == null ? barCorridors : corridorsForSide(row.side);
+  const matchingCorridors = barCorridors.filter(corridor => rowCorridors.includes(corridor));
+  if (!matchingCorridors.length) return 0;
   const barFrom = chainageKm(bar.chainageFrom);
   const barTo = chainageKm(bar.chainageTo);
-  if (barFrom == null || barTo == null || barTo <= barFrom) {
-    return normaliseName((bar as any).reachLabel) === normaliseName(row.reachLabel) ? 1 : 0;
+  const rowFrom = numberOrNull(row.chainageFrom);
+  const rowTo = numberOrNull(row.chainageTo);
+  if (row.reachId == null) {
+    return barFrom != null && barTo != null && barTo > barFrom
+      ? (barTo - barFrom) * matchingCorridors.length * 0.5
+      : numberOrNull((bar as any).structureChainageKm) != null ? matchingCorridors.length * 0.5 : 0;
   }
-  const overlap = Math.max(0, Math.min(to, barTo) - Math.max(from, barFrom));
-  return overlap / (barTo - barFrom);
+  if (barFrom != null && barTo != null && barTo > barFrom && rowFrom != null && rowTo != null && rowTo > rowFrom) {
+    return Math.max(0, Math.min(barTo, rowTo) - Math.max(barFrom, rowFrom)) * matchingCorridors.length * 0.5;
+  }
+  const point = numberOrNull((bar as any).structureChainageKm);
+  if (point != null && rowFrom != null && rowTo != null &&
+    point >= rowFrom - 0.0005 && point <= rowTo + 0.0005) {
+    return matchingCorridors.length * 0.5;
+  }
+  return normaliseName((bar as any).reachLabel) === normaliseName(row.reachLabel) ? matchingCorridors.length * 0.5 : 0;
 }
 
 function scheduleForWorkRow(
   row: WorkValueBalanceRow,
   itemBars: BomInputBar[],
+  allWorkRows: WorkValueBalanceRow[],
   balance: number,
   totalMonths: number,
   currentMonth: number,
@@ -169,11 +189,14 @@ function scheduleForWorkRow(
     return { monthlyWork, overdueWork: 0, notScheduledWork: Math.max(0, balance) };
   }
 
-  const eligible = itemBars.flatMap((bar) => {
-    if (row.reachId != null && row.side && (bar as any).side &&
-      normaliseName(row.side) !== normaliseName((bar as any).side)) return [];
-    const overlap = row.reachId == null ? 1 : chainageOverlapRatio(bar, row);
-    const plannedQty = Math.max(0, Number(bar.plannedQty) || 0) * overlap;
+  const itemRows = allWorkRows.filter(candidate =>
+    Number(candidate.boqItemId) === Number(row.boqItemId) && candidate.rowType === "working_reach",
+  );
+  const eligible = itemBars.flatMap(bar => {
+    const rowWeight = barWeightForWorkRow(bar, row);
+    const totalWeight = itemRows.reduce((sum, candidate) => sum + barWeightForWorkRow(bar, candidate), 0);
+    const plannedQty = Math.max(0, Number(bar.plannedQty) || 0) *
+      (totalWeight > 0 ? rowWeight / totalWeight : 0);
     const start = Number(bar.startMonth);
     const end = Number(bar.endMonth);
     if (plannedQty <= 0 || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
@@ -188,12 +211,16 @@ function scheduleForWorkRow(
   let overdueWork = 0;
   for (const entry of eligible) {
     const barWork = scheduledWork * entry.plannedQty / capacity;
-    const slices = calculateMonthlyDistribution(
-      barWork,
-      Number(entry.bar.startMonth),
-      Number(entry.bar.endMonth),
-      Math.max(totalMonths, endMonth),
-    );
+    const slices = (entry.bar.monthlyDayShares
+      ? Object.entries(entry.bar.monthlyDayShares)
+        .map(([month, share]) => ({ month: Number(month), qty: barWork * Number(share) }))
+        .filter(slice => Number.isInteger(slice.month) && slice.month > 0 && slice.qty > 0)
+      : calculateMonthlyDistribution(
+        barWork,
+        Number(entry.bar.startMonth),
+        Number(entry.bar.endMonth),
+        Math.max(totalMonths, endMonth),
+      ));
     for (const slice of slices) {
       if (slice.month < currentMonth) overdueWork += slice.qty;
       else if (slice.month <= endMonth) monthlyWork[slice.month] = (monthlyWork[slice.month] ?? 0) + slice.qty;
@@ -222,6 +249,8 @@ function mergeMaterial(
   notScheduled: number,
   hasUnscheduledWork: boolean,
   valuesUnavailable = false,
+  mtPerCum: number | null = null,
+  contributor?: BalanceMaterialRow["contributors"][number],
 ) {
   const key = `${normaliseName(materialName)}|${normaliseName(uom)}`;
   const existing = map.get(key);
@@ -234,12 +263,14 @@ function mergeMaterial(
       mt,
       looseCum,
       looseCft,
+      mtPerCum,
       monthlyUnit,
       monthly: { ...monthlyValues },
       overdue,
       notScheduled,
       hasUnscheduledWork,
       valuesUnavailable,
+      contributors: contributor ? [{ ...contributor }] : [],
     });
     return;
   }
@@ -254,6 +285,15 @@ function mergeMaterial(
   existing.looseCft = existing.looseCft == null || looseCft == null
     ? null
     : existing.looseCft + looseCft;
+  existing.mtPerCum = existing.mtPerCum == null || mtPerCum == null ||
+    Math.abs(existing.mtPerCum - mtPerCum) > 0.000001
+    ? null
+    : existing.mtPerCum;
+  if (contributor) {
+    const previousContributor = existing.contributors.find(row => row.boqItemId === contributor.boqItemId);
+    if (previousContributor) previousContributor.quantity += contributor.quantity;
+    else existing.contributors.push({ ...contributor });
+  }
   existing.overdue += overdue;
   existing.notScheduled += notScheduled;
   existing.hasUnscheduledWork ||= hasUnscheduledWork;
@@ -299,12 +339,12 @@ export function buildBalanceWorkByReach(input: ReachBuildInput): BalanceWorkByRe
 
   for (const row of rows) {
     const item = itemById.get(Number(row.boqItemId));
-    const isWholeProject = row.reachId == null;
-    const key = isWholeProject ? "whole-project" : `reach-${row.reachId}`;
+    const isWholeRoad = row.reachId == null;
+    const key = isWholeRoad ? "whole-road" : `reach-${row.reachId}`;
     const group = groupByKey.get(key) ?? {
       key,
-      label: isWholeProject
-        ? "Not tied to a reach"
+      label: isWholeRoad
+        ? "Whole road"
         : row.chainageFrom != null && row.chainageTo != null
           ? `${row.reachLabel} · ${formatChainage(row.chainageFrom)}–${formatChainage(row.chainageTo)}`
           : row.reachLabel,
@@ -341,6 +381,7 @@ export function buildBalanceWorkByReach(input: ReachBuildInput): BalanceWorkByRe
     const schedule = scheduleForWorkRow(
       row,
       itemBars,
+      input.workRows,
       row.balanceQuantity,
       Math.max(input.totalMonths, endMonth),
       currentMonth,
@@ -388,6 +429,18 @@ export function buildBalanceWorkByReach(input: ReachBuildInput): BalanceWorkByRe
         mixMt * schedule.overdueWork / row.balanceQuantity,
         mixMt * schedule.notScheduledWork / row.balanceQuantity,
         schedule.notScheduledWork > 0.000001,
+        false,
+        mixProfileResult && compactedCum && compactedCum > 0
+          ? mixProfileResult.looseWeightPerCum
+          : null,
+        {
+          boqItemId: row.boqItemId,
+          itemCode: row.itemCode,
+          label: item.itemName || item.description,
+          description: item.description,
+          quantity: mixMt,
+          unit: "MT",
+        },
       );
     }
 
@@ -449,6 +502,15 @@ export function buildBalanceWorkByReach(input: ReachBuildInput): BalanceWorkByRe
         notScheduled,
         schedule.notScheduledWork > 0.000001,
         unconvertedCft,
+        looseResult?.looseWeightPerCum ?? null,
+        {
+          boqItemId: row.boqItemId,
+          itemCode: row.itemCode,
+          label: item.itemName || item.description,
+          description: item.description,
+          quantity: totalQty,
+          unit: material.uom,
+        },
       );
 
       const totalKey = `${normaliseName(material.materialName)}|${normaliseName(canonicalUom || material.uom)}`;
@@ -464,8 +526,8 @@ export function buildBalanceWorkByReach(input: ReachBuildInput): BalanceWorkByRe
   }
 
   const groups = Array.from(groupByKey.values()).sort((a, b) => {
-    if (a.key === "whole-project") return 1;
-    if (b.key === "whole-project") return -1;
+    if (a.key === "whole-road") return 1;
+    if (b.key === "whole-road") return -1;
     return (a.chainageFrom ?? 0) - (b.chainageFrom ?? 0);
   });
   const totals = Array.from(itemMaterialTotals.values())

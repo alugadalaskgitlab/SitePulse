@@ -110,14 +110,14 @@ describe("balance material requirements by working reach", () => {
         workRow({ balanceQuantity: 10, scopeQuantity: 10 }),
         workRow({ boqItemId: 1, reachId: 13, reachLabel: "Reach 3", chainageFrom: 2, chainageTo: 3, balanceQuantity: 20, scopeQuantity: 20 }),
         workRow({ boqItemId: 2, itemCode: "2", description: "DGBM", reachId: 11, reachLabel: "Reach 1", balanceQuantity: 100, scopeQuantity: 100 }),
-        workRow({ boqItemId: 1, reachId: null, reachLabel: "Whole project", chainageFrom: null, chainageTo: null, balanceQuantity: 5, scopeQuantity: 5 }),
+        workRow({ boqItemId: 1, reachId: null, reachLabel: "Whole road", chainageFrom: null, chainageTo: null, balanceQuantity: 5, scopeQuantity: 5 }),
         workRow({ rowType: "no_scope", reachId: null, reachLabel: "BOQ not needed", balanceQuantity: 40, scopeQuantity: 40 }),
       ],
     });
 
     const reach1 = result.groups.find(group => group.key === "reach-11")!;
     const reach3 = result.groups.find(group => group.key === "reach-13")!;
-    const fixed = result.groups.find(group => group.key === "whole-project")!;
+    const fixed = result.groups.find(group => group.key === "whole-road")!;
     const reach1Soil = reach1.materials.find(material => /shoulder.*soil/i.test(material.materialName))!;
     const reach3Soil = reach3.materials.find(material => /shoulder.*soil/i.test(material.materialName))!;
     expect(reach1Soil.compactedCum).toBe(10);
@@ -130,7 +130,7 @@ describe("balance material requirements by working reach", () => {
     const scheduledMix = reach1.materials.find(material => material.materialName === "Plant mix")!;
     expect(Object.values(scheduledMix.monthly).some(value => value > 0)).toBe(true);
     expect(reach1.materials.find(material => /bitumen/i.test(material.materialName))?.mt).toBeCloseTo(4, 2);
-    expect(fixed.label).toBe("Not tied to a reach");
+    expect(fixed.label).toBe("Whole road");
     expect(result.groups.flatMap(group => group.workItems).some(work => work.quantity === 40)).toBe(false);
     expect(reach1Soil.overdue).toBeGreaterThan(0);
     expect(reach1Soil.notScheduled).toBeGreaterThan(0);
@@ -176,6 +176,9 @@ describe("balance material requirements by working reach", () => {
     );
     expect(screen.getByText("Balance work — materials by reach")).toBeInTheDocument();
     expect(screen.getByText("All reaches — balance total")).toBeInTheDocument();
+    expect(screen.getByText("MT per cum")).toBeInTheDocument();
+    expect(screen.getByText("Overdue", { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText(/Overdue \(/)).not.toBeInTheDocument();
     expect(screen.getByText("10", { exact: true })).toBeInTheDocument();
     expect(screen.getByText("21.56", { exact: true })).toBeInTheDocument();
     expect(screen.getAllByText("12", { exact: true })).toHaveLength(2);
@@ -183,6 +186,8 @@ describe("balance material requirements by working reach", () => {
     expect(screen.getByText("10 cum", { exact: true })).toBeInTheDocument();
     expect(screen.getAllByText("5 cum", { exact: true })).toHaveLength(2);
     expect(screen.getByText("Not scheduled")).toBeInTheDocument();
+    screen.getByRole("button", { name: /Expand Shoulder Earth \/ Soil contributors/ }).click();
+    expect(screen.getByText(/Earthen shoulders/)).toBeInTheDocument();
   });
 });
 

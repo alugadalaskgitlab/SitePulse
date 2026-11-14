@@ -1,5 +1,9 @@
+import { Fragment, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { boqItemDisplayName } from "@/lib/itemName";
+import { getShortName } from "@shared/planningEngine";
 
 type WorkValueRow = {
   boqItemId: number;
@@ -58,6 +62,7 @@ const money = (value: number | null | undefined) =>
 const ch = (value: number | null) => value == null ? "—" : `${Math.floor(value)}+${String(Math.round((value - Math.floor(value)) * 1000)).padStart(3, "0")}`;
 
 export function WorkValueTable({ projectId }: { projectId: number }) {
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(() => new Set());
   const query = useQuery<WorkValueResponse>({
     queryKey: ["/api/boq/projects", projectId, "work-value"],
     enabled: Number.isInteger(projectId) && projectId > 0,
@@ -69,12 +74,52 @@ export function WorkValueTable({ projectId }: { projectId: number }) {
     },
   });
 
+  const groups = useMemo(() => {
+    const rows = query.data?.rows ?? [];
+    const working = rows.filter(row => row.rowType === "working_reach");
+    const reachGroups = new Map<string, { key: string; label: string; chainageFrom: number | null; rows: WorkValueRow[] }>();
+    const wholeRoadRows: WorkValueRow[] = [];
+    for (const row of working) {
+      if (row.reachId == null) {
+        wholeRoadRows.push(row);
+        continue;
+      }
+      const key = `reach-${row.reachId}`;
+      const group = reachGroups.get(key) ?? {
+        key,
+        label: row.reachLabel,
+        chainageFrom: row.chainageFrom,
+        rows: [],
+      };
+      group.rows.push(row);
+      reachGroups.set(key, group);
+    }
+    const sortedReachGroups = Array.from(reachGroups.values())
+      .sort((a, b) => (a.chainageFrom ?? 0) - (b.chainageFrom ?? 0));
+    const noScopeRows = rows.filter(row => row.rowType === "no_scope");
+    return [
+      ...sortedReachGroups,
+      ...(wholeRoadRows.length ? [{ key: "whole-road", label: "Whole road", chainageFrom: null, rows: wholeRoadRows }] : []),
+      ...noScopeRows.map((row, index) => ({
+        key: `no-scope-${row.boqItemId}-${index}`,
+        label: `No-scope · ${row.itemCode ? `[${row.itemCode}] ` : ""}${getShortName(boqItemDisplayName({ description: row.description }), 48)}`,
+        chainageFrom: null,
+        rows: [row],
+      })),
+    ];
+  }, [query.data?.rows]);
+
   if (query.isLoading) return <p className="p-4 text-sm text-muted-foreground">Loading work value…</p>;
   if (query.isError) return <p className="p-4 text-sm text-destructive" role="alert">{(query.error as Error).message}</p>;
   const data = query.data;
   if (!data) return null;
-  const workRows = data.rows.filter(row => row.rowType === "working_reach");
-  const noScopeRows = data.rows.filter(row => row.rowType === "no_scope");
+  const allRows = data.rows;
+  const nullableSum = (rows: WorkValueRow[], get: (row: WorkValueRow) => number | null) => {
+    if (!rows.length) return null;
+    const values = rows.map(get);
+    return values.some(value => value == null) ? null : values.reduce<number>((sum, value) => sum + Number(value), 0);
+  };
+  const fmtAmount = (value: number | null) => money(value);
 
   return (
     <section className="space-y-4 print:bg-white print:text-black" data-testid="work-value-report">
@@ -123,56 +168,94 @@ export function WorkValueTable({ projectId }: { projectId: number }) {
       )}
 
       <div className="overflow-x-auto rounded border print:border-black">
-        <table className="w-full min-w-[1100px] border-collapse text-xs">
+        <table className="w-full min-w-[1000px] border-collapse text-xs" data-testid="table-work-value">
           <thead>
             <tr className="border-b bg-slate-100 text-left print:bg-white">
-              <th className="p-2">BOQ item · Reach</th>
-              <th className="p-2 text-right">Scope share</th>
-              <th className="p-2 text-right">Done</th>
-              <th className="p-2 text-right">Incidental · no value</th>
-              <th className="p-2 text-right">Rework · no value</th>
-              <th className="p-2 text-right">Balance</th>
-              <th className="p-2 text-right">Over reach share · info</th>
-              <th className="p-2 text-right">Value done</th>
-              <th className="p-2 text-right">Over BOQ</th>
-              <th className="p-2">Claimed above estimate</th>
-              <th className="p-2 text-right">Value balance</th>
+              <th className="p-2">Item</th>
+              <th className="p-2">Unit</th>
+              <th className="p-2 text-right">Scope qty</th>
+              <th className="p-2 text-right">Rate</th>
+              <th className="p-2 text-right">Scope amount</th>
+              <th className="p-2 text-right">Done qty</th>
+              <th className="p-2 text-right">Done amount</th>
+              <th className="p-2 text-right">Balance qty</th>
+              <th className="p-2 text-right">Balance amount</th>
             </tr>
           </thead>
           <tbody>
-            {workRows.map((row, index) => (
-              <tr className="border-t align-top print:border-black" key={`${row.boqItemId}-${row.reachId}-${index}`}>
-                <td className="p-2">
-                  <div className="font-medium">{row.itemCode ? `[${row.itemCode}] ` : ""}{row.description}</div>
-                  <div className="text-[10px] text-muted-foreground print:text-black">{row.reachLabel} · Ch {ch(row.chainageFrom)}–{ch(row.chainageTo)}</div>
-                </td>
-                <td className="p-2 text-right font-mono">{qty(row.scopeQuantity, row.unit)}</td>
-                <td className="p-2 text-right font-mono">{qty(row.doneQuantity, row.unit)}</td>
-                <td className="p-2 text-right font-mono">{row.incidentalQuantity > 0 ? qty(row.incidentalQuantity, row.unit) : "—"}</td>
-                <td className="p-2 text-right font-mono">{row.reworkQuantity > 0 ? qty(row.reworkQuantity, row.unit) : "—"}</td>
-                <td className="p-2 text-right font-mono">{qty(row.balanceQuantity, row.unit)}</td>
-                <td className="p-2 text-right font-mono">{row.overQuantity > 0 ? qty(row.overQuantity, row.unit) : "—"}</td>
-                <td className="p-2 text-right font-mono">{money(row.valueDone)}</td>
-                <td className="p-2 text-right font-mono">
-                  {row.overBoqQuantity > 0 ? <><span>{qty(row.overBoqQuantity, row.unit)}</span><span className="block text-[10px]">{money(row.overBoqValue)} · needs variation</span></> : "—"}
-                </td>
-                <td className="p-2">{row.claimedAboveEstimate ? <span className="font-medium">Yes{row.claimedAboveEstimateNote ? ` · ${row.claimedAboveEstimateNote}` : ""}</span> : "—"}</td>
-                <td className="p-2 text-right font-mono">{money(row.valueBalance)}</td>
-              </tr>
+            {groups.map(group => (
+              <Fragment key={group.key}>
+                <tr className="border-t bg-slate-50 print:border-black print:bg-white">
+                  <th colSpan={9} className="px-2 py-2 text-left font-semibold">{group.label}</th>
+                </tr>
+                {group.rows.map((row, index) => {
+                  const key = `${group.key}-${row.boqItemId}-${index}`;
+                  const isExpanded = expandedRows.has(key);
+                  const scopeAmount = row.rate == null ? null : row.scopeQuantity * row.rate;
+                  const itemTitle = boqItemDisplayName({ description: row.description, displayName: (row as any).displayName });
+                  return (
+                    <Fragment key={key}>
+                      <tr className="border-t align-top print:border-black" data-testid={`work-value-row-${group.key}-${row.boqItemId}`}>
+                        <td className="p-2">
+                          <button
+                            type="button"
+                            className="flex items-start gap-1 text-left"
+                            onClick={() => setExpandedRows(current => {
+                              const next = new Set(current);
+                              if (next.has(key)) next.delete(key); else next.add(key);
+                              return next;
+                            })}
+                            aria-label={`${isExpanded ? "Collapse" : "Expand"} details for ${itemTitle}`}
+                            title={row.description}
+                          >
+                            {isExpanded ? <ChevronDown className="mt-0.5 h-3 w-3" /> : <ChevronRight className="mt-0.5 h-3 w-3" />}
+                            <span className="font-medium">{row.itemCode ? `[${row.itemCode}] ` : ""}{getShortName(itemTitle, 48)}</span>
+                          </button>
+                        </td>
+                        <td className="p-2">{row.unit}</td>
+                        <td className="p-2 text-right font-mono">{qty(row.scopeQuantity, row.unit)}</td>
+                        <td className="p-2 text-right font-mono">{money(row.rate)}</td>
+                        <td className="p-2 text-right font-mono">{fmtAmount(scopeAmount)}</td>
+                        <td className="p-2 text-right font-mono">{qty(row.doneQuantity, row.unit)}</td>
+                        <td className="p-2 text-right font-mono">{money(row.valueDone)}</td>
+                        <td className="p-2 text-right font-mono">{qty(row.balanceQuantity, row.unit)}</td>
+                        <td className="p-2 text-right font-mono">{money(row.valueBalance)}</td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="border-t bg-slate-50 print:border-black print:bg-white">
+                          <td colSpan={9} className="px-5 py-2 text-[11px] print:text-black">
+                            <span title={row.description}>{row.description}</span>
+                            <span className="ml-2 text-slate-600">Incidental: {qty(row.incidentalQuantity, row.unit)} · Rework: {qty(row.reworkQuantity, row.unit)} · Over reach share: {qty(row.overQuantity, row.unit)} · Over BOQ: {qty(row.overBoqQuantity, row.unit)} ({money(row.overBoqValue)}) · Claimed above estimate: {row.claimedAboveEstimate ? `Yes${row.claimedAboveEstimateNote ? ` — ${row.claimedAboveEstimateNote}` : ""}` : "No"}</span>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+                <tr className="border-t bg-slate-100 font-semibold print:border-black print:bg-white" data-testid={`work-value-subtotal-${group.key}`}>
+                  <td className="p-2" colSpan={2}>Subtotal · {group.label}</td>
+                  <td className="p-2" />
+                  <td className="p-2" />
+                  <td className="p-2 text-right font-mono">{fmtAmount(nullableSum(group.rows, row => row.rate == null ? null : row.scopeQuantity * row.rate))}</td>
+                  <td className="p-2" />
+                  <td className="p-2 text-right font-mono">{fmtAmount(nullableSum(group.rows, row => row.valueDone))}</td>
+                  <td className="p-2" />
+                  <td className="p-2 text-right font-mono">{fmtAmount(nullableSum(group.rows, row => row.valueBalance))}</td>
+                </tr>
+              </Fragment>
             ))}
-            {noScopeRows.map((row, index) => (
-              <tr className="border-t bg-slate-50 print:border-black print:bg-white" key={`no-scope-${row.boqItemId}-${index}`}>
-                <td className="p-2">
-                  <div className="font-medium">{row.itemCode ? `[${row.itemCode}] ` : ""}{row.description}</div>
-                  <div className="text-[10px] print:text-black">{row.reachLabel} · excluded from bill estimate</div>
-                </td>
-                <td className="p-2 text-right font-mono">{qty(row.scopeQuantity, row.unit)}</td>
-                <td className="p-2 text-right">—</td><td className="p-2 text-right">—</td><td className="p-2 text-right">—</td>
-                <td className="p-2 text-right font-mono">{qty(row.balanceQuantity, row.unit)}</td>
-                <td className="p-2 text-right">—</td><td className="p-2 text-right">—</td><td className="p-2">—</td>
-                <td className="p-2 text-right font-mono">{money(row.valueBalance)}</td>
+            {allRows.length > 0 && (
+              <tr className="border-t-2 border-slate-500 bg-slate-200 font-bold print:border-black print:bg-white" data-testid="work-value-grand-total">
+                <td className="p-2" colSpan={2}>Grand total</td>
+                <td className="p-2" />
+                <td className="p-2" />
+                <td className="p-2 text-right font-mono">{fmtAmount(nullableSum(allRows, row => row.rate == null ? null : row.scopeQuantity * row.rate))}</td>
+                <td className="p-2" />
+                <td className="p-2 text-right font-mono">{fmtAmount(nullableSum(allRows, row => row.valueDone))}</td>
+                <td className="p-2" />
+                <td className="p-2 text-right font-mono">{fmtAmount(nullableSum(allRows, row => row.valueBalance))}</td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>

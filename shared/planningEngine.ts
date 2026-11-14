@@ -943,6 +943,7 @@ export function materialSliceExcluded(sl: ArrangementSlice, materialName?: strin
 
 export interface BomInputItem {
   id: number;
+  categoryId?: number | null;
   materialMasterId?: number | null;
   materialMasterName?: string | null;
   description: string;
@@ -969,6 +970,9 @@ export interface BomInputItem {
   }>;
   demandSourceNote?: string | null;
   workCategory?: string | null;
+  planningWorkType?: string | null;
+  fixedQuantity?: boolean | null;
+  fixedQuantityReachId?: number | null;
   materials: Array<{
     materialName: string;
     uom: string;
@@ -1027,6 +1031,15 @@ export interface BomInputBar {
   endMonth?: number;
   plannedQty: number;
   isQtyOverride: boolean;
+  /** Exact day-weighted share for each programme month, when scope scheduling supplies it. */
+  monthlyDayShares?: Record<number, number>;
+  /** False for synthetic quantity that has no matching programme bar and is therefore unscheduled. */
+  isProgrammed?: boolean;
+  startDate?: string | Date | null;
+  endDate?: string | Date | null;
+  side?: string | null;
+  planningMode?: string | null;
+  structureChainageKm?: number | null;
 }
 
 /**
@@ -1557,8 +1570,14 @@ export function calculateBomDemand(
   // is excluded only in the linked bar's programmed months.
   const barMonthShares = new Map<number, Map<number, number>>();
   for (const bar of bars) {
-    if (bar.id == null || bar.startMonth == null || bar.endMonth == null || !(bar.plannedQty > 0)) continue;
-    const slices = calculateMonthlyDistribution(bar.plannedQty, bar.startMonth, bar.endMonth, totalMonths);
+    if (bar.id == null || !(bar.plannedQty > 0)) continue;
+    const slices = bar.monthlyDayShares
+      ? Object.entries(bar.monthlyDayShares)
+        .map(([month, share]) => ({ month: Number(month), qty: bar.plannedQty * Number(share) }))
+        .filter(slice => Number.isInteger(slice.month) && slice.month > 0 && slice.qty > 0)
+      : bar.startMonth != null && bar.endMonth != null
+        ? calculateMonthlyDistribution(bar.plannedQty, bar.startMonth, bar.endMonth, totalMonths)
+        : [];
     const shares = new Map<number, number>();
     for (const s of slices) shares.set(s.month, (shares.get(s.month) ?? 0) + s.qty / bar.plannedQty);
     barMonthShares.set(bar.id, shares);
@@ -1587,8 +1606,14 @@ export function calculateBomDemand(
         });
       }
       for (const bar of itemBars) {
-        if (bar.startMonth != null && bar.endMonth != null && bar.plannedQty > 0) {
-          const slices = calculateMonthlyDistribution(bar.plannedQty, bar.startMonth, bar.endMonth, totalMonths);
+        if (bar.plannedQty > 0) {
+          const slices = bar.monthlyDayShares
+            ? Object.entries(bar.monthlyDayShares)
+              .map(([month, share]) => ({ month: Number(month), qty: bar.plannedQty * Number(share) }))
+              .filter(slice => Number.isInteger(slice.month) && slice.month > 0 && slice.month <= totalMonths && slice.qty > 0)
+            : bar.startMonth != null && bar.endMonth != null
+              ? calculateMonthlyDistribution(bar.plannedQty, bar.startMonth, bar.endMonth, totalMonths)
+              : [];
           for (const slice of slices) {
             monthlyWork.set(slice.month, (monthlyWork.get(slice.month) ?? 0) + slice.qty);
           }
@@ -1686,7 +1711,7 @@ export function calculateBomDemand(
           exB.qtyPerUnit = exB.lineQty / exB.workQty;
         } else row.breakdown.push({
           boqItemId: item.id,
-          isProgrammed: itemBars.length > 0,
+          isProgrammed: itemBars.some(bar => bar.isProgrammed !== false),
           itemDescription: item.itemName || item.description,
           fullDescription: item.description,
           itemCode: item.itemCode,
@@ -1827,7 +1852,7 @@ export function calculateBomDemand(
         fuelRow.totalQty += fuelPerBoqUnit * workQty;
         fuelRow.breakdown.push({
           boqItemId: item.id,
-          isProgrammed: itemBars.length > 0,
+          isProgrammed: itemBars.some(bar => bar.isProgrammed !== false),
           itemDescription: `${display} — fuel`,
           fullDescription: `${item.description} (${display} @ ${norm} L/hr)`,
           itemCode: item.itemCode,
