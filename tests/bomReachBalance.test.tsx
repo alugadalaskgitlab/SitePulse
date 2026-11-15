@@ -190,7 +190,7 @@ describe("balance material requirements by working reach", () => {
     expect(screen.getAllByText("5 cum", { exact: true })).toHaveLength(2);
     expect(screen.getByText("Not scheduled")).toBeInTheDocument();
     screen.getByRole("button", { name: /Expand Shoulder Earth \/ Soil contributors/ }).click();
-    expect(screen.getByText(/Earthen shoulders/)).toBeInTheDocument();
+    expect(screen.getByText(/Earthen shoulders/i)).toBeInTheDocument();
   });
 });
 

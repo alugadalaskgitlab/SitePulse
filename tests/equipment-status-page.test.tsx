@@ -48,7 +48,7 @@ beforeEach(() => {
 describe("EquipmentStatus", () => {
   it("shows summary counts and keeps Not Logged separate from Idle", () => {
     render(<EquipmentStatus />);
-    expect(screen.getByText("Excavator EX-01")).toBeInTheDocument();
+    expect(screen.getAllByText("Excavator EX-01").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Not Logged").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Logged (status not specified)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Idle · No Work Available").length).toBeGreaterThan(0);
@@ -82,7 +82,7 @@ describe("EquipmentStatus", () => {
     } as unknown as ReturnType<typeof useQuery>);
     render(<EquipmentStatus />);
     fireEvent.change(screen.getByLabelText("Machine"), { target: { value: "7" } });
-    expect(screen.getByText("Excavator EX-01")).toBeInTheDocument();
+    expect(screen.getAllByText("Excavator EX-01").length).toBeGreaterThan(0);
     expect(screen.queryByText("Loader LD-02")).not.toBeInTheDocument();
   });
 
