@@ -109,8 +109,8 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
       />,
     );
 
-    expect(screen.getByText("Opening Odometer")).toBeTruthy();
-    expect(screen.getByText("Closing Odometer")).toBeTruthy();
+    expect(screen.getByText("Opening odometer")).toBeTruthy();
+    expect(screen.getByText("Closing odometer")).toBeTruthy();
     expect(screen.getByTestId("equipment-compact-working-hours-0").textContent).toContain("50.00 km");
     expect(screen.getByText("Clock time").parentElement?.textContent).toContain("9.0 h");
   });
@@ -152,7 +152,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
     expect(screen.getByTestId("equipment-compact-opening-tank-0")).toBeTruthy();
     expect(screen.getByTestId("equipment-compact-closing-tank-0")).toBeTruthy();
     expect(screen.getByTestId("equipment-compact-tank-confirmed-0")).toBeTruthy();
-    expect(screen.queryByText("Fuel Performance")).toBeNull();
+    expect(screen.queryByText("Fuel performance")).toBeNull();
   });
 
   it.each(["contractor", "direct_purchase"] as const)(
@@ -176,16 +176,16 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
 
       expect(screen.getByTestId("equipment-owner-0").textContent).toContain("Hired: Fasi Uddin");
       expect(screen.getByText("Owner / vendor")).toBeTruthy();
-      expect(screen.getByText("Diesel Issued / Added").parentElement?.textContent).toContain("12.00 L");
-      expect(screen.getByText("Diesel Source")).toBeTruthy();
-      expect(screen.queryByText("Opening Tank (L)")).toBeNull();
-      expect(screen.queryByText("Closing Tank / Physical Dip (L)")).toBeNull();
-      expect(screen.queryByText("Physical Tank Balance")).toBeNull();
-      expect(screen.queryByText("Fuel Performance")).toBeNull();
-      expect(screen.queryByText("Actual Consumed")).toBeNull();
+      expect(screen.getByText("Diesel issued / added").parentElement?.textContent).toContain("12.00 L");
+      expect(screen.getByText("Diesel source")).toBeTruthy();
+      expect(screen.queryByText("Opening tank (L)")).toBeNull();
+      expect(screen.queryByText("Closing tank / physical dip (L)")).toBeNull();
+      expect(screen.queryByText("Physical tank balance")).toBeNull();
+      expect(screen.queryByText("Fuel performance")).toBeNull();
+      expect(screen.queryByText("Actual consumed")).toBeNull();
       expect(screen.queryByText("Expected")).toBeNull();
       expect(screen.queryByText("Variance")).toBeNull();
-      expect(screen.queryByText(/Consumption Rate/)).toBeNull();
+      expect(screen.queryByText(/Consumption rate/)).toBeNull();
     },
   );
 
@@ -207,12 +207,12 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
         />,
       );
 
-      expect(screen.queryByText("Fuel Performance")).toBeNull();
-      expect(screen.queryByText("Actual Consumed")).toBeNull();
+      expect(screen.queryByText("Fuel performance")).toBeNull();
+      expect(screen.queryByText("Actual consumed")).toBeNull();
       expect(screen.queryByText("Expected")).toBeNull();
       expect(screen.queryByText("Variance")).toBeNull();
-      expect(screen.queryByText(/Consumption Rate/)).toBeNull();
-      expect(screen.queryByText("Physical Tank Balance")).toBeNull();
+      expect(screen.queryByText(/Consumption rate/)).toBeNull();
+      expect(screen.queryByText("Physical tank balance")).toBeNull();
     },
   );
 
@@ -234,7 +234,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
       expect(screen.queryByTestId("equipment-compact-opening-tank-0")).toBeNull();
       expect(screen.queryByTestId("equipment-compact-closing-tank-0")).toBeNull();
       expect(screen.queryByTestId("equipment-compact-tank-confirmed-0")).toBeNull();
-      expect(screen.queryByText("Fuel Performance")).toBeNull();
+      expect(screen.queryByText("Fuel performance")).toBeNull();
 
       fireEvent.change(issued, { target: { value: "15" } });
       expect(onChange).toHaveBeenCalledWith({ diesel: 15 });
@@ -259,15 +259,15 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
       />,
     );
 
-    expect(screen.getByText("Diesel Issued / Added").parentElement?.textContent).toContain("12.00 L");
-    expect(screen.getByText("Opening Tank (L)")).toBeTruthy();
-    expect(screen.getByText("Closing Tank / Physical Dip (L)")).toBeTruthy();
-    expect(screen.getByText("Physical Tank Balance")).toBeTruthy();
-    expect(screen.getByText("Fuel Performance")).toBeTruthy();
-    expect(screen.getByText("Actual Consumed")).toBeTruthy();
+    expect(screen.getByText("Diesel issued / added").parentElement?.textContent).toContain("12.00 L");
+    expect(screen.getByText("Opening tank (L)")).toBeTruthy();
+    expect(screen.getByText("Closing tank / physical dip (L)")).toBeTruthy();
+    expect(screen.getByText("Physical tank balance")).toBeTruthy();
+    expect(screen.getByText("Fuel performance")).toBeTruthy();
+    expect(screen.getByText("Actual consumed")).toBeTruthy();
     expect(screen.getByText("Expected")).toBeTruthy();
     expect(screen.getByText("Variance")).toBeTruthy();
-    expect(screen.getByText("Actual Consumption Rate · from confirmed tank dip")).toBeTruthy();
+    expect(screen.getByText("Actual consumption rate · from confirmed tank dip")).toBeTruthy();
   });
 
   it("does not make a contractor Daily Hire row with no meter or tank a submit-readiness blocker at zero or positive diesel", () => {
@@ -297,10 +297,10 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
       />,
     );
 
-    expect(screen.getByText("Expected Consumption Rate · from norm, actual unavailable")).toBeTruthy();
-    expect(screen.getByText("Expected Consumption Rate · from norm, actual unavailable").parentElement?.textContent).toContain("4.00 L/hr");
-    expect(screen.getByText("Actual Consumed").parentElement?.textContent).toContain("27.00 L");
-    expect(screen.queryByText("Actual Consumption Rate · from confirmed tank dip")).toBeNull();
+    expect(screen.getByText("Expected consumption rate · from norm, actual unavailable")).toBeTruthy();
+    expect(screen.getByText("Expected consumption rate · from norm, actual unavailable").parentElement?.textContent).toContain("4.00 L/hr");
+    expect(screen.getByText("Actual consumed").parentElement?.textContent).toContain("27.00 L");
+    expect(screen.queryByText("Actual consumption rate · from confirmed tank dip")).toBeNull();
   });
 
   it("uses the confirmed tank-dip label for an actual rate", () => {
@@ -321,8 +321,8 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
       />,
     );
 
-    expect(screen.getByText("Actual Consumption Rate · from confirmed tank dip")).toBeTruthy();
-    expect(screen.getByText("Actual Consumption Rate · from confirmed tank dip").parentElement?.textContent).toContain("13.50 L/hr");
+    expect(screen.getByText("Actual consumption rate · from confirmed tank dip")).toBeTruthy();
+    expect(screen.getByText("Actual consumption rate · from confirmed tank dip").parentElement?.textContent).toContain("13.50 L/hr");
   });
 
   it("uses the trip efficiency unit when falling back to an hour-meter norm", () => {
@@ -334,7 +334,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
       />,
     );
 
-    expect(screen.getByText("Expected Consumption Rate · from norm, actual unavailable").parentElement?.textContent).toContain("0.20 L/km");
+    expect(screen.getByText("Expected consumption rate · from norm, actual unavailable").parentElement?.textContent).toContain("0.20 L/km");
   });
 
   it("renders a pre-existing daily row's stored meter readings and norm without backfill", () => {
@@ -354,9 +354,9 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
       />,
     );
 
-    expect(screen.getByText("Opening Meter").parentElement?.textContent).toContain("412");
-    expect(screen.getByText("Closing Meter").parentElement?.textContent).toContain("419");
-    expect(screen.getByText("Expected Consumption Rate · from norm, actual unavailable").parentElement?.textContent).toContain("3.50 L/hr");
+    expect(screen.getByText("Opening meter").parentElement?.textContent).toContain("412");
+    expect(screen.getByText("Closing meter").parentElement?.textContent).toContain("419");
+    expect(screen.getByText("Expected consumption rate · from norm, actual unavailable").parentElement?.textContent).toContain("3.50 L/hr");
   });
 
   it("uses a historical trip snapshot's stored distance for a confirmed rate", () => {
@@ -379,8 +379,8 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
       />,
     );
 
-    expect(screen.getByText("Actual Consumption Rate · from confirmed tank dip").parentElement?.textContent).toContain("0.50 L/km");
-    expect(screen.getByText("Actual Consumption Rate · from confirmed tank dip").parentElement?.textContent).not.toContain("3.33 L/km");
+    expect(screen.getByText("Actual consumption rate · from confirmed tank dip").parentElement?.textContent).toContain("0.50 L/km");
+    expect(screen.getByText("Actual consumption rate · from confirmed tank dip").parentElement?.textContent).not.toContain("3.33 L/km");
   });
 
   it("uses the master norm in the stored distance unit when a historical trip dip is unconfirmed", () => {
@@ -403,7 +403,7 @@ describe("DIESEL-02 compact DPR equipment capture", () => {
       />,
     );
 
-    expect(screen.getByText("Expected Consumption Rate · from norm, actual unavailable").parentElement?.textContent).toContain("0.20 L/km");
+    expect(screen.getByText("Expected consumption rate · from norm, actual unavailable").parentElement?.textContent).toContain("0.20 L/km");
   });
 
   it("never requests a tank continuity opening for a contractor row", async () => {

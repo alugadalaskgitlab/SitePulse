@@ -356,7 +356,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Items Issued *</Label>
+                  <Label className="text-sm font-semibold">Items issued *</Label>
                   {lines.map((line, idx) => {
                     const selectedItem = items.find(i => String(i.id) === line.itemId);
                     const avail = selectedItem ? (stockMap[selectedItem.id] ?? 0) : null;
@@ -641,11 +641,11 @@ export default function StoresIssue({ isNew, detailId }: Props) {
       <Dialog open={cancelDialogId !== null} onOpenChange={open => { if (!open) { setCancelDialogId(null); setCancelReason(""); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cancel Issue Voucher</DialogTitle>
+            <DialogTitle>Cancel issue voucher</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">This Issue Voucher will be marked as cancelled and the issued quantities will be returned to stock. This cannot be undone.</p>
           <div className="space-y-2 mt-2">
-            <Label className="text-sm">Reason for Cancellation *</Label>
+            <Label className="text-sm">Reason for cancellation *</Label>
             <Textarea
               value={cancelReason}
               onChange={e => setCancelReason(e.target.value)}

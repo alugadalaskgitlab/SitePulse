@@ -1292,7 +1292,7 @@ export default function PlantStock() {
             <h2 style="margin: 0; font-size: 12px; font-weight: bold;">${companyName}</h2>
           </div>
           <div class="header">
-            <h1>Stock Balances & Ledger Report</h1>
+            <h1>Stock balances &amp; ledger report</h1>
             <p class="date">Period: ${dateFrom} to ${dateTo} | Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
           </div>
           
@@ -1324,7 +1324,7 @@ export default function PlantStock() {
             </tbody>
           </table>
           
-          <h2>Ledger Details</h2>
+          <h2>Ledger details</h2>
           <table>
             <thead>
               <tr>
@@ -1455,7 +1455,7 @@ export default function PlantStock() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">Stock Balances & Ledger</h1>
+            <h1 className="text-2xl font-bold">Stock balances &amp; ledger</h1>
             <p className="text-muted-foreground">View party-wise and plant-common stock</p>
           </div>
         </div>
@@ -1557,7 +1557,7 @@ export default function PlantStock() {
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
-              <Label>Party / Stock Owner</Label>
+              <Label>Party / stock owner</Label>
               <Select value={selectedPartyId} onValueChange={setSelectedPartyId}>
                 <SelectTrigger data-testid="select-filter-party">
                   <SelectValue placeholder="All Parties" />
@@ -1585,7 +1585,7 @@ export default function PlantStock() {
               </Select>
             </div>
             <div>
-              <Label>Transaction Type</Label>
+              <Label>Transaction type</Label>
               <Select value={selectedTransactionType} onValueChange={setSelectedTransactionType}>
                 <SelectTrigger data-testid="select-filter-transaction-type">
                   <SelectValue placeholder="All Types" />
@@ -1608,18 +1608,18 @@ export default function PlantStock() {
               </Select>
             </div>
             <div>
-              <Label>From Date</Label>
+              <Label>From date</Label>
               <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} data-testid="input-date-from" />
             </div>
             <div>
-              <Label>To Date</Label>
+              <Label>To date</Label>
               <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} data-testid="input-date-to" />
             </div>
           </div>
           {activeTab === "ledger" && (
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <Label>Dispatched To</Label>
+                <Label>Dispatched to</Label>
                 <Select value={issuedToFilter} onValueChange={setIssuedToFilter}>
                   <SelectTrigger data-testid="select-filter-dispatched-to">
                     <SelectValue placeholder="All Sites" />
@@ -1666,7 +1666,7 @@ export default function PlantStock() {
           </TabsTrigger>
           <TabsTrigger value="ledger" className="gap-2 text-sm sm:text-sm">
             <Calendar className="w-4 h-4" />
-            <span className="hidden sm:inline">Ledger Details</span>
+            <span className="hidden sm:inline">Ledger details</span>
             <span className="sm:hidden">Ledger</span>
           </TabsTrigger>
           {canExport && (
@@ -1706,7 +1706,7 @@ export default function PlantStock() {
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-3 px-2">Material</th>
-                        <th className="text-left py-3 px-2">Stock Owner</th>
+                        <th className="text-left py-3 px-2">Stock owner</th>
                         <th className="text-right py-3 px-2">Opening</th>
                         <th className="text-right py-3 px-2">Received</th>
                         <th className="text-right py-3 px-2">Consumed</th>
@@ -1831,7 +1831,7 @@ export default function PlantStock() {
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Package className="w-5 h-5" />
-                    Current Stock Balances
+                    Current stock balances
                   </CardTitle>
                   <p className="text-sm text-muted-foreground">
                     All-time stock positions. Click on a card to view ledger details.
@@ -2063,18 +2063,18 @@ export default function PlantStock() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-muted/50">
-                        <th className="text-left p-3 font-semibold">Transaction Date</th>
-                        <th className="text-left p-3 font-semibold">Invoice Date</th>
-                        <th className="text-left p-3 font-semibold">Entry Date / Time</th>
+                        <th className="text-left p-3 font-semibold">Transaction date</th>
+                        <th className="text-left p-3 font-semibold">Invoice date</th>
+                        <th className="text-left p-3 font-semibold">Entry date / time</th>
                         <th className="text-left p-3 font-semibold">Material</th>
-                        <th className="text-left p-3 font-semibold">Stock Owner</th>
+                        <th className="text-left p-3 font-semibold">Stock owner</th>
                         <th className="text-left p-3 font-semibold">Type</th>
-                        <th className="text-left p-3 font-semibold">Issued To</th>
+                        <th className="text-left p-3 font-semibold">Issued to</th>
                         <th className="text-right p-3 font-semibold text-green-600 dark:text-green-400">In</th>
                         <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Out</th>
-                        <th className="text-right p-3 font-semibold">{selectedPartyId === "all" ? "Global Balance" : isTankedMaterial ? "Physical Tank Balance" : "Book Balance"}</th>
+                        <th className="text-right p-3 font-semibold">{selectedPartyId === "all" ? "Global balance" : isTankedMaterial ? "Physical tank balance" : "Book balance"}</th>
                         {selectedPartyId === "all" && (
-                          <th className="text-right p-3 font-semibold text-muted-foreground">Party Balance</th>
+                          <th className="text-right p-3 font-semibold text-muted-foreground">Party balance</th>
                         )}
                       </tr>
                     </thead>
@@ -2364,11 +2364,11 @@ export default function PlantStock() {
                   </Select>
                 </div>
                 <div>
-                  <Label>From Date</Label>
+                  <Label>From date</Label>
                   <Input type="date" value={stmtDateFrom} onChange={e => { setStmtDateFrom(e.target.value); setReconEnabled(false); }} data-testid="recon-input-date-from" />
                 </div>
                 <div>
-                  <Label>To Date</Label>
+                  <Label>To date</Label>
                   <Input type="date" value={stmtDateTo} onChange={e => { setStmtDateTo(e.target.value); setReconEnabled(false); }} data-testid="recon-input-date-to" />
                 </div>
               </div>
@@ -2560,9 +2560,9 @@ export default function PlantStock() {
                         <thead>
                           <tr className="border-b bg-muted/50">
                             <th className="text-left p-3 font-semibold">Date</th>
-                            <th className="text-left p-3 font-semibold">Dispatch Site</th>
-                            <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Party Stmt Borrowed ({uom})</th>
-                            <th className="text-right p-3 font-semibold text-indigo-600 dark:text-indigo-400">{companyShortName} Ledger Dispatched ({uom})</th>
+                            <th className="text-left p-3 font-semibold">Dispatch site</th>
+                            <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Party stmt borrowed ({uom})</th>
+                            <th className="text-right p-3 font-semibold text-indigo-600 dark:text-indigo-400">{companyShortName} ledger dispatched ({uom})</th>
                             <th className="text-right p-3 font-semibold">Delta ({uom})</th>
                             <th className="text-left p-3 font-semibold">Status</th>
                           </tr>
@@ -2667,11 +2667,11 @@ export default function PlantStock() {
                   </Select>
                 </div>
                 <div>
-                  <Label>From Date</Label>
+                  <Label>From date</Label>
                   <Input type="date" value={stmtDateFrom} onChange={e => { setStmtDateFrom(e.target.value); setStmtEnabled(false); }} data-testid="stmt-input-date-from" />
                 </div>
                 <div>
-                  <Label>To Date</Label>
+                  <Label>To date</Label>
                   <Input type="date" value={stmtDateTo} onChange={e => { setStmtDateTo(e.target.value); setStmtEnabled(false); }} data-testid="stmt-input-date-to" />
                 </div>
               </div>
@@ -2757,7 +2757,7 @@ export default function PlantStock() {
                     th{background:#f5f5f5;font-size:10px}
                     .note{font-size:10px;color:#555;margin-top:6px}</style></head><body>
                     <h1>${PROJECT_NAME}</h1>
-                    <h2>Party Supply Obligation Statement</h2>
+                    <h2>Party supply obligation statement</h2>
                     <p><strong>Party:</strong> ${partyName} &nbsp;|&nbsp; <strong>Material:</strong> ${materialName} &nbsp;|&nbsp; <strong>Period:</strong> ${dateRange}</p>
                     <div class="summary">
                       <div class="card"><div class="card-label">Total Received</div><div class="card-value">${summary.totalReceived.toFixed(3)} ${uom}</div></div>
@@ -2907,16 +2907,16 @@ export default function PlantStock() {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b bg-muted/50">
-                            <th className="text-left p-3 font-semibold">Transaction Date</th>
-                            <th className="text-left p-3 font-semibold">Invoice Date</th>
-                            <th className="text-left p-3 font-semibold">Entry Date / Time</th>
+                            <th className="text-left p-3 font-semibold">Transaction date</th>
+                            <th className="text-left p-3 font-semibold">Invoice date</th>
+                            <th className="text-left p-3 font-semibold">Entry date / time</th>
                             <th className="text-left p-3 font-semibold">Type</th>
                             <th className="text-left p-3 font-semibold">Material</th>
                             <th className="text-right p-3 font-semibold text-green-600 dark:text-green-400">Received ({uom})</th>
-                            <th className="text-right p-3 font-semibold text-blue-600 dark:text-blue-400">Template Qty ({uom})</th>
-                            <th className="text-right p-3 font-semibold text-orange-600 dark:text-orange-400">From Own Stock ({uom})</th>
+                            <th className="text-right p-3 font-semibold text-blue-600 dark:text-blue-400">Template qty ({uom})</th>
+                            <th className="text-right p-3 font-semibold text-orange-600 dark:text-orange-400">From own stock ({uom})</th>
                             <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Borrowed from {companyShortName} ({uom})</th>
-                            <th className="text-right p-3 font-semibold">Own Balance</th>
+                            <th className="text-right p-3 font-semibold">Own balance</th>
                             <th className="text-left p-3 font-semibold">Notes</th>
                           </tr>
                         </thead>

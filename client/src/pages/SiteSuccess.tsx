@@ -24,7 +24,7 @@ export default function SiteSuccess() {
             <CheckCircle className="w-10 h-10 text-green-600 dark:text-green-400" />
           </div>
           
-          <h1 className="text-2xl font-bold mb-2">Report Saved Successfully</h1>
+          <h1 className="text-2xl font-bold mb-2">Report saved successfully</h1>
           <p className="text-muted-foreground mb-2">
             Your site report has been submitted and saved.
           </p>

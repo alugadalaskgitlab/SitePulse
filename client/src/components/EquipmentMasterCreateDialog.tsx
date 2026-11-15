@@ -173,11 +173,11 @@ export function EquipmentMasterCreateDialog({
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add Equipment</DialogTitle>
+          <DialogTitle>Add equipment</DialogTitle>
           <DialogDescription>Enter the Equipment Master details used for usage, fuel, and planning records.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-4">
-          <div><Label htmlFor="create-equipment-name">Equipment Name</Label><Input id="create-equipment-name" value={name} onChange={e => setName(e.target.value.toUpperCase())} placeholder="e.g., 600 KVA GENERATOR" data-testid="input-equipment-name" /></div>
+          <div><Label htmlFor="create-equipment-name">Equipment name</Label><Input id="create-equipment-name" value={name} onChange={e => setName(e.target.value.toUpperCase())} placeholder="e.g., 600 KVA GENERATOR" data-testid="input-equipment-name" /></div>
           <div><Label htmlFor="create-registration-number">Registration / ID Number</Label><Input id="create-registration-number" value={registrationNumber} onChange={e => setRegistrationNumber(e.target.value.toUpperCase())} placeholder="e.g., MH12AB1234" data-testid="input-registration-number" /></div>
           <div>
             <Label htmlFor="create-equipment-ownership">Ownership</Label>
@@ -238,8 +238,8 @@ export function EquipmentMasterCreateDialog({
               )}
             </div>
           )}
-          <div><Label>Meter Type</Label><Select value={meterType} onValueChange={setMeterType}><SelectTrigger data-testid="select-meter-type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hour_meter">Hour Meter (hrs)</SelectItem><SelectItem value="odometer">Odometer (km)</SelectItem></SelectContent></Select></div>
-          <div><Label>Consumption Norm ({meterType === "hour_meter" ? "L/hr" : "L/km"})</Label><Input type="number" step="0.1" value={consumptionNorm} onChange={e => setConsumptionNorm(e.target.value)} placeholder="e.g., 50" data-testid="input-consumption-norm" /></div>
+          <div><Label>Meter type</Label><Select value={meterType} onValueChange={setMeterType}><SelectTrigger data-testid="select-meter-type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hour_meter">Hour meter (hrs)</SelectItem><SelectItem value="odometer">Odometer (km)</SelectItem></SelectContent></Select></div>
+          <div><Label>Consumption norm ({meterType === "hour_meter" ? "L/hr" : "L/km"})</Label><Input type="number" step="0.1" value={consumptionNorm} onChange={e => setConsumptionNorm(e.target.value)} placeholder="e.g., 50" data-testid="input-consumption-norm" /></div>
           <div><Label>Plant <span className="text-muted-foreground text-sm">(leave blank if shared across plants)</span></Label><Select value={plantName || "__none__"} onValueChange={value => setPlantName(value === "__none__" ? "" : value)}><SelectTrigger data-testid="select-equipment-plant"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">— Shared / No specific plant —</SelectItem>{plants.map(plant => <SelectItem key={plant.plantName} value={plant.plantName}>{plant.plantName}</SelectItem>)}</SelectContent></Select></div>
           <div className="border border-dashed border-teal-200 rounded-lg">
             <button type="button" className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-teal-700" onClick={() => setShowPlanningOutput(value => !value)} data-testid="button-toggle-planning-output">

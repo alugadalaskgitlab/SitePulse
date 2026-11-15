@@ -876,7 +876,7 @@ export default function PlantHeatingSessions() {
             </SelectContent>
           </Select>
           <Link href={appendPlantContext("/plant/heating-trends", { forceTab: "operations" })}>
-            <Button variant="outline" data-testid="button-view-trends">View Trends</Button>
+            <Button variant="outline" data-testid="button-view-trends">View trends</Button>
           </Link>
           <Button onClick={openNew} data-testid="button-new-session"><Plus className="w-4 h-4 mr-1" />New Session</Button>
         </div>
@@ -1403,7 +1403,7 @@ export default function PlantHeatingSessions() {
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div><Label>Date</Label><Input type="date" value={form.date} onChange={e => setField("date", e.target.value)} data-testid="input-date" /></div>
-              <div><Label>Session Type</Label>
+              <div><Label>Session type</Label>
                 <Select value={form.sessionType} onValueChange={v => setField("sessionType", v)}>
                   <SelectTrigger data-testid="select-session-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1412,10 +1412,10 @@ export default function PlantHeatingSessions() {
                   </SelectContent>
                 </Select>
               </div>
-              <div><Label>Staff Name</Label><Input value={form.staffName} onChange={e => setField("staffName", e.target.value)} data-testid="input-staff-name" /></div>
-              <div><Label>Staff Role</Label><Input value={form.staffRole} onChange={e => setField("staffRole", e.target.value)} placeholder="Boiler operator" data-testid="input-staff-role" /></div>
-              <div><Label>Start Time</Label><Input type="time" value={form.startTime} onChange={e => setField("startTime", e.target.value)} data-testid="input-start-time" /></div>
-              <div><Label>End Time</Label><Input type="time" value={form.endTime} onChange={e => setField("endTime", e.target.value)} data-testid="input-end-time" /></div>
+              <div><Label>Staff name</Label><Input value={form.staffName} onChange={e => setField("staffName", e.target.value)} data-testid="input-staff-name" /></div>
+              <div><Label>Staff role</Label><Input value={form.staffRole} onChange={e => setField("staffRole", e.target.value)} placeholder="Boiler operator" data-testid="input-staff-role" /></div>
+              <div><Label>Start time</Label><Input type="time" value={form.startTime} onChange={e => setField("startTime", e.target.value)} data-testid="input-start-time" /></div>
+              <div><Label>End time</Label><Input type="time" value={form.endTime} onChange={e => setField("endTime", e.target.value)} data-testid="input-end-time" /></div>
               <div><Label>Duration (h)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-duration">{dur ?? "—"}</div></div>
             </div>
 
@@ -1440,10 +1440,10 @@ export default function PlantHeatingSessions() {
                 <Card className="mt-2">
                   <CardContent className="pt-4 space-y-3">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div><Label>Hot-Oil Supply °C</Label><Input type="number" step="0.1" value={form.hotOilSupplyTemp} onChange={e => setField("hotOilSupplyTemp", e.target.value)} data-testid="input-hot-oil-supply" /></div>
-                      <div><Label>Hot-Oil Return °C</Label><Input type="number" step="0.1" value={form.hotOilReturnTemp} onChange={e => setField("hotOilReturnTemp", e.target.value)} data-testid="input-hot-oil-return" /></div>
-                      <div><Label>Hot-Oil Start °C</Label><Input type="number" step="0.1" value={form.hotOilTempStart} onChange={e => setField("hotOilTempStart", e.target.value)} data-testid="input-hot-oil-start" /></div>
-                      <div><Label>Hot-Oil End °C</Label><Input type="number" step="0.1" value={form.hotOilTempEnd} onChange={e => setField("hotOilTempEnd", e.target.value)} data-testid="input-hot-oil-end" /></div>
+                      <div><Label>Hot-oil supply °C</Label><Input type="number" step="0.1" value={form.hotOilSupplyTemp} onChange={e => setField("hotOilSupplyTemp", e.target.value)} data-testid="input-hot-oil-supply" /></div>
+                      <div><Label>Hot-oil return °C</Label><Input type="number" step="0.1" value={form.hotOilReturnTemp} onChange={e => setField("hotOilReturnTemp", e.target.value)} data-testid="input-hot-oil-return" /></div>
+                      <div><Label>Hot-oil start °C</Label><Input type="number" step="0.1" value={form.hotOilTempStart} onChange={e => setField("hotOilTempStart", e.target.value)} data-testid="input-hot-oil-start" /></div>
+                      <div><Label>Hot-oil end °C</Label><Input type="number" step="0.1" value={form.hotOilTempEnd} onChange={e => setField("hotOilTempEnd", e.target.value)} data-testid="input-hot-oil-end" /></div>
                     </div>
                     <div className="grid grid-cols-[80px_1fr_1fr] md:grid-cols-[120px_1fr_1fr] gap-3 items-end">
                       <div className="text-sm font-medium text-muted-foreground pb-2">Tank</div>
@@ -1467,7 +1467,7 @@ export default function PlantHeatingSessions() {
               <CardHeader className="py-3"><CardTitle className="text-base">LDO Boiler Meter</CardTitle></CardHeader>
               <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div>
-                  <Label>Opening Meter</Label>
+                  <Label>Opening meter</Label>
                   <Input type="number" step="0.01" value={form.ldoTank1OpeningMeter}
                     onChange={e => setForm(p => ({ ...p, ldoTank1OpeningMeter: e.target.value, autoFilledOpening: false }))}
                     data-testid="input-ldo-open" />
@@ -1477,8 +1477,8 @@ export default function PlantHeatingSessions() {
                     </p>
                   )}
                 </div>
-                <div><Label>Closing Meter</Label><Input type="number" step="0.01" value={form.ldoTank1ClosingMeter} onChange={e => setField("ldoTank1ClosingMeter", e.target.value)} data-testid="input-ldo-close" /></div>
-                <div><Label>Total Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
+                <div><Label>Closing meter</Label><Input type="number" step="0.01" value={form.ldoTank1ClosingMeter} onChange={e => setField("ldoTank1ClosingMeter", e.target.value)} data-testid="input-ldo-close" /></div>
+                <div><Label>Total consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
                 <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
               </CardContent>
             </Card>

@@ -101,7 +101,7 @@ export default function PermissionMigrationAudit() {
           <ChevronLeft className="h-5 w-5" aria-hidden="true" />
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-bold">Permission Migration Audit</h1>
+          <h1 className="font-display text-2xl font-bold">Permission migration audit</h1>
           <p className="mt-1 text-sm text-muted-foreground">Recorded permission changes, mappings and page access.</p>
         </div>
         <Badge variant="outline" className="hidden shrink-0 gap-1.5 sm:inline-flex">

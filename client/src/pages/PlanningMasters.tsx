@@ -109,7 +109,7 @@ function EquipTypeDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-sm">Fuel Type</Label>
+              <Label className="text-sm">Fuel type</Label>
               <Select value={fuelType} onValueChange={setFuelType}>
                 <SelectTrigger className="h-8 text-sm mt-1" data-testid="select-equip-fuel-type">
                   <SelectValue />
@@ -122,7 +122,7 @@ function EquipTypeDialog({
               </Select>
             </div>
             <div>
-              <Label className="text-sm">Fuel Norm (L/hr)</Label>
+              <Label className="text-sm">Fuel norm (L/hr)</Label>
               <Input
                 type="number" step="0.1" min="0"
                 className="h-8 text-sm mt-1"
@@ -135,7 +135,7 @@ function EquipTypeDialog({
           </div>
 
           <div>
-            <Label className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Standard Outputs (per hour)</Label>
+            <Label className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Standard outputs (per hour)</Label>
             <div className="mt-2 space-y-2">
               <div className="grid grid-cols-[1fr_1.5fr_1fr] gap-2 pb-1">
                 <span className="text-[12px] uppercase tracking-wide text-muted-foreground font-semibold">Unit</span>
@@ -247,7 +247,7 @@ function LabourTypeDialog({
               />
             </div>
             <div>
-              <Label className="text-sm">Skill Tier</Label>
+              <Label className="text-sm">Skill tier</Label>
               <Select value={skillTier} onValueChange={setSkillTier}>
                 <SelectTrigger className="h-8 text-sm mt-1" data-testid="select-labour-type-tier">
                   <SelectValue />
@@ -621,7 +621,7 @@ export default function PlanningMasters() {
           <Settings className="w-5 h-5 text-teal-600" />
         </div>
         <div>
-          <h1 className="text-lg font-semibold">Planning Masters</h1>
+          <h1 className="text-lg font-semibold">Planning masters</h1>
           <p className="text-sm text-muted-foreground">
             Equipment and labour type catalogues used by BOQ Item Recipes and Work Programme duration calculations.
           </p>

@@ -87,7 +87,7 @@ export default function PlantLedgerRebuild() {
       <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4 text-center p-8">
         <ShieldAlert className="w-12 h-12 text-destructive" />
         <div>
-          <h2 className="text-xl font-semibold">Admin Access Required</h2>
+          <h2 className="text-xl font-semibold">Admin access required</h2>
           <p className="text-muted-foreground mt-1">Only administrators can use this tool.</p>
         </div>
         <Link href={backLink}>
@@ -191,7 +191,7 @@ export default function PlantLedgerRebuild() {
 
             <div className="space-y-4">
               <div>
-                <Label htmlFor="template-select">Mix Template</Label>
+                <Label htmlFor="template-select">Mix template</Label>
                 <Select value={templateId} onValueChange={setTemplateId}>
                   <SelectTrigger id="template-select" data-testid="select-rebuild-template">
                     <SelectValue placeholder="Select a template..." />
@@ -208,7 +208,7 @@ export default function PlantLedgerRebuild() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="from-date">Cutoff Date</Label>
+                  <Label htmlFor="from-date">Cutoff date</Label>
                   <Input
                     id="from-date"
                     type="date"
@@ -219,7 +219,7 @@ export default function PlantLedgerRebuild() {
                   <p className="text-sm text-muted-foreground mt-1">Dispatches on or after this date will be rebuilt</p>
                 </div>
                 <div>
-                  <Label htmlFor="from-time">Cutoff Time</Label>
+                  <Label htmlFor="from-time">Cutoff time</Label>
                   <Input
                     id="from-time"
                     type="time"

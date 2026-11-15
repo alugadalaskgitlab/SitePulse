@@ -15,5 +15,7 @@ describe("name tidy suggestions", () => {
     expect(suggestTidyName("KM STONE", "site")).toBe("Kilometre stone");
     expect(suggestTidyName("20MM / 10/12MM / JCB-PLANT", "sentence")).toBe("20mm / 10/12mm / JCB-plant");
     expect(suggestTidyName("TAKKADPALLY–SIRUR", "site")).toBe("Takkadpally–Sirur");
+    expect(suggestTidyName("JCB AP21q7292", "title")).toBe("JCB AP21Q7292");
+    expect(suggestTidyName("TG 12 uh 4799", "title")).toBe("TG 12 UH 4799");
   });
 });

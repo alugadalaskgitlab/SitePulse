@@ -348,8 +348,8 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
          </Group>}
          {editable && <Group title="Readings & times" testId={`equipment-compact-group-readings-${index}`}>
         {editable && <section className="grid grid-cols-2 border-b border-slate-200 bg-slate-50/70 text-xs dark:border-slate-700 dark:bg-slate-950/20 sm:grid-cols-6">
-           <div className="border-b border-r border-slate-200 px-3 py-2 sm:border-b-0 dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{equipment?.meterType === "odometer" ? "Opening Odometer" : "Opening Meter"}</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="number" step="0.1" value={row.openingReading ?? ""} disabled={linkedSourceLocked} onChange={event => setNumber("openingReading", event.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-opening-meter-${index}`} /></div>
-           <div className="border-b border-slate-200 px-3 py-2 sm:border-b-0 sm:border-r dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{equipment?.meterType === "odometer" ? "Closing Odometer" : "Closing Meter"}</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="number" step="0.1" value={row.closingReading ?? ""} onChange={event => { closingReadingEdited.current = true; setNumber("closingReading", event.target.value); }} placeholder="Not recorded" data-testid={`equipment-compact-closing-meter-${index}`} /></div>
+           <div className="border-b border-r border-slate-200 px-3 py-2 sm:border-b-0 dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{equipment?.meterType === "odometer" ? "Opening odometer" : "Opening meter"}</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="number" step="0.1" value={row.openingReading ?? ""} disabled={linkedSourceLocked} onChange={event => setNumber("openingReading", event.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-opening-meter-${index}`} /></div>
+           <div className="border-b border-slate-200 px-3 py-2 sm:border-b-0 sm:border-r dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{equipment?.meterType === "odometer" ? "Closing odometer" : "Closing meter"}</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="number" step="0.1" value={row.closingReading ?? ""} onChange={event => { closingReadingEdited.current = true; setNumber("closingReading", event.target.value); }} placeholder="Not recorded" data-testid={`equipment-compact-closing-meter-${index}`} /></div>
          <div className="border-r border-slate-200 px-3 py-2 dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Start</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={row.startTime ?? ""} disabled={linkedSourceLocked} onChange={event => onChange?.({ startTime: event.target.value })} data-testid={`equipment-compact-start-${index}`} /></div>
          <div className="border-r border-slate-200 px-3 py-2 dark:border-slate-700"><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">End</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={row.endTime ?? ""} onChange={event => onChange?.({ endTime: event.target.value })} data-testid={`equipment-compact-end-${index}`} /></div>
          <div className="px-3 py-2"><div className="text-xs font-medium text-slate-700 dark:text-slate-200">{equipment?.meterType === "odometer" ? "Distance (km)" : "Meter hours"}</div><div className="mt-2 text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100" data-testid={`equipment-compact-working-hours-${index}`}>{usageQuantity.value}</div></div>
@@ -364,24 +364,24 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
            <Detail label="Registration / equipment no." value={dash(row.vehicleNo)} />
            <Detail label="Operator" value={dash(row.operator)} />
            {hiredVendorLabel && <Detail label="Owner / vendor" value={hiredVendorLabel} />}
-           <Detail label="Entry / Hire Type" value={dash(row.entryType).replaceAll("_", " ")} />
-            <Detail label="Daily Status" value={statusLabel(row.usageStatus)} />
-           {row.usageStatusReason && <Detail label="Status Reason" value={row.usageStatusReason} />}
+            <Detail label="Entry / hire type" value={dash(row.entryType).replaceAll("_", " ")} />
+             <Detail label="Daily status" value={statusLabel(row.usageStatus)} />
+            {row.usageStatusReason && <Detail label="Status reason" value={row.usageStatusReason} />}
           </div>
          </Group>
          <Group title="02 / Readings & times" testId={`equipment-compact-read-group-readings-${index}`}>
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
-           <Detail label={equipment?.meterType === "odometer" ? "Opening Odometer" : "Opening Meter"} value={dash(row.openingReading)} />
-           <Detail label={equipment?.meterType === "odometer" ? "Closing Odometer" : "Closing Meter"} value={dash(row.closingReading)} />
-           <Detail label="Start Time" value={formatEquipmentTime(row.startTime)} emphasis />
-           <Detail label="End Time" value={formatEquipmentTime(row.endTime)} emphasis />
-           <Detail label={equipment?.meterType === "odometer" || preview.totalKm != null ? "Distance" : "Meter Working Hours"} value={equipment?.meterType === "odometer" || preview.totalKm != null ? (preview.totalKm == null ? "—" : `${number(preview.totalKm, 2)} km`) : (preview.basis === "hour_meter" && preview.hoursWorked != null ? `${number(preview.hoursWorked)} h` : "—")} emphasis />
-           <Detail label="Clock Duration" value={formatEquipmentDuration(clockHours)} emphasis />
+            <Detail label={equipment?.meterType === "odometer" ? "Opening odometer" : "Opening meter"} value={dash(row.openingReading)} />
+            <Detail label={equipment?.meterType === "odometer" ? "Closing odometer" : "Closing meter"} value={dash(row.closingReading)} />
+            <Detail label="Start time" value={formatEquipmentTime(row.startTime)} emphasis />
+            <Detail label="End time" value={formatEquipmentTime(row.endTime)} emphasis />
+            <Detail label={equipment?.meterType === "odometer" || preview.totalKm != null ? "Distance" : "Meter working hours"} value={equipment?.meterType === "odometer" || preview.totalKm != null ? (preview.totalKm == null ? "—" : `${number(preview.totalKm, 2)} km`) : (preview.basis === "hour_meter" && preview.hoursWorked != null ? `${number(preview.hoursWorked)} h` : "—")} emphasis />
+            <Detail label="Clock duration" value={formatEquipmentDuration(clockHours)} emphasis />
            <p className="col-span-full text-xs text-slate-600 dark:text-slate-400">
              {equipment?.meterType === "odometer"
                ? "Distance comes from the odometer or trip calculation. Clock duration is shown separately."
                : preview.basis === "hour_meter"
-                 ? "Meter Working Hours come from the opening and closing meter difference. Clock duration is shown separately."
+                  ? "Meter working hours come from the opening and closing meter difference. Clock duration is shown separately."
                  : "No hour-meter difference is available. Clock duration is shown separately and is not labelled as meter working time."}
            </p>
           </div>
@@ -390,12 +390,12 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
            {showTankBalance && <>
              <div className="col-span-full border-t border-slate-200 pt-3 dark:border-slate-700" data-testid={`equipment-compact-fuel-${index}`}><SectionHeading><span className="flex items-center gap-2"><Fuel className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel</span></SectionHeading></div>
-             <Detail label="Diesel Issued / Added" value={`${number(row.diesel)} L`} />
-             <Detail label="Diesel Source" value={dash(row.dieselSource).replace("_", " ")} />
+              <Detail label="Diesel issued / added" value={`${number(row.diesel)} L`} />
+              <Detail label="Diesel source" value={dash(row.dieselSource).replace("_", " ")} />
              {isPlantStock && <>
-               <Detail label="Opening Tank (L)" value={row.openingDiesel == null ? "Not recorded" : `${number(row.openingDiesel)} L`} />
-               <Detail label="Closing Tank / Physical Dip (L)" value={row.dieselBalanceInTank == null ? "Not recorded" : `${number(row.dieselBalanceInTank)} L`} />
-               <Detail label="Physical Tank Balance" value={row.dieselBalanceConfirmed ? "Confirmed" : tankKnown ? "Pending confirmation" : "—"} emphasis />
+                <Detail label="Opening tank (L)" value={row.openingDiesel == null ? "Not recorded" : `${number(row.openingDiesel)} L`} />
+                <Detail label="Closing tank / physical dip (L)" value={row.dieselBalanceInTank == null ? "Not recorded" : `${number(row.dieselBalanceInTank)} L`} />
+                <Detail label="Physical tank balance" value={row.dieselBalanceConfirmed ? "Confirmed" : tankKnown ? "Pending confirmation" : "—"} emphasis />
              </>}
            </>}
           </div>
@@ -403,11 +403,11 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
          {isPlantStock && <Group title="04 / Fuel performance" testId={`equipment-compact-read-group-performance-${index}`}>
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
            {isPlantStock && <>
-             <div className="col-span-full border-t border-slate-200 pt-3 dark:border-slate-700"><SectionHeading><span className="flex items-center gap-2"><Droplets className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel Performance</span></SectionHeading></div>
-             <Detail label="Actual Consumed" value={fuel.actualConsumed == null ? historicalCorrection ? "Not recorded" : "Awaiting tank dip" : `${number(fuel.actualConsumed)} L`} emphasis />
+              <div className="col-span-full border-t border-slate-200 pt-3 dark:border-slate-700"><SectionHeading><span className="flex items-center gap-2"><Droplets className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel performance</span></SectionHeading></div>
+              <Detail label="Actual consumed" value={fuel.actualConsumed == null ? historicalCorrection ? "Not recorded" : "Awaiting tank dip" : `${number(fuel.actualConsumed)} L`} emphasis />
              <Detail label="Expected" value={fuel.expectedDiesel == null ? "—" : `${number(fuel.expectedDiesel)} L`} />
              <Detail label="Variance" value={fuel.variance == null ? "—" : `${fuel.variance > 0 ? "+" : ""}${number(fuel.variance)} L`} emphasis />
-             <Detail label={hasConfirmedActualRate ? "Actual Consumption Rate · from confirmed tank dip" : "Expected Consumption Rate · from norm, actual unavailable"} value={hasConfirmedActualRate ? `${number(fuel.actualRate)} ${fuel.actualRateUnit}` : consumptionNorm == null ? "—" : `${number(consumptionNorm)} ${consumptionNormUnit}`} emphasis />
+              <Detail label={hasConfirmedActualRate ? "Actual consumption rate · from confirmed tank dip" : "Expected consumption rate · from norm, actual unavailable"} value={hasConfirmedActualRate ? `${number(fuel.actualRate)} ${fuel.actualRateUnit}` : consumptionNorm == null ? "—" : `${number(consumptionNorm)} ${consumptionNormUnit}`} emphasis />
              <p className="col-span-full text-xs text-slate-600 dark:text-slate-400">Variance is actual consumed minus expected; a positive value means more fuel was consumed than expected.</p>
            </>}
          </div>
@@ -419,11 +419,11 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
         <SectionHeading><span className="flex items-center gap-2"><Fuel className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel</span></SectionHeading>
           {historicalCorrection && <p className="mb-3 text-xs text-muted-foreground">Historical readings may be left blank when not recorded. Zero is a known empty tank. Actual consumption is unavailable unless both tank readings and diesel issued are recorded.</p>}
           {editable && onChange ? <><div className="mb-2 text-[11px] text-slate-500">Diesel source: <strong className="text-slate-700 dark:text-slate-200">{dash(row.dieselSource).replaceAll("_", " ")}</strong></div><div className={`grid grid-cols-2 gap-2 ${isPlantStock ? "lg:grid-cols-[140px_160px_140px_minmax(190px,1fr)]" : "lg:grid-cols-[140px]"} lg:items-end`}>
-           {isPlantStock && <><div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Opening Tank (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.openingDiesel ?? ""} onChange={e => setNumber("openingDiesel", e.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-opening-tank-${index}`} /></div>
-            <div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Closing / Physical Dip (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.dieselBalanceInTank ?? ""} onChange={e => { closingTankEdited.current = true; setNumber("dieselBalanceInTank", e.target.value); }} placeholder="Not recorded" data-testid={`equipment-compact-closing-tank-${index}`} /></div></>}
-             <div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Diesel Issued / Added (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.diesel ?? ""} disabled={row.plantUsageId != null && isPlantStock && !allowLinkedSourceEdit} onChange={e => { dieselIssuedEdited.current = true; setNumber("diesel", e.target.value); }} placeholder="0" data-testid={`equipment-compact-diesel-${index}`} /></div>
-           {isPlantStock && <label className={`col-span-2 flex h-11 items-center gap-2 rounded-md border px-2.5 text-xs font-semibold sm:h-9 lg:col-span-1 ${row.dieselBalanceConfirmed ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300"}`}><Checkbox checked={!!row.dieselBalanceConfirmed} onCheckedChange={checked => onChange({ dieselBalanceConfirmed: checked === true })} data-testid={`equipment-compact-tank-confirmed-${index}`} /><span>{row.dieselBalanceConfirmed && <Check className="mr-1 inline h-4 w-4 text-emerald-600" />}Physical Tank Balance Confirmed</span></label>}
-         </div></> : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"><Detail label="Diesel Issued / Added" value={`${number(row.diesel)} L`} /><Detail label="Diesel Source" value={dash(row.dieselSource).replace("_", " ")} />{isPlantStock && <><Detail label="Opening Tank (L)" value={`${number(row.openingDiesel)} L`} /><Detail label="Closing Tank / Physical Dip (L)" value={`${number(row.dieselBalanceInTank)} L`} /><Detail label="Physical Tank Balance" value={row.dieselBalanceConfirmed ? "Confirmed" : tankKnown ? "Pending confirmation" : "—"} emphasis /></>}</div>}
+           {isPlantStock && <><div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Opening tank (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.openingDiesel ?? ""} onChange={e => setNumber("openingDiesel", e.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-opening-tank-${index}`} /></div>
+            <div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Closing / physical dip (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.dieselBalanceInTank ?? ""} onChange={e => { closingTankEdited.current = true; setNumber("dieselBalanceInTank", e.target.value); }} placeholder="Not recorded" data-testid={`equipment-compact-closing-tank-${index}`} /></div></>}
+             <div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Diesel issued / added (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.diesel ?? ""} disabled={row.plantUsageId != null && isPlantStock && !allowLinkedSourceEdit} onChange={e => { dieselIssuedEdited.current = true; setNumber("diesel", e.target.value); }} placeholder="0" data-testid={`equipment-compact-diesel-${index}`} /></div>
+           {isPlantStock && <label className={`col-span-2 flex h-11 items-center gap-2 rounded-md border px-2.5 text-xs font-semibold sm:h-9 lg:col-span-1 ${row.dieselBalanceConfirmed ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300"}`}><Checkbox checked={!!row.dieselBalanceConfirmed} onCheckedChange={checked => onChange({ dieselBalanceConfirmed: checked === true })} data-testid={`equipment-compact-tank-confirmed-${index}`} /><span>{row.dieselBalanceConfirmed && <Check className="mr-1 inline h-4 w-4 text-emerald-600" />}Physical tank balance confirmed</span></label>}
+         </div></> : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"><Detail label="Diesel issued / added" value={`${number(row.diesel)} L`} /><Detail label="Diesel source" value={dash(row.dieselSource).replace("_", " ")} />{isPlantStock && <><Detail label="Opening tank (L)" value={`${number(row.openingDiesel)} L`} /><Detail label="Closing tank / physical dip (L)" value={`${number(row.dieselBalanceInTank)} L`} /><Detail label="Physical tank balance" value={row.dieselBalanceConfirmed ? "Confirmed" : tankKnown ? "Pending confirmation" : "—"} emphasis /></>}</div>}
        </section>}
          </Group>}
 

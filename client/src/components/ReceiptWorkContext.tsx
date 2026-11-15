@@ -247,7 +247,7 @@ export function ReceiptWorkContext({
   return (
     <div className="rounded-md border bg-muted/30 p-3 space-y-3" data-testid={`${testIdPrefix}-section`}>
       <div className="flex items-center gap-2">
-        <Label className="text-sm font-semibold">BOQ Item / Intended Activity{required ? " *" : ""}</Label>
+        <Label className="text-sm font-semibold">BOQ item / intended activity{required ? " *" : ""}</Label>
         <span className="text-xs text-muted-foreground">
           {required ? "(required for this material trip)" : "(links this receipt to the work it serves)"}
         </span>
@@ -268,7 +268,7 @@ export function ReceiptWorkContext({
           </div>
         )}
         <div>
-          <Label className="text-xs">Work Item / BOQ Activity{required ? " *" : ""}</Label>
+          <Label className="text-xs">Work item / BOQ activity{required ? " *" : ""}</Label>
           <Select
             value={value.boqItemId != null ? String(value.boqItemId) : "none"}
             onValueChange={(v) =>
@@ -287,7 +287,7 @@ export function ReceiptWorkContext({
         </div>
         {value.boqItemId != null && resolution && (!resolution.none || historicalInactiveArrangement != null) && (
           <div>
-            <Label className="text-xs">Execution Arrangement</Label>
+            <Label className="text-xs">Execution arrangement</Label>
             {!manualOnly && historicalInactiveArrangement ? (
               <p className="text-xs mt-1.5 font-medium text-muted-foreground" data-testid={`${testIdPrefix}-arrangement-historical`}>
                 Historical arrangement: {arrangementLabel(historicalInactiveArrangement, true, companyShortName)}

@@ -105,7 +105,7 @@ export default function Plant() {
             </Button>
           )}
           <div>
-            <h1 className="text-3xl font-bold font-display tracking-tight text-foreground">Plant Dashboard</h1>
+            <h1 className="text-3xl font-bold font-display tracking-tight text-foreground">Plant dashboard</h1>
             <p className="text-muted-foreground mt-1">{VIEW_SUBTITLES[plantView]}</p>
           </div>
         </div>
@@ -329,7 +329,7 @@ function HMPOpsView({ plantType = "hma", plantName }: { plantType?: string; plan
                 <Truck className="w-7 h-7 text-green-600 dark:text-green-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg">Plant Production &amp; Dispatches</h3>
+                <h3 className="font-semibold text-lg">Plant production &amp; dispatches</h3>
                 <p className="text-sm text-muted-foreground">Log outgoing truck loads with mix data</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -346,7 +346,7 @@ function HMPOpsView({ plantType = "hma", plantName }: { plantType?: string; plan
                 <Pencil className="w-7 h-7 text-blue-700 dark:text-blue-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg">Plant Log</h3>
+                <h3 className="font-semibold text-lg">Plant log</h3>
                 <p className="text-sm text-muted-foreground">View plant shift logs or start a new entry</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -363,7 +363,7 @@ function HMPOpsView({ plantType = "hma", plantName }: { plantType?: string; plan
                 <Flame className="w-7 h-7 text-orange-600 dark:text-orange-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg">Bitumen Heating Sessions</h3>
+                <h3 className="font-semibold text-lg">Bitumen heating sessions</h3>
                 <p className="text-sm text-muted-foreground">Per-session boiler runs – night pre-heat + day-time, with optional inline DG</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -380,7 +380,7 @@ function HMPOpsView({ plantType = "hma", plantName }: { plantType?: string; plan
                 <ClipboardList className="w-7 h-7 text-purple-600 dark:text-purple-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg">Purchase Indents</h3>
+                <h3 className="font-semibold text-lg">Purchase indents</h3>
                 <p className="text-sm text-muted-foreground">Raise and track material purchase requests</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -397,7 +397,7 @@ function HMPOpsView({ plantType = "hma", plantName }: { plantType?: string; plan
                 <Fuel className="w-7 h-7 text-amber-600 dark:text-amber-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg">Daily Diesel Requirements</h3>
+                <h3 className="font-semibold text-lg">Daily diesel requirements</h3>
                 <p className="text-sm text-muted-foreground">Plan and track daily diesel needs per equipment</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -431,7 +431,7 @@ function EquipmentFleetView({ plantName }: { plantName?: string }) {
                 <Gauge className="w-7 h-7 text-orange-600 dark:text-orange-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg">Equipment Usage</h3>
+                <h3 className="font-semibold text-lg">Equipment usage</h3>
                 <p className="text-sm text-muted-foreground">Track meter readings and diesel consumption</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -472,7 +472,7 @@ function EquipmentFleetView({ plantName }: { plantName?: string }) {
                 <Fuel className="w-7 h-7 text-amber-600 dark:text-amber-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg">Daily Diesel Requirements</h3>
+                <h3 className="font-semibold text-lg">Daily diesel requirements</h3>
                 <p className="text-sm text-muted-foreground">Plan and track daily diesel needs per equipment</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -549,7 +549,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
               <Truck className="w-7 h-7 text-green-600 dark:text-green-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Plant Production and Dispatches</h3>
+              <h3 className="font-semibold text-lg">Plant production and dispatches</h3>
               <p className="text-sm text-muted-foreground">Log outgoing truck loads with mix data</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -567,7 +567,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
               <Gauge className="w-7 h-7 text-orange-600 dark:text-orange-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Equipment Usage</h3>
+              <h3 className="font-semibold text-lg">Equipment usage</h3>
               <p className="text-sm text-muted-foreground">Track meter readings and diesel consumption</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -610,7 +610,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
               <ClipboardList className="w-7 h-7 text-purple-600 dark:text-purple-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Purchase Indents</h3>
+              <h3 className="font-semibold text-lg">Purchase indents</h3>
               <p className="text-sm text-muted-foreground">Raise and track material purchase requests</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -628,7 +628,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
               <Pencil className="w-7 h-7 text-blue-700 dark:text-blue-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Plant Log</h3>
+              <h3 className="font-semibold text-lg">Plant log</h3>
               <p className="text-sm text-muted-foreground">View plant shift logs or start a new entry</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -646,7 +646,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
               <Flame className="w-7 h-7 text-orange-600 dark:text-orange-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Bitumen Heating Sessions</h3>
+              <h3 className="font-semibold text-lg">Bitumen heating sessions</h3>
               <p className="text-sm text-muted-foreground">Per-session boiler runs – night pre-heat + day-time, with optional inline DG</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -664,7 +664,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
               <Fuel className="w-7 h-7 text-amber-600 dark:text-amber-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Daily Diesel Requirements</h3>
+              <h3 className="font-semibold text-lg">Daily diesel requirements</h3>
               <p className="text-sm text-muted-foreground">Plan and track daily diesel needs per equipment</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -727,7 +727,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
               <Truck className="w-7 h-7 text-teal-600 dark:text-teal-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">RMC Batch Records</h3>
+              <h3 className="font-semibold text-lg">RMC batch records</h3>
               <p className="text-sm text-muted-foreground">Log concrete batches & generate delivery challans</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -743,7 +743,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
               <FileText className="w-7 h-7 text-teal-600 dark:text-teal-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Delivery Challans</h3>
+              <h3 className="font-semibold text-lg">Delivery challans</h3>
               <p className="text-sm text-muted-foreground">View and print DCs generated from batch records</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -760,7 +760,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
               <Package className="w-7 h-7 text-teal-600 dark:text-teal-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">RMC Raw Material Receipts</h3>
+              <h3 className="font-semibold text-lg">RMC raw material receipts</h3>
               <p className="text-sm text-muted-foreground">Track incoming cement, aggregates & admixtures</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -780,7 +780,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
               )}
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Cube Tests QC</h3>
+              <h3 className="font-semibold text-lg">Cube tests QC</h3>
               <p className="text-sm text-muted-foreground">
                 {cubeTestFailCount > 0
                   ? <span className="text-destructive font-medium">{cubeTestFailCount} failed test{cubeTestFailCount !== 1 ? "s" : ""} in last 30 days</span>
@@ -801,7 +801,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
               <FlaskConical className="w-7 h-7 text-teal-600 dark:text-teal-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Mix Designs</h3>
+              <h3 className="font-semibold text-lg">Mix designs</h3>
               <p className="text-sm text-muted-foreground">Manage approved concrete mix design grades</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -837,7 +837,7 @@ function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: str
                 <FileText className="w-7 h-7 text-green-700 dark:text-green-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg">Today's Daily Plant Report</h3>
+                <h3 className="font-semibold text-lg">Today's daily plant report</h3>
                 <p className="text-sm text-muted-foreground">Consolidated daily report — production, dispatches, fuel, manpower, idle</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -853,7 +853,7 @@ function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: str
                 <FileText className="w-7 h-7 text-slate-700 dark:text-slate-300" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg">Historical Daily Reports</h3>
+                <h3 className="font-semibold text-lg">Historical daily reports</h3>
                 <p className="text-sm text-muted-foreground">Browse all dates with date / plant filters; bulk PDF / ZIP export</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -869,7 +869,7 @@ function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: str
                 <Flame className="w-7 h-7 text-orange-600 dark:text-orange-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg">Boiler / Heating Trends</h3>
+                <h3 className="font-semibold text-lg">Boiler / heating trends</h3>
                 <p className="text-sm text-muted-foreground">Daily L/MT, L/Hr trends with date-range filter and Excel export</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -885,7 +885,7 @@ function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: str
                 <BarChart3 className="w-7 h-7 text-teal-600 dark:text-teal-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg">RMC Daily Report</h3>
+                <h3 className="font-semibold text-lg">RMC daily report</h3>
                 <p className="text-sm text-muted-foreground">Day-wise RMC production, materials & cube test summary</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -901,7 +901,7 @@ function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: str
                 <BarChart3 className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg">Plant-Project Dispatch Summary</h3>
+                <h3 className="font-semibold text-lg">Plant-project dispatch summary</h3>
                 <p className="text-sm text-muted-foreground">Cross-plant dispatch analysis — loads & MT by plant and party</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -1030,7 +1030,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
               <Layers className="w-7 h-7 text-purple-600 dark:text-purple-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Stock Balances & Ledger</h3>
+              <h3 className="font-semibold text-lg">Stock balances &amp; ledger</h3>
               <p className="text-sm text-muted-foreground">View party-wise stock and transaction history</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -1047,7 +1047,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
               <AlertTriangle className="w-7 h-7 text-amber-600 dark:text-amber-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Variance Report</h3>
+              <h3 className="font-semibold text-lg">Variance report</h3>
               <p className="text-sm text-muted-foreground">View dispatches where actual differs from theoretical</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -1064,7 +1064,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
               <Shield className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Audit Report</h3>
+              <h3 className="font-semibold text-lg">Audit report</h3>
               <p className="text-sm text-muted-foreground">Complete history of consumption adjustments</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -1081,7 +1081,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
               <Fuel className="w-7 h-7 text-green-600 dark:text-green-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Diesel Procurement</h3>
+              <h3 className="font-semibold text-lg">Diesel procurement</h3>
               <p className="text-sm text-muted-foreground">Track all diesel: plant receipts + direct site purchases</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -1098,7 +1098,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
               <Droplets className="w-7 h-7 text-amber-700 dark:text-amber-500" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">Bitumen Stock Tracker</h3>
+              <h3 className="font-semibold text-lg">Bitumen stock tracker</h3>
               <p className="text-sm text-muted-foreground">Track bitumen tank dip readings & actual stock (2 tanks)</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -1115,7 +1115,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
               <Gauge className="w-7 h-7 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-lg">LDO Flow Meter Tracker</h3>
+              <h3 className="font-semibold text-lg">LDO flow meter tracker</h3>
               <p className="text-sm text-muted-foreground">Track LDO consumption, tank stock & variance analysis</p>
               {ldoTankSummary && (
                 <div className="mt-2 flex items-center gap-3 text-sm" data-testid="text-ldo-stock-summary">
@@ -1217,7 +1217,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                 {/* Physical qty + preview */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                   <div>
-                    <Label className="text-sm">Physical Stock (Liters)</Label>
+                    <Label className="text-sm">Physical stock (liters)</Label>
                     <Input
                       type="number" step="1" min="0"
                       value={dieselCorrPhysicalL}
@@ -1296,7 +1296,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                 <Receipt className="w-7 h-7 text-teal-600 dark:text-teal-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg">Vendor Bills</h3>
+                <h3 className="font-semibold text-lg">Vendor bills</h3>
                 <p className="text-sm text-muted-foreground">Track and process vendor invoices with workflow</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -1309,7 +1309,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
       {isOwner && (
         <>
           <div className="mt-2">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Admin Tools</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Admin tools</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Link href={appendRoleAndTab("/plant/data-sync")}>
@@ -1319,7 +1319,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                     <ArrowRightLeft className="w-7 h-7 text-slate-600 dark:text-slate-400" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-lg">Data Export / Import</h3>
+                    <h3 className="font-semibold text-lg">Data export / import</h3>
                     <p className="text-sm text-muted-foreground">Transfer data between development and production</p>
                   </div>
                   <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -1334,7 +1334,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                     <Gauge className="w-7 h-7 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-lg">LDO Meter Backfill</h3>
+                    <h3 className="font-semibold text-lg">LDO meter backfill</h3>
                     <p className="text-sm text-muted-foreground">Enter historical Tank-1 / Tank-2 opening &amp; closing meters for past dates</p>
                   </div>
                   <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -1349,7 +1349,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                     <Droplets className="w-7 h-7 text-cyan-600 dark:text-cyan-400" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-lg">LDO Dip-Stick Backfill</h3>
+                    <h3 className="font-semibold text-lg">LDO dip-stick backfill</h3>
                     <p className="text-sm text-muted-foreground">Enter historical Tank-1 / Tank-2 dip-stick depths so book vs physical reconciliation is complete</p>
                   </div>
                   <ChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -1363,7 +1363,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                   <FileText className="w-7 h-7 text-orange-600 dark:text-orange-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-lg">Backfill Dispatch Notes</h3>
+                  <h3 className="font-semibold text-lg">Backfill dispatch notes</h3>
                   <p className="text-sm text-muted-foreground">Update old ledger notes to "Mix — Site" format</p>
                   {dispatchNotesBackfillResult && (
                     <p className="text-sm text-green-700 dark:text-green-400 mt-1" data-testid="text-dispatch-notes-backfill-result">
@@ -1442,7 +1442,7 @@ function TankSlotEditor({
       {enabled && config && (
         <>
           <div>
-            <Label className="text-sm">Tank Shape</Label>
+            <Label className="text-sm">Tank shape</Label>
             <Select value={shape} onValueChange={(v) => onChange(defaultForShape(v))}>
               <SelectTrigger className="mt-1 h-8 text-sm" data-testid={`select-tank-${slotKey}-shape`}>
                 <SelectValue />
@@ -1475,12 +1475,12 @@ function TankSlotEditor({
             {config.shape === "vertical_cone_top" && (
               <>
                 <div>
-                  <Label className="text-sm">Cylinder Height (cm)</Label>
+                  <Label className="text-sm">Cylinder height (cm)</Label>
                   {numField(config.cylinderHeightCm, "cylinderHeightCm")}
                 </div>
                 <div className="col-span-2 grid grid-cols-2 gap-2">
                   <div>
-                    <Label className="text-sm">Cone Height (cm)</Label>
+                    <Label className="text-sm">Cone height (cm)</Label>
                     {numField(config.coneHeightCm, "coneHeightCm")}
                   </div>
                   <div />
@@ -1488,7 +1488,7 @@ function TankSlotEditor({
               </>
             )}
             <div>
-              <Label className="text-sm">Dead Stock Depth (cm)</Label>
+              <Label className="text-sm">Dead stock depth (cm)</Label>
               <Input type="number" min={0} value={config.deadStockDepthCm ?? ""}
                 placeholder="e.g. 12"
                 onChange={(e) => update({ deadStockDepthCm: parseFloat(e.target.value) || undefined })}
@@ -1860,14 +1860,14 @@ export function PlantTypeConfigSection() {
       <Dialog open={!!editTarget} onOpenChange={(o) => { if (!o) setEditTarget(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Plant Type</DialogTitle>
+            <DialogTitle>Edit plant type</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
               Changing the type for <strong>{editTarget?.plantName}</strong> will affect which tabs and features are shown for this plant.
             </p>
             <div>
-              <Label>Plant Type</Label>
+              <Label>Plant type</Label>
               <Select value={editType} onValueChange={setEditType}>
                 <SelectTrigger className="mt-1" data-testid="select-edit-plant-type">
                   <SelectValue />
@@ -1897,7 +1897,7 @@ export function PlantTypeConfigSection() {
       <Dialog open={!!renameTarget} onOpenChange={(o) => { if (!o) { setRenameTarget(null); setRenameTo(""); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rename Plant</DialogTitle>
+            <DialogTitle>Rename plant</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
@@ -1907,7 +1907,7 @@ export function PlantTypeConfigSection() {
               </p>
             </div>
             <div>
-              <Label htmlFor="input-rename-plant">New Name <span className="text-destructive">*</span></Label>
+              <Label htmlFor="input-rename-plant">New name <span className="text-destructive">*</span></Label>
               <Input
                 id="input-rename-plant"
                 value={renameTo}
@@ -1958,11 +1958,11 @@ export function PlantTypeConfigSection() {
       <Dialog open={addOpen} onOpenChange={(o) => { if (!o) { setAddOpen(false); setAddName(""); setAddType("hma"); setAddSiteId(""); setAddPartyId(""); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Another Plant</DialogTitle>
+            <DialogTitle>Add another plant</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label htmlFor="input-add-plant-name">Plant Name <span className="text-destructive">*</span></Label>
+              <Label htmlFor="input-add-plant-name">Plant name <span className="text-destructive">*</span></Label>
               <Input
                 id="input-add-plant-name"
                 value={addName}
@@ -1976,7 +1976,7 @@ export function PlantTypeConfigSection() {
               </p>
             </div>
             <div>
-              <Label>Plant Type</Label>
+              <Label>Plant type</Label>
               <Select value={addType} onValueChange={setAddType}>
                 <SelectTrigger className="mt-1" data-testid="select-add-plant-type">
                   <SelectValue />
@@ -2001,7 +2001,7 @@ export function PlantTypeConfigSection() {
               </Select>
             </div>
             <div>
-              <Label>Primary Party <span className="text-muted-foreground text-sm">(optional — default contractor for manpower)</span></Label>
+              <Label>Primary party <span className="text-muted-foreground text-sm">(optional — default contractor for manpower)</span></Label>
               <Select value={addPartyId || "__none__"} onValueChange={v => setAddPartyId(v === "__none__" ? "" : v)}>
                 <SelectTrigger className="mt-1" data-testid="select-add-plant-party">
                   <SelectValue placeholder="No default party" />
@@ -2030,7 +2030,7 @@ export function PlantTypeConfigSection() {
       <Dialog open={!!assignSiteTarget} onOpenChange={(o) => { if (!o) { setAssignSiteTarget(null); setAssignSiteId(""); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Assign Site / Project</DialogTitle>
+            <DialogTitle>Assign site / project</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
@@ -2066,14 +2066,14 @@ export function PlantTypeConfigSection() {
       <Dialog open={!!primaryPartyTarget} onOpenChange={(o) => { if (!o) { setPrimaryPartyTarget(null); setPrimaryPartyIdEdit(""); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Set Primary Party</DialogTitle>
+            <DialogTitle>Set primary party</DialogTitle>
             <DialogDescription>
               The default contractor/party used for manpower entries on <strong>{primaryPartyTarget?.plantName}</strong>.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label>Primary Party</Label>
+              <Label>Primary party</Label>
               <Select value={primaryPartyIdEdit || "__none__"} onValueChange={v => setPrimaryPartyIdEdit(v === "__none__" ? "" : v)}>
                 <SelectTrigger className="mt-1" data-testid="select-primary-party">
                   <SelectValue placeholder="No default party" />
@@ -2303,7 +2303,7 @@ export function SitesMasterSection() {
         {canCreate && (
           <form onSubmit={handleAddSite} className="flex gap-2 flex-wrap items-end">
             <div className="flex-1 min-w-[200px]">
-              <Label className="text-sm">Site Name</Label>
+                <Label className="text-sm">Site name</Label>
               <Input
                 value={newSiteName}
                 onChange={(e) => setNewSiteName(e.target.value.toUpperCase())}
@@ -2606,11 +2606,11 @@ export function PartyMaster() {
             )}
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{editingParty ? "Edit Party" : "Add New Party"}</DialogTitle>
+              <DialogTitle>{editingParty ? "Edit party" : "Add new party"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
-                <Label htmlFor="party-name">Party/Job Name</Label>
+                <Label htmlFor="party-name">Party/job name</Label>
                 <Input
                   id="party-name"
                   value={name}
@@ -3034,11 +3034,11 @@ export function MaterialMaster() {
             )}
             <DialogContent className="sm:max-w-lg flex flex-col gap-0 p-0 max-h-[90vh]">
               <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b">
-                <DialogTitle>{editingMaterial ? "Edit Material" : "Add New Material"}</DialogTitle>
+                <DialogTitle>{editingMaterial ? "Edit material" : "Add new material"}</DialogTitle>
               </DialogHeader>
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               <div>
-                <Label htmlFor="material-name">Material Name</Label>
+                <Label htmlFor="material-name">Material name</Label>
                 <Input
                   id="material-name"
                   value={name}
@@ -3079,7 +3079,7 @@ export function MaterialMaster() {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="material-procurement-route">Procurement Route</Label>
+                <Label htmlFor="material-procurement-route">Procurement route</Label>
                 <Select value={procurementRoute} onValueChange={setProcurementRoute}>
                   <SelectTrigger data-testid="select-material-procurement-route">
                     <SelectValue placeholder="Select route" />
@@ -3259,7 +3259,7 @@ export function MaterialMaster() {
                           <input type="number" step="any" min="0.0001" value={convFactor} onChange={e => setConvFactor(e.target.value)} placeholder="e.g. 2.20" className="mt-0.5 flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
                         </div>
                         <div>
-                          <Label className="text-xs">Profile Type</Label>
+                          <Label className="text-xs">Profile type</Label>
                           <Select value={convType} onValueChange={setConvType}>
                             <SelectTrigger className="h-8 mt-0.5 text-sm"><SelectValue /></SelectTrigger>
                             <SelectContent>
@@ -3334,7 +3334,7 @@ export function MaterialMaster() {
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => openOpeningStockDialog(material)} data-testid={`button-add-stock-${material.id}`} title="Add Opening Stock">
+                  <Button variant="ghost" size="sm" onClick={() => openOpeningStockDialog(material)} data-testid={`button-add-stock-${material.id}`} title="Add opening stock">
                     <Plus className="w-4 h-4" />
                   </Button>
                   {canEdit && (
@@ -3357,7 +3357,7 @@ export function MaterialMaster() {
         
         {openingStocks && openingStocks.length > 0 && (
           <div className="mt-4">
-            <h3 className="text-sm font-semibold mb-2">Opening Stock Entries</h3>
+            <h3 className="text-sm font-semibold mb-2">Opening stock entries</h3>
             <div className="space-y-2">
               {openingStocks.map((os) => (
                 <div key={os.id} className="flex items-center justify-between p-3 rounded-md bg-muted/30 border" data-testid={`opening-stock-entry-${os.id}`}>
@@ -3390,7 +3390,7 @@ export function MaterialMaster() {
           <Dialog open={openingStockDialogOpen} onOpenChange={(open) => { if (!open) resetOpeningStockForm(); }}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>{editingOpeningStock ? "Edit Opening Stock" : "Add Opening Stock"}</DialogTitle>
+                <DialogTitle>{editingOpeningStock ? "Edit opening stock" : "Add opening stock"}</DialogTitle>
                 {selectedMaterialForStock && (
                   <p className="text-sm text-muted-foreground">{selectedMaterialForStock.name}</p>
                 )}
@@ -3451,7 +3451,7 @@ export function MaterialMaster() {
                     if (!needsTank) return null;
                     return (
                       <div>
-                        <Label>Tank Number</Label>
+                        <Label>Tank number</Label>
                         <Select value={stockTankNumber} onValueChange={setStockTankNumber}>
                           <SelectTrigger data-testid="select-stock-tank-number">
                             <SelectValue placeholder="Select tank" />
@@ -3481,7 +3481,7 @@ export function MaterialMaster() {
         <Dialog open={deleteOpeningStockId !== null} onOpenChange={(open) => { if (!open) setDeleteOpeningStockId(null); }}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Delete Opening Stock Entry</DialogTitle>
+              <DialogTitle>Delete opening stock entry</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground py-2">
               Are you sure you want to delete this opening stock entry? This action cannot be undone and will affect stock balances.
@@ -3806,11 +3806,11 @@ export function MixTemplateMaster() {
           )}
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingTemplate ? "Edit Mix Template" : "Add Mix Template"}</DialogTitle>
+              <DialogTitle>{editingTemplate ? "Edit mix template" : "Add mix template"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
-                <Label htmlFor="template-name">Template Name</Label>
+                <Label htmlFor="template-name">Template name</Label>
                 <Input
                   id="template-name"
                   value={name}
@@ -3820,7 +3820,7 @@ export function MixTemplateMaster() {
                 />
               </div>
               <div>
-                <Label htmlFor="mix-type">Mix Type</Label>
+                <Label htmlFor="mix-type">Mix type</Label>
                 <Select 
                   value={mixType} 
                   onValueChange={(value) => {
@@ -3863,7 +3863,7 @@ export function MixTemplateMaster() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="binder-grade">Bitumen Grade</Label>
+                  <Label htmlFor="binder-grade">Bitumen grade</Label>
                   <Select value={binderGrade} onValueChange={setBinderGrade}>
                     <SelectTrigger id="binder-grade" data-testid="select-binder-grade">
                       <SelectValue />
@@ -3981,7 +3981,7 @@ export function MixTemplateMaster() {
               </div>
               
               <div className="space-y-2">
-                <Label>Aggregate Proportions</Label>
+                <Label>Aggregate proportions</Label>
                 <div className="rounded-md border overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50">
@@ -4089,7 +4089,7 @@ export function MixTemplateMaster() {
       <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirm Delete</DialogTitle>
+            <DialogTitle>Confirm delete</DialogTitle>
           </DialogHeader>
           <p>Are you sure you want to delete this mix template?</p>
           <div className="flex justify-end gap-2 mt-4">
@@ -4105,11 +4105,11 @@ export function MixTemplateMaster() {
       <Dialog open={newMixTypeDialogOpen} onOpenChange={setNewMixTypeDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Add New Mix Type</DialogTitle>
+            <DialogTitle>Add new mix type</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="new-mix-type-name">Mix Type Name</Label>
+              <Label htmlFor="new-mix-type-name">Mix type name</Label>
               <Input
                 id="new-mix-type-name"
                 value={newMixTypeName}
@@ -4795,11 +4795,11 @@ export function EquipmentMasterSection() {
         <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); }}>
           <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Edit Equipment</DialogTitle>
+              <DialogTitle>Edit equipment</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
-                <Label htmlFor="equipment-name">Equipment Name</Label>
+                <Label htmlFor="equipment-name">Equipment name</Label>
                 <Input
                   id="equipment-name"
                   value={name}
@@ -4889,7 +4889,7 @@ export function EquipmentMasterSection() {
                 </div>
               )}
               <div>
-                <Label htmlFor="meter-type">Meter Type</Label>
+                <Label htmlFor="meter-type">Meter type</Label>
                 <Select value={meterType} onValueChange={setMeterType}>
                   <SelectTrigger data-testid="select-meter-type">
                     <SelectValue placeholder="Select meter" />
@@ -4901,7 +4901,7 @@ export function EquipmentMasterSection() {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="consumption-norm">Consumption Norm ({meterType === "hour_meter" ? "L/hr" : "L/km"})</Label>
+                <Label htmlFor="consumption-norm">Consumption norm ({meterType === "hour_meter" ? "L/hr" : "L/km"})</Label>
                 <Input
                   id="consumption-norm"
                   type="number"
@@ -5057,7 +5057,7 @@ export function EquipmentMasterSection() {
       <AlertDialog open={deleteEquipmentId !== null} onOpenChange={(open) => { if (!open) setDeleteEquipmentId(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Equipment</AlertDialogTitle>
+            <AlertDialogTitle>Delete equipment</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to permanently delete this equipment record? This action cannot be undone.
             </AlertDialogDescription>
@@ -5221,7 +5221,7 @@ export function PersonnelMasterSection() {
               onCheckedChange={(checked) => setShowInactive(checked === true)}
               data-testid="checkbox-show-inactive-personnel"
             />
-            <Label htmlFor="show-inactive-personnel" className="text-sm cursor-pointer">Show Inactive</Label>
+            <Label htmlFor="show-inactive-personnel" className="text-sm cursor-pointer">Show inactive</Label>
           </div>
           {canCreate && (
             <Button size="sm" onClick={openCreate} data-testid="button-add-personnel">
@@ -5291,7 +5291,7 @@ export function PersonnelMasterSection() {
       <AlertDialog open={deletePersonId !== null} onOpenChange={(open) => { if (!open) setDeletePersonId(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Personnel</AlertDialogTitle>
+            <AlertDialogTitle>Delete personnel</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to permanently delete this personnel record? This action cannot be undone.
             </AlertDialogDescription>
@@ -5313,7 +5313,7 @@ export function PersonnelMasterSection() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
-            <DialogTitle>{editingPerson ? "Edit Personnel" : "Add Personnel"}</DialogTitle>
+            <DialogTitle>{editingPerson ? "Edit personnel" : "Add personnel"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>

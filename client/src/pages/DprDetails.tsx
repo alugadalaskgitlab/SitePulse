@@ -429,8 +429,8 @@ export default function DprDetails() {
         </CardHeader>
         <CardContent className="space-y-6">
           <DprMaterialsReceived site={dpr.site} date={dpr.date} />
-          <section className="border-t pt-4" aria-label="Materials Consumed / Issued">
-            <h3 className="font-semibold mb-2">Materials Consumed / Issued</h3>
+          <section className="border-t pt-4" aria-label="Materials consumed / issued">
+            <h3 className="font-semibold mb-2">Materials consumed / issued</h3>
             <p className="text-sm text-muted-foreground mb-4">Bulk vehicle deliveries are tracked separately in Materials Received.</p>
             {dpr.materials.length === 0 ? (
               <p className="text-muted-foreground italic">No materials consumed or issued recorded.</p>

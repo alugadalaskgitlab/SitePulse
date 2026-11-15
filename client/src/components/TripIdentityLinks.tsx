@@ -50,7 +50,7 @@ export function TripIdentityLinks({ trip, vendors, canConfirm, blocked, vendorsL
     onSettled: () => onBusyChange(false),
   });
   return <section className="space-y-3 rounded-lg border p-4">
-    <h3 className="font-semibold">Reviewed Vendor Master identities</h3>
+    <h3 className="font-semibold">Reviewed vendor master identities</h3>
     <dl className="space-y-2 text-sm" data-testid="trip-vendor-saved-results">
       <div><dt className="text-muted-foreground">Material source · recorded</dt><dd>{trip.materialSourceType === "own_source" ? trip.materialSourceLabel || "Our own source" : trip.materialSourceSupplier || "Not recorded"}</dd>
         <dd className="font-medium">{needsSource ? vendorName(trip.materialSourceVendorId, names.linkedMaterialSupplierName) : "Our own source · no material vendor"}</dd></div>

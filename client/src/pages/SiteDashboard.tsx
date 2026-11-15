@@ -858,7 +858,7 @@ export default function SiteDashboard() {
           <div class="section">
             <div class="section-title">Equipment Log</div>
             <table>
-              <tr><th>Machine</th><th>Vehicle No</th><th>Owner</th><th>Operator</th><th>Reading</th><th>Hours</th><th>Diesel</th></tr>
+              <tr><th>Machine</th><th>Vehicle no.</th><th>Owner</th><th>Operator</th><th>Reading</th><th>Hours</th><th>Diesel</th></tr>
               ${dpr.visibleEquipment.map((e: any) => {
                 const hours = e.hoursWorked || (e.closingReading && e.openingReading ? (e.closingReading - e.openingReading) : null);
                 const readingSource = e.openingReading != null && e.closingReading != null 
@@ -954,7 +954,7 @@ export default function SiteDashboard() {
             <h2>${companyName}</h2>
           </div>
           <div class="header">
-            <h1>Daily Progress Reports - Detailed</h1>
+            <h1>Daily progress reports - detailed</h1>
             <p>Generated: ${format(new Date(), "dd MMM yyyy, hh:mm a")}</p>
           </div>
           ${filtersText.length > 0 ? `<div class="filters-info"><strong>Filters:</strong> ${filtersText.join(' | ')}</div>` : ''}
@@ -991,7 +991,7 @@ export default function SiteDashboard() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold font-display">Site Reports</h1>
+            <h1 className="text-2xl font-bold font-display">Site reports</h1>
             <p className="text-muted-foreground text-sm">View and manage daily progress reports</p>
           </div>
         </div>
@@ -1061,7 +1061,7 @@ export default function SiteDashboard() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm">Date From</Label>
+                  <Label className="text-sm">Date from</Label>
                   <Input
                     type="date"
                     value={filters.dateFrom}
@@ -1070,7 +1070,7 @@ export default function SiteDashboard() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm">Date To</Label>
+                  <Label className="text-sm">Date to</Label>
                   <Input
                     type="date"
                     value={filters.dateTo}
@@ -1137,7 +1137,7 @@ export default function SiteDashboard() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm">Diesel Usage</Label>
+                  <Label className="text-sm">Diesel usage</Label>
                   <Select value={filters.hasDiesel ? "yes" : "all"} onValueChange={(value) => setFilters({ ...filters, hasDiesel: value === "yes" })}>
                     <SelectTrigger data-testid="select-diesel">
                       <SelectValue placeholder="All" />
@@ -1177,7 +1177,7 @@ export default function SiteDashboard() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm">Work Type</Label>
+                  <Label className="text-sm">Work type</Label>
                   <Select value={filters.workType || "all"} onValueChange={(value) => setFilters({ ...filters, workType: value === "all" ? "" : value })}>
                     <SelectTrigger data-testid="select-work-type">
                       <SelectValue placeholder="All Types" />
@@ -1204,7 +1204,7 @@ export default function SiteDashboard() {
                   <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                     <Calendar className="w-8 h-8 text-muted-foreground" />
                   </div>
-                  <h3 className="text-lg font-semibold mb-2">No Reports Found</h3>
+                  <h3 className="text-lg font-semibold mb-2">No reports found</h3>
                   <p className="text-muted-foreground mb-6">
                     {hasActiveFilters 
                       ? "No reports match your filter criteria." 
@@ -1456,7 +1456,7 @@ export default function SiteDashboard() {
                                     <thead>
                                       <tr className="bg-muted/50">
                                         <th className="text-left p-2 border">Machine</th>
-                                        <th className="text-left p-2 border">Vehicle No</th>
+                                        <th className="text-left p-2 border">Vehicle no.</th>
                                         <th className="text-left p-2 border">Operator</th>
                                         <th className="text-left p-2 border">Task</th>
                                         <th className="text-left p-2 border">Time/Meter</th>
@@ -1551,8 +1551,8 @@ export default function SiteDashboard() {
                                         <th className="text-right p-2 border">Quantity</th>
                                         <th className="text-left p-2 border">UOM</th>
                                         <th className="text-left p-2 border">Vehicle</th>
-                                        <th className="text-left p-2 border">Received From</th>
-                                        <th className="text-left p-2 border">Receipt No.</th>
+                                        <th className="text-left p-2 border">Received from</th>
+                                        <th className="text-left p-2 border">Receipt no.</th>
                                       </tr>
                                     </thead>
                                     <tbody>

@@ -649,7 +649,7 @@ export default function IrnDetailPage() {
           <div className="bg-white border rounded-lg p-4">
             <div className="flex items-center gap-2 mb-3">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <h3 className="text-sm font-semibold text-gray-800">Stores Verification</h3>
+              <h3 className="text-sm font-semibold text-gray-800">Stores verification</h3>
               <span className="text-sm text-gray-500 ml-auto">
                 {irn.storesVerifiedBy} · {irn.storesVerifiedAt ? format(new Date(irn.storesVerifiedAt), "dd MMM, h:mm a") : ""}
               </span>
@@ -718,7 +718,7 @@ export default function IrnDetailPage() {
             <div className="bg-white border border-blue-200 rounded-lg p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="h-4 w-4 text-blue-600" />
-                <h3 className="text-sm font-semibold text-blue-800">Manager Approval</h3>
+                <h3 className="text-sm font-semibold text-blue-800">Manager approval</h3>
               </div>
               <p className="text-sm text-gray-500">
                 Review the stores decision above and approve or reject this requisition.
@@ -963,7 +963,7 @@ export default function IrnDetailPage() {
             <div className="bg-white border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                <h3 className="text-sm font-semibold text-gray-700">Stores Verification</h3>
+                <h3 className="text-sm font-semibold text-gray-700">Stores verification</h3>
                 <span className="ml-auto text-sm text-gray-500">
                   {irn.storesVerifiedBy}
                   {irn.storesVerifiedAt ? ` · ${format(new Date(irn.storesVerifiedAt), "dd MMM yyyy, h:mm a")}` : ""}
@@ -1011,7 +1011,7 @@ export default function IrnDetailPage() {
             <div className="bg-white border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-3">
                 <ListTodo className="h-4 w-4 text-purple-600 shrink-0" />
-                <h3 className="text-sm font-semibold text-gray-700">Procurement Queue</h3>
+                <h3 className="text-sm font-semibold text-gray-700">Procurement queue</h3>
               </div>
               <div className="space-y-1 mb-3">
                 {procureItems.map((item) => (
@@ -1196,22 +1196,22 @@ export default function IrnDetailPage() {
                         {/* Header fields */}
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <Label className="text-sm text-gray-600">Issue Date *</Label>
+                            <Label className="text-sm text-gray-600">Issue date *</Label>
                             <Input type="date" value={ivDate} onChange={e => setIvDate(e.target.value)}
                               className="h-8 text-sm mt-1" data-testid="input-iv-date" />
                           </div>
                           <div>
-                            <Label className="text-sm text-gray-600">Issued By *</Label>
+                            <Label className="text-sm text-gray-600">Issued by *</Label>
                             <Input value={ivIssuedBy} onChange={e => setIvIssuedBy(e.target.value)}
                               placeholder="Name of person issuing" className="h-8 text-sm mt-1" data-testid="input-iv-issued-by" />
                           </div>
                           <div>
-                            <Label className="text-sm text-gray-600">Received By *</Label>
+                            <Label className="text-sm text-gray-600">Received by *</Label>
                             <Input value={ivReceivedBy} onChange={e => setIvReceivedBy(e.target.value)}
                               placeholder="Name of recipient" className="h-8 text-sm mt-1" data-testid="input-iv-received-by" />
                           </div>
                           <div>
-                            <Label className="text-sm text-gray-600">Receiver Designation</Label>
+                            <Label className="text-sm text-gray-600">Receiver designation</Label>
                             <Input value={ivReceiverDesig} onChange={e => setIvReceiverDesig(e.target.value)}
                               placeholder="e.g. Site Engineer" className="h-8 text-sm mt-1" data-testid="input-iv-receiver-desig" />
                           </div>
@@ -1219,7 +1219,7 @@ export default function IrnDetailPage() {
 
                         {/* Delivery mode */}
                         <div>
-                          <Label className="text-sm text-gray-600 mb-1 block">Delivery Mode *</Label>
+                          <Label className="text-sm text-gray-600 mb-1 block">Delivery mode *</Label>
                           <div className="flex gap-2">
                             <Button
                               variant={ivDeliveryMode === "vehicle" ? "default" : "outline"}
@@ -1245,7 +1245,7 @@ export default function IrnDetailPage() {
                         {ivDeliveryMode === "vehicle" && (
                           <div className="grid grid-cols-3 gap-3 bg-amber-50 border border-amber-200 rounded p-3">
                             <div>
-                              <Label className="text-sm text-gray-600">Vehicle Type *</Label>
+                              <Label className="text-sm text-gray-600">Vehicle type *</Label>
                               <Select value={ivVehicleType} onValueChange={setIvVehicleType}>
                                 <SelectTrigger className="h-8 text-sm mt-1" data-testid="select-iv-vehicle-type">
                                   <SelectValue placeholder="Select type" />
@@ -1258,12 +1258,12 @@ export default function IrnDetailPage() {
                               </Select>
                             </div>
                             <div>
-                              <Label className="text-sm text-gray-600">Vehicle No. *</Label>
+                              <Label className="text-sm text-gray-600">Vehicle no. *</Label>
                               <Input value={ivVehicleNo} onChange={e => setIvVehicleNo(e.target.value)}
                                 placeholder="e.g. TN 01 AA 1234" className="h-8 text-sm mt-1" data-testid="input-iv-vehicle-no" />
                             </div>
                             <div>
-                              <Label className="text-sm text-gray-600">Driver Name *</Label>
+                              <Label className="text-sm text-gray-600">Driver name *</Label>
                               <Input value={ivDriverName} onChange={e => setIvDriverName(e.target.value)}
                                 placeholder="Driver name" className="h-8 text-sm mt-1" data-testid="input-iv-driver-name" />
                             </div>
@@ -1271,7 +1271,7 @@ export default function IrnDetailPage() {
                         )}
 
                         <div>
-                          <Label className="text-sm text-gray-600">Movement Remarks</Label>
+                          <Label className="text-sm text-gray-600">Movement remarks</Label>
                           <Textarea value={ivRemarks} onChange={e => setIvRemarks(e.target.value)}
                             placeholder="Any remarks about the movement" rows={2}
                             className="text-sm mt-1 resize-none" data-testid="textarea-iv-remarks" />
@@ -1285,9 +1285,9 @@ export default function IrnDetailPage() {
                               <thead className="bg-gray-100 border-b">
                                 <tr>
                                   <th className="text-left p-2 font-semibold text-gray-600">Material</th>
-                                  <th className="text-center p-2 font-semibold text-gray-600">Remaining Qty</th>
-                                  <th className="text-center p-2 font-semibold text-gray-600">Issue Qty (this voucher)</th>
-                                  <th className="text-left p-2 font-semibold text-gray-600">Stock Deduction</th>
+                                  <th className="text-center p-2 font-semibold text-gray-600">Remaining qty</th>
+                                  <th className="text-center p-2 font-semibold text-gray-600">Issue qty (this voucher)</th>
+                                  <th className="text-left p-2 font-semibold text-gray-600">Stock deduction</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -1418,7 +1418,7 @@ export default function IrnDetailPage() {
             <div className="bg-white border border-gray-200 rounded-lg p-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <Archive className="h-4 w-4 text-gray-500 shrink-0" />
-                <h3 className="text-sm font-semibold text-gray-700">Requisition Closed</h3>
+                <h3 className="text-sm font-semibold text-gray-700">Requisition closed</h3>
                 <span className="ml-auto text-sm text-gray-500">
                   {irn.closedBy}
                   {irn.closedAt ? ` · ${format(new Date(irn.closedAt), "dd MMM yyyy, h:mm a")}` : ""}
@@ -1712,7 +1712,7 @@ export default function IrnDetailPage() {
 
             {/* Stores remarks */}
             <div className="bg-white border rounded-lg p-4 space-y-2">
-              <Label className="text-sm font-medium text-gray-700">Storekeeper Remarks</Label>
+              <Label className="text-sm font-medium text-gray-700">Storekeeper remarks</Label>
               <Textarea
                 value={storesRemarks}
                 onChange={(e) => setStoresRemarks(e.target.value)}

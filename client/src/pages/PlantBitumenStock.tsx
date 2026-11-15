@@ -843,7 +843,7 @@ export default function PlantBitumenStock() {
         <Card className="py-12">
           <CardContent className="text-center">
             <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Access Restricted</h3>
+            <h3 className="text-lg font-semibold mb-2">Access restricted</h3>
             <p className="text-muted-foreground mb-4">Please access this page through the HMP Plant hub</p>
             <Link href="/plant/hub">
               <Button data-testid="button-go-to-plant">Go to HMP Plant</Button>
@@ -1029,7 +1029,7 @@ export default function PlantBitumenStock() {
 
                 {/* Per-tank inputs */}
                 <div>
-                  <Label className="text-sm mb-2 block">Physical Stock from Dip Readings (MT)</Label>
+                  <Label className="text-sm mb-2 block">Physical stock from dip readings (MT)</Label>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
                     <div>
                       <Label className="text-sm text-muted-foreground">Tank 1</Label>
@@ -1136,11 +1136,11 @@ export default function PlantBitumenStock() {
         <CardContent className="space-y-4">
           <div className="flex gap-2 flex-wrap items-end">
             <div>
-              <Label className="text-base">From Date</Label>
+              <Label className="text-base">From date</Label>
               <Input type="date" value={reconDateFrom} onChange={e => setReconDateFrom(e.target.value)} className="w-40" data-testid="input-recon-date-from" />
             </div>
             <div>
-              <Label className="text-base">To Date</Label>
+              <Label className="text-base">To date</Label>
               <Input type="date" value={reconDateTo} onChange={e => setReconDateTo(e.target.value)} className="w-40" data-testid="input-recon-date-to" />
             </div>
             <div>
@@ -1158,7 +1158,7 @@ export default function PlantBitumenStock() {
               </Select>
             </div>
             <div>
-              <Label className="text-base">Mix Template</Label>
+              <Label className="text-base">Mix template</Label>
               <Select value={reconMixTemplateId} onValueChange={setReconMixTemplateId}>
                 <SelectTrigger className="w-44" data-testid="select-recon-mix">
                   <SelectValue placeholder="All Mixes" />
@@ -1692,7 +1692,7 @@ export default function PlantBitumenStock() {
                 </div>
               </div>
               <div>
-                <Label>Reading Type</Label>
+                <Label>Reading type</Label>
                 <Select value={readingType} onValueChange={setReadingType}>
                   <SelectTrigger data-testid="select-reading-type">
                     <SelectValue />
@@ -1708,7 +1708,7 @@ export default function PlantBitumenStock() {
             </div>
 
             <div>
-              <Label>Dip Depth (cm) <span className="text-muted-foreground text-sm">- Enter bitumen depth reading from gauge rod</span></Label>
+              <Label>Dip depth (cm) <span className="text-muted-foreground text-sm">- Enter bitumen depth reading from gauge rod</span></Label>
               <Input
                 type="number"
                 min="0"

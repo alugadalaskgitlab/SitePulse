@@ -1100,7 +1100,7 @@ export default function PlantShiftLog() {
               <Button variant="ghost" size="icon" data-testid="button-back"><ChevronLeft className="w-5 h-5" /></Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold">HMP Shift Logs</h1>
+              <h1 className="text-2xl font-bold">HMP shift logs</h1>
               <p className="text-sm text-muted-foreground">Daily shift runs — pick a date to open or start a new log</p>
             </div>
           </div>
@@ -1268,7 +1268,7 @@ export default function PlantShiftLog() {
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={goBackToList} data-testid="button-back-to-list"><ChevronLeft className="w-5 h-5" /></Button>
           <div>
-            <h1 className="text-2xl font-bold">HMP Shift Log</h1>
+            <h1 className="text-2xl font-bold">HMP shift log</h1>
             <p className="text-sm text-muted-foreground">Operator daily log – plant start/stop, idle events, manpower, fuel meters</p>
           </div>
         </div>
@@ -1336,8 +1336,8 @@ export default function PlantShiftLog() {
               </SelectContent>
             </Select>
           </div>
-          <div><Label>{noMainPlantOps ? "Shift Start" : "Plant Start"}</Label><Input type="time" value={plantStartTime} onChange={e => setPlantStartTime(e.target.value)} data-testid="input-plant-start" /></div>
-          <div><Label>{noMainPlantOps ? "Shift End" : "Plant Stop"}</Label><Input type="time" value={plantStopTime} onChange={e => setPlantStopTime(e.target.value)} data-testid="input-plant-stop" /></div>
+          <div><Label>{noMainPlantOps ? "Shift start" : "Plant start"}</Label><Input type="time" value={plantStartTime} onChange={e => setPlantStartTime(e.target.value)} data-testid="input-plant-start" /></div>
+          <div><Label>{noMainPlantOps ? "Shift end" : "Plant stop"}</Label><Input type="time" value={plantStopTime} onChange={e => setPlantStopTime(e.target.value)} data-testid="input-plant-stop" /></div>
           <div><Label>Operator</Label><Input value={operatorName} onChange={e => setOperatorName(e.target.value)} data-testid="input-operator" /></div>
           <div><Label>Supervisor</Label><Input value={supervisorName} onChange={e => setSupervisorName(e.target.value)} data-testid="input-supervisor" /></div>
           <div><Label>Weather</Label>
@@ -1352,7 +1352,7 @@ export default function PlantShiftLog() {
               </SelectContent>
             </Select>
           </div>
-          <div><Label>Ambient Temp °C</Label><Input type="number" step="0.1" value={ambientTemp} onChange={e => setAmbientTemp(e.target.value)} data-testid="input-ambient-temp" /></div>
+          <div><Label>Ambient temp °C</Label><Input type="number" step="0.1" value={ambientTemp} onChange={e => setAmbientTemp(e.target.value)} data-testid="input-ambient-temp" /></div>
           <div><Label>Plant</Label><Input value={plantName} onChange={e => setPlantName(e.target.value)} data-testid="input-plant-name" /></div>
         </CardContent>
       </Card>
@@ -1655,7 +1655,7 @@ export default function PlantShiftLog() {
                     <th className="py-2 pr-2">Staff</th>
                     <th className="py-2 pr-2 text-right">Boiler LDO (L)</th>
                     <th className="py-2 pr-2 text-right">DG</th>
-                    <th className="py-2 pr-2">Hot-Oil End °C</th>
+                    <th className="py-2 pr-2">Hot-oil end °C</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1721,7 +1721,7 @@ export default function PlantShiftLog() {
                     <th className="py-2 pr-2">Contractor</th>
                     <th className="py-2 pr-2">Category</th>
                     <th className="py-2 pr-2">Gender</th>
-                    <th className="py-2 pr-2">Rate-Card Key</th>
+                    <th className="py-2 pr-2">Rate-card key</th>
                     <th className="py-2 pr-2 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -1795,7 +1795,7 @@ export default function PlantShiftLog() {
       {/* Manpower modal */}
       <Dialog open={mpDialogOpen} onOpenChange={setMpDialogOpen}>
         <DialogContent data-testid="dialog-manpower">
-          <DialogHeader><DialogTitle>{mpEditingIdx === null ? "Add Manpower" : "Edit Manpower"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{mpEditingIdx === null ? "Add manpower" : "Edit manpower"}</DialogTitle></DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2"><Label>Name *</Label><Input value={mpDraft.name} onChange={e => setMpDraft({ ...mpDraft, name: e.target.value })} data-testid="input-mp-name" /></div>
             <div><Label>Role / Trade</Label><Input value={mpDraft.role || ""} onChange={e => setMpDraft({ ...mpDraft, role: e.target.value })} placeholder="e.g. Plant Operator" data-testid="input-mp-role" /></div>
@@ -1835,7 +1835,7 @@ export default function PlantShiftLog() {
       {/* Idle modal */}
       <Dialog open={idleDialogOpen} onOpenChange={setIdleDialogOpen}>
         <DialogContent data-testid="dialog-idle">
-          <DialogHeader><DialogTitle>{idleEditingIdx === null ? "Add Idle Event" : "Edit Idle Event"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{idleEditingIdx === null ? "Add idle event" : "Edit idle event"}</DialogTitle></DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Start *</Label><Input type="time" value={idleDraft.startTime} onChange={e => setIdleDraft({ ...idleDraft, startTime: e.target.value })} data-testid="input-idle-start" /></div>
             <div><Label>End</Label><Input type="time" value={idleDraft.endTime || ""} onChange={e => setIdleDraft({ ...idleDraft, endTime: e.target.value })} placeholder="(blank if ongoing)" data-testid="input-idle-end" /></div>

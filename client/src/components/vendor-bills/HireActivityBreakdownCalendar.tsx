@@ -130,14 +130,14 @@ export default function HireActivityBreakdownCalendar({
           <tr>
             <th className="p-2 font-semibold">Date</th>
             <th className="p-2 font-semibold">Reading (Opening → Closing)</th>
-            <th className="p-2 font-semibold">Hours / Km Run</th>
+            <th className="p-2 font-semibold">Hours / km run</th>
             <th className="p-2 font-semibold">Trips</th>
-            {showFuel && <th className="p-2 font-semibold">Diesel Issued (Actual)</th>}
-            {showFuel && <th className="p-2 font-semibold">Consumption Rate</th>}
+            {showFuel && <th className="p-2 font-semibold">Diesel issued (actual)</th>}
+            {showFuel && <th className="p-2 font-semibold">Consumption rate</th>}
             {showFuel && <th className="p-2 font-semibold">Excess / Under</th>}
             <th className="p-2 font-semibold">Downtime (Breakdown)</th>
             <th className="p-2 font-semibold">Status</th>
-            <th className="p-2 font-semibold">Site / Work Done</th>
+            <th className="p-2 font-semibold">Site / work done</th>
             <th className="p-2 font-semibold">Records</th>
           </tr>
         </thead>

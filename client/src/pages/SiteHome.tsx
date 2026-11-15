@@ -152,7 +152,7 @@ export default function SiteHome() {
 
         {/* Quick Actions */}
         <section>
-          <h2 className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Quick Actions</h2>
+          <h2 className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Quick actions</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
 
             {canDprs && (
@@ -301,7 +301,7 @@ export default function SiteHome() {
           {/* Recent Activity */}
           <div className="md:col-span-2">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Recent Activity</h2>
+              <h2 className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Recent activity</h2>
               {canDprs && (
                 <Link href="/site/dashboard" data-testid="link-all-records">
                   <button className="flex items-center gap-1 text-sm text-amber-600 dark:text-amber-400 font-semibold hover:underline">

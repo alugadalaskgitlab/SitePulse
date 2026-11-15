@@ -717,7 +717,7 @@ export default function SiteMaterialTrips() {
                   </div>
                 )}
                 <div>
-                  <Label className="text-sm">Receipt/Challan No.</Label>
+                  <Label className="text-sm">Receipt/challan no.</Label>
                   <Input
                     placeholder="e.g. 12345"
                     value={newTrip.receiptNumber}
@@ -1040,7 +1040,7 @@ export default function SiteMaterialTrips() {
                       <th className="text-left p-2">Material source</th>
                       <th className="text-left p-2">Vehicle</th>
                       <th className="text-right p-2">Qty</th>
-                      <th className="text-left p-2">UOM</th>
+                      <th className="text-left p-2">Uom</th>
                       <th className="text-left p-2">Location</th>
                       <th className="text-left p-2">Photos</th>
                       <th className="text-center p-2">Action</th>

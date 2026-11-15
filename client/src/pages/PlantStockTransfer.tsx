@@ -195,7 +195,7 @@ export default function PlantStockTransfer() {
           </Button>
         </Link>
         <MoveHorizontal className="w-6 h-6 text-blue-700 dark:text-blue-400" />
-        <h1 className="text-2xl font-bold flex-1">Stock Transfer Between Parties</h1>
+        <h1 className="text-2xl font-bold flex-1">Stock transfer between parties</h1>
       </div>
 
       <div className="rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/40 dark:border-blue-800 p-3 text-sm flex items-start gap-2">

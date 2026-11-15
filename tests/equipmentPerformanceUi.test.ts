@@ -44,12 +44,12 @@ describe("EQUIP-07 equipment performance UI contract", () => {
     expect(report).toContain('label="Owner / Vendor"');
     expect(report).toContain('selectOptions(report.data, "owners")');
     expect(report).toContain('<th className="px-4 py-2.5">Equipment</th><th>Owned / Hired</th><th>Owner / Vendor</th>');
-    expect(report).toContain("Consumption Rate");
+    expect(report).toContain("Consumption rate");
     expect(report).toContain('colSpan={14}');
     expect(report).toContain('data-testid="equipment-performance-table-scroll"');
     expect(report).toContain("function MachineDialog");
     expect(report).toContain("Daily details");
-    expect(report).toContain("View Source Records");
+    expect(report).toContain("View source records");
   });
 
   it("keeps standard dialogs above navigation and bounds both popup scroll axes", () => {

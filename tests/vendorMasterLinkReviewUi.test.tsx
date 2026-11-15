@@ -37,7 +37,7 @@ const billRows = [201, 202, 203, 204].map((id, index) => ({
 }));
 function open() {
   render(<QueryClientProvider client={client}><VendorMaster /></QueryClientProvider>);
-  fireEvent.click(screen.getByText("Link Vendors"));
+  fireEvent.click(screen.getByText("Link vendors"));
 }
 beforeEach(() => {
   holder.admin = true; holder.request.mockReset();
@@ -90,10 +90,10 @@ describe("Vendor Master persisted link views", () => {
     expect(screen.getByText("No vendors match “missing vendor”.")).toBeInTheDocument();
   });
 
-  it("defaults to Pending Links and moves a successful confirmation out of pending after refreshing", async () => {
+  it("defaults to pending links and moves a successful confirmation out of pending after refreshing", async () => {
     holder.request.mockImplementation(async () => { pending = []; return { json: async () => ({}) }; });
     open();
-    expect(screen.getByText("Pending Links")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Pending links")).toHaveAttribute("aria-pressed", "true");
     expect(await screen.findByText("NARSIMULU")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Verification reason TS15UE4470"), { target: { value: "Owner verified" } });
     fireEvent.click(screen.getByText("Confirm link"));
@@ -101,7 +101,7 @@ describe("Vendor Master persisted link views", () => {
       role: "equipment", ids: [41], vendorId: 12, version: 91, reason: "Owner verified",
     })));
     await screen.findByText("No vendor identities need review");
-    fireEvent.click(screen.getByText("Confirmed Links"));
+    fireEvent.click(screen.getByText("Confirmed links"));
     expect(await screen.findByText("TS15UE4470")).toBeInTheDocument();
     expect(screen.queryByText("Confirm link")).not.toBeInTheDocument();
     expect(reads).toContain("/api/vendor-master/review?status=pending");
@@ -110,9 +110,9 @@ describe("Vendor Master persisted link views", () => {
 
   it("keeps several vehicles linked to one party, locally searchable by canonical vendor and registration", async () => {
     open();
-    fireEvent.click(screen.getByText("Confirmed Links"));
+    fireEvent.click(screen.getByText("Confirmed links"));
     await screen.findByText("TS15UE4471");
-    expect(screen.getAllByText("Vendor Master: GANGARAM NARSIMHULU")).toHaveLength(2);
+    expect(screen.getAllByText("Vendor master: GANGARAM NARSIMHULU")).toHaveLength(2);
     const count = reads.filter(url => url.endsWith("status=confirmed")).length;
     fireEvent.change(screen.getByLabelText("Search vendor or registration"), { target: { value: "TS15UE4470" } });
     expect(screen.getByText("TS15UE4470")).toBeInTheDocument();
@@ -128,8 +128,8 @@ describe("Vendor Master persisted link views", () => {
     holder.admin = false;
     open();
     expect(screen.getByText(/Only Administrator \/ Owner reviewers/)).toBeInTheDocument();
-    expect(screen.queryByText("Pending Links")).not.toBeInTheDocument();
-    expect(screen.queryByText("Confirmed Links")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pending links")).not.toBeInTheDocument();
+    expect(screen.queryByText("Confirmed links")).not.toBeInTheDocument();
     expect(screen.queryByText("Confirm link")).not.toBeInTheDocument();
     expect(screen.queryByText("Create new")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Verification reason TS15UE4470")).not.toBeInTheDocument();

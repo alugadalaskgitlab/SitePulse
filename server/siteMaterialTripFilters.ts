@@ -17,18 +17,15 @@ export function bulkTripConditions(input: BulkTripFilters, includeOwnSource = fa
   if (!includeOwnSource || input.onlyUnassigned) conditions.push(sql`${trips.materialSourceType} IS DISTINCT FROM 'own_source'`);
   if (input.dateFrom) conditions.push(gte(trips.date, input.dateFrom));
   if (input.dateTo) conditions.push(lte(trips.date, input.dateTo));
-  if (input.site) conditions.push(sql`UPPER(TRIM(${trips.site})) = ${input.site.trim().toUpperCase()}`);
-  if (input.material) conditions.push(sql`UPPER(TRIM(${trips.material})) = ${input.material.trim().toUpperCase()}`);
+  if (input.site) conditions.push(sql`UPPER(REGEXP_REPLACE(TRIM(${trips.site}), '[[:space:]]+', ' ', 'g')) = ${normalizeVehicleSupplierName(input.site)}`);
+  if (input.material) conditions.push(sql`UPPER(REGEXP_REPLACE(TRIM(${trips.material}), '[[:space:]]+', ' ', 'g')) = ${normalizeVehicleSupplierName(input.material)}`);
   if (input.vehicleNumber) conditions.push(sql`upper(regexp_replace(trim(${trips.vehicleNumber}), '[[:space:]-]+', '', 'g')) = ${normalizeVehicleSupplierVehicle(input.vehicleNumber)}`);
   if (input.supplier) {
     if (input.supplierVendorId != null && input.supplierVariants?.length) {
       const variants = input.supplierVariants.map(value => normalizeVehicleSupplierName(value)).filter(Boolean);
-      conditions.push(or(
-        eq(trips.supplierVendorId, input.supplierVendorId),
-        sql`UPPER(regexp_replace(TRIM(${trips.supplier}), '[[:space:]]+', ' ', 'g')) IN (${sql.join(variants.map(value => sql`${value}`), sql`, `)})`,
-      )!);
+      conditions.push(sql`(${trips.supplierVendorId} = ${input.supplierVendorId} OR UPPER(REGEXP_REPLACE(TRIM(${trips.supplier}), '[[:space:]]+', ' ', 'g')) IN (${sql.join(variants.map(value => sql`${value}`), sql`, `)}))`);
     } else {
-      conditions.push(sql`UPPER(TRIM(${trips.supplier})) = ${normalizeVehicleSupplierName(input.supplier)}`);
+      conditions.push(sql`UPPER(REGEXP_REPLACE(TRIM(${trips.supplier}), '[[:space:]]+', ' ', 'g')) = ${normalizeVehicleSupplierName(input.supplier)}`);
     }
   }
   if (input.onlyUnassigned) conditions.push(or(isNull(trips.materialSourceSupplier), sql`TRIM(${trips.materialSourceSupplier}) = ''`)!);

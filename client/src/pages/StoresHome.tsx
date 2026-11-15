@@ -83,7 +83,7 @@ export default function StoresHome() {
                         <ArrowDownToLine className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-sm">Material Receipts</h3>
+                        <h3 className="font-semibold text-sm">Material receipts</h3>
                         <p className="text-sm text-muted-foreground mt-0.5">Record incoming materials by party/job</p>
                       </div>
                       <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto shrink-0" />
@@ -98,7 +98,7 @@ export default function StoresHome() {
                         <ArrowUpFromLine className="w-5 h-5 text-orange-600 dark:text-orange-400" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-sm">Material Issues</h3>
+                        <h3 className="font-semibold text-sm">Material issues</h3>
                         <p className="text-sm text-muted-foreground mt-0.5">Issue materials to sites from plant</p>
                       </div>
                       <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto shrink-0" />
@@ -113,7 +113,7 @@ export default function StoresHome() {
                         <RotateCcw className="w-5 h-5 text-green-600 dark:text-green-400" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-sm">Material Returns</h3>
+                        <h3 className="font-semibold text-sm">Material returns</h3>
                         <p className="text-sm text-muted-foreground mt-0.5">Return issued materials to plant stock</p>
                       </div>
                       <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto shrink-0" />
@@ -128,7 +128,7 @@ export default function StoresHome() {
                         <BarChart3 className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-sm">Stock Ledger</h3>
+                        <h3 className="font-semibold text-sm">Stock ledger</h3>
                         <p className="text-sm text-muted-foreground mt-0.5">View material-wise stock balances</p>
                       </div>
                       <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto shrink-0" />
@@ -233,13 +233,13 @@ export default function StoresHome() {
             {/* Stock by category */}
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                <h3 className="font-semibold text-sm text-slate-700 dark:text-slate-200">Current Stock</h3>
+                <h3 className="font-semibold text-sm text-slate-700 dark:text-slate-200">Current stock</h3>
                 <div className="flex gap-2">
                   <Link href={`/stores/grns?returnTo=${ITEMS_RETURN}`}>
                     <Button variant="outline" size="sm" className="text-sm h-7" data-testid="button-view-grns">GRN History</Button>
                   </Link>
                   <Link href={`/stores/issues?returnTo=${ITEMS_RETURN}`}>
-                    <Button variant="outline" size="sm" className="text-sm h-7" data-testid="button-view-issues">Issue History</Button>
+                    <Button variant="outline" size="sm" className="text-sm h-7" data-testid="button-view-issues">Issue history</Button>
                   </Link>
                 </div>
               </div>

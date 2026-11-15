@@ -200,7 +200,7 @@ export default function StoresDieselRegister() {
   const formatRupees = (value: number) => `₹${new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
   return <HubShell title="Diesel Purchase Register" subtitle="Requirement, purchase and physical receipt progress" backHref="/stores/hub" backLabel="Stores & Inventory">
     <div className="p-6 max-w-5xl mx-auto space-y-5">
-      <div className="flex items-center gap-3"><div className="p-3 rounded-lg bg-amber-100"><Fuel className="w-5 h-5 text-amber-700" /></div><div><h2 className="font-semibold text-slate-800">Diesel Purchase Register</h2><p className="text-sm text-slate-500">Read-only register. Receipt progress is calculated from linked material receipts.</p></div></div>
+      <div className="flex items-center gap-3"><div className="p-3 rounded-lg bg-amber-100"><Fuel className="w-5 h-5 text-amber-700" /></div><div><h2 className="font-semibold text-slate-800">Diesel purchase register</h2><p className="text-sm text-slate-500">Read-only register. Receipt progress is calculated from linked material receipts.</p></div></div>
        {!!supplierGroups.length && (
          <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3" aria-label="Purchase totals by supplier" data-testid="diesel-purchase-supplier-groups">
            <div>

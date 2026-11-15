@@ -80,6 +80,6 @@ describe("Fleet Performance URL and source navigation", () => {
   it("the drilldown source action uses the generic source helper", () => {
     const source = readFileSync("client/src/pages/EquipmentPerformanceReport.tsx", "utf8");
     expect(source.match(/equipmentSourceHref\(event, returnTo\)/g)).toHaveLength(1);
-    expect(source).toContain("View Source Records");
+    expect(source).toContain("View source records");
   });
 });

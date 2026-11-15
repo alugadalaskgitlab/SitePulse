@@ -33,7 +33,7 @@ export default function EstimatorHub() {
         {/* Header */}
         <div className="text-center mb-12">
           <img src="/sitepulse-logo.png" alt="SitePulse" className="h-20 w-20 object-contain mx-auto mb-5" />
-          <h1 className="text-4xl font-bold text-foreground mb-2">Estimate Manager</h1>
+          <h1 className="text-4xl font-bold text-foreground mb-2">Estimate manager</h1>
           <p className="text-muted-foreground text-lg">{companyName}</p>
         </div>
 
@@ -45,7 +45,7 @@ export default function EstimatorHub() {
               <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mb-5">
                 <Flame className="w-8 h-8 text-amber-600" />
               </div>
-              <h2 className="text-2xl font-bold mb-2">Bituminous Mix</h2>
+              <h2 className="text-2xl font-bold mb-2">Bituminous mix</h2>
               <p className="text-base text-muted-foreground mb-6">
                 Hot-mix rate calculator with fuel, laying, compaction &amp; transport costs
               </p>
@@ -84,7 +84,7 @@ export default function EstimatorHub() {
               <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-5">
                 <Building2 className="w-8 h-8 text-blue-600" />
               </div>
-              <h2 className="text-2xl font-bold mb-2">Concrete Rate</h2>
+              <h2 className="text-2xl font-bold mb-2">Concrete rate</h2>
               <p className="text-base text-muted-foreground mb-4">
                 Location-centric drain &amp; box culvert rate analysis with auto rebar design and per-location aggregate sourcing
               </p>

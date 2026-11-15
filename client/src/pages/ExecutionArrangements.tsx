@@ -295,7 +295,7 @@ export default function ExecutionArrangements() {
         <Link href={`/work-program/${projectId}`} className="inline-flex items-center gap-1 text-[12px] text-teal-600 hover:underline">
           <ArrowLeft className="w-3.5 h-3.5" /> Work Programme
         </Link>
-        <h1 className="text-lg font-semibold text-slate-800">Execution Arrangements</h1>
+        <h1 className="text-lg font-semibold text-slate-800">Execution arrangements</h1>
         <span className="text-[12px] text-slate-500">{rows.length} arrangement{rows.length !== 1 ? "s" : ""}</span>
         <div className="flex-1" />
         <Button

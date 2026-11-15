@@ -511,7 +511,7 @@ export function EquipmentHireDailyActivity({ open, onOpenChange, rows, dieselRes
   }, [open]);
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-h-[90vh] max-w-[98vw] overflow-y-auto">
-      <DialogHeader><DialogTitle>Daily Activity</DialogTitle></DialogHeader>
+      <DialogHeader><DialogTitle>Daily activity</DialogTitle></DialogHeader>
       <p className="text-xs text-muted-foreground">Performance figures are the precomputed Equipment Performance daily rows for this equipment and bill period. Status and downtime remarks are provided for billing review.</p>
        {fuelIsContractorScope && <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">Fuel / Diesel: Contractor Scope</div>}
        <EquipmentHirePeriodTotalsSummary rows={rows} dieselResponsibility={dieselResponsibility} />
@@ -982,7 +982,7 @@ export function EquipmentHireExportButtons({
         <DialogHeader><DialogTitle>Choose {choiceFormat === "xlsx" ? "Excel" : "PDF"} export</DialogTitle></DialogHeader>
         <div className="grid gap-2">
           <Button type="button" variant="outline" disabled={!!exporting} onClick={() => download("calendar")} data-testid="button-export-equipment-hire-choice-calendar">
-            Export Activity Statement {choiceFormat === "xlsx" ? "Excel" : "PDF"}
+            Export activity statement {choiceFormat === "xlsx" ? "Excel" : "PDF"}
           </Button>
           <Button type="button" variant="outline" disabled={!!exporting} onClick={() => download("bill")} data-testid="button-export-equipment-hire-choice-bill">
             Export Bill {choiceFormat === "xlsx" ? "Excel" : "PDF"}
@@ -1154,7 +1154,7 @@ export function EquipmentHireBillDetailOutput({ bill, output: suppliedOutput, sh
   const hasExportablePeriod = hasFrozenDailyRows && !!data.periodFrom && !!data.periodTo;
   return <div className="flex flex-wrap gap-2">
     {!hasFrozenDailyRows && <span className="self-center text-xs text-amber-700">Frozen daily activity is unavailable for this historical bill.</span>}
-    <Button type="button" variant="outline" size="sm" disabled={!hasFrozenDailyRows} onClick={() => setShowDaily(true)} data-testid="button-detail-view-daily-activity">View Daily Activity</Button>
+    <Button type="button" variant="outline" size="sm" disabled={!hasFrozenDailyRows} onClick={() => setShowDaily(true)} data-testid="button-detail-view-daily-activity">View daily activity</Button>
     {showExports && <EquipmentHireExportButtons data={data} rows={rows} disabled={!hasExportablePeriod} />}
     <EquipmentHireDailyActivity open={showDaily} onOpenChange={setShowDaily} rows={rows} dieselResponsibility={data.dieselResponsibility} consumptionNorm={data.consumptionNorm} meterType={data.meterType} consumptionRateUnit={data.consumptionRateUnit} />
   </div>;

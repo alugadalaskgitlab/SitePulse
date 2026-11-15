@@ -414,7 +414,7 @@ export default function AdminSettings() {
         <CardContent>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="brandingName">Company Name</Label>
+              <Label htmlFor="brandingName">Company name</Label>
               <Input
                 id="brandingName"
                 value={brandingName}
@@ -424,7 +424,7 @@ export default function AdminSettings() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="brandingShortName">Short Name / Abbreviation</Label>
+              <Label htmlFor="brandingShortName">Short name / abbreviation</Label>
               <Input
                 id="brandingShortName"
                 value={brandingShortName}
@@ -435,7 +435,7 @@ export default function AdminSettings() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="brandingTagline">App Tagline</Label>
+              <Label htmlFor="brandingTagline">App tagline</Label>
               <Input
                 id="brandingTagline"
                 value={brandingTagline}
@@ -445,7 +445,7 @@ export default function AdminSettings() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="brandingAddress">Company Address</Label>
+              <Label htmlFor="brandingAddress">Company address</Label>
               <Input
                 id="brandingAddress"
                 value={brandingAddress}
@@ -465,7 +465,7 @@ export default function AdminSettings() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="brandingPhone">Company Phone</Label>
+              <Label htmlFor="brandingPhone">Company phone</Label>
               <Input
                 id="brandingPhone"
                 value={brandingPhone}
@@ -598,7 +598,7 @@ export default function AdminSettings() {
         <CardContent>
           <form onSubmit={handleChangeAdminPin} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="newAdminPin">New Admin PIN</Label>
+              <Label htmlFor="newAdminPin">New admin PIN</Label>
               <Input
                 id="newAdminPin"
                 type="password"
@@ -612,7 +612,7 @@ export default function AdminSettings() {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="confirmAdminPin">Confirm New Admin PIN</Label>
+              <Label htmlFor="confirmAdminPin">Confirm new admin PIN</Label>
               <Input
                 id="confirmAdminPin"
                 type="password"
@@ -662,7 +662,7 @@ export default function AdminSettings() {
         <CardContent>
           <form onSubmit={handleChangeManagerPin} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="newManagerPin">New Manager PIN</Label>
+              <Label htmlFor="newManagerPin">New manager PIN</Label>
               <Input
                 id="newManagerPin"
                 type="password"
@@ -676,7 +676,7 @@ export default function AdminSettings() {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="confirmManagerPin">Confirm New Manager PIN</Label>
+              <Label htmlFor="confirmManagerPin">Confirm new manager PIN</Label>
               <Input
                 id="confirmManagerPin"
                 type="password"
@@ -836,7 +836,7 @@ export default function AdminSettings() {
         <CardContent>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="ldoTank1ReceivedBy">Tank 1 (Boiler) — Received By</Label>
+              <Label htmlFor="ldoTank1ReceivedBy">Tank 1 (boiler) — received by</Label>
               <Input
                 id="ldoTank1ReceivedBy"
                 value={ldoTank1ReceivedBy}
@@ -847,7 +847,7 @@ export default function AdminSettings() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ldoTank2ReceivedBy">Tank 2 (Dryer) — Received By</Label>
+              <Label htmlFor="ldoTank2ReceivedBy">Tank 2 (dryer) — received by</Label>
               <Input
                 id="ldoTank2ReceivedBy"
                 value={ldoTank2ReceivedBy}

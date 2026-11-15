@@ -3181,15 +3181,15 @@ export default function VendorBills() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <Label className="text-sm uppercase">{isHistoricalHireEdit ? "Invoice Date" : "Bill Date"}</Label>
+                <Label className="text-sm">{isHistoricalHireEdit ? "Invoice date" : "Bill date"}</Label>
                 <Input type="date" value={billDate} onChange={e => setBillDate(e.target.value)} data-testid="input-bill-date" />
               </div>
               <div>
-                <Label className="text-sm uppercase">{isHistoricalHireEdit ? "Vendor Invoice No." : "Bill Number"}</Label>
+                <Label className="text-sm">{isHistoricalHireEdit ? "Vendor invoice no." : "Bill number"}</Label>
                 <Input value={billNo} onChange={e => setBillNo(e.target.value)} onBlur={e => setBillNo(e.target.value.toUpperCase())} placeholder="AUTO-GENERATED" className="uppercase" data-testid="input-bill-no" />
               </div>
               <div>
-                <Label className="text-sm uppercase">Bill Type</Label>
+                <Label className="text-sm">Bill type</Label>
                   <Select value={billType} disabled={isHistoricalHireEdit} onValueChange={(val) => {
                   updateActivePullContext(val, vendorName, periodFrom, periodTo);
                   setBillType(val);
@@ -3219,7 +3219,7 @@ export default function VendorBills() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
-                <Label className="text-sm uppercase">Site</Label>
+                <Label className="text-sm">Site</Label>
                 <Select value={selectedSiteId} onValueChange={(value) => {
                   cancelActivePull();
                   const selectedName = sites.find(site => String(site.id) === value)?.name ?? null;
@@ -3249,10 +3249,10 @@ export default function VendorBills() {
               )}
               </div>
               <div className="relative">
-                <Label htmlFor="input-vendor-name" className="text-sm uppercase">Vendor / Supplier Name</Label>
+                <Label htmlFor="input-vendor-name" className="text-sm">Vendor / supplier name</Label>
                 {editingBillId === null && (
                   <div className="mb-2">
-                    <Label htmlFor="select-bill-vendor-master" className="text-xs text-muted-foreground">Vendor Master (preferred)</Label>
+                    <Label htmlFor="select-bill-vendor-master" className="text-xs text-muted-foreground">Vendor master (preferred)</Label>
                     <Select
                       value={matchingBillingIdentities.length === 1 ? String(matchingBillingIdentities[0].id) : "manual"}
                       onValueChange={value => {
@@ -3399,7 +3399,7 @@ export default function VendorBills() {
                 )}
               </div>
               <div>
-                <Label className="text-sm uppercase">Period From</Label>
+                <Label className="text-sm">Period from</Label>
                 <Input type="date" value={periodFrom} onChange={e => {
                   const value = e.target.value;
                    updateActivePullContext(billType, vendorName, value, periodTo);
@@ -3410,7 +3410,7 @@ export default function VendorBills() {
                 }} data-testid="input-period-from" />
               </div>
               <div>
-                <Label className="text-sm uppercase">Period To</Label>
+                <Label className="text-sm">Period to</Label>
                 <Input type="date" value={periodTo} onChange={e => {
                   const value = e.target.value;
                    updateActivePullContext(billType, vendorName, periodFrom, value);
@@ -3663,7 +3663,7 @@ export default function VendorBills() {
                   ) : (
                     <>
                       <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => setShowEquipmentDailyActivity(true)} disabled={equipmentPerformance.isFetching} data-testid="button-view-daily-activity">{equipmentPerformance.isFetching ? "Loading daily activity…" : "View Daily Activity"}</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setShowEquipmentDailyActivity(true)} disabled={equipmentPerformance.isFetching} data-testid="button-view-daily-activity">{equipmentPerformance.isFetching ? "Loading daily activity…" : "View daily activity"}</Button>
                         {canExport && <Button type="button" variant="outline" size="sm" disabled={equipmentPerformance.isFetching} onClick={async () => exportEquipmentHireBill({
                           ...exportData,
                           logoDataUrl: exportData.logoDataUrl ?? (exportData.logoFile ? await loadPdfLogoDataUrl(exportData.logoFile) : null),
@@ -3785,11 +3785,11 @@ export default function VendorBills() {
                         <div><span className="text-muted-foreground">Suggested HSD Recovery</span><strong className="block">{diesel?.expectedDieselAvailable === false ? "Tank Readings N/A" : diesel?.rateUnavailable ? "Rate unavailable" : `₹${formatCurrency(diesel?.suggestedRecoveryAmount || 0)}`}</strong></div>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <Button type="button" size="sm" variant={selection.dieselRecoveryDecision === "accept" ? "default" : "outline"} disabled={recoveryAcceptUnavailable || !diesel?.suggestedRecoveryAmount} onClick={() => patchHireGroup(selection.id, { dieselRecoveryDecision: "accept", dieselRecoveryFinalAmount: Number(diesel?.suggestedRecoveryAmount || 0) })}>Accept Suggested</Button>
+                        <Button type="button" size="sm" variant={selection.dieselRecoveryDecision === "accept" ? "default" : "outline"} disabled={recoveryAcceptUnavailable || !diesel?.suggestedRecoveryAmount} onClick={() => patchHireGroup(selection.id, { dieselRecoveryDecision: "accept", dieselRecoveryFinalAmount: Number(diesel?.suggestedRecoveryAmount || 0) })}>Accept suggested</Button>
                         <Button type="button" size="sm" variant={selection.dieselRecoveryDecision === "edit" ? "default" : "outline"} onClick={() => patchHireGroup(selection.id, { dieselRecoveryDecision: "edit" })}>Edit</Button>
-                        <Button type="button" size="sm" variant={selection.dieselRecoveryDecision === "ignore" || !selection.dieselRecoveryDecision ? "default" : "outline"} onClick={() => patchHireGroup(selection.id, { dieselRecoveryDecision: "ignore", dieselRecoveryFinalAmount: 0 })}>No Recovery</Button>
+                        <Button type="button" size="sm" variant={selection.dieselRecoveryDecision === "ignore" || !selection.dieselRecoveryDecision ? "default" : "outline"} onClick={() => patchHireGroup(selection.id, { dieselRecoveryDecision: "ignore", dieselRecoveryFinalAmount: 0 })}>No recovery</Button>
                       </div>
-                      {selection.dieselRecoveryDecision === "edit" && <div className="grid gap-2 sm:grid-cols-2"><div><Label className="text-[10px] uppercase">Final Recovery ₹</Label><Input type="number" min="0" placeholder="Enter agreed ₹ amount" value={selection.dieselRecoveryFinalAmount ?? ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryFinalAmount: event.target.value === "" ? undefined : Number(event.target.value) })} /></div><div><Label className="text-[10px] uppercase">Reason / reference (required)</Label><Input value={selection.dieselRecoveryRemarks || ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryRemarks: event.target.value.toUpperCase() })} /></div></div>}
+                      {selection.dieselRecoveryDecision === "edit" && <div className="grid gap-2 sm:grid-cols-2"><div><Label className="text-[10px]">Final recovery ₹</Label><Input type="number" min="0" placeholder="Enter agreed ₹ amount" value={selection.dieselRecoveryFinalAmount ?? ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryFinalAmount: event.target.value === "" ? undefined : Number(event.target.value) })} /></div><div><Label className="text-[10px]">Reason / reference (required)</Label><Input value={selection.dieselRecoveryRemarks || ""} onChange={event => patchHireGroup(selection.id, { dieselRecoveryRemarks: event.target.value.toUpperCase() })} /></div></div>}
                     </div>}
                     <div className="grid gap-2 sm:grid-cols-3">
                       {[["Other Debit / Recovery", "otherDebit", "otherDebitReason"], ["Advance Adjustment", "advanceAdjustment", "advanceAdjustmentReason"], ["Other Credit", "otherCredit", "otherCreditReason"]].map(([label, amountKey, reasonKey]) => (
@@ -4014,7 +4014,7 @@ export default function VendorBills() {
                     </div>
                     {hireGroups.find(g => g.basis === "monthly")?.id === group.id && contractorAdvanceSuggestion && (
                       <div className="rounded border border-amber-200 bg-amber-50/50 p-2 dark:border-amber-900 dark:bg-amber-950/20">
-                        <Label className="text-[10px] uppercase">Other Debit / Recovery — Contractor Diesel Advance</Label>
+                        <Label className="text-[10px]">Other debit / recovery — contractor diesel advance</Label>
                         <p className="text-[11px] text-muted-foreground">{contractorAdvanceSuggestion.amount == null
                           ? `${contractorAdvanceSuggestion.litres.toFixed(2)} L recorded; purchased diesel rate unavailable. Enter an agreed recovery or remove it.`
                           : `${contractorAdvanceSuggestion.litres.toFixed(2)} L at the period-weighted purchased diesel rate. This is an editable suggestion, not a silent deduction.`}</p>
@@ -4595,7 +4595,7 @@ export default function VendorBills() {
                       <th className="px-2 py-2 text-left w-28">Date</th>
                       <th className="px-2 py-2 text-center w-16">Type</th>
                       <th className="px-2 py-2 text-left">Description</th>
-                      {hasSuppliedOrTransporter && <th className="px-2 py-2 text-left w-28">Supplied To</th>}
+                      {hasSuppliedOrTransporter && <th className="px-2 py-2 text-left w-28">Supplied to</th>}
                       {hasSuppliedOrTransporter && <th className="px-2 py-2 text-left w-28">Transporter</th>}
                       <th className="px-2 py-2 text-left w-24">Qty</th>
                       <th className="px-2 py-2 text-left w-20">Unit</th>
@@ -4818,7 +4818,7 @@ export default function VendorBills() {
 
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end border-t pt-3">
                       <div className="md:col-span-2">
-                        <Label className="text-sm uppercase">{contractorAdvanceSuggestion && hireGroups.length === 0 ? "Other Debit / Recovery — Contractor Diesel Advance" : "Advance Deduction"}</Label>
+                        <Label className="text-sm">{contractorAdvanceSuggestion && hireGroups.length === 0 ? "Other debit / recovery — contractor diesel advance" : "Advance deduction"}</Label>
                         {contractorAdvanceSuggestion && hireGroups.length === 0 && <p className="text-xs text-muted-foreground">
                           {contractorAdvanceSuggestion.amount == null
                             ? `${contractorAdvanceSuggestion.litres.toFixed(2)} L recorded. No purchased diesel rate is available; enter an agreed manual recovery or remove it.`
@@ -4826,7 +4826,7 @@ export default function VendorBills() {
                         </p>}
                       </div>
                       <div>
-                        <Label className="text-sm uppercase">Reason / reference</Label>
+                        <Label className="text-sm">Reason / reference</Label>
                         <Input value={adjustmentLabel} onChange={e => setAdjustmentLabel(e.target.value.toUpperCase())}
                           placeholder="DIESEL ADVANCE / OTHER RECOVERY" data-testid="input-adjustment-label" />
                       </div>
@@ -5065,7 +5065,7 @@ export default function VendorBills() {
                         <div className="flex items-center gap-3 flex-wrap">
                           {bulkRates[group.key]?.unitOptions?.length > 1 && (
                             <div className="flex-1 min-w-[150px]">
-                              <Label className="text-sm uppercase">Billing Unit</Label>
+                              <Label className="text-sm">Billing unit</Label>
                               <Select
                                 value={bulkRates[group.key]?.targetUnit || group.unit}
                                 onValueChange={targetUnit => setBulkRates(prev => {
@@ -5110,7 +5110,7 @@ export default function VendorBills() {
                           </div>
                           {group.category === "transport" && (
                             <div className="flex-1 min-w-[120px]">
-                              <Label className="text-sm uppercase">Lead Distance (KM)</Label>
+                              <Label className="text-sm">Lead distance (km)</Label>
                               <Input
                                 type="number"
                                 step="0.01"
@@ -5952,7 +5952,7 @@ export default function VendorBills() {
                       <th className="px-2 py-2 text-left w-24">Date</th>
                       <th className="px-2 py-2 text-center w-16">Type</th>
                       <th className="px-2 py-2 text-left">Description</th>
-                      {hasSuppliedOrTransporter && <th className="px-2 py-2 text-left w-28">Supplied To</th>}
+                      {hasSuppliedOrTransporter && <th className="px-2 py-2 text-left w-28">Supplied to</th>}
                       {hasSuppliedOrTransporter && <th className="px-2 py-2 text-left w-28">Transporter</th>}
                       <th className="px-2 py-2 text-left w-24">Qty</th>
                       <th className="px-2 py-2 text-left w-16">Unit</th>
@@ -6259,7 +6259,7 @@ export default function VendorBills() {
             </Link>
           )}
           {canEdit && (
-            <Button variant="outline" size="icon" onClick={() => setShowAliasDialog(true)} title="Vendor Aliases" data-testid="button-vendor-aliases">
+            <Button variant="outline" size="icon" onClick={() => setShowAliasDialog(true)} title="Vendor aliases" data-testid="button-vendor-aliases">
               <Settings className="w-4 h-4" />
             </Button>
           )}
@@ -6282,7 +6282,7 @@ export default function VendorBills() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div role="group" aria-label="Bill payment scope" className="inline-flex gap-1">
           <Button size="sm" variant={billScope === "unpaid" ? "default" : "outline"} aria-pressed={billScope === "unpaid"} onClick={() => setBillScope("unpaid")}>Unpaid</Button>
-          <Button size="sm" variant={billScope === "all" ? "default" : "outline"} aria-pressed={billScope === "all"} onClick={() => setBillScope("all")}>All Bills</Button>
+          <Button size="sm" variant={billScope === "all" ? "default" : "outline"} aria-pressed={billScope === "all"} onClick={() => setBillScope("all")}>All bills</Button>
           <Button
             size="sm"
             variant={paidAmountMissingOnly ? "default" : "outline"}
@@ -6326,7 +6326,7 @@ export default function VendorBills() {
               Dates match the billed period when it overlaps the selected range. Bills without a recorded billed period use the bill date.
             </p>
             <div>
-              <Label className="text-sm uppercase">Billed Period From</Label>
+              <Label className="text-sm">Billed period from</Label>
               <div className="relative">
                 <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} data-testid="filter-date-from" />
                 {filterDateFrom && (
@@ -6337,7 +6337,7 @@ export default function VendorBills() {
               </div>
             </div>
             <div>
-              <Label className="text-sm uppercase">Billed Period To</Label>
+              <Label className="text-sm">Billed period to</Label>
               <div className="relative">
                 <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} data-testid="filter-date-to" />
                 {filterDateTo && (
@@ -6417,7 +6417,7 @@ export default function VendorBills() {
             </div>
             {canViewBills && partyNames.length > 0 && (
               <div>
-                <Label className="text-sm uppercase">Supplied To</Label>
+                <Label className="text-sm">Supplied to</Label>
                 <div className="flex items-center gap-1">
                   <Select value={filterParty} onValueChange={setFilterParty}>
                     <SelectTrigger data-testid="filter-party" className="flex-1">
@@ -6597,7 +6597,7 @@ export default function VendorBills() {
       <Dialog open={showAliasDialog} onOpenChange={setShowAliasDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>VENDOR ALIASES</DialogTitle>
+            <DialogTitle>Vendor aliases</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             Group vendor name spelling variations so billing pulls records from all variants.
@@ -6605,7 +6605,7 @@ export default function VendorBills() {
           <div className="space-y-3 mt-2">
             <div className="grid grid-cols-5 gap-2 items-end">
               <div className="col-span-2">
-                <Label className="text-sm uppercase">Canonical Name</Label>
+                <Label className="text-sm">Canonical name</Label>
                 <Select value={aliasCanonical} onValueChange={setAliasCanonical}>
                   <SelectTrigger className="h-8 text-sm" data-testid="select-alias-canonical">
                     <SelectValue placeholder="SELECT VENDOR..." />
@@ -6618,7 +6618,7 @@ export default function VendorBills() {
                 </Select>
               </div>
               <div className="col-span-2">
-                <Label className="text-sm uppercase">Alias (Alternate Spelling)</Label>
+                <Label className="text-sm">Alias (alternate spelling)</Label>
                 <Input
                   value={aliasValue}
                   onChange={e => setAliasValue(e.target.value)}

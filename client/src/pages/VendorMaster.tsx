@@ -212,7 +212,7 @@ export default function VendorMaster() {
   return <main className="max-w-6xl mx-auto p-5 space-y-5">
     <Link href="/masters/hub" className="text-sm text-blue-700 hover:underline">← Master Data</Link>
     <div><h1 className="text-2xl font-bold">Vendor master</h1><p className="text-sm text-slate-600">One party, one vendor master. Material supplier, transporter and equipment owner remain separate roles. Linking preserves recorded names and existing bills.</p></div>
-    <div className="flex gap-2 border-b">{(["master", "review"] as const).map(t => <button key={t} onClick={() => { setTab(t); setMessage(""); }} className={`px-4 py-2 ${tab === t ? "border-b-2 border-blue-700 font-semibold" : ""}`}>{t === "master" ? "Vendors" : "Link Vendors"}</button>)}</div>
+    <div className="flex gap-2 border-b">{(["master", "review"] as const).map(t => <button key={t} onClick={() => { setTab(t); setMessage(""); }} className={`px-4 py-2 ${tab === t ? "border-b-2 border-blue-700 font-semibold" : ""}`}>{t === "master" ? "Vendors" : "Link vendors"}</button>)}</div>
      {message && <p role="alert" className="rounded border bg-amber-50 p-3 text-sm whitespace-pre-line">{message}</p>}
     {tab === "master" ? <>
       {canAddVendor && <button className="bg-blue-700 text-white rounded-md px-4 py-2" onClick={() => setEditing({})}>Create vendor</button>}
@@ -256,7 +256,7 @@ export default function VendorMaster() {
       <h2 className="text-lg font-semibold">Review vendor identities</h2>
       <p className="text-sm text-slate-600">Review equipment owners, trip roles, unlinked bills, rate cards and bulk purchase indents. Several vehicles can share one vendor. Suggestions are not confirmations; verify each identity. Existing bill-specific references remain unchanged.</p>
       <div className="flex flex-wrap gap-2" aria-label="Link status">
-         {(["pending", "confirmed"] as const).map(status => <button key={status} aria-pressed={reviewStatus === status} className={`rounded-md border px-4 py-2 text-sm ${reviewStatus === status ? "bg-primary text-primary-foreground" : "bg-card"}`} onClick={() => { setReviewStatus(status); setMessage(""); setCreating(null); setSelectedProposalKeys([]); }}>{status === "pending" ? "Pending Links" : "Confirmed Links"}</button>)}
+         {(["pending", "confirmed"] as const).map(status => <button key={status} aria-pressed={reviewStatus === status} className={`rounded-md border px-4 py-2 text-sm ${reviewStatus === status ? "bg-primary text-primary-foreground" : "bg-card"}`} onClick={() => { setReviewStatus(status); setMessage(""); setCreating(null); setSelectedProposalKeys([]); }}>{status === "pending" ? "Pending links" : "Confirmed links"}</button>)}
       </div>
       <label className="block text-sm">Search vendor or registration
          <input className="mt-1 w-full rounded-md border bg-background p-2" placeholder="Vendor name or TS15UE4470" value={reviewSearch} onChange={e => { setReviewSearch(e.target.value); setSelectedProposalKeys([]); setMessage(""); }} />

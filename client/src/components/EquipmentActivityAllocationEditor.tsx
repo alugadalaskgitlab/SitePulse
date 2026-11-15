@@ -49,7 +49,7 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
     if (parentStartTime && segment.startTime && segment.startTime < parentStartTime) list.push("Start Time cannot be before the machine-day Start Time.");
     if (parentEndTime && segment.endTime && segment.endTime > parentEndTime) list.push("End Time cannot be after the machine-day End Time.");
     segment.boqItems.forEach((item, itemIndex) => {
-      if (!item.boqItemId) list.push(`BOQ Item ${itemIndex + 1}: select a BOQ Item.`);
+      if (!item.boqItemId) list.push(`BOQ item ${itemIndex + 1}: select a BOQ item.`);
     });
     value.forEach((other, otherIndex) => {
       if (otherIndex === index || !segment.startTime || !segment.endTime || !other.startTime || !other.endTime) return;
@@ -57,7 +57,7 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
       else if (segment.startTime < other.endTime && segment.endTime > other.startTime) list.push("This time segment overlaps another segment.");
     });
     const selected = segment.boqItems.map(item => item.boqItemId).filter(Boolean);
-    if (new Set(selected).size !== selected.length) list.push("The same BOQ Item is assigned more than once in this segment.");
+    if (new Set(selected).size !== selected.length) list.push("The same BOQ item is assigned more than once in this segment.");
     if (parentHours != null && allocatedHours > parentHours) list.push("Assigned time exceeds the machine-day Clock Duration.");
     return Array.from(new Set(list));
   }), [value, parentHours, parentStartTime, parentEndTime]);
@@ -133,25 +133,25 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
     <div className="space-y-2">{value.map((segment, segmentIndex) => (
       <div key={segmentIndex} className="rounded-md border border-slate-200 bg-slate-50/80 p-2.5 dark:border-slate-700 dark:bg-slate-950/25" data-testid={`equipment-activity-segment-${segmentIndex}`}>
         <div className="relative grid grid-cols-2 items-end gap-2 sm:flex">
-          <div className="col-span-2 min-w-0 pr-12 sm:flex-1 sm:pr-0"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">BOQ Item</Label><Select value={segment.boqItems[0]?.boqItemId ? String(segment.boqItems[0].boqItemId) : ""} onValueChange={v => patchBoqItem(segmentIndex, 0, Number(v))}><SelectTrigger className="mt-1 h-11 bg-white text-sm sm:h-9 dark:bg-slate-900"><SelectValue placeholder="Select BOQ Item" /></SelectTrigger><SelectContent>{boqItems.map(option => <SelectItem key={option.id} value={String(option.id)}>{dprBoqItemDisplayName(option)}</SelectItem>)}</SelectContent></Select></div>
-          <div className="sm:w-[140px] sm:flex-none"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Start Time</Label><Input className="mt-1 h-11 min-w-0 bg-white px-2 text-sm tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={segment.startTime} onChange={e => patchSegment(segmentIndex, { startTime: e.target.value, hoursWorked: undefined })} /></div>
-          <div className="sm:w-[140px] sm:flex-none"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">End Time</Label><Input className="mt-1 h-11 min-w-0 bg-white px-2 text-sm tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={segment.endTime} onChange={e => patchSegment(segmentIndex, { endTime: e.target.value, hoursWorked: undefined })} /></div>
+          <div className="col-span-2 min-w-0 pr-12 sm:flex-1 sm:pr-0"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">BOQ item</Label><Select value={segment.boqItems[0]?.boqItemId ? String(segment.boqItems[0].boqItemId) : ""} onValueChange={v => patchBoqItem(segmentIndex, 0, Number(v))}><SelectTrigger className="mt-1 h-11 bg-white text-sm sm:h-9 dark:bg-slate-900"><SelectValue placeholder="Select BOQ item" /></SelectTrigger><SelectContent>{boqItems.map(option => <SelectItem key={option.id} value={String(option.id)}>{dprBoqItemDisplayName(option)}</SelectItem>)}</SelectContent></Select></div>
+          <div className="sm:w-[140px] sm:flex-none"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Start time</Label><Input className="mt-1 h-11 min-w-0 bg-white px-2 text-sm tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={segment.startTime} onChange={e => patchSegment(segmentIndex, { startTime: e.target.value, hoursWorked: undefined })} /></div>
+          <div className="sm:w-[140px] sm:flex-none"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">End time</Label><Input className="mt-1 h-11 min-w-0 bg-white px-2 text-sm tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={segment.endTime} onChange={e => patchSegment(segmentIndex, { endTime: e.target.value, hoursWorked: undefined })} /></div>
           <div className="sm:w-[78px] sm:flex-none"><div className="text-xs font-medium text-slate-700 dark:text-slate-200">Hours</div><div className="mt-2 text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100">{duration(segment) == null ? "—" : `${duration(segment)!.toFixed(1)} h`}</div></div>
           <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-[18px] h-11 w-11 text-slate-600 hover:text-destructive sm:static sm:h-9 sm:w-9 sm:flex-none" onClick={() => removeSegment(segmentIndex)} aria-label={`Remove segment ${segmentIndex + 1}`}><Trash2 className="h-4 w-4" /></Button>
         </div>
         {segment.boqItems.slice(1).map((item, additionalIndex) => {
           const itemIndex = additionalIndex + 1;
           return <div key={itemIndex} className="mt-2 flex items-end gap-2">
-            <div className="min-w-0 flex-1"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Additional BOQ Item</Label><Select value={item.boqItemId ? String(item.boqItemId) : ""} onValueChange={v => patchBoqItem(segmentIndex, itemIndex, Number(v))}><SelectTrigger className="mt-1 h-11 bg-white text-sm sm:h-9 dark:bg-slate-900"><SelectValue placeholder="Select BOQ Item" /></SelectTrigger><SelectContent>{boqItems.map(option => <SelectItem key={option.id} value={String(option.id)}>{dprBoqItemDisplayName(option)}</SelectItem>)}</SelectContent></Select></div>
+            <div className="min-w-0 flex-1"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Additional BOQ item</Label><Select value={item.boqItemId ? String(item.boqItemId) : ""} onValueChange={v => patchBoqItem(segmentIndex, itemIndex, Number(v))}><SelectTrigger className="mt-1 h-11 bg-white text-sm sm:h-9 dark:bg-slate-900"><SelectValue placeholder="Select BOQ item" /></SelectTrigger><SelectContent>{boqItems.map(option => <SelectItem key={option.id} value={String(option.id)}>{dprBoqItemDisplayName(option)}</SelectItem>)}</SelectContent></Select></div>
             <Button type="button" variant="ghost" size="icon" className="h-11 w-11 shrink-0 text-slate-600 hover:text-destructive sm:h-9 sm:w-9" onClick={() => removeBoqItem(segmentIndex, itemIndex)} aria-label={`Remove ${itemName(item.boqItemId) || "BOQ item"}`}><Trash2 className="h-4 w-4" /></Button>
           </div>;
         })}
-        <Button type="button" size="sm" variant="ghost" className="mt-2 min-h-9 gap-2 text-amber-800 dark:text-amber-300" onClick={() => addBoqItem(segmentIndex)}><Plus className="h-4 w-4" /> Add BOQ Item</Button>
+        <Button type="button" size="sm" variant="ghost" className="mt-2 min-h-9 gap-2 text-amber-800 dark:text-amber-300" onClick={() => addBoqItem(segmentIndex)}><Plus className="h-4 w-4" /> Add BOQ item</Button>
         {warnings[segmentIndex]?.length > 0 && <div className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/25 dark:text-amber-300">{warnings[segmentIndex].map(warning => <div key={warning} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{warning}</div>)}</div>}
       </div>
     ))}</div>
     {value.length > 0 && <Button type="button" size="sm" variant="ghost" className="mt-2 min-h-10 gap-1 px-0 text-xs text-primary" onClick={addSegment}><Plus className="h-4 w-4" /> Split time across another item</Button>}
-    {!value.length && <div className="rounded-md border border-dashed border-slate-300 bg-slate-50/50 px-4 py-4 text-center text-sm text-muted-foreground dark:border-slate-700 dark:bg-slate-950/20"><p>No BOQ item assigned to this machine day.</p><Button type="button" size="sm" variant="outline" className="mt-3 min-h-10 border-amber-300 bg-amber-50 px-4 text-sm text-amber-900 hover:bg-amber-100 dark:bg-amber-950/30 dark:text-amber-200" onClick={addSegment}>Assign Item</Button></div>}
+    {!value.length && <div className="rounded-md border border-dashed border-slate-300 bg-slate-50/50 px-4 py-4 text-center text-sm text-muted-foreground dark:border-slate-700 dark:bg-slate-950/20"><p>No BOQ item assigned to this machine day.</p><Button type="button" size="sm" variant="outline" className="mt-3 min-h-10 border-amber-300 bg-amber-50 px-4 text-sm text-amber-900 hover:bg-amber-100 dark:bg-amber-950/30 dark:text-amber-200" onClick={addSegment}>Assign item</Button></div>}
   </section>;
 }
 

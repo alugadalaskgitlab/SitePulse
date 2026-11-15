@@ -60,7 +60,7 @@ export default function SiteMaterialStock() {
           </Link>
           <Boxes className="w-5 h-5 text-emerald-600" />
           <div>
-            <h1 className="text-xl font-bold leading-tight">Site Material Stock</h1>
+            <h1 className="text-xl font-bold leading-tight">Site material stock</h1>
             <p className="text-sm text-muted-foreground">Ordered · Delivered · Consumed · Lying at site (material buying unit)</p>
           </div>
         </div>
@@ -114,7 +114,7 @@ export default function SiteMaterialStock() {
                         <th className="text-left px-4 py-2">Material</th>
                         <th className="text-right px-3 py-2">Ordered</th>
                         <th className="text-right px-3 py-2">Delivered</th>
-                        <th className="text-right px-3 py-2">To Supply</th>
+                        <th className="text-right px-3 py-2">To supply</th>
                         <th className="text-right px-3 py-2">
                           <span className="inline-flex items-center gap-1">
                             Consumed

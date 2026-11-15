@@ -463,7 +463,7 @@ export function SourceTransportReviewPage() {
             <Input id="own-source-label" value={sourceLabel} onChange={event => { setSourceLabel(event.target.value); setSourceQuery(event.target.value); }} list="prior-source-labels" placeholder="Type or select a prior source label" />
             <datalist id="prior-source-labels">{sourceSuggestions.filter(value => !sourceQuery || value.toLowerCase().includes(sourceQuery.toLowerCase())).map(value => <option key={value} value={value} />)}</datalist>
             {suggestionsQuery.isError && <p role="alert" className="text-xs text-destructive">Prior source labels unavailable. You can still enter a label.</p>}
-          </div> : <div className="space-y-1"><Label htmlFor="source-vendor">Vendor Master</Label>
+          </div> : <div className="space-y-1"><Label htmlFor="source-vendor">Vendor master</Label>
             {vendorsQuery.isLoading && <div role="status" className="h-9 animate-pulse rounded bg-muted" aria-label="Loading vendors" />}
             {vendorsQuery.isError && <p role="alert" className="text-xs text-destructive">Vendor Master could not be loaded. <button type="button" className="underline" onClick={() => void vendorsQuery.refetch()}>Retry</button></p>}
             <select id="source-vendor" className="w-full rounded-md border bg-background p-2 text-sm" value={vendorId} disabled={!canVerify || vendorsQuery.isLoading || vendorsQuery.isError} onChange={event => setVendorId(event.target.value)}>

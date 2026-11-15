@@ -1176,7 +1176,7 @@ export default function PlantEquipmentUsage() {
             <h2 style="margin: 0; font-size: 13px; font-weight: bold;">${companyName}</h2>
           </div>
           <div class="header">
-            <h1>Equipment Usage Report</h1>
+            <h1>Equipment usage report</h1>
             <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}${filterDateFrom || filterDateTo ? ` | Range: ${filterDateFrom || "Start"} to ${filterDateTo || "End"}` : ""}</p>
           </div>
           <table>
@@ -1186,7 +1186,7 @@ export default function PlantEquipmentUsage() {
                 <th>Equipment</th>
                 <th>Reg#</th>
                 <th>Ownership</th>
-                <th>Entry Type</th>
+                <th>Entry type</th>
                 <th>Time / Meter</th>
                 <th>Runtime</th>
                 <th>Issued (L)</th>
@@ -1245,7 +1245,7 @@ export default function PlantEquipmentUsage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">Equipment Usage</h1>
+            <h1 className="text-2xl font-bold">Equipment usage</h1>
             <p className="text-muted-foreground">Track meter readings and fuel consumption</p>
           </div>
         </div>
@@ -1277,7 +1277,7 @@ export default function PlantEquipmentUsage() {
               </div>
 
               <div>
-                <Label>Working Plant / Location</Label>
+                <Label>Working plant / location</Label>
                 <Select value={workingPlant} onValueChange={setWorkingPlant} disabled={!!receivingUsage}>
                   <SelectTrigger data-testid="select-working-plant">
                     <SelectValue placeholder="Select working location" />
@@ -1347,7 +1347,7 @@ export default function PlantEquipmentUsage() {
                 )}
                 {selectedEquipment && (
                   <div className="mt-2 py-2 px-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800 space-y-2">
-                    <Label className="text-sm font-medium">Entry Type</Label>
+                    <Label className="text-sm font-medium">Entry type</Label>
                     <div className="flex items-center gap-2">
                       <Select
                         value={entryType}
@@ -1436,7 +1436,7 @@ export default function PlantEquipmentUsage() {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-sm">Transport Vehicle</Label>
+                    <Label className="text-sm">Transport vehicle</Label>
                     <Select value={transportEquipmentId} onValueChange={setTransportEquipmentId}>
                       <SelectTrigger data-testid="select-transport-vehicle">
                         <SelectValue placeholder="Select transport vehicle" />
@@ -1459,7 +1459,7 @@ export default function PlantEquipmentUsage() {
                     })()}
                   </div>
                   <div>
-                    <Label className="text-sm">Distance (km) - One Way</Label>
+                    <Label className="text-sm">Distance (km) - one way</Label>
                     <Input
                       type="number"
                       step="0.1"
@@ -1494,7 +1494,7 @@ export default function PlantEquipmentUsage() {
               </div>}
               {sendToSite && (
                 <div>
-                  <Label>Destination Site <span className="text-destructive">*</span></Label>
+                  <Label>Destination site <span className="text-destructive">*</span></Label>
                   <Select value={destinationSite} onValueChange={setDestinationSite}>
                     <SelectTrigger data-testid="select-destination-site">
                       <SelectValue placeholder="Select destination site" />
@@ -1529,11 +1529,11 @@ export default function PlantEquipmentUsage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Start Time</Label>
+                  <Label>Start time</Label>
                   <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} data-testid="input-start-time" />
                 </div>
                 <div>
-                  <Label>End Time</Label>
+                  <Label>End time</Label>
                   <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} data-testid="input-end-time" />
                 </div>
               </div>
@@ -1586,7 +1586,7 @@ export default function PlantEquipmentUsage() {
               )}
 
               <div className="space-y-2">
-                <Label>Diesel Source</Label>
+                <Label>Diesel source</Label>
                 <Select value={dieselIncluded ? "contractor" : dieselSource} onValueChange={(value) => {
                   if (value === "contractor") {
                     setDieselIncluded(true);
@@ -1615,7 +1615,7 @@ export default function PlantEquipmentUsage() {
               {effectiveDieselSource === "contractor" ? (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Diesel Issued (L)</Label>
+                    <Label>Diesel issued (L)</Label>
                     <Input type="number" step="0.1" value={dieselIssued} onChange={(e) => setDieselIssued(e.target.value)} placeholder="0" data-testid="input-diesel-issued" />
                   </div>
                 </div>
@@ -1626,7 +1626,7 @@ export default function PlantEquipmentUsage() {
                       <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Direct Site Purchase Details</p>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <Label className="text-sm">Site Name</Label>
+                          <Label className="text-sm">Site name</Label>
                           <Input 
                             value={siteName} 
                             onChange={(e) => setSiteName(e.target.value.toUpperCase())} 
@@ -1635,7 +1635,7 @@ export default function PlantEquipmentUsage() {
                           />
                         </div>
                         <div>
-                          <Label className="text-sm">Fuel Station</Label>
+                          <Label className="text-sm">Fuel station</Label>
                           <Input 
                             value={fuelStation} 
                             onChange={(e) => setFuelStation(e.target.value.toUpperCase())} 
@@ -1646,7 +1646,7 @@ export default function PlantEquipmentUsage() {
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <Label className="text-sm">Bill Number</Label>
+                          <Label className="text-sm">Bill number</Label>
                           <Input 
                             value={billNumber} 
                             onChange={(e) => setBillNumber(e.target.value.toUpperCase())} 
@@ -1655,7 +1655,7 @@ export default function PlantEquipmentUsage() {
                           />
                         </div>
                         <div>
-                          <Label className="text-sm">Amount Paid (Rs)</Label>
+                          <Label className="text-sm">Amount paid (Rs)</Label>
                           <Input 
                             type="number" 
                             step="0.01" 
@@ -1671,7 +1671,7 @@ export default function PlantEquipmentUsage() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label>Opening Diesel Tank (L)</Label>
+                      <Label>Opening diesel tank (L)</Label>
                       <div className="relative">
                         <Input 
                           type="number" 
@@ -1691,7 +1691,7 @@ export default function PlantEquipmentUsage() {
                       )}
                     </div>
                     <div>
-                      <Label>Diesel Issued (L)</Label>
+                      <Label>Diesel issued (L)</Label>
                       <Input type="number" step="0.1" value={dieselIssued} onChange={(e) => setDieselIssued(e.target.value)} placeholder="0" data-testid="input-diesel-issued" />
                     </div>
                   </div>
@@ -1706,7 +1706,7 @@ export default function PlantEquipmentUsage() {
                     <div className="border rounded-md p-3 space-y-3 bg-blue-50/50 dark:bg-blue-900/10">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label>Diesel Balance in Tank (L)</Label>
+                          <Label>Diesel balance in tank (L)</Label>
                           <Input
                             type="number"
                             step="0.1"
@@ -1760,7 +1760,7 @@ export default function PlantEquipmentUsage() {
                     </div>
                   ) : (
                     <div>
-                      <Label className="text-sm">Hire Amount (₹)</Label>
+                      <Label className="text-sm">Hire amount (₹)</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -1935,7 +1935,7 @@ export default function PlantEquipmentUsage() {
       <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirm Delete</DialogTitle>
+            <DialogTitle>Confirm delete</DialogTitle>
           </DialogHeader>
           <p>Are you sure you want to delete this equipment usage entry?</p>
           <DialogFooter>

@@ -63,7 +63,7 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(storage).toContain('if (entryTypeFilter === "trip_based") return et === "trip_based"');
     expect(client).toContain("SavedBillCalendars");
     expect(savedCalendars).toContain("groupedReviews={reviews.slice(1)}");
-    expect(monthlyReview).toContain("Monthly Billing Summary");
+    expect(monthlyReview).toContain("Monthly billing summary");
   });
 
   it("keeps Pull Items additive and derives its count from final eligibility", () => {
@@ -133,7 +133,7 @@ describe("07C vendor-bill hire transaction wiring", () => {
     expect(client).toContain('data-testid="select-equipment-hire"');
     expect(client).toContain('data-testid="select-equipment-hire-project"');
     expect(client).toContain("<Select value={selectedHireEquipmentId ? String(selectedHireEquipmentId) : \"\"} disabled>");
-    expect(client).toContain("View Daily Activity");
+    expect(client).toContain("View daily activity");
     expect(client).toContain("EquipmentHireExportButtons");
     expect(client).toContain("Trip Candidate Review");
     expect(storage).toContain("computeEquipmentUsage(equipmentDefault, row)");

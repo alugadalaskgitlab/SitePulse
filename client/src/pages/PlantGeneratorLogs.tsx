@@ -264,7 +264,7 @@ export default function PlantGeneratorLogs() {
             <h2 style="margin: 0; font-size: 14px; font-weight: bold;">${companyName}</h2>
           </div>
           <div class="header">
-            <h1>Generator Diesel Tracking Report</h1>
+            <h1>Generator diesel tracking report</h1>
             <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}</p>
           </div>
           <table>
@@ -328,7 +328,7 @@ export default function PlantGeneratorLogs() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">Generator Diesel Tracking</h1>
+            <h1 className="text-2xl font-bold">Generator diesel tracking</h1>
             <p className="text-muted-foreground">Track generator diesel consumption (L/hr)</p>
           </div>
         </div>
@@ -342,7 +342,7 @@ export default function PlantGeneratorLogs() {
           )}
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Record Generator Log</DialogTitle>
+              <DialogTitle>Record generator log</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
@@ -365,11 +365,11 @@ export default function PlantGeneratorLogs() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Start Time</Label>
+                  <Label>Start time</Label>
                   <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} data-testid="input-start-time" />
                 </div>
                 <div>
-                  <Label>End Time</Label>
+                  <Label>End time</Label>
                   <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} data-testid="input-end-time" />
                 </div>
               </div>
@@ -379,7 +379,7 @@ export default function PlantGeneratorLogs() {
               )}
 
               <div>
-                <Label>Hours Run (override)</Label>
+                <Label>Hours run (override)</Label>
                 <Input type="number" step="0.1" value={hoursRun} onChange={(e) => setHoursRun(e.target.value)} placeholder="Leave blank to auto-calculate" data-testid="input-hours-run" />
               </div>
 

@@ -1259,7 +1259,7 @@ export default function PlantMaterialReceipts() {
             <h2 style="margin: 0; font-size: 14px; font-weight: bold;">${companyName}</h2>
           </div>
           <div class="header">
-            <h1>Material Receipts Report</h1>
+            <h1>Material receipts report</h1>
             <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}${filterDateFrom || filterDateTo ? ` | Range: ${filterDateFrom || "Start"} to ${filterDateTo || "End"}` : ""}</p>
           </div>
           <table>
@@ -1276,7 +1276,7 @@ export default function PlantMaterialReceipts() {
                 <th>Challan</th>
                 <th>Invoice no.</th>
                 <th>Invoice date</th>
-                <th>Indent Ref</th>
+                <th>Indent ref.</th>
                 <th>Supplier</th>
                 <th>Transporter</th>
                 <th>Party/job</th>
@@ -1329,7 +1329,7 @@ export default function PlantMaterialReceipts() {
             <ChevronLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Material Receipts</h1>
+            <h1 className="text-2xl font-bold">Material receipts</h1>
             <p className="text-muted-foreground">Record incoming materials at plant</p>
           </div>
         </div>
@@ -1471,7 +1471,7 @@ export default function PlantMaterialReceipts() {
                 if (!showTank) return null;
                 return (
                   <div>
-                    <Label>Receiving Tank</Label>
+                    <Label>Receiving tank</Label>
                     <Select value={tankNumber} onValueChange={setTankNumber}>
                       <SelectTrigger data-testid="select-tank-number">
                         <SelectValue placeholder={isFuel ? "Select tank or keep as stock" : "Select tank"} />
@@ -1528,7 +1528,7 @@ export default function PlantMaterialReceipts() {
               {isSelectedDiesel && (
                 <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50/60 dark:border-amber-700 dark:bg-amber-900/10 p-3" data-testid="section-diesel-receipt-control">
                   <div className="space-y-1.5">
-                    <Label>Daily Diesel Requirement <span className="text-destructive">*</span></Label>
+                    <Label>Daily diesel requirement <span className="text-destructive">*</span></Label>
                     <Select
                       value={linkedDieselRequirementId != null ? String(linkedDieselRequirementId) : "standalone"}
                       onValueChange={(value) => setLinkedDieselRequirementId(value === "standalone" ? null : Number(value))}
@@ -1627,7 +1627,7 @@ export default function PlantMaterialReceipts() {
 
               {!editingReceipt && (
                 <div>
-                  <Label className="text-sm text-muted-foreground">System Receipt No. (auto-assigned)</Label>
+                  <Label className="text-sm text-muted-foreground">System receipt no. (auto-assigned)</Label>
                   <div className="flex items-center h-9 px-3 border rounded-md bg-muted/50 text-sm font-mono text-muted-foreground" data-testid="text-system-recv-no">
                     {nextReceiptNoData?.number || (materialId ? "…" : "Select material first")}
                   </div>
@@ -1636,7 +1636,7 @@ export default function PlantMaterialReceipts() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Vehicle No</Label>
+                  <Label>Vehicle no.</Label>
                   <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())} placeholder="e.g., KA-01-XX-1234" data-testid="input-vehicle" />
                 </div>
                 <div>
@@ -1663,11 +1663,11 @@ export default function PlantMaterialReceipts() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Invoice No. <span className="text-muted-foreground text-sm">(optional)</span></Label>
+                  <Label>Invoice no. <span className="text-muted-foreground text-sm">(optional)</span></Label>
                   <Input value={invoiceNo} onChange={(e) => { invoiceNoDefaultSourceRef.current = "manual"; setInvoiceNo(e.target.value.toUpperCase()); }} placeholder="e.g. INV-2024-001" data-testid="input-invoice-no" />
                 </div>
                 <div>
-                  <Label>Invoice Date</Label>
+                  <Label>Invoice date</Label>
                   <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} data-testid="input-invoice-date" />
                 </div>
               </div>
@@ -1783,7 +1783,7 @@ export default function PlantMaterialReceipts() {
                 };
                 return (
                   <div className="space-y-1.5">
-                    <Label>Indent Ref. <span className="text-muted-foreground text-sm">(optional — link to purchase indent)</span></Label>
+                    <Label>Indent ref. <span className="text-muted-foreground text-sm">(optional — link to purchase indent)</span></Label>
                     {noPiForMaterial && !indentRef ? (
                       <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2.5" data-testid="notice-pending-pi">
                         <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
@@ -2028,7 +2028,7 @@ export default function PlantMaterialReceipts() {
       <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirm Delete</DialogTitle>
+            <DialogTitle>Confirm delete</DialogTitle>
           </DialogHeader>
           <p>
             {(() => {

@@ -391,7 +391,7 @@ export default function PlantMaterialReturns() {
             <img src="${window.location.origin}/${logoFile}" onerror="this.style.display='none'" />
             <h2>${companyName}</h2>
           </div>
-          <h1>Material Returns Report</h1>
+          <h1>Material returns report</h1>
           <p class="date">Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p>
           <table>
             <thead>
@@ -399,9 +399,9 @@ export default function PlantMaterialReturns() {
                 <th>Date</th>
                 <th>Material</th>
                 <th>Quantity</th>
-                <th>Returned By</th>
-                <th>Stock Owner</th>
-                <th>Linked Issue</th>
+                <th>Returned by</th>
+                <th>Stock owner</th>
+                <th>Linked issue</th>
               </tr>
             </thead>
             <tbody>
@@ -466,12 +466,12 @@ export default function PlantMaterialReturns() {
             )}
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{editingReturn ? "Edit Material Return" : "Record Material Return"}</DialogTitle>
+                <DialogTitle>{editingReturn ? "Edit material return" : "Record material return"}</DialogTitle>
               </DialogHeader>
 
               <div className="space-y-4 pt-2">
                 <div>
-                  <Label>Step 1: Select Material</Label>
+                  <Label>Step 1: select material</Label>
                   <Select value={selectedMaterialId} onValueChange={(val) => { setSelectedMaterialId(val); setSelectedIssueId(""); setReturnQuantity(""); }} disabled={!!editingReturn}>
                     <SelectTrigger data-testid="select-material">
                       <SelectValue placeholder="Select material to return" />
@@ -486,7 +486,7 @@ export default function PlantMaterialReturns() {
 
                 {selectedMaterialId && (
                   <div>
-                    <Label>Step 2: Select Original Issue</Label>
+                    <Label>Step 2: select original issue</Label>
                     <Select value={selectedIssueId} onValueChange={(val) => { setSelectedIssueId(val); setReturnQuantity(""); }} disabled={!!editingReturn}>
                       <SelectTrigger data-testid="select-issue">
                         <SelectValue placeholder="Select issue entry" />
@@ -526,17 +526,17 @@ export default function PlantMaterialReturns() {
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label>Return Date</Label>
+                        <Label>Return date</Label>
                         <Input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} data-testid="input-return-date" />
                       </div>
                       <div>
-                        <Label>Return Time</Label>
+                        <Label>Return time</Label>
                         <Input type="time" value={returnTime} onChange={(e) => setReturnTime(e.target.value)} data-testid="input-return-time" />
                       </div>
                     </div>
 
                     <div>
-                      <Label>Return Quantity (Max: {remainingQty.toFixed(3)} {selectedIssue.uom})</Label>
+                      <Label>Return quantity (max: {remainingQty.toFixed(3)} {selectedIssue.uom})</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -549,12 +549,12 @@ export default function PlantMaterialReturns() {
                     </div>
 
                     <div>
-                      <Label>Returned By (Person)</Label>
+                      <Label>Returned by (person)</Label>
                       <Input value={returnedBy} onChange={(e) => setReturnedBy(e.target.value.toUpperCase())} placeholder="Person returning the material" data-testid="input-returned-by" />
                     </div>
 
                     <div>
-                      <Label>Vehicle Number</Label>
+                      <Label>Vehicle number</Label>
                       <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())} placeholder="e.g., TS09AB1234" data-testid="input-vehicle" />
                     </div>
 
@@ -586,11 +586,11 @@ export default function PlantMaterialReturns() {
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <Label className="text-sm">From Date</Label>
+              <Label className="text-sm">From date</Label>
               <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} data-testid="filter-date-from" />
             </div>
             <div>
-              <Label className="text-sm">To Date</Label>
+              <Label className="text-sm">To date</Label>
               <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} data-testid="filter-date-to" />
             </div>
             <div>
@@ -636,7 +636,7 @@ export default function PlantMaterialReturns() {
             <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
               <RotateCcw className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">No Material Returns</h3>
+            <h3 className="text-lg font-semibold mb-2">No material returns</h3>
             <p className="text-muted-foreground">Record material returns from sites back to plant stock.</p>
           </CardContent>
         </Card>
@@ -709,7 +709,7 @@ export default function PlantMaterialReturns() {
       <Dialog open={deleteConfirmId !== null} onOpenChange={() => setDeleteConfirmId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Material Return?</DialogTitle>
+            <DialogTitle>Delete material return?</DialogTitle>
           </DialogHeader>
           <p className="text-muted-foreground">This will reverse the stock balance credit. This action cannot be undone.</p>
           <DialogFooter>

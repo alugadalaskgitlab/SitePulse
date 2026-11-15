@@ -152,7 +152,7 @@ function AuditMaterialsReceived({ site, date }: { site: string; date: string }) 
           </div>
           <Card>
             <CardContent className="p-4">
-              <h3 className="font-semibold mb-4">Material Entries ({entries.length})</h3>
+              <h3 className="font-semibold mb-4">Material entries ({entries.length})</h3>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[640px] text-sm border-collapse">
                   <thead><tr className="bg-muted/50">

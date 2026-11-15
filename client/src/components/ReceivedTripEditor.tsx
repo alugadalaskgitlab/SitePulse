@@ -29,7 +29,7 @@ export function ReceivedTripEditor({ receipt, sitesList, onClose, onSaved }: Pro
   });
   if (!trip) return <Dialog open onOpenChange={open => !open && onClose()}>
     <DialogContent>
-      <DialogHeader><DialogTitle>Material Trip</DialogTitle><DialogDescription>Loading the saved trip before editing.</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>Material trip</DialogTitle><DialogDescription>Loading the saved trip before editing.</DialogDescription></DialogHeader>
       {trips.isLoading ? <div className="h-32 animate-pulse rounded bg-muted" role="status" aria-label="Loading full material trip" /> :
         <div role="alert" className="space-y-3">
           <p>{trips.isError ? "Could not load the full trip. No changes have been made." : "This trip is no longer available in this site. Close and refresh the report."}</p>

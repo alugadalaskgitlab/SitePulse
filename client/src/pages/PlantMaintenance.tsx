@@ -1082,7 +1082,7 @@ export default function PlantMaintenance() {
       <Dialog open={showNewForm} onOpenChange={setShowNewForm}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{newFormEventType === "breakdown" ? "Log Breakdown" : newFormEventType === "service" ? "Log Scheduled Service" : "Log PM Event"}</DialogTitle>
+            <DialogTitle>{newFormEventType === "breakdown" ? "Log breakdown" : newFormEventType === "service" ? "Log scheduled service" : "Log PM event"}</DialogTitle>
           </DialogHeader>
           <LogForm
             equipment={equipment.filter(e => e.isActive)}

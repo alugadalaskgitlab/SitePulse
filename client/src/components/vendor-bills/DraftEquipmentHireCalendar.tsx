@@ -184,7 +184,7 @@ export default function DraftEquipmentHireCalendar({
             disabled={disabled || !query.isSuccess || query.isFetching}
             data-testid="button-view-daily-activity"
           >
-            {query.isFetching ? "Loading daily activity…" : "View Daily Activity"}
+            {query.isFetching ? "Loading daily activity…" : "View daily activity"}
           </Button>
           {canExport && liveExportData && (
             <EquipmentHireExportButtons
@@ -364,7 +364,7 @@ export function SavedEquipmentCalendarExport({
               onClick={() => exportSelection("pdf", "calendar")}
               data-testid="button-export-equipment-hire-choice-calendar"
             >
-              Export Activity Statement PDF
+              Export activity statement PDF
             </Button>
             <Button
               type="button"

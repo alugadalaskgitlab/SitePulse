@@ -70,19 +70,19 @@ export function PlanVsActualTable({ projectId }: { projectId: number }) {
             consistently in every browser. */}
         <thead>
           <tr style={{ background: "#0F5F64" }}>
-            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[220px]" style={{ background: "#0F5F64" }}>BOQ Item</th>
+            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[220px]" style={{ background: "#0F5F64" }}>BOQ item</th>
             <th className="px-2 py-2 font-semibold text-white text-right min-w-[60px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>UOM</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>BOQ Rate (₹)</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>BOQ Qty</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Planned to Date</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Actual to Date</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>BOQ Balance</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>BOQ Value (₹)</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Planned Value (₹)</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Actual Value (₹)</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>% Complete</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>BOQ rate (₹)</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>BOQ quantity</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Planned to date</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Actual to date</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>BOQ balance</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>BOQ value (₹)</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Planned value (₹)</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Actual value (₹)</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>% complete</th>
             <th className="px-2 py-2 font-semibold text-white text-left min-w-[100px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Status</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Last Activity</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Last activity</th>
           </tr>
         </thead>
         <tbody>

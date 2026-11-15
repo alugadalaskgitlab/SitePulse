@@ -183,7 +183,7 @@ export default function PlantDailyReport() {
             <Button variant="ghost" size="icon" data-testid="button-back"><ChevronLeft className="w-5 h-5" /></Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">Daily Plant Report</h1>
+            <h1 className="text-2xl font-bold">Daily plant report</h1>
             <p className="text-sm text-muted-foreground">Consolidated view: shift, production, fuel, idle, manpower</p>
           </div>
         </div>
@@ -744,7 +744,7 @@ export default function PlantDailyReport() {
                         <TableHead className="text-right">Open</TableHead>
                         <TableHead className="text-right">Diesel Issued L</TableHead>
                         <TableHead className="text-right">Tank Balance (L)</TableHead>
-                        <TableHead className="text-right">Actual Consumed (L)</TableHead>
+                        <TableHead className="text-right">Actual consumed (L)</TableHead>
                         <TableHead className="text-right">L/Hr</TableHead>
                       </TableRow>
                     </TableHeader>

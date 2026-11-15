@@ -45,7 +45,7 @@ vi.mock("@/components/ReceiptWorkContext", () => ({
   </div>,
 }));
 vi.mock("@/hooks/use-trip-masters", () => ({
-  useTripEquipmentMasters: () => ({ master: { data: equipment }, owners: { data: [hiredEquipment] } }),
+  useTripEquipmentMasters: () => ({ master: { data: equipment }, owners: { data: [hiredEquipment, samePartyHiredEquipment] } }),
 }));
 vi.mock("@/hooks/use-site-material-suggestions", async (original) => ({
   ...await original<object>(),
@@ -74,7 +74,8 @@ vi.mock("@/components/ui/select", async () => {
 
 const vendors = [{ id: 7, name: "SANGANNA", isActive: true }, { id: 18, name: "NARASIMHULU", isActive: true }];
 const hiredEquipment = { id: 43, name: "Hired Tipper", registrationNumber: "TS15UF4308", ownership: "hired", isActive: 1, vendorId: 18, linkedVendorName: "NARASIMHULU" };
-const equipment = [{ id: 42, name: "TIPPER-03", registrationNumber: "TS09AB4321", ownership: "owned", isActive: 1 }, hiredEquipment] as EquipmentMasterType[];
+const samePartyHiredEquipment = { id: 44, name: "Same-party Tipper", registrationNumber: "TS15UF4309", ownership: "hired", isActive: 1, vendorId: 7, linkedVendorName: "SANGANNA" };
+const equipment = [{ id: 42, name: "TIPPER-03", registrationNumber: "TS09AB4321", ownership: "owned", isActive: 1 }, hiredEquipment, samePartyHiredEquipment] as EquipmentMasterType[];
 function trip(overrides: Partial<SiteMaterialTrip> = {}): SiteMaterialTrip {
   return {
     id: 1, date: "2026-08-17", time: "10:21", site: "NH-44", material: "Soil", quantity: 14, uom: "Cum",
@@ -117,7 +118,7 @@ function fillBasic() {
   setInput("input-trip-material-source-supplier", "sanganna");
   selectVendor("Material Supplier", "7");
   setInput("input-trip-quantity", "14");
-  selectVehicle("43");
+  selectVehicle(screen.getByTestId("trip-role-different_parties").checked ? "43" : "44");
   fireEvent.click(screen.getByText("Choose intended item"));
 }
 function selectVendor(label: string, id: string) {
@@ -186,7 +187,7 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
     ];
     const page = renderPage();
     expect(screen.getByTestId("input-trip-material-source-supplier")).toBeDisabled();
-    expect(screen.getByText("Choose Site to search Vendor Master.")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Material Supplier/ })).toHaveAttribute("placeholder", "Search Vendor Master (2+ characters)");
     expect(harness.queries.some(url => url.startsWith("/api/site-material-trips/vendor-options"))).toBe(false);
     setInput("select-trip-site", "NH-44");
     await waitFor(() => expect(screen.getByTestId("input-trip-material-source-supplier")).not.toBeDisabled());
@@ -229,7 +230,7 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
     const payload = await submit();
     expect(payload).toMatchObject({ materialSourceSupplier: "SANGANNA", materialSourceVendorId: 7, supplier: "SANGANNA", supplierVendorId: 7, transportType: "agency_vendor", internalEquipmentId: null, quantity: 14 });
     expect(harness.request).toHaveBeenCalledTimes(1);
-    expect(payload.masterSelection).toEqual({ equipmentId: 43 });
+    expect(payload.masterSelection).toEqual({ equipmentId: 44 });
     expect(payload).not.toHaveProperty("hireEquipmentLink");
     expect(harness.queries.some(url => url.includes("/api/vendor-master"))).toBe(false);
   });
@@ -277,6 +278,7 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
     await waitFor(() => expect(harness.toast).toHaveBeenCalled());
     expect(harness.request).not.toHaveBeenCalled();
     fireEvent.change(source, { target: { value: "UNREGISTERED NAME" } });
+    selectVehicle("44");
     const payload = await submit();
     expect(payload).toMatchObject({
       materialSourceSupplier: "UNREGISTERED NAME", materialSourceVendorId: null,
@@ -321,7 +323,7 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
     renderPage(); await ready();
     expect(screen.getByTestId("input-trip-material-source-supplier")).toHaveValue("SANGANNA");
     selectVendor("Material Supplier", "7");
-    selectVehicle("43");
+    selectVehicle("44");
     setInput("input-trip-location", "5.200");
     fireEvent.click(screen.getByText("Choose intended item"));
     const payload = await submit();
@@ -347,6 +349,7 @@ describe("VB-SPLIT Parts A/B entry behavior", () => {
     fireEvent.click(screen.getByTestId("trip-role-different_parties"));
     setInput("input-trip-supplier", "NARASIMHULU");
     selectVendor("Transporter", "18");
+    selectVehicle("43");
     fireEvent.click(within(screen.getByTestId("checkbox-keep-context")).getByRole("checkbox"));
     await submit();
     await waitFor(() => expect(screen.getByTestId("trip-role-same_party")).toBeChecked());
@@ -540,7 +543,7 @@ describe("B1/B2 role list and filter scope", () => {
     rows[1] = trip({id:2,date:"2026-08-16",receiptNumber:"   "});
     try {
       renderPage("/site/material-trips/review"); await ready();
-      expect(screen.getAllByRole("columnheader").map(e=>e.textContent)).toEqual(["Date","Time","Site","Material","Transporter","Material Source","Vehicle","Qty","UOM","Location","Photos","Action"]);
+      expect(screen.getAllByRole("columnheader").map(e=>e.textContent)).toEqual(["Date","Time","Site","Material","Transporter","Material source","Vehicle","Qty","Uom","Location","Photos","Action"]);
       const first=within(screen.getByTestId("row-trip-1")).getAllByRole("cell");
       expect(first[0]).toHaveTextContent("17-AUG-2026");
       expect(first[1]).toHaveTextContent("10:21");

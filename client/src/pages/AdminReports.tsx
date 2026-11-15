@@ -477,7 +477,7 @@ export default function AdminReports() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold font-display">Admin Reports</h1>
+            <h1 className="text-2xl font-bold font-display">Admin reports</h1>
             <p className="text-muted-foreground text-sm">Mix Rate Calculator & Saved Estimates</p>
           </div>
         </div>
@@ -523,7 +523,7 @@ export default function AdminReports() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-2">
-              <Label>Date From</Label>
+              <Label>Date from</Label>
               <Input
                 type="date"
                 value={dateFrom}
@@ -532,7 +532,7 @@ export default function AdminReports() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Date To</Label>
+              <Label>Date to</Label>
               <Input
                 type="date"
                 value={dateTo}
@@ -677,8 +677,8 @@ export default function AdminReports() {
 
           {dateGroupedData.length > 0 && (
             <div className="flex gap-2 justify-end print:hidden">
-              <Button variant="ghost" size="sm" onClick={expandAll}>Expand All</Button>
-              <Button variant="ghost" size="sm" onClick={collapseAll}>Collapse All</Button>
+              <Button variant="ghost" size="sm" onClick={expandAll}>Expand all</Button>
+              <Button variant="ghost" size="sm" onClick={collapseAll}>Collapse all</Button>
             </div>
           )}
 

@@ -59,7 +59,7 @@ export default function RmcDailyReport() {
             <Button variant="ghost" size="icon" data-testid="btn-back"><ArrowLeft className="w-5 h-5" /></Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">RMC Daily Report</h1>
+            <h1 className="text-2xl font-bold">RMC daily report</h1>
             <p className="text-sm text-muted-foreground">Day-wise summary of production, materials & QC</p>
           </div>
         </div>
@@ -104,7 +104,7 @@ export default function RmcDailyReport() {
       </div>
 
       <div className="print:block hidden text-center mb-4">
-        <h2 className="text-xl font-bold">RMC Daily Production Report — {date}</h2>
+        <h2 className="text-xl font-bold">RMC daily production report — {date}</h2>
         {plantName.trim() && <p className="text-sm text-muted-foreground">Plant: {plantName.trim()}</p>}
       </div>
 

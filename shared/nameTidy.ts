@@ -21,6 +21,7 @@ const titleParticles = new Set(["a", "an", "and", "at", "by", "for", "in", "of",
 function formatSegment(token: string, kind: NameTidyKind, first: boolean) {
   const known = fixedCase.get(token.toUpperCase());
   if (known) return known;
+  if (/^[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{3,4}$/i.test(token)) return token.toUpperCase();
   const numericUnit = token.match(/^((?:\d+\/)?\d+)mm$/i);
   if (numericUnit) return `${numericUnit[1]}mm`;
   const match = token.match(/^([^A-Za-z]*)([A-Za-z].*?)([^A-Za-z]*)$/);
@@ -57,7 +58,14 @@ function transformName(value: string, kind: NameTidyKind) {
 }
 
 export function suggestTidyName(value: string, kind: NameTidyKind): string {
-  let cleaned = String(value ?? "").trim().replace(/\s+/g, " ");
+  const registrations: string[] = [];
+  let cleaned = String(value ?? "").replace(
+    /(?<![A-Za-z0-9])([A-Z]{2}\s*\d{1,2}\s*[A-Z]{1,3}\s*\d{3,4})(?![A-Za-z0-9])/gi,
+    match => {
+      registrations.push(match.replace(/[a-z]/gi, letter => letter.toUpperCase()));
+      return `§${registrations.length - 1}§`;
+    },
+  ).trim().replace(/\s+/g, " ");
   cleaned = cleaned.replace(/\b((?:\d+\/)?\d+)\s*MM\b/gi, "$1mm");
   if (kind === "site") {
     cleaned = cleaned.replace(/\s+Edited by\b.*$/i, "").trim();
@@ -65,7 +73,9 @@ export function suggestTidyName(value: string, kind: NameTidyKind): string {
     cleaned = cleaned.replace(/\bHectometre\s+stone\b/gi, "Hectometre stone");
     if (/^kilometre stone$/i.test(cleaned)) return "Kilometre stone";
     if (/^hectometre stone$/i.test(cleaned)) return "Hectometre stone";
-    return transformName(cleaned, "site");
+    cleaned = transformName(cleaned, "site");
+  } else {
+    cleaned = transformName(cleaned, kind);
   }
-  return transformName(cleaned, kind);
+  return cleaned.replace(/§(\d+)§/g, (_match, index: string) => registrations[Number(index)] ?? "");
 }

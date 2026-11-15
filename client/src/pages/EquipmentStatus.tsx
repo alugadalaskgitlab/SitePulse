@@ -252,11 +252,11 @@ export default function EquipmentStatus() {
                       <tr>
                         <th className="p-3 text-left">Machine</th>
                         <th className="p-3 text-right">Working</th>
-                        <th className="p-3 text-right">Idle · No Work Available</th>
-                        <th className="p-3 text-right">Idle · Operator Unavailable</th>
+                        <th className="p-3 text-right">Idle · no work available</th>
+                        <th className="p-3 text-right">Idle · operator unavailable</th>
                         <th className="p-3 text-right">Breakdown</th>
                         <th className="p-3 text-right">Logged (status not specified)</th>
-                        <th className="p-3 text-right">Not Logged</th>
+                        <th className="p-3 text-right">Not logged</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -283,13 +283,13 @@ export default function EquipmentStatus() {
 
       {!report.isLoading && !report.isError && !invalidRange && (
         <section className="equipment-status-print" aria-label="Printable equipment status report">
-          <h1>Equipment Status</h1>
+          <h1>Equipment status</h1>
           <p>{dateFrom} to {dateTo}</p>
           {rows.map(item => (
             <article key={item.equipmentId}>
               <h2>{item.name}{equipmentVendorLabel(item) ? ` · ${equipmentVendorLabel(item)}` : ""}{item.linkedVendorName && item.vendorName && item.linkedVendorName !== item.vendorName ? ` (recorded: ${item.vendorName})` : ""}</h2>
               <table>
-                <thead><tr><th>Working</th><th>Idle · No Work Available</th><th>Idle · Operator Unavailable</th><th>Breakdown</th><th>Logged (status not specified)</th><th>Not Logged</th></tr></thead>
+                <thead><tr><th>Working</th><th>Idle · no work available</th><th>Idle · operator unavailable</th><th>Breakdown</th><th>Logged (status not specified)</th><th>Not logged</th></tr></thead>
                 <tbody><tr><td>{item.summary.working}</td><td>{item.summary.idleNoWork}</td><td>{item.summary.idleNoOperator}</td><td>{item.summary.breakdown}</td><td>{item.summary.loggedUnspecified}</td><td>{item.summary.notLogged}</td></tr></tbody>
               </table>
               <table>

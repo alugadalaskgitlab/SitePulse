@@ -163,7 +163,7 @@ export default function PlantStockReassign() {
           </Button>
         </Link>
         <ArrowRightLeft className="w-6 h-6 text-amber-700 dark:text-amber-500" />
-        <h1 className="text-2xl font-bold flex-1">Stock Ledger Reassignment</h1>
+        <h1 className="text-2xl font-bold flex-1">Stock ledger reassignment</h1>
       </div>
 
       <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 p-3 text-sm flex items-start gap-2">
@@ -277,8 +277,8 @@ export default function PlantStockReassign() {
                   <tr>
                     <th className="text-left p-2">Date</th>
                     <th className="text-left p-2">Type</th>
-                    <th className="text-right p-2">Qty In</th>
-                    <th className="text-right p-2">Qty Out</th>
+                    <th className="text-right p-2">Qty in</th>
+                    <th className="text-right p-2">Qty out</th>
                     <th className="text-left p-2">UoM</th>
                     <th className="text-left p-2">Notes</th>
                   </tr>

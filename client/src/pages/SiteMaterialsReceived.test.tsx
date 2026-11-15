@@ -91,9 +91,9 @@ afterEach(() => { cleanup(); queryClient.clear(); });
 describe("Materials Received → View → shared Edit", () => {
   it("loads the full canonical trip rather than editing a report projection", async () => {
     mount(); await edit();
-    expect((screen.getByLabelText("Location / Chainage") as HTMLInputElement).value).toBe("Km 17+200");
-    expect((screen.getByLabelText("Entered By") as HTMLInputElement).value).toBe("Ravi");
-    expect((screen.getByLabelText("Receipt Number") as HTMLInputElement).value).toBe("R-714");
+    expect((screen.getByLabelText("Location / chainage") as HTMLInputElement).value).toBe("Km 17+200");
+    expect((screen.getByLabelText("Entered by") as HTMLInputElement).value).toBe("Ravi");
+    expect((screen.getByLabelText("Receipt number") as HTMLInputElement).value).toBe("R-714");
     expect(screen.getByText("Existing BOQ context")).toBeTruthy();
     expect(reads.mock.calls.filter(([key]) => key === "/api/site-material-trips?site=NH-44")).toHaveLength(1);
     expect(reads.mock.calls.some(([key]) => String(key).includes("vendor-options"))).toBe(false);
@@ -160,7 +160,7 @@ describe("Materials Received → View → shared Edit", () => {
     fireEvent.click(screen.getByTestId("button-view-71"));
     expect(screen.queryByTestId("btn-admin-edit")).toBeNull();
     fireEvent.click(screen.getByTestId("btn-request-edit"));
-    expect(screen.getByText("Request Edit Permission")).toBeTruthy();
+    expect(screen.getByText("Request edit permission")).toBeTruthy();
     expect(screen.queryByTestId("dialog-trip-roles")).toBeNull();
     expect(apiRequest).not.toHaveBeenCalled();
   });
@@ -175,7 +175,7 @@ describe("Materials Received → View → shared Edit", () => {
     permission.activeRequest = { id: 8, expiresAt: "2099-08-17T12:00:00Z" }; mount();
     fireEvent.click(screen.getByTestId("button-view-71"));
     fireEvent.click(screen.getByTestId("btn-edit-permitted"));
-    await screen.findByText("Material Trip Details");
+    await screen.findByText("Material trip details");
     expect(screen.getByLabelText("Quantity").matches(":disabled")).toBe(true);
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

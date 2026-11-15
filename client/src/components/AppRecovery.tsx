@@ -85,25 +85,6 @@ export class AppErrorBoundary extends Component<{ children: ReactNode; fallback?
     if (!this.state.hasError) return this.props.children;
 
     if (this.props.fallback) return this.props.fallback;
-    if (this.state.chunkLoadFailure) {
-      return (
-        <main className="flex min-h-[50vh] items-center justify-center p-6">
-          <section
-            role="status"
-            data-testid="chunk-load-recovery"
-            className="w-full max-w-md rounded-lg border bg-background p-6 text-center shadow-sm"
-          >
-            <h1 className="text-lg font-semibold">Refreshing the app</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              A new version is available. If the app does not refresh automatically, reload it to continue.
-            </p>
-            <Button type="button" className="mt-4" onClick={() => window.location.reload()}>
-              Reload app
-            </Button>
-          </section>
-        </main>
-      );
-    }
     return (
       <main className="flex min-h-[50vh] items-center justify-center p-6">
         <section

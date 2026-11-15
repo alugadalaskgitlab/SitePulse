@@ -56,7 +56,7 @@ function DCPrintView({ record, onClose }: { record: RmcBatchRecordWithDesign; on
         <table className="w-full border-collapse border text-sm mt-6">
           <thead>
             <tr className="bg-muted">
-              <th className="border p-3 text-left">Mix Grade</th>
+              <th className="border p-3 text-left">Mix grade</th>
               <th className="border p-3 text-center">No. of Batches</th>
               <th className="border p-3 text-right">Volume (m³)</th>
             </tr>
@@ -125,7 +125,7 @@ export default function RmcDeliveryChallans() {
             <Button variant="ghost" size="icon" data-testid="btn-back"><ArrowLeft className="w-5 h-5" /></Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">Delivery Challans</h1>
+            <h1 className="text-2xl font-bold">Delivery challans</h1>
             <p className="text-sm text-muted-foreground">View and print RMC delivery challans generated from batch records</p>
           </div>
         </div>
@@ -163,7 +163,7 @@ export default function RmcDeliveryChallans() {
                 : "Add DC numbers to batch records so they appear here as delivery challans."}
             </p>
             <Link href="/plant/rmc/batch-records">
-              <Button variant="outline" size="sm" className="mt-2">Go to Batch Records</Button>
+              <Button variant="outline" size="sm" className="mt-2">Go to batch records</Button>
             </Link>
           </CardContent>
         </Card>

@@ -169,10 +169,10 @@ describe("new-entry selectors", () => {
   it("does not auto-select even a unique registration and supports searching with an outside fallback", () => {
     const onChange = vi.fn();
     render(<TripEquipmentPicker options={equipment} value="" onChange={onChange} registration="TS15UE4470" allowOutside />);
-    expect(screen.getByLabelText("Equipment Master vehicle")).toHaveValue("");
+    expect(screen.getByLabelText("Equipment master vehicle")).toHaveValue("");
     expect(screen.getByText(/Unique registration match/)).toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("Equipment Master · search registration"), { target: { value: "TS15UE9999" } });
+    fireEvent.change(screen.getByLabelText("Equipment master · search registration"), { target: { value: "TS15UE9999" } });
     expect(screen.getByText(/No matching registration/)).toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -188,7 +188,7 @@ describe("new-entry selectors", () => {
     const transporter = screen.getByRole("combobox", { name: /Transporter/ });
     fireEvent.change(transporter, { target: { value: "Outside transporter" } });
     fireEvent.click(screen.getByRole("option", { name: /Other \/ Not in Master/ }));
-    fireEvent.click(screen.getByLabelText("Other / Not in Master"));
+    fireEvent.click(screen.getByLabelText("Other / not in master"));
     fireEvent.change(screen.getByTestId("input-trip-vehicle"), { target: { value: "TS99AB1234" } });
     const draft = JSON.parse(screen.getByTestId("draft").textContent || "{}");
     expect(draft).toMatchObject({ supplierManual: true, supplierVendorId: null, supplier: "Outside transporter",

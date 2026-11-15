@@ -404,18 +404,18 @@ export default function BoqItemReview() {
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900">
                     <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Code</th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500">Full Description</th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500">Short Name (editable)</th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Work Category</th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap hidden xl:table-cell">Bill Section</th>
+                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500">Full description</th>
+                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500">Short name (editable)</th>
+                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Work category</th>
+                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap hidden xl:table-cell">Bill section</th>
                     <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Unit</th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Work Type</th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Shoulder Layer</th>
+                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Work type</th>
+                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Shoulder layer</th>
                     <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">DPR Method</th>
                     <th className="py-2 px-3 text-center text-xs font-semibold text-slate-500 whitespace-nowrap">DPR</th>
                     <th className="py-2 px-3 text-center text-xs font-semibold text-slate-500 whitespace-nowrap">Programme</th>
                     <th className="py-2 px-3 text-center text-xs font-semibold text-slate-500 whitespace-nowrap">Procurement</th>
-                    <th className="py-2 px-3 text-center text-xs font-semibold text-slate-500 whitespace-nowrap">Needs Review</th>
+                    <th className="py-2 px-3 text-center text-xs font-semibold text-slate-500 whitespace-nowrap">Needs review</th>
                     <th className="py-2 px-3 w-6"></th>
                   </tr>
                 </thead>

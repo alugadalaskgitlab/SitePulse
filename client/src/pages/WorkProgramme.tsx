@@ -2898,7 +2898,7 @@ function InlineGanttTable({
       <Dialog open={deleteBarId !== null} onOpenChange={o => { if (!o) setDeleteBarId(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-base">Delete Stretch?</DialogTitle>
+            <DialogTitle className="text-base">Delete stretch?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-slate-600">This will permanently remove this stretch from the work programme.</p>
           <DialogFooter>

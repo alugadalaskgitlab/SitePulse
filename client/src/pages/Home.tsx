@@ -414,7 +414,7 @@ function HomeDashboard({
               <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-rose-500" />
-                  <h3 className="text-sm font-semibold text-slate-800">Pending Actions</h3>
+                  <h3 className="text-sm font-semibold text-slate-800">Pending actions</h3>
                 </div>
                 {totalPending > 0 && (
                   <span className="text-sm bg-rose-100 text-rose-600 font-semibold px-1.5 py-0.5 rounded-full">{totalPending}</span>

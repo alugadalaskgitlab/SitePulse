@@ -1568,7 +1568,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
               ══════════════════════════════════════════════════════ */}
           {visibleActions.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3">
-              <h2 className="text-sm font-bold text-gray-900 mb-3">Quick Actions</h2>
+              <h2 className="text-sm font-bold text-gray-900 mb-3">Quick actions</h2>
               <div className="grid grid-cols-4 gap-2">
                 {visibleActions.map(a => (
                   <Link href={a.href} key={a.label}>

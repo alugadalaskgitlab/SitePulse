@@ -374,7 +374,7 @@ export default function ManagementReport() {
           </Button>
         </Link>
         <div className="flex-1">
-          <h1 className="text-lg font-semibold text-foreground">Management Report</h1>
+          <h1 className="text-lg font-semibold text-foreground">Management report</h1>
           <p className="text-sm text-muted-foreground">Cross-site aggregated view</p>
         </div>
         <ReportExportGate sections={["report_management", "reports", "admin_settings"]}><Button
@@ -510,9 +510,9 @@ export default function ManagementReport() {
                           <TableHead>Site</TableHead>
                           <TableHead>Material</TableHead>
                           <TableHead>Category</TableHead>
-                          <TableHead className="text-right">Qty Received</TableHead>
-                          <TableHead className="text-right">Qty Issued</TableHead>
-                          <TableHead className="text-right">Closing Stock</TableHead>
+                          <TableHead className="text-right">Quantity received</TableHead>
+                          <TableHead className="text-right">Quantity issued</TableHead>
+                          <TableHead className="text-right">Closing stock</TableHead>
                           <TableHead>Unit</TableHead>
                           <TableHead />
                         </TableRow>
@@ -737,7 +737,7 @@ export default function ManagementReport() {
                           <TableHead>Site</TableHead>
                           <TableHead>Contractor</TableHead>
                           <TableHead>Category</TableHead>
-                          <TableHead className="text-right">Total Mandays</TableHead>
+                          <TableHead className="text-right">Total mandays</TableHead>
                           <TableHead />
                         </TableRow>
                       </TableHeader>
@@ -789,7 +789,7 @@ export default function ManagementReport() {
                           <TableRow className="bg-muted/30">
                             <TableHead>Site</TableHead>
                             <TableHead className="text-right">Bills</TableHead>
-                            <TableHead className="text-right">Total Value</TableHead>
+                            <TableHead className="text-right">Total value</TableHead>
                             <TableHead className="text-right">Draft</TableHead>
                             <TableHead className="text-right">Pending</TableHead>
                             <TableHead className="text-right">Approved</TableHead>

@@ -416,7 +416,7 @@ export default function IrnRaisePage() {
 
               {/* Raised By */}
               <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Raised By <span className="text-red-500">*</span></Label>
+                <Label className="text-sm font-medium">Raised by <span className="text-red-500">*</span></Label>
                 <PersonnelCombobox
                   value={form.watch("raisedBy")}
                   onChange={(v) => form.setValue("raisedBy", v, { shouldValidate: true })}
@@ -472,7 +472,7 @@ export default function IrnRaisePage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">General Remarks (optional)</Label>
+              <Label className="text-sm font-medium">General remarks (optional)</Label>
               <Textarea
                 {...form.register("remarks")}
                 placeholder="Special instructions for the storekeeper…"
@@ -557,7 +557,7 @@ export default function IrnRaisePage() {
                       )}
                     </div>
                     <div className="col-span-5 space-y-1">
-                      <Label className="text-sm">Need By Date <span className="text-red-500">*</span></Label>
+                      <Label className="text-sm">Need by date <span className="text-red-500">*</span></Label>
                       <Input
                         type="date"
                         min={today}

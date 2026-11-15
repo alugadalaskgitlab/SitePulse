@@ -1018,7 +1018,7 @@ function _PayableStep({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Separately Payable — provide a reason</DialogTitle>
+        <DialogTitle>Separately payable — provide a reason</DialogTitle>
         <DialogDescription>
           Select the entry to annotate and provide a structured reason. The reason is saved
           directly — the report will refresh automatically.
@@ -1214,7 +1214,7 @@ function ChainageWise({ items, state, update }: { items: ReportItem[] } & Nav) {
         <Card><CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-xs text-slate-900">
             <thead className="bg-slate-50 text-slate-700"><tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:font-semibold">
-              <th>Date</th><th>BOQ Item</th><th>Side</th><th>From</th><th>To</th><th className="text-right">Measured Qty</th><th className="text-right">BOQ Qty</th><th>DPR</th><th>Remarks</th>
+              <th>Date</th><th>BOQ item</th><th>Side</th><th>From</th><th>To</th><th className="text-right">Measured quantity</th><th className="text-right">BOQ quantity</th><th>DPR</th><th>Remarks</th>
             </tr></thead>
             <tbody>
               {rows.map(({ e, item }, i) => (
@@ -1307,7 +1307,7 @@ function DateWise({ items, from, to, state }: { items: ReportItem[]; from: strin
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-slate-900">
               <thead className="text-slate-700"><tr className="[&>th]:px-2 [&>th]:py-1.5 [&>th]:text-left [&>th]:font-semibold">
-                <th>BOQ Item</th><th>Side</th><th>From–To / Location</th><th className="text-right">Measured Qty</th><th className="text-right">BOQ Qty</th><th>DPR</th><th>Prepared By</th><th>Remarks</th>
+                <th>BOQ item</th><th>Side</th><th>From–to / location</th><th className="text-right">Measured quantity</th><th className="text-right">BOQ quantity</th><th>DPR</th><th>Prepared by</th><th>Remarks</th>
               </tr></thead>
               <tbody>
                 {rows.map(({ e, item }) => (

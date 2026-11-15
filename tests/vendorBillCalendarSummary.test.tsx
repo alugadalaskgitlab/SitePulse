@@ -59,8 +59,8 @@ describe("saved calendars", () => {
     expect(screen.getAllByText(/Attendance verified/)).toHaveLength(2);
     expect(screen.getAllByText("Advance payment date: 2026-10-02")).toHaveLength(2);
     expect(screen.getAllByTestId("saved-hire-activity-totals")).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "Export Activity Statement PDF" })).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "Export Activity Statement Excel" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Export activity statement PDF" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Export activity statement Excel" })).toHaveLength(2);
     expect(fetcher).not.toHaveBeenCalled();
     expect(JSON.stringify(input)).toBe(before);
   });
@@ -135,7 +135,7 @@ describe("saved calendars", () => {
       items: [],
     };
     render(<SavedBillCalendars bill={input} />);
-    expect(screen.getAllByText("Monthly Billing Summary")).toHaveLength(1);
+    expect(screen.getAllByText("Monthly billing summary")).toHaveLength(1);
     const details = screen.getByText(/Detailed activity/).closest("details")!;
     details.open = true;
     fireEvent(details, new Event("toggle"));
@@ -152,7 +152,7 @@ describe("saved calendars", () => {
     renderQuery(<SavedEquipmentCalendarExport bill={{ ...bill(1), periodFrom: "2026-10-01", periodTo: "2026-10-03", items: [{ category: "equipment", equipmentId: 3 }] }} onExportBill={exportBill} />);
     fireEvent.click(screen.getByTestId("button-export-pdf"));
     expect((screen.getByTestId("button-export-equipment-hire-choice-calendar") as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByRole("button", { name: "Export Activity Statement PDF" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Export activity statement PDF" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "Export Bill PDF" })).toBeTruthy();
     fireEvent.click(screen.getByTestId("button-export-equipment-hire-choice-bill"));
     await waitFor(() => expect(exportBill).toHaveBeenCalledWith("pdf"));
@@ -161,14 +161,14 @@ describe("saved calendars", () => {
   it("labels bill and Activity Statement exports separately for PDF", () => {
     render(<EquipmentHireExportButtons data={{ billNo: "VB-1" } as any} rows={[]} />);
     fireEvent.click(screen.getByTestId("button-export-equipment-hire-pdf"));
-    expect(screen.getByRole("button", { name: "Export Activity Statement PDF" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Export activity statement PDF" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Export Bill PDF" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Export Both PDFs" })).toBeTruthy();
   });
   it("labels bill and Activity Statement exports separately for Excel", () => {
     render(<EquipmentHireExportButtons data={{ billNo: "VB-1" } as any} rows={[]} />);
     fireEvent.click(screen.getByTestId("button-export-equipment-hire-excel"));
-    expect(screen.getByRole("button", { name: "Export Activity Statement Excel" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Export activity statement Excel" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Export Bill Excel" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Export Both Excel Files" })).toBeTruthy();
   });

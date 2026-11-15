@@ -517,13 +517,13 @@ export function HeatingSessionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{form.id ? "Edit" : "New"} Heating Session</DialogTitle>
+          <DialogTitle>{form.id ? "Edit" : "New"} heating session</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div><Label>Date</Label><Input type="date" value={form.date} onChange={e => setField("date", e.target.value)} data-testid="input-date" /></div>
-            <div><Label>Session Type</Label>
+            <div><Label>Session type</Label>
               <Select value={form.sessionType} onValueChange={v => setField("sessionType", v)}>
                 <SelectTrigger data-testid="select-session-type"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -532,10 +532,10 @@ export function HeatingSessionDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Staff Name</Label><Input value={form.staffName} onChange={e => setField("staffName", e.target.value)} data-testid="input-staff-name" /></div>
-            <div><Label>Staff Role</Label><Input value={form.staffRole} onChange={e => setField("staffRole", e.target.value)} placeholder="Boiler operator" data-testid="input-staff-role" /></div>
-            <div><Label>Start Time</Label><Input type="time" value={form.startTime} onChange={e => setField("startTime", e.target.value)} data-testid="input-start-time" /></div>
-            <div><Label>End Time</Label><Input type="time" value={form.endTime} onChange={e => setField("endTime", e.target.value)} data-testid="input-end-time" /></div>
+            <div><Label>Staff name</Label><Input value={form.staffName} onChange={e => setField("staffName", e.target.value)} data-testid="input-staff-name" /></div>
+            <div><Label>Staff role</Label><Input value={form.staffRole} onChange={e => setField("staffRole", e.target.value)} placeholder="Boiler operator" data-testid="input-staff-role" /></div>
+            <div><Label>Start time</Label><Input type="time" value={form.startTime} onChange={e => setField("startTime", e.target.value)} data-testid="input-start-time" /></div>
+            <div><Label>End time</Label><Input type="time" value={form.endTime} onChange={e => setField("endTime", e.target.value)} data-testid="input-end-time" /></div>
             <div><Label>Duration (h)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-duration">{dur ?? "—"}</div></div>
             <div />
           </div>
@@ -543,8 +543,8 @@ export function HeatingSessionDialog({
           <Card>
             <CardHeader className="py-3"><CardTitle className="text-base">Hot-Oil & Bitumen Temperatures</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div><Label>Hot-Oil Forward °C</Label><Input type="number" step="0.1" value={form.hotOilSupplyTemp} onChange={e => setField("hotOilSupplyTemp", e.target.value)} data-testid="input-hot-oil-supply" /></div>
-              <div><Label>Hot-Oil Return °C</Label><Input type="number" step="0.1" value={form.hotOilReturnTemp} onChange={e => setField("hotOilReturnTemp", e.target.value)} data-testid="input-hot-oil-return" /></div>
+              <div><Label>Hot-oil forward °C</Label><Input type="number" step="0.1" value={form.hotOilSupplyTemp} onChange={e => setField("hotOilSupplyTemp", e.target.value)} data-testid="input-hot-oil-supply" /></div>
+              <div><Label>Hot-oil return °C</Label><Input type="number" step="0.1" value={form.hotOilReturnTemp} onChange={e => setField("hotOilReturnTemp", e.target.value)} data-testid="input-hot-oil-return" /></div>
               <div className="md:col-span-2" />
               <div><Label>Bitumen T1 Start °C</Label><Input type="number" step="0.1" value={form.bitumenTank1TempStart} onChange={e => setField("bitumenTank1TempStart", e.target.value)} data-testid="input-bit-t1-start" /></div>
               <div><Label>Bitumen T1 End °C</Label><Input type="number" step="0.1" value={form.bitumenTank1TempEnd} onChange={e => setField("bitumenTank1TempEnd", e.target.value)} data-testid="input-bit-t1-end" /></div>
@@ -592,7 +592,7 @@ export function HeatingSessionDialog({
                 <Input type="number" step="0.01" value={form.ldoTank1ClosingMeter} onChange={e => setField("ldoTank1ClosingMeter", e.target.value)} data-testid="input-ldo-close" />
                 <p className="text-sm text-muted-foreground mt-1">Read the meter when the session ends</p>
               </div>
-              <div><Label>Total Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
+              <div><Label>Total consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
               <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
             </CardContent>
           </Card>
@@ -919,10 +919,10 @@ export function HeatingSessionDialog({
     <Dialog open={newGenDialogOpen} onOpenChange={setNewGenDialogOpen}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Add New Generator</DialogTitle>
+          <DialogTitle>Add new generator</DialogTitle>
         </DialogHeader>
         <div className="space-y-2 py-1">
-          <Label htmlFor="hsd-new-gen-name">Generator Name</Label>
+          <Label htmlFor="hsd-new-gen-name">Generator name</Label>
           <Input
             id="hsd-new-gen-name"
             placeholder="e.g. 125 KVA GENERATOR"

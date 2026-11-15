@@ -580,7 +580,7 @@ describe("VB-EXPORT-02 Part A actual VendorBills page wiring", () => {
     fireEvent.click(screen.getByTestId("button-edit-bill"));
     const footer = screen.getByTestId("historical-hire-save-card");
     expect(footer.querySelector('[data-testid="whole-bill-export-footer"]')).toBeTruthy();
-    await waitFor(() => expect(screen.getByTestId("button-view-daily-activity").textContent).toBe("View Daily Activity"));
+    await waitFor(() => expect(screen.getByTestId("button-view-daily-activity").textContent).toBe("View daily activity"));
     const snapshot = await clickExport("footer");
     expect(snapshot.calendars).toHaveLength(1);
     expect(snapshot.calendars[0]).toMatchObject({ periodFrom: "2026-09-12", periodTo: "2026-09-12" });

@@ -1343,7 +1343,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
                 {/* ── Items received (item-first) ── */}
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Items Received *</Label>
+                  <Label className="text-sm font-semibold">Items received *</Label>
                   <p className="text-[12px] text-muted-foreground -mt-1">Select items first — the approved purchase indent will be matched automatically.</p>
 
                   {/* Column headers */}
@@ -1527,7 +1527,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   return (
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <Label className="text-sm">Indent Reference</Label>
+                        <Label className="text-sm">Indent reference</Label>
                         {firstItemName && itemApprovedIndents.length > 0 && !form.indentRef && (
                           <span className="text-[12px] text-violet-600 dark:text-violet-400">
                             {itemApprovedIndents.length} approved match{itemApprovedIndents.length !== 1 ? "es" : ""}
@@ -1720,11 +1720,11 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-sm">Invoice / Challan No.</Label>
+                    <Label className="text-sm">Invoice / challan no.</Label>
                     <Input value={form.invoiceNo} onChange={e => setForm(f => ({ ...f, invoiceNo: e.target.value }))} placeholder="Optional" data-testid="input-grn-invoice" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-sm">Invoice / Challan Date</Label>
+                    <Label className="text-sm">Invoice / challan date</Label>
                     <Input type="date" value={form.invoiceDate} onChange={e => setForm(f => ({ ...f, invoiceDate: e.target.value }))} data-testid="input-grn-invoice-date" />
                   </div>
                   <div className="space-y-1.5">
@@ -1751,7 +1751,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 {/* ── Acceptance Status ── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-md border bg-muted/30">
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-semibold">Acceptance Status *</Label>
+                    <Label className="text-sm font-semibold">Acceptance status *</Label>
                     <Select value={form.acceptanceStatus} onValueChange={v => setForm(f => ({ ...f, acceptanceStatus: v, acceptanceRemarks: v === "accepted" ? "" : f.acceptanceRemarks }))}>
                       <SelectTrigger className="h-8 text-sm" data-testid="select-acceptance-status">
                         <SelectValue />
@@ -1811,7 +1811,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
                 {/* Attachment photos for GRN (Batch 15) */}
                 <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
-                  <Label className="text-sm font-medium">Invoice / Challan Photos <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Label className="text-sm font-medium">Invoice / challan photos <span className="text-muted-foreground text-xs">(optional)</span></Label>
                   <p className="text-xs text-muted-foreground">Attach delivery challan or invoice photos for this GRN.</p>
                   <input ref={grnPhotoInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" data-testid="input-grn-photo"
                     onChange={e => { addGrnPhotos(e.target.files); e.target.value = ""; }} />
@@ -1862,7 +1862,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
         }}>
           <DialogContent className="max-w-sm">
             <DialogHeader>
-              <DialogTitle>{addItemShowCreate ? "Add New Item to Catalogue" : "Similar Items Found"}</DialogTitle>
+              <DialogTitle>{addItemShowCreate ? "Add new item to catalogue" : "Similar items found"}</DialogTitle>
             </DialogHeader>
 
             {/* ── Step 1: show suggestions when close matches exist ── */}
@@ -1902,7 +1902,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
             {addItemShowCreate && (
               <div className="space-y-3 pt-2">
                 <div className="space-y-1.5">
-                  <Label className="text-sm">Item Name *</Label>
+                  <Label className="text-sm">Item name *</Label>
                   <Input
                     value={addItemForm.name}
                     onChange={e => setAddItemForm(f => ({ ...f, name: e.target.value }))}
@@ -2145,7 +2145,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               </p>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-sm">Override Reason *</Label>
+              <Label className="text-sm">Override reason *</Label>
               <Textarea
                 value={overrideReasonText}
                 onChange={e => setOverrideReasonText(e.target.value)}

@@ -401,11 +401,11 @@ export default function PlantHeatingTrends() {
                   <tr className="text-left border-b">
                     <th className="py-2 pr-3">Date</th>
                     <th className="py-2 pr-3 text-right">Prod (MT)</th>
-                    <th className="py-2 pr-3 text-right">Night Hrs</th>
+                    <th className="py-2 pr-3 text-right">Night hrs</th>
                     <th className="py-2 pr-3 text-right">Night LDO L</th>
-                    <th className="py-2 pr-3 text-right">Day Hrs</th>
+                    <th className="py-2 pr-3 text-right">Day hrs</th>
                     <th className="py-2 pr-3 text-right">Day LDO L</th>
-                    <th className="py-2 pr-3 text-right">Total Hrs</th>
+                    <th className="py-2 pr-3 text-right">Total hrs</th>
                     <th className="py-2 pr-3 text-right">Sessions L</th>
                     <th className="py-2 pr-3 text-right">Shift-meter L</th>
                     <th className="py-2 pr-3 text-right">Δ (L)</th>

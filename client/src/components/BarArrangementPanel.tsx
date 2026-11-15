@@ -184,7 +184,7 @@ export function BarArrangementPanel({
       <Dialog open={open && !showCreate} onOpenChange={(v) => { if (!v) onClose(); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-sm">Execution Arrangements — {barLabel}</DialogTitle>
+            <DialogTitle className="text-sm">Execution arrangements — {barLabel}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3 text-[12px]">

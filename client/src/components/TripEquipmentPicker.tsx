@@ -14,9 +14,9 @@ export function TripEquipmentPicker({ options, value, onChange, registration, al
   const selected = options.find(e => String(e.id) === value);
   const visible = selected && !filtered.some(e => e.id === selected.id) ? [selected, ...filtered] : filtered;
   return <section className="space-y-2">
-    <Label htmlFor={`${id}-search`}>Equipment Master · search registration</Label>
+    <Label htmlFor={`${id}-search`}>Equipment master · search registration</Label>
     <Input id={`${id}-search`} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search e.g. TS15UE4470" />
-    <select aria-label="Equipment Master vehicle" className="w-full rounded-md border bg-background p-2 text-sm" value={value} onChange={e => onChange(e.target.value)}>
+    <select aria-label="Equipment master vehicle" className="w-full rounded-md border bg-background p-2 text-sm" value={value} onChange={e => onChange(e.target.value)}>
       <option value="">{allowOutside ? "Outside / unregistered vehicle — enter registration below" : "Select an existing hired vehicle"}</option>
       {visible.map(e => <option key={e.id} value={e.id}>{equipmentIdentityLabel(e)}</option>)}
     </select>

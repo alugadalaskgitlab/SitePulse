@@ -1057,14 +1057,14 @@ export function EarthworkArrangementDialog({
     <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit" : "New"} Execution Arrangement</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit" : "New"} execution arrangement</DialogTitle>
           <p className="text-[12px] text-slate-500">{materialLabel}</p>
         </DialogHeader>
 
         <div className="space-y-4 py-2 text-sm">
           {/* Arrangement type */}
           <div className="space-y-1">
-            <Label className="text-xs font-semibold">Arrangement Type *</Label>
+            <Label className="text-xs font-semibold">Arrangement type *</Label>
             <Select value={arrangementType} onValueChange={v => handleTypeChange(v as ArrangementType)}>
               <SelectTrigger className="h-8 text-[12px]">
                 <SelectValue />
@@ -1182,7 +1182,7 @@ export function EarthworkArrangementDialog({
                   )}
                 </div>
               )}
-              <Label className="text-xs font-semibold">Arrangement Quantity ({boqQty != null ? `BOQ: ${boqQty} ${displayUom}` : displayUom})</Label>
+              <Label className="text-xs font-semibold">Arrangement quantity ({boqQty != null ? `BOQ: ${boqQty} ${displayUom}` : displayUom})</Label>
               <Input
                 className="h-8 text-[12px] font-mono"
                 type="number" min={0}
@@ -1201,7 +1201,7 @@ export function EarthworkArrangementDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs font-semibold">Agreed Rate (₹/{displayUom})</Label>
+              <Label className="text-xs font-semibold">Agreed rate (₹/{displayUom})</Label>
               <Input
                 className="h-8 text-[12px] font-mono"
                 type="number" min={0}
@@ -1243,7 +1243,7 @@ export function EarthworkArrangementDialog({
 
           {/* Instruction 031 B2 — Applicable Scope */}
           <div className="space-y-2" data-testid="section-applicable-scope">
-            <Label className="text-xs font-semibold">Applicable Scope</Label>
+            <Label className="text-xs font-semibold">Applicable scope</Label>
             <div className="flex gap-3 flex-wrap text-[12px]">
               {([
                 ["whole", "Whole eligible BOQ scope"],
@@ -1347,11 +1347,11 @@ export function EarthworkArrangementDialog({
                 />
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-[11px]">Chainage From (km)</Label>
+                    <Label className="text-[11px]">Chainage from (km)</Label>
                     <Input className="h-8 text-[12px] font-mono" type="number" step="0.001" placeholder="e.g. 2.400" value={customChFrom} onChange={e => setCustomChFrom(e.target.value)} data-testid="input-chainage-from" />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[11px]">Chainage To (km)</Label>
+                    <Label className="text-[11px]">Chainage to (km)</Label>
                     <Input className="h-8 text-[12px] font-mono" type="number" step="0.001" placeholder="e.g. 3.100" value={customChTo} onChange={e => setCustomChTo(e.target.value)} data-testid="input-chainage-to" />
                   </div>
                 </div>
@@ -1363,11 +1363,11 @@ export function EarthworkArrangementDialog({
           {!isBituminous && ["fully_outsourced_composite", "hlc_source_outsourced_execution", "vendor_material_delivered"].includes(arrangementType) && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">Borrow Source / Quarry Location</Label>
+                <Label className="text-xs font-semibold">Borrow source / quarry location</Label>
                 <Input className="h-8 text-[12px]" placeholder="e.g. Km 15+300 LHS borrow pit" value={borrowSource} onChange={e => setBorrowSource(e.target.value)} />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">Average Lead (km)</Label>
+                <Label className="text-xs font-semibold">Average lead (km)</Label>
                 <Input className="h-8 text-[12px] font-mono" type="number" min={0} placeholder="0.0" value={avgLeadKm} onChange={e => setAvgLeadKm(e.target.value)} />
               </div>
             </div>
@@ -1376,15 +1376,15 @@ export function EarthworkArrangementDialog({
           {/* Schedule */}
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs font-semibold">Planned Start Date</Label>
+              <Label className="text-xs font-semibold">Planned start date</Label>
               <Input className="h-8 text-[12px]" type="date" value={plannedStartDate} onChange={e => setPlannedStartDate(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs font-semibold">Target Completion</Label>
+              <Label className="text-xs font-semibold">Target completion</Label>
               <Input className="h-8 text-[12px]" type="date" value={targetCompletionDate} onChange={e => setTargetCompletionDate(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs font-semibold">Daily Output ({displayUom}/day)</Label>
+              <Label className="text-xs font-semibold">Daily output ({displayUom}/day)</Label>
               <Input
                 className="h-8 text-[12px] font-mono"
                 type="number" min={0}
@@ -1403,7 +1403,7 @@ export function EarthworkArrangementDialog({
 
           {/* Component responsibility table */}
           <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Component Responsibility</Label>
+              <Label className="text-xs font-semibold">Component responsibility</Label>
             <div className="rounded border border-slate-200 overflow-hidden">
               <table className="w-full text-[11px]">
                 <thead>
@@ -1440,7 +1440,7 @@ export function EarthworkArrangementDialog({
 
           {/* Notes */}
           <div className="space-y-1">
-            <Label className="text-xs font-semibold">Notes / Special Conditions</Label>
+            <Label className="text-xs font-semibold">Notes / special conditions</Label>
             <Textarea className="text-[12px] min-h-[60px]" placeholder="Any additional conditions, inclusions, exclusions..." value={notes} onChange={e => setNotes(e.target.value)} />
           </div>
         </div>

@@ -2217,7 +2217,7 @@ export default function GuidedDpr() {
                     </div>
                     )}
                     <div>
-                      <Label>Physical Qty {measurement.measuredUom ? `(${measurement.measuredUom})` : ""}</Label>
+                      <Label>Physical quantity {measurement.measuredUom ? `(${measurement.measuredUom})` : ""}</Label>
                       <Input type="number" inputMode="decimal" value={e.quantity ?? ""} onChange={(ev) => updateQuantity(idx, ev.target.value === "" ? null : Number(ev.target.value))} data-testid={`input-qty-${idx}`} />
                       {measurement.boqQty != null ? (
                         <p className="text-xs font-medium text-teal-700 mt-1" data-testid={`text-boq-qty-${idx}`}>
@@ -2703,7 +2703,7 @@ export default function GuidedDpr() {
                           source-gated tank readings live once in the compact
                           component below. */}
                       <div>
-                        <Label className="text-xs text-muted-foreground">Diesel Source</Label>
+                        <Label className="text-xs text-muted-foreground">Diesel source</Label>
                         <Select
                           value={(pt.dieselSource as string) ?? ""}
                           disabled={linked}
@@ -2722,13 +2722,13 @@ export default function GuidedDpr() {
                       {isDirectPurchase && (
                         <div className="grid grid-cols-3 gap-2" data-testid={`section-eq-purchase-${i}`}>
                           <div>
-                            <Label className="text-xs text-muted-foreground">Fuel Station</Label>
+                            <Label className="text-xs text-muted-foreground">Fuel station</Label>
                             <Input placeholder="HP / BPCL" value={pt.fuelStation ?? ""}
                               onChange={(ev) => setPassthroughField(i, "fuelStation", ev.target.value.toUpperCase(), false)}
                               className="uppercase" data-testid={`input-eq-fuel-station-${i}`} />
                           </div>
                           <div>
-                            <Label className="text-xs text-muted-foreground">Bill No.</Label>
+                            <Label className="text-xs text-muted-foreground">Bill no.</Label>
                             <Input placeholder="Receipt #" value={pt.billNumber ?? ""}
                               onChange={(ev) => setPassthroughField(i, "billNumber", ev.target.value.toUpperCase(), false)}
                               className="uppercase" data-testid={`input-eq-bill-number-${i}`} />
@@ -2760,7 +2760,7 @@ export default function GuidedDpr() {
                               data-testid={`input-eq-trips-${i}`} />
                           </div>
                           <div>
-                            <Label className="text-xs text-muted-foreground">Trip Distance (km)</Label>
+                            <Label className="text-xs text-muted-foreground">Trip distance (km)</Label>
                             <Input type="number" inputMode="decimal" placeholder="One-way" value={pt.tripDistance ?? ""}
                               onChange={(ev) => {
                                 setEquipment((p) => p.map((r, j) => {
@@ -2786,7 +2786,7 @@ export default function GuidedDpr() {
                       {isWaterTanker && (
                         <div className="grid grid-cols-2 gap-2" data-testid={`section-eq-water-${i}`}>
                           <div>
-                            <Label className="text-xs text-muted-foreground">Water Quantity (Litres)</Label>
+                            <Label className="text-xs text-muted-foreground">Water quantity (litres)</Label>
                             <Input type="number" inputMode="decimal" placeholder="0" value={pt.waterQuantity ?? ""}
                               onChange={(ev) => setPassthroughField(i, "waterQuantity", ev.target.value, true)}
                               data-testid={`input-eq-water-qty-${i}`} />

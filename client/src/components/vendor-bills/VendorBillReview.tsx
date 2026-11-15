@@ -65,7 +65,7 @@ export function VendorRunningStatement({ bill, bills, loading, error }: { bill: 
   const latest = rows.at(-1);
   const hasProvisionalRows = rows.some(row => ["draft", "verified"].includes(String(row.status).toLowerCase()));
   return <section className="rounded-lg border p-3 space-y-3" data-testid="vendor-running-statement">
-    <h2 className="text-sm font-semibold">Previous Billing Summary</h2>
+    <h2 className="text-sm font-semibold">Previous billing summary</h2>
     {history.isFetching && <p role="status" className="text-xs">Loading permitted bill history…</p>}
     {(error || history.isError) && <p role="alert" className="text-xs">Financial history is unavailable or not permitted. <button type="button" className="underline" onClick={() => history.refetch()}>Retry</button></p>}
     {bill.vendorId == null && !loading && !error &&

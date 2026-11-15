@@ -150,7 +150,7 @@ export default function RmcMixDesigns() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">RMC Mix Designs</h1>
+            <h1 className="text-2xl font-bold">RMC mix designs</h1>
             <p className="text-sm text-muted-foreground">Manage approved concrete mix design grades</p>
           </div>
         </div>
@@ -261,7 +261,7 @@ export default function RmcMixDesigns() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Edit Mix Design" : "New Mix Design"}</DialogTitle>
+            <DialogTitle>{editingId ? "Edit mix design" : "New mix design"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -277,7 +277,7 @@ export default function RmcMixDesigns() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>Plant Name</Label>
+                <Label>Plant name</Label>
                 <Input value={form.plantName} onChange={e => setForm(f => ({ ...f, plantName: e.target.value }))} data-testid="input-plant-name" />
               </div>
             </div>
@@ -297,31 +297,31 @@ export default function RmcMixDesigns() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Admixture Name</Label>
+                <Label>Admixture name</Label>
                 <Input value={form.admixtureName} onChange={e => setForm(f => ({ ...f, admixtureName: e.target.value }))} data-testid="input-admixture-name" placeholder="e.g. Conplast SP430" />
               </div>
               <div className="space-y-1">
-                <Label>Admixture Dosage (%)</Label>
+                <Label>Admixture dosage (%)</Label>
                 <Input type="number" step="0.01" value={form.admixtureDosage} onChange={e => setForm(f => ({ ...f, admixtureDosage: e.target.value }))} data-testid="input-admixture-dosage" />
               </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-sm font-semibold">Component Proportions (kg/m³)</Label>
+              <Label className="text-sm font-semibold">Component proportions (kg/m³)</Label>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-sm">Cement</Label>
                   <Input type="number" step="0.1" value={form.componentProportions.cement} onChange={e => setCP("cement", e.target.value)} data-testid="input-cp-cement" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-sm">Fine Aggregate</Label>
+                  <Label className="text-sm">Fine aggregate</Label>
                   <Input type="number" step="0.1" value={form.componentProportions.fineAgg} onChange={e => setCP("fineAgg", e.target.value)} data-testid="input-cp-fine-agg" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-sm">Coarse Agg 10mm</Label>
+                  <Label className="text-sm">Coarse agg 10mm</Label>
                   <Input type="number" step="0.1" value={form.componentProportions.coarseAgg10} onChange={e => setCP("coarseAgg10", e.target.value)} data-testid="input-cp-ca10" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-sm">Coarse Agg 20mm</Label>
+                  <Label className="text-sm">Coarse agg 20mm</Label>
                   <Input type="number" step="0.1" value={form.componentProportions.coarseAgg20} onChange={e => setCP("coarseAgg20", e.target.value)} data-testid="input-cp-ca20" />
                 </div>
               </div>

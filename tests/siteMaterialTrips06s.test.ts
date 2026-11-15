@@ -158,10 +158,10 @@ describe("06S §5 schema + §6 forms (Tests H/N)", () => {
     expect((parsed as any).unloadedAt).toBe("yard");
     expect((parsed as any).yardLabel).toBe("Yard A");
   });
-  it("both entry points offer Work Stretch / Temporary Yard and send yardLabel only for yard", () => {
+  it("both entry points offer Work stretch / Temporary yard and send yardLabel only for yard", () => {
     for (const src of [stripSrc, standaloneSrc]) {
-      expect(src).toContain("Work Stretch");
-      expect(src).toContain("Temporary Yard");
+      expect(src).toContain("Work stretch");
+      expect(src).toContain("Temporary yard");
     }
     expect(stripSrc).toContain(`yardLabel: form.unloadedAt === "yard" ? form.yardLabel : undefined`);
     expect(standaloneSrc).toContain(`yardLabel: data.unloadedAt === "yard" ? data.yardLabel : undefined`);

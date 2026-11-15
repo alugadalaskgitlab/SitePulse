@@ -175,9 +175,9 @@ function ProcurementQueueTab() {
                 <thead className="bg-gray-100 border-b">
                   <tr>
                     <th className="text-left px-3 py-2 text-sm font-semibold text-gray-500 uppercase">Material</th>
-                    <th className="text-left px-3 py-2 text-sm font-semibold text-gray-500 uppercase">Procure Qty</th>
+                    <th className="text-left px-3 py-2 text-sm font-semibold text-gray-500">Procure qty</th>
                     <th className="text-left px-3 py-2 text-sm font-semibold text-gray-500 uppercase">Urgency</th>
-                    <th className="text-left px-3 py-2 text-sm font-semibold text-gray-500 uppercase">Need By</th>
+                    <th className="text-left px-3 py-2 text-sm font-semibold text-gray-500">Need by</th>
                     <th className="text-left px-3 py-2 text-sm font-semibold text-gray-500 uppercase">Status</th>
                   </tr>
                 </thead>
@@ -289,7 +289,7 @@ export default function IrnListPage() {
               <ClipboardList className="h-5 w-5 text-amber-700" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-900">Internal Requisitions</h1>
+              <h1 className="text-lg font-bold text-gray-900">Internal requisitions</h1>
               <p className="text-sm text-gray-500">Raise and track material requests through stores</p>
             </div>
           </div>
@@ -345,7 +345,7 @@ export default function IrnListPage() {
 
               {/* Raised by */}
               <div className="space-y-1">
-                <Label className="text-sm font-medium text-gray-500">Raised By</Label>
+                <Label className="text-sm font-medium text-gray-500">Raised by</Label>
                 <Input
                   data-testid="input-irn-raised-by"
                   className="h-8 text-sm"
@@ -427,13 +427,13 @@ export default function IrnListPage() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="text-left px-4 py-3 text-sm font-semibold text-gray-500 uppercase tracking-wide">IRN No.</th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-500 uppercase tracking-wide">Raised By</th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-500 tracking-wide">Raised by</th>
                   <th className="text-left px-4 py-3 text-sm font-semibold text-gray-500 uppercase tracking-wide">Section</th>
                   <th className="text-left px-4 py-3 text-sm font-semibold text-gray-500 uppercase tracking-wide">Date</th>
                   <th className="text-left px-4 py-3 text-sm font-semibold text-gray-500 uppercase tracking-wide">Items</th>
                   <th className="text-left px-4 py-3 text-sm font-semibold text-gray-500 uppercase tracking-wide">Urgency</th>
                   <th className="text-left px-4 py-3 text-sm font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-500 uppercase tracking-wide">Action By</th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-500 tracking-wide">Action by</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>

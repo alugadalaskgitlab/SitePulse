@@ -16,7 +16,7 @@ const group = {
 describe("equipment hire terms editor", () => {
   it("shows agreed terms, rate unit, quantity, unit and gross calculation", () => {
     render(<HireBillTermsEditor group={group} equipmentName="TN 47 BG 2641" result={{ quantity: 8.5, grossAmount: 42500 }} onChange={vi.fn()} onRemove={vi.fn()} />);
-    expect(screen.getByLabelText("Hire Rate (₹/Day)")).toBeTruthy();
+    expect(screen.getByLabelText("Hire rate (₹/Day)")).toBeTruthy();
     expect(screen.getByText("8.5")).toBeTruthy();
     expect(screen.getByText("Days")).toBeTruthy();
     expect(screen.getByText("₹42,500.00")).toBeTruthy();
@@ -25,9 +25,9 @@ describe("equipment hire terms editor", () => {
     const onChange = vi.fn();
     const onRemove = vi.fn();
     render(<HireBillTermsEditor group={group} equipmentName="TN 47 BG 2641" result={null} onChange={onChange} onRemove={onRemove} />);
-    fireEvent.change(screen.getByLabelText("Hire Rate (₹/Day)"), { target: { value: "4750" } });
+    fireEvent.change(screen.getByLabelText("Hire rate (₹/Day)"), { target: { value: "4750" } });
     expect(onChange).toHaveBeenCalledWith({ rate: 4750 });
-    fireEvent.change(screen.getByLabelText("Billing Period From"), { target: { value: "2026-06-04" } });
+    fireEvent.change(screen.getByLabelText("Billing period from"), { target: { value: "2026-06-04" } });
     expect(onChange).toHaveBeenCalledWith({ periodFrom: "2026-06-04" });
     fireEvent.click(screen.getByRole("button", { name: "Remove equipment charge" }));
     expect(onRemove).toHaveBeenCalledOnce();

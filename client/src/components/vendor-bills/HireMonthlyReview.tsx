@@ -54,7 +54,7 @@ export default function HireMonthlyReview({
       </table></div>
     </details>))}
     <div className="rounded border p-3 space-y-2">
-      <h3 className="font-semibold text-sm">Monthly Billing Summary</h3>
+      <h3 className="font-semibold text-sm">Monthly billing summary</h3>
       <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-xs">
         <thead className="bg-muted/40"><tr>{MONTHLY_BILL_HEADERS.map(h => <th key={h} className="p-2 text-right first:text-left">{h}</th>)}</tr></thead>
         <tbody>{rows.map((row, i) => <tr key={i} className="border-t">{row.map((cell, j) => {

@@ -76,9 +76,9 @@ export function DprEquipmentTableDetails({ section, row, details, index, boqItem
       content = <>
         <Line label="Machine day">{index + 1}</Line>
         {details.vendor && <Line label="Owner / vendor">{details.vendor}</Line>}
-        <Line label="Entry / Hire Type">{dash(row.entryType).replaceAll("_", " ")}</Line>
-        <Line label="Daily Status">{status}</Line>
-        {row.usageStatusReason && <Line label="Status Reason">{row.usageStatusReason}</Line>}
+        <Line label="Entry / hire type">{dash(row.entryType).replaceAll("_", " ")}</Line>
+        <Line label="Daily status">{status}</Line>
+        {row.usageStatusReason && <Line label="Status reason">{row.usageStatusReason}</Line>}
         {!!row.breakdowns?.length && <Line label="Breakdowns">{row.breakdowns.length}</Line>}
         {details.warning && <div className="text-amber-800 dark:text-amber-300">Usage warning: {details.warning}</div>}
       </>;
@@ -86,42 +86,42 @@ export function DprEquipmentTableDetails({ section, row, details, index, boqItem
     }
     case "readings":
       content = <>
-        <Line label={details.odometer ? "Opening Odometer" : "Opening Meter"}>{dash(row.openingReading)}</Line>
-        <Line label={details.odometer ? "Closing Odometer" : "Closing Meter"}>{dash(row.closingReading)}</Line>
-        <Line label="Start Time">{formatEquipmentTime(row.startTime)}</Line>
-        <Line label="End Time">{formatEquipmentTime(row.endTime)}</Line>
-        <Line label="Clock Duration">{formatEquipmentDuration(details.clockHours)}</Line>
+        <Line label={details.odometer ? "Opening odometer" : "Opening meter"}>{dash(row.openingReading)}</Line>
+        <Line label={details.odometer ? "Closing odometer" : "Closing meter"}>{dash(row.closingReading)}</Line>
+        <Line label="Start time">{formatEquipmentTime(row.startTime)}</Line>
+        <Line label="End time">{formatEquipmentTime(row.endTime)}</Line>
+        <Line label="Clock duration">{formatEquipmentDuration(details.clockHours)}</Line>
         {showExplanations && <p className="text-muted-foreground">{details.odometer
           ? "Distance comes from the odometer or trip calculation. Clock duration is shown separately."
           : preview.basis === "hour_meter"
-            ? "Meter Working Hours come from the opening and closing meter difference. Clock duration is shown separately."
+            ? "Meter working hours come from the opening and closing meter difference. Clock duration is shown separately."
              : "No hour-meter difference is available. Clock duration is shown separately and is not labelled as meter working time."}</p>}
       </>;
       break;
     case "quantity":
       content = details.odometer || preview.totalKm != null
-        ? <Line label="Calculated Distance">{preview.totalKm == null ? "—" : `${number(preview.totalKm)} km`}</Line>
-        : <Line label="Meter Working Hours">{preview.basis === "hour_meter" && preview.hoursWorked != null ? `${number(preview.hoursWorked)} h` : "—"}</Line>;
+        ? <Line label="Calculated distance">{preview.totalKm == null ? "—" : `${number(preview.totalKm)} km`}</Line>
+        : <Line label="Meter working hours">{preview.basis === "hour_meter" && preview.hoursWorked != null ? `${number(preview.hoursWorked)} h` : "—"}</Line>;
       break;
     case "tank":
       content = <>
-        <Line label="Diesel Issued / Added">{number(row.diesel)} L</Line>
+        <Line label="Diesel issued / added">{number(row.diesel)} L</Line>
         {details.isPlantStock && <>
-          <Line label="Opening Tank (L)">{number(row.openingDiesel)} L</Line>
-          <Line label="Closing Tank / Physical Dip (L)">{number(row.dieselBalanceInTank)} L</Line>
-          <Line label="Physical Tank Balance">{row.dieselBalanceConfirmed ? "Confirmed" : details.tankKnown ? "Pending confirmation" : "—"}</Line>
+          <Line label="Opening tank (L)">{number(row.openingDiesel)} L</Line>
+          <Line label="Closing tank / physical dip (L)">{number(row.dieselBalanceInTank)} L</Line>
+          <Line label="Physical tank balance">{row.dieselBalanceConfirmed ? "Confirmed" : details.tankKnown ? "Pending confirmation" : "—"}</Line>
           {details.tankKnown && !row.dieselBalanceConfirmed && <p className="text-amber-800 dark:text-amber-300">Physical tank balance has not been confirmed.</p>}
         </>}
       </>;
       break;
     case "expected":
-      content = details.isPlantStock && <Line label="Fuel-summary expected">{fuel.expectedDiesel == null ? "—" : `${number(fuel.expectedDiesel)} L`}</Line>;
+      content = details.isPlantStock && <Line label="Fuel summary expected">{fuel.expectedDiesel == null ? "—" : `${number(fuel.expectedDiesel)} L`}</Line>;
       break;
     case "performance":
       content = details.isPlantStock && <>
-        <Line label={showLegacyRate ? "Actual Consumed" : "DPR snapshot consumed"}>{fuel.actualConsumed == null ? "Awaiting tank dip" : `${number(fuel.actualConsumed)} L`}</Line>
+        <Line label={showLegacyRate ? "Actual consumed" : "DPR snapshot consumed"}>{fuel.actualConsumed == null ? "Awaiting tank dip" : `${number(fuel.actualConsumed)} L`}</Line>
         <Line label={showLegacyRate ? "Consumed − expected variance" : "DPR snapshot consumed − expected variance"}>{fuel.variance == null ? "—" : `${fuel.variance > 0 ? "+" : ""}${number(fuel.variance)} L`}</Line>
-        {showLegacyRate && <Line label={details.confirmedRate ? "Actual Consumption Rate · from confirmed tank dip" : "Expected Consumption Rate · from norm, actual unavailable"}>
+        {showLegacyRate && <Line label={details.confirmedRate ? "Actual consumption rate · from confirmed tank dip" : "Expected consumption rate · from norm, actual unavailable"}>
           {details.confirmedRate ? `${number(fuel.actualRate)} ${fuel.actualRateUnit}` : details.norm.value == null ? "—" : `${number(details.norm.value)} ${details.norm.unit}`}
         </Line>}
         {!showLegacyRate && !details.confirmedRate && details.norm.value != null && <Line label="Current master norm (reference)">

@@ -167,7 +167,7 @@ export default function RmcRawMaterials() {
             <Button variant="ghost" size="icon" data-testid="btn-back"><ArrowLeft className="w-5 h-5" /></Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">RMC Raw Material Receipts</h1>
+            <h1 className="text-2xl font-bold">RMC raw material receipts</h1>
             <p className="text-sm text-muted-foreground">Track incoming cement, aggregates, admixtures & other materials</p>
           </div>
         </div>
@@ -333,7 +333,7 @@ export default function RmcRawMaterials() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Edit Receipt" : "New Material Receipt"}</DialogTitle>
+            <DialogTitle>{editingId ? "Edit receipt" : "New material receipt"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
@@ -354,7 +354,7 @@ export default function RmcRawMaterials() {
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Material Name *</Label>
+              <Label>Material name *</Label>
               <Input value={form.materialName} onChange={e => setForm(f => ({ ...f, materialName: e.target.value }))} required placeholder="e.g. OPC 53 Grade Cement" data-testid="input-material-name" />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -380,11 +380,11 @@ export default function RmcRawMaterials() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Vehicle Number</Label>
+                <Label>Vehicle number</Label>
                 <Input value={form.vehicleNumber} onChange={e => setForm(f => ({ ...f, vehicleNumber: e.target.value }))} data-testid="input-vehicle" />
               </div>
               <div className="space-y-1">
-                <Label>Challan Number</Label>
+                <Label>Challan number</Label>
                 <Input value={form.challanNumber} onChange={e => setForm(f => ({ ...f, challanNumber: e.target.value }))} data-testid="input-challan" />
               </div>
             </div>

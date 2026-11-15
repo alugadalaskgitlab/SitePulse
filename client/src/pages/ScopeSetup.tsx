@@ -254,7 +254,7 @@ export default function ScopeSetup() {
           <MapPin className="h-5 w-5" /> Project Scope &amp; Working Reaches
         </h1>
         <Link href={`/work-program/${projectId}/execution-arrangements`}>
-          <Button variant="outline" size="sm">Execution Arrangements</Button>
+          <Button variant="outline" size="sm">Execution arrangements</Button>
         </Link>
       </div>
 

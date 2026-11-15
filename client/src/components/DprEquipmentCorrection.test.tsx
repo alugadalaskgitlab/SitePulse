@@ -58,7 +58,7 @@ describe("submitted DPR historical equipment observations", () => {
   it("keeps historical assignments editable even with a dangling canonical usage reference", () => {
     const onWorkAssignmentChange = vi.fn();
     render(<DprEquipmentCompact row={{ ...row, resourceScope: null }} historicalCorrection onWorkAssignmentChange={onWorkAssignmentChange} />);
-    fireEvent.click(screen.getByRole("button", { name: "Assign Item" }));
+    fireEvent.click(screen.getByRole("button", { name: "Assign item" }));
     expect(onWorkAssignmentChange).toHaveBeenCalledWith([
       { startTime: "", endTime: "", boqItems: [{ boqItemId: 0, programmeBarId: null }] },
     ], "manual");

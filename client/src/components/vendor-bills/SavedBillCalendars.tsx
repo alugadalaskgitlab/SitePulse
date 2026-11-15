@@ -213,21 +213,21 @@ export default function SavedBillCalendars({
                   { ...displayData, periodFrom: month.from, periodTo: month.to },
                   month.rows,
                   "pdf",
-                )}>Export Activity Statement PDF</Button>
+                )}>Export activity statement PDF</Button>
               <Button type="button" variant="outline" size="sm"
                 disabled={!month.hasFrozenRows || !month.rows.length || !displayData}
                 onClick={() => displayData && exportActivityStatement(
                   { ...displayData, periodFrom: month.from, periodTo: month.to },
                   month.rows,
                   "xlsx",
-                )}>Export Activity Statement Excel</Button>
+                )}>Export activity statement Excel</Button>
             </div>}
           </div>
         </details>)}
         {canExport && allFrozenRows && displayData?.periodFrom && displayData?.periodTo && <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-muted-foreground">Export all months:</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => exportActivityStatement(displayData, rows, "pdf")}>Activity Statement PDF</Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => exportActivityStatement(displayData, rows, "xlsx")}>Activity Statement Excel</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => exportActivityStatement(displayData, rows, "pdf")}>Activity statement PDF</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => exportActivityStatement(displayData, rows, "xlsx")}>Activity statement Excel</Button>
         </div>}
         {periodDetails.some(detail => detail.periodDecisions.length > 0) && <details className="rounded-lg border p-3">
           <summary className="cursor-pointer font-semibold text-sm">Period-level saved billing decisions · {name}</summary>

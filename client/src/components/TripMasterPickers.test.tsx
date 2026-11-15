@@ -54,6 +54,16 @@ function Vehicle({ selected = false }: { selected?: boolean }) {
   const [draft, setDraft] = useState<TripRoleDraft>({ materialSourceType: "own_source", materialSourceSupplier: "", supplier: selected ? "Saravana" : "", supplierVendorId: selected ? 13 : null, vehicleNumber: "LEGACY4308", internalEquipmentId: null });
   return <><TripMasterVehicleField value={draft} onChange={setDraft} onChoice={() => {}} choice="different_parties" vendors={vendors} allowOutside testIdPrefix="test" /><output data-testid="draft">{JSON.stringify(draft)}</output></>;
 }
+function VehicleWithTransporterFilter() {
+  const [draft, setDraft] = useState<TripRoleDraft>({
+    materialSourceType: "own_source", materialSourceSupplier: "", supplier: "Gangaram Narsimulu",
+    supplierVendorId: 27, vehicleNumber: "", internalEquipmentId: null,
+  });
+  return <>
+    <button type="button" onClick={() => setDraft(current => ({ ...current, supplier: "Saravana", supplierVendorId: 13 }))}>Change transporter</button>
+    <TripMasterVehicleField value={draft} onChange={setDraft} onChoice={() => {}} choice="different_parties" vendors={vendors} allowOutside testIdPrefix="test" />
+  </>;
+}
 describe("Master comboboxes", () => {
   it.each(["Material Supplier", "Transporter"])("%s uses one editable input and searches Master and Business Name", label => {
     renderWithQuery(<Vendor label={label} />);
@@ -128,12 +138,18 @@ describe("Master comboboxes", () => {
     fireEvent.change(input, { target: { value: "4308" } });
     expect(JSON.parse(screen.getByTestId("draft").textContent!)).toMatchObject({ equipmentId: null, internalEquipmentId: null });
   });
-  it("keeps different transporter and shows one concise mismatch warning", () => {
+  it("limits hired vehicle choices to the selected transporter's confirmed vehicles", () => {
     renderWithQuery(<Vehicle selected />);
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "4308" } });
-    fireEvent.click(screen.getByRole("option", { name: /TS15UF 4308/ }));
-    expect(JSON.parse(screen.getByTestId("draft").textContent!).supplierVendorId).toBe(13);
-    expect(screen.getByText(/Transporter differs/).getAttribute("role")).toBe("status");
+    expect(screen.queryByRole("option", { name: /TS15UF 4308/ })).toBeNull();
+  });
+  it("updates the vehicle choices immediately when the transporter changes", () => {
+    renderWithQuery(<VehicleWithTransporterFilter />);
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "4308" } });
+    expect(screen.getByRole("option", { name: /TS15UF 4308.*G N Transport/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Change transporter" }));
+    expect(screen.queryByRole("option", { name: /TS15UF 4308.*G N Transport/ })).toBeNull();
   });
   it("separates outside registration from Master results", () => {
     renderWithQuery(<Vehicle />);

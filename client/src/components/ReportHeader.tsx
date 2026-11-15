@@ -52,7 +52,7 @@ export function ReportHeader({
         )}
           <div className="sm:text-right sm:ml-auto print:text-right print:ml-auto">
             <div className="flex flex-wrap items-center gap-2 sm:justify-end print:justify-end">
-              <h2 className="text-lg font-bold text-foreground print:text-black">Daily Progress Report</h2>
+              <h2 className="text-lg font-bold text-foreground print:text-black">Daily progress report</h2>
               {displayedStatus && (
                 <span
                   className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-sm font-semibold ${

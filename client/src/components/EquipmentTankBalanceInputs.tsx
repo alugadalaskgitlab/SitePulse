@@ -62,7 +62,7 @@ export function EquipmentTankBalanceInputs({
     >
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label>Opening Diesel Tank (L)</Label>
+          <Label>Opening diesel tank (L)</Label>
           <Input
             type="number"
             step="0.1"
@@ -73,7 +73,7 @@ export function EquipmentTankBalanceInputs({
           />
         </div>
         <div>
-          <Label>Diesel Balance in Tank (L)</Label>
+          <Label>Diesel balance in tank (L)</Label>
           <Input
             type="number"
             step="0.1"

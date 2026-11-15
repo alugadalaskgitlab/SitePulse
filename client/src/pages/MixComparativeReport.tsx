@@ -106,7 +106,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
             <table className="w-full text-sm border-collapse" data-testid="table-rate-comparison">
               <thead>
                 <tr className="bg-amber-50 dark:bg-amber-950/30 text-sm uppercase tracking-wide">
-                  <th className="text-left px-4 py-2.5 font-semibold border-b border-border">Mix Type</th>
+                  <th className="text-left px-4 py-2.5 font-semibold border-b border-border">Mix type</th>
                   {contractors.map((c) => (
                     <th key={c} className="text-right px-4 py-2.5 font-semibold border-b border-border whitespace-nowrap">
                       {c}
@@ -175,7 +175,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
                 <tr className="bg-muted/50 text-muted-foreground text-sm uppercase tracking-wide">
                   <th className="text-left px-4 py-2.5 font-semibold">Contractor</th>
                   <th className="text-left px-4 py-2.5 font-semibold">Job</th>
-                  <th className="text-left px-4 py-2.5 font-semibold">Mix Type</th>
+                  <th className="text-left px-4 py-2.5 font-semibold">Mix type</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Area (Sqm)</th>
                   <th className="text-right px-4 py-2.5 font-semibold">MT · CUM</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Plant /MT · /CUM</th>
@@ -318,7 +318,7 @@ export default function MixComparativeReport() {
         </div>
       </div>
       <div className="hidden print:block mb-2 text-center">
-        <h2 className="text-lg font-bold">Contractor Comparative Rate Statement</h2>
+        <h2 className="text-lg font-bold">Contractor comparative rate statement</h2>
         <p className="text-sm text-gray-500">{new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</p>
       </div>
       <MixComparisonContent data={comparisonData} printable />

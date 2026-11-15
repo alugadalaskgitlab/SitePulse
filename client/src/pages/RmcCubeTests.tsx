@@ -186,7 +186,7 @@ export default function RmcCubeTests() {
             <Button variant="ghost" size="icon" data-testid="btn-back"><ArrowLeft className="w-5 h-5" /></Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">RMC Cube Tests</h1>
+            <h1 className="text-2xl font-bold">RMC cube tests</h1>
             <p className="text-sm text-muted-foreground">Concrete compressive strength QC results</p>
           </div>
         </div>
@@ -414,11 +414,11 @@ export default function RmcCubeTests() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Edit Test Result" : "Record Cube Test Result"}</DialogTitle>
+            <DialogTitle>{editingId ? "Edit test result" : "Record cube test result"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
-              <Label>Batch Record *</Label>
+              <Label>Batch record *</Label>
               <Select
                 value={form.batchRecordId}
                 onValueChange={v => {
@@ -450,7 +450,7 @@ export default function RmcCubeTests() {
                 <Input value={form.sampleId} onChange={e => setForm(f => ({ ...f, sampleId: e.target.value }))} placeholder="e.g. C1-25-001" required data-testid="input-sample-id" />
               </div>
               <div className="space-y-1">
-                <Label>Test Age</Label>
+                <Label>Test age</Label>
                 <Select value={form.ageDays} onValueChange={v => setForm(f => ({ ...f, ageDays: v }))}>
                   <SelectTrigger data-testid="select-age-days">
                     <SelectValue />
@@ -461,7 +461,7 @@ export default function RmcCubeTests() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>Test Date *</Label>
+                <Label>Test date *</Label>
                 <Input type="date" value={form.testDate} onChange={e => setForm(f => ({ ...f, testDate: e.target.value }))} required data-testid="input-test-date" />
               </div>
               <div className="space-y-1">

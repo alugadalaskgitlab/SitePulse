@@ -13099,7 +13099,7 @@ export class DatabaseStorage implements IStorage {
         const textMatch = variants.length
           ? sql`${normalizedSupplier} IN (${sql.join(variants.map(value => sql`${value}`), sql`, `)})`
           : sql`false`;
-        conditions.push(sql`(${siteMaterialTrips.supplierVendorId} = ${supplierMatch.vendorId} OR (${siteMaterialTrips.supplierVendorId} IS NULL AND ${textMatch}))`);
+        conditions.push(sql`(${siteMaterialTrips.supplierVendorId} = ${supplierMatch.vendorId} OR ${textMatch})`);
       } else {
         conditions.push(sql`${normalizedSupplier} = ${normalizeVehicleSupplierName(filters.supplier)}`);
       }
@@ -13126,10 +13126,7 @@ export class DatabaseStorage implements IStorage {
     }
     if (filters?.permittedSiteNames !== undefined) {
       if (filters.permittedSiteNames.length === 0) return [];
-      const allowedSiteKeys = filters.permittedSiteNames.map(normalizeVehicleSupplierName).filter(Boolean);
-      if (!allowedSiteKeys.length) return [];
-      const normalizedSite = sql`UPPER(REGEXP_REPLACE(TRIM(${siteMaterialTrips.site}), '[[:space:]]+', ' ', 'g'))`;
-      conditions.push(sql`${normalizedSite} IN (${sql.join(allowedSiteKeys.map(value => sql`${value}`), sql`, `)})`);
+      conditions.push(inArray(siteMaterialTrips.site, filters.permittedSiteNames));
     }
     
     const trips = await db.select()

@@ -119,7 +119,7 @@ describe("saved hire activity month sections", () => {
     expect(augustTotals.textContent).toContain("Working hours: 4:00");
     expect(augustTotals.textContent).toContain("Average consumption rate: 2 L/hr");
 
-    fireEvent.click(within(months[0]).getByRole("button", { name: "Export Activity Statement PDF" }));
+    fireEvent.click(within(months[0]).getByRole("button", { name: "Export activity statement PDF" }));
     expect(exportEquipmentHireCalendar).toHaveBeenLastCalledWith(
       expect.objectContaining({ periodFrom: "2026-08-20", periodTo: "2026-08-31" }),
       [augustRow],
@@ -130,14 +130,14 @@ describe("saved hire activity month sections", () => {
     const septemberTotals = within(months[1]).getByTestId("saved-hire-activity-totals");
     expect(septemberTotals.textContent).toContain("Working hours: 5:00");
     expect(septemberTotals.textContent).toContain("Average consumption rate: 2 L/hr");
-    fireEvent.click(within(months[1]).getByRole("button", { name: "Export Activity Statement Excel" }));
+    fireEvent.click(within(months[1]).getByRole("button", { name: "Export activity statement Excel" }));
     expect(exportEquipmentHireCalendar).toHaveBeenLastCalledWith(
       expect.objectContaining({ periodFrom: "2026-09-01", periodTo: "2026-09-15" }),
       [septemberRow],
       "xlsx",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Activity Statement PDF" }));
+    fireEvent.click(screen.getByRole("button", { name: "Activity statement PDF" }));
     expect(exportEquipmentHireCalendar).toHaveBeenLastCalledWith(
       expect.objectContaining({ periodFrom: "2026-08-20", periodTo: "2026-09-15" }),
       [augustRow, septemberRow],
@@ -148,7 +148,7 @@ describe("saved hire activity month sections", () => {
   it("uses the configured company logo for standalone Activity Statement PDFs", async () => {
     render(<SavedBillCalendars bill={savedBill} canExport logoFile="company/logo.png" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Activity Statement PDF" }));
+    fireEvent.click(screen.getByRole("button", { name: "Activity statement PDF" }));
 
     await waitFor(() => expect(loadPdfLogoDataUrl).toHaveBeenCalledWith("company/logo.png"));
     await waitFor(() => expect(exportEquipmentHireCalendar).toHaveBeenCalledWith(

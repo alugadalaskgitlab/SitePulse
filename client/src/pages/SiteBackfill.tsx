@@ -281,7 +281,7 @@ export default function SiteBackfill() {
                               />
                             </th>
                             <th className="p-3 text-left font-medium text-muted-foreground">Date</th>
-                            <th className="p-3 text-left font-medium text-muted-foreground">Raised By</th>
+                            <th className="p-3 text-left font-medium text-muted-foreground">Raised by</th>
                             <th className="p-3 text-left font-medium text-muted-foreground">Status</th>
                             <th className="p-3 text-right font-medium text-muted-foreground">Planned (L)</th>
                             <th className="p-3 text-right font-medium text-muted-foreground">Approved (L)</th>
@@ -372,8 +372,8 @@ export default function SiteBackfill() {
                               />
                             </th>
                             <th className="p-3 text-left font-medium text-muted-foreground">Date</th>
-                            <th className="p-3 text-left font-medium text-muted-foreground">Indent No</th>
-                            <th className="p-3 text-left font-medium text-muted-foreground">Raised By</th>
+                            <th className="p-3 text-left font-medium text-muted-foreground">Indent no.</th>
+                            <th className="p-3 text-left font-medium text-muted-foreground">Raised by</th>
                             <th className="p-3 text-left font-medium text-muted-foreground">Status</th>
                           </tr>
                         </thead>

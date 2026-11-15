@@ -2322,7 +2322,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             />
           </div>
           <div>
-            <Label>Site Name</Label>
+            <Label>Site name</Label>
             <Select value={header.site} onValueChange={handleSiteChange}>
               <SelectTrigger data-testid="input-site">
                 <SelectValue placeholder="Select Site" />
@@ -2335,7 +2335,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             </Select>
           </div>
           <div>
-            <Label>Engineer / Submitted By</Label>
+            <Label>Engineer / submitted by</Label>
             <div className="flex gap-2">
               <Select
                 value={header.engineer}
@@ -2480,7 +2480,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-sm">Structure Type</Label>
+                    <Label className="text-sm">Structure type</Label>
                     <Select value={selectType} onValueChange={handleTypeChange}>
                       <SelectTrigger data-testid={`select-structure-type-${idx}`}><SelectValue /></SelectTrigger>
                       <SelectContent>{STRUCTURE_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
@@ -2496,7 +2496,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                     {isOtherSubType && <Input placeholder="Specify sub-type…" value={item.structureSubType !== "Other" ? item.structureSubType : ""} onChange={(e) => updateField("structureSubType", e.target.value || "Other")} data-testid={`input-structure-subtype-other-${idx}`} />}
                   </div>
                   <div className="sm:col-span-2">
-                    <Label className="text-sm">Structure Name / Location</Label>
+                    <Label className="text-sm">Structure name / location</Label>
                     <Input placeholder="e.g. Culvert at km 12+400" value={item.structureName} onChange={(e) => updateField("structureName", e.target.value)} data-testid={`input-structure-name-${idx}`} />
                   </div>
                   <div className="space-y-1">
@@ -2661,7 +2661,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                       }}
                       data-testid={`checkbox-no-site-work-${idx}`}
                     />
-                    <Label htmlFor={`no-site-work-${idx}`} className="text-sm cursor-pointer">No Site Work</Label>
+                    <Label htmlFor={`no-site-work-${idx}`} className="text-sm cursor-pointer">No site work</Label>
                   </div>
                   {/* Batch 06V: Incidental / Non-BOQ (compact, mutually exclusive with No Site Work) */}
                   <div className="flex items-center gap-2">
@@ -3032,7 +3032,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   </div>
                   )}
                   <div>
-                    <Label className="text-sm">Physical Qty ({progressUom(entry) ?? entry.uom})</Label>
+                    <Label className="text-sm">Physical quantity ({progressUom(entry) ?? entry.uom})</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -3390,7 +3390,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             </div>;
             const ownerType = <>
               {selectedEquipForRow?.ownership === "hired" && <div>
-                <Label className="text-sm">Entry Type</Label>
+                <Label className="text-sm">Entry type</Label>
                 <Select value={entry.entryType ?? "time_meter"} onValueChange={val => setEquipment(rows => rows.map((row, i) =>
                   i !== idx ? row : {
                     ...row, entryType: val,
@@ -3413,7 +3413,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               </div>
             </>;
             const dieselSource = <div className="grid grid-cols-2 gap-3 px-3 py-3 md:grid-cols-4">
-              <div><Label className="text-sm">Diesel Source</Label>
+                <div><Label className="text-sm">Diesel source</Label>
                 <Select value={entry.dieselSource ?? ""} disabled={entry.plantUsageId != null}
                   onValueChange={value => setEquipment(rows => rows.map((row, i) => i === idx ? transitionDieselSource(row, value) : row))}>
                   <SelectTrigger data-testid={`select-diesel-source-${idx}`}><SelectValue /></SelectTrigger>
@@ -3424,15 +3424,15 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   </SelectContent>
                 </Select>
               </div>
-              <div><Label className="text-sm">Diesel Issued (L)</Label>
+              <div><Label className="text-sm">Diesel issued (L)</Label>
                 <Input type="number" step="0.1" value={entry.diesel ?? ""} disabled={entry.plantUsageId != null && entry.dieselSource === "plant_stock"}
                   data-testid={`input-equipment-diesel-${idx}`}
                   onChange={event => setEquipment(rows => rows.map((row, i) => i === idx
                     ? { ...row, diesel: event.target.value ? Number(event.target.value) : null } : row))} /></div>
               {entry.dieselSource === "direct_purchase" && <>
-                <div><Label className="text-sm">Fuel Station</Label><Input value={entry.fuelStation || ""} placeholder="HP / BPCL" className="uppercase"
+                <div><Label className="text-sm">Fuel station</Label><Input value={entry.fuelStation || ""} placeholder="HP / BPCL" className="uppercase"
                   data-testid={`input-fuel-station-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, fuelStation: e.target.value.toUpperCase() } : row))} /></div>
-                <div><Label className="text-sm">Bill No.</Label><Input value={entry.billNumber || ""} placeholder="Receipt #" className="uppercase"
+                <div><Label className="text-sm">Bill no.</Label><Input value={entry.billNumber || ""} placeholder="Receipt #" className="uppercase"
                   data-testid={`input-bill-number-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, billNumber: e.target.value.toUpperCase() } : row))} /></div>
                 <div><Label className="text-sm">Amount (Rs)</Label><Input type="number" step="0.01" value={entry.amountPaid ?? ""}
                   data-testid={`input-amount-paid-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, amountPaid: e.target.value ? Number(e.target.value) : null } : row))} /></div>
@@ -3444,14 +3444,14 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                     const numberOfTrips = e.target.value ? parseInt(e.target.value) : null;
                     return { ...row, numberOfTrips, totalKm: (numberOfTrips || 0) * (row.tripDistance || 0) * 2 };
                   }))} /></div>
-                <div><Label className="text-sm">Trip Distance (km one-way)</Label><Input type="number" step="0.1" value={entry.tripDistance ?? ""}
+                <div><Label className="text-sm">Trip distance (km one-way)</Label><Input type="number" step="0.1" value={entry.tripDistance ?? ""}
                   data-testid={`input-equipment-trip-distance-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => {
                     if (i !== idx) return row;
                     const tripDistance = e.target.value ? parseFloat(e.target.value) : null;
                     return { ...row, tripDistance, totalKm: (row.numberOfTrips || 0) * (tripDistance || 0) * 2 };
                   }))} /></div>
               </>}
-              {isWaterTanker && <><div><Label className="text-sm">Water Quantity (Liters)</Label>
+              {isWaterTanker && <><div><Label className="text-sm">Water quantity (liters)</Label>
                 <Input type="number" step="1" value={entry.waterQuantity ?? ""} data-testid={`input-equipment-water-qty-${idx}`}
                   onChange={e => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, waterQuantity: e.target.value ? Number(e.target.value) : null } : row))} /></div>
                 <div><Label className="text-sm">No. of Trips</Label><Input type="number" step="1" value={entry.numberOfTrips ?? ""}
@@ -3629,7 +3629,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               {siteBoqItems.length > 0 && (
                 <div className="col-span-2 md:col-span-7 grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                   <div>
-                    <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
+                    <Label className="text-sm text-muted-foreground">Link to work item (optional)</Label>
                     <ResourceWorkItemSelect row={entry} items={dprBoqItemsForMapping} activityIds={todaysResourceActivities(progress)}
                       itemLabel={bi => `${bi.itemCode ? `[${bi.itemCode}] ` : ""}${boqItemDisplayName(bi)}`}
                       testId={`select-labour-boqitem-${idx}`}
@@ -3698,7 +3698,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
       {(!sectionEditor || sectionEditor.section === "materials") && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
-          <CardTitle className="text-teal-600">Materials Consumed / Issued</CardTitle>
+          <CardTitle className="text-teal-600">Materials consumed / issued</CardTitle>
           <Button size="sm" variant="outline" onClick={() => addRow('materials')} data-testid="button-add-material-top">
             <Plus className="w-4 h-4 mr-1" /> Add
           </Button>
@@ -3778,7 +3778,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 {siteBoqItems.length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
+                      <Label className="text-sm text-muted-foreground">Link to work item (optional)</Label>
                       <ResourceWorkItemSelect row={m} items={dprBoqItemsForMapping} activityIds={todaysResourceActivities(progress)}
                         itemLabel={bi => `${bi.itemCode ? `[${bi.itemCode}] ` : ""}${boqItemDisplayName(bi)}`}
                         testId={`select-material-boqitem-${idx}`}
@@ -3867,7 +3867,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   <Trash2 className="w-4 h-4" />
                 </Button>
                 <div className="md:col-span-2">
-                  <Label>Item Description</Label>
+                  <Label>Item description</Label>
                   <Input
                     placeholder="e.g. Diesel for cleaning"
                     value={sp.itemDescription}
@@ -3887,7 +3887,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   />
                 </div>
                 <div>
-                  <Label>Bill No</Label>
+                  <Label>Bill no.</Label>
                   <Input
                     placeholder="e.g. INV-001"
                     value={sp.billNo}

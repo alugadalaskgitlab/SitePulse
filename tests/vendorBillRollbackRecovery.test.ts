@@ -106,7 +106,7 @@ describe("selective pre-tipper billing recovery", () => {
     expect(reopened.hireStatements[0].calculationSnapshot.terms.hireStartDate).toBe("2026-05-15");
   });
 
-  it("reopens a disposable two-month statement with one Monthly Billing Summary and no duplicate Activity Calendar", async () => {
+  it("reopens a disposable two-month statement with one monthly billing summary and no duplicate activity calendar", async () => {
     const terms = {
       billingBasis: "monthly" as const, rate: 60000, monthlyDivisorType: "30" as const,
       hireStartDate: "2026-08-20", hireEndDate: "2026-09-15", dieselResponsibility: "vendor",
@@ -145,7 +145,7 @@ describe("selective pre-tipper billing recovery", () => {
     expect(review.months.reduce((sum, month) => sum + month.gross!, 0)).toBe(Number(saved.totalAmount));
     expect(Number(saved.totalAmount)).toBe(54000);
     const html = renderToStaticMarkup(createElement(SavedBillCalendars, { bill: saved }));
-    expect(html.match(/Monthly Billing Summary/g)).toHaveLength(1);
+    expect(html.match(/Monthly billing summary/g)).toHaveLength(1);
     expect(html.match(/Activity Calendar —/g)).toBeNull();
     expect(html.match(/data-testid="saved-hire-activity-month-section"/g)).toHaveLength(2);
     expect(html).toMatch(/Detailed activity[^<]*August 2026/);

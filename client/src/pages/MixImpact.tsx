@@ -235,7 +235,7 @@ function ScenarioComparison({
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-amber-100/60 dark:bg-amber-900/30">
-                      <th className="px-3 py-1.5 text-left font-semibold text-amber-700 dark:text-amber-400">Rate Input</th>
+                      <th className="px-3 py-1.5 text-left font-semibold text-amber-700 dark:text-amber-400">Rate input</th>
                       <th className="px-3 py-1.5 text-right font-semibold text-amber-700 dark:text-amber-400">Base</th>
                       {scenarioCalcs.map(({ scenario }) => (
                         <th key={scenario.id} className="px-3 py-1.5 text-right font-semibold text-amber-700 dark:text-amber-400">
@@ -369,9 +369,9 @@ function ScenarioComparison({
                 <table className="w-full text-sm border-collapse min-w-[500px]">
                   <thead>
                     <tr className="bg-muted/40 border-b border-border">
-                      <th className={th1Cls}>Mix Type</th>
-                      <th className={thCls}>Base Rate</th>
-                      <th className={thCls}>Base Amt ₹</th>
+                      <th className={th1Cls}>Mix type</th>
+                      <th className={thCls}>Base rate</th>
+                      <th className={thCls}>Base amount ₹</th>
                       {scenarioCalcs.map(({ scenario }) => (
                         <th key={scenario.id} className={thCls} title={scenario.name} colSpan={2}>
                           <span className="block max-w-[180px] truncate ml-auto">{scenario.name}</span>
@@ -762,7 +762,7 @@ export default function MixImpact() {
         <>
           {/* Print header */}
           <div className="print-only hidden print:block mb-4">
-            <h2 className="text-lg font-bold">Price Impact Analysis — {estimate?.name}</h2>
+            <h2 className="text-lg font-bold">Price impact analysis — {estimate?.name}</h2>
             <p className="text-sm text-gray-500">Generated {new Date().toLocaleDateString("en-IN")}</p>
           </div>
 

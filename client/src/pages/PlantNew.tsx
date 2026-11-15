@@ -56,7 +56,7 @@ export default function PlantNew() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-3xl font-bold font-display tracking-tight text-foreground">New Plant Report</h1>
+          <h1 className="text-3xl font-bold font-display tracking-tight text-foreground">New plant report</h1>
           <p className="text-muted-foreground mt-1">Record plant production and material details</p>
         </div>
       </div>

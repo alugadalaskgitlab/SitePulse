@@ -185,9 +185,9 @@ export default function PlantAuditReport() {
                     <th className="text-left p-2">Type</th>
                     <th className="text-right p-2">Theoretical</th>
                     <th className="text-right p-2">Previous</th>
-                    <th className="text-right p-2">New Value</th>
+                    <th className="text-right p-2">New value</th>
                     <th className="text-right p-2">Variance</th>
-                    <th className="text-left p-2">Adjusted By</th>
+                    <th className="text-left p-2">Adjusted by</th>
                     <th className="text-left p-2">Reason</th>
                   </tr>
                 </thead>

@@ -73,7 +73,7 @@ describe("focused DPR restoration", () => {
     expect(hydration).toContain("boqItemId: l.boqItemId ?? null");
     expect(hydration).toContain("structureId: l.structureId ?? null");
     expect(siteEdit).toContain("<DprEquipmentCompact");
-    expect(allocationEditor).toContain("Select BOQ Item");
+    expect(allocationEditor).toContain("Select BOQ item");
     expect(siteEdit).toContain("select-labour-boqitem-${idx}");
     expect(await readSource("client/src/components/ResourceWorkItemSelect.tsx")).toContain("<SelectItem value=\"none\">No work item</SelectItem>");
   });

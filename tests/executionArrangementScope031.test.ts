@@ -375,7 +375,7 @@ describe("arrangement dialog Applicable Scope (B2/B5/B7)", () => {
 describe("Part A — naming collision resolved", () => {
   it("EarthworkControl uses the new heading and no duplicate register name", () => {
     const page = readFileSync("client/src/pages/EarthworkControl.tsx", "utf8");
-    expect(page).toContain("Earthwork Classification & Cut/Fill");
+    expect(page).toContain("Earthwork classification & cut/fill");
     expect(page).not.toContain("Execution Arrangements — Classification & Demand");
   });
 
@@ -389,6 +389,6 @@ describe("Part A — naming collision resolved", () => {
       expect(src).not.toMatch(/use Earthwork Control|Classify in Earthwork Control|>\s*Earthwork Control →/);
     }
     const register = readFileSync("client/src/pages/ExecutionArrangements.tsx", "utf8");
-    expect(register).toContain(">Execution Arrangements</h1>");
+    expect(register).toContain(">Execution arrangements</h1>");
   });
 });

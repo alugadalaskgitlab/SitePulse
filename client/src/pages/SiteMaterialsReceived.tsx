@@ -209,7 +209,7 @@ export default function SiteMaterialsReceived() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="text-sm">Transporter / Material Source</Label>
+                <Label className="text-sm">Transporter / material source</Label>
                 <Select value={filters.supplier || "__all__"} onValueChange={(v) => setFilters(f => ({ ...f, supplier: v === "__all__" ? "" : v }))}>
                   <SelectTrigger data-testid="select-supplier-filter"><SelectValue placeholder="All Parties" /></SelectTrigger>
                   <SelectContent>
@@ -272,7 +272,7 @@ export default function SiteMaterialsReceived() {
                 <table className="w-full text-sm border-collapse">
                   <thead>
                     <tr className="bg-muted/50">
-                      <th className="text-left p-2 border text-sm">Date / Time</th>
+                      <th className="text-left p-2 border text-sm">Date / time</th>
                       <th className="text-left p-2 border text-sm">Site</th>
                       <th className="text-left p-2 border text-sm">Transporter</th>
                       <th className="text-left p-2 border text-sm">Material</th>

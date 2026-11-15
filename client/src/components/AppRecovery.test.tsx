@@ -67,7 +67,7 @@ describe("app recovery", () => {
     expect(await screen.findByRole("button", { name: "A new version of SitePulse is ready — Refresh" })).toBeTruthy();
   });
 
-  it("uses an update recovery message rather than the generic screen error for chunk failures", () => {
+  it("shows the existing screen error if a chunk still fails after the one automatic reload", () => {
     sessionStorage.setItem("sp_chunk_reload_at", String(Date.now()));
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     function BrokenChunk(): JSX.Element {
@@ -75,8 +75,9 @@ describe("app recovery", () => {
     }
 
     render(<AppErrorBoundary><BrokenChunk /></AppErrorBoundary>);
-    expect(screen.getByTestId("chunk-load-recovery").textContent).toContain("A new version is available");
-    expect(screen.queryByText("This screen couldn’t be loaded")).toBeNull();
+    expect(screen.getByTestId("app-error-fallback").textContent)
+      .toContain("This screen couldn’t be loaded");
+    expect(screen.queryByTestId("chunk-load-recovery")).toBeNull();
     consoleError.mockRestore();
   });
 

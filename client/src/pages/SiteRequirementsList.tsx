@@ -1198,7 +1198,7 @@ function OutcomeDialog({ req, existing, canSeeExecutionSummary, onClose, onSaved
     <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Update Work Outcome</DialogTitle>
+          <DialogTitle>Update work outcome</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 text-sm">
           <p className="text-xs text-muted-foreground">
@@ -1492,7 +1492,7 @@ export default function SiteRequirementsList() {
             {context !== "equipment" && context !== "stores" && (
               <Link href="/site/requirements/new?returnTo=/site/requirements">
                 <a data-testid="button-submit-first">
-                  <Button size="sm" variant="outline">Submit Tomorrow's Plan</Button>
+                  <Button size="sm" variant="outline">Submit tomorrow's plan</Button>
                 </a>
               </Link>
             )}
@@ -1504,7 +1504,7 @@ export default function SiteRequirementsList() {
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4">
             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-bold text-slate-900">Tomorrow's Plans — Site Overview</h2>
+                <h2 className="text-sm font-bold text-slate-900">Tomorrow's plans — site overview</h2>
                 <p className="text-xs text-slate-400 mt-0.5">{format(addDays(new Date(), 1), "EEE, d MMM yyyy")}</p>
               </div>
               <span className="text-xs text-slate-400">{siteRollups.length} site{siteRollups.length !== 1 ? "s" : ""}</span>

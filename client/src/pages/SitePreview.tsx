@@ -70,7 +70,7 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
             <ChevronLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold font-display">Report Preview</h1>
+            <h1 className="text-2xl font-bold font-display">Report preview</h1>
             <p className="text-muted-foreground text-sm">Review before submitting</p>
           </div>
         </div>
@@ -336,10 +336,10 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                   <TableHead>Material</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead>UOM</TableHead>
-                  <TableHead>Vehicle No.</TableHead>
+                  <TableHead>Vehicle no.</TableHead>
                   <TableHead>Supplier</TableHead>
                   <TableHead>Location/Task</TableHead>
-                  <TableHead>Receipt No.</TableHead>
+                  <TableHead>Receipt no.</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -366,7 +366,7 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
             {/* Materials Summary */}
             {data.materialsAbstract.length > 0 && (
               <div className="pt-4 border-t">
-                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Materials Summary</h4>
+                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Materials summary</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {data.materialsAbstract.map((item, i) => (
                     <div 
@@ -401,9 +401,9 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Item Description</TableHead>
+                  <TableHead>Item description</TableHead>
                   <TableHead>Vendor</TableHead>
-                  <TableHead>Bill No</TableHead>
+                  <TableHead>Bill no.</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead>UOM</TableHead>

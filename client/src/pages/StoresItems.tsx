@@ -234,11 +234,11 @@ export default function StoresItems() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit Item" : "Add Item"}</DialogTitle>
+            <DialogTitle>{editing ? "Edit item" : "Add item"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 mt-2">
             <div className="space-y-2">
-              <Label>Item Name *</Label>
+              <Label>Item name *</Label>
               <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Engine Oil 15W40" required data-testid="input-item-name" />
             </div>
             <div className="grid grid-cols-2 gap-4">

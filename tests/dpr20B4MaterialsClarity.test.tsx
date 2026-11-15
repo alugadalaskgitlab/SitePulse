@@ -57,10 +57,10 @@ vi.mock("../client/src/pages/SiteEntry", () => ({
 }));
 vi.mock("../client/src/pages/SiteEdit", () => ({ default: () => null }));
 
-const title = "Materials Consumed / Issued";
+const title = "Materials consumed / issued";
 const emptyText = "No materials consumed or issued recorded.";
 const note = "Bulk vehicle deliveries are tracked separately in Materials Received.";
-const tileTitle = `${title} & Site Purchases`;
+const tileTitle = `${title} & site purchases`;
 const material = {
   id: 24801, type: "Issued", material: "Synthetic cement", quantity: 2.5, uom: "MT",
   vehicleNumber: "SYN-ISSUED", supplier: "Synthetic store", location: "Synthetic work item", receiptNumber: "SYN-I-1",
@@ -112,7 +112,7 @@ describe.each([
     expect(within(consumed).getByText(note)).toBeTruthy();
     expect(consumed.contains(received)).toBe(false);
     expect(screen.queryByText("No materials recorded.")).toBeNull();
-    expect(screen.queryByText("Site Purchases")).toBeNull();
+    expect(screen.queryByText("site purchases")).toBeNull();
     expect(within(consumed).queryByRole("table")).toBeNull();
   });
 
@@ -161,7 +161,7 @@ describe.each([
     } else {
       expect(screen.getByRole("region", { name: title }).textContent).toContain(emptyText);
       // DprDetails never rendered purchases; B4 must not introduce a new table.
-      expect(screen.queryByText("Site Purchases")).toBeNull();
+      expect(screen.queryByText("site purchases")).toBeNull();
       expect(screen.queryByTestId("row-site-purchase-0")).toBeNull();
     }
   });

@@ -524,11 +524,11 @@ function CategorySection({
           <table className="min-w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-20">Item No.</th>
+                <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-20">Item no.</th>
                 <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Description</th>
                 <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-12">Unit</th>
                 <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-20">BOQ Qty</th>
-                <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-20">Curr Qty</th>
+                <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-20">Current qty</th>
                 <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-22">Rate (₹)</th>
                 <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-24">Amount (₹)</th>
                 <th className="px-2 py-2 text-center font-semibold text-muted-foreground w-12" title="Include in Gantt / BOM planning">Plan</th>
@@ -793,12 +793,12 @@ function NewRevisionDialog({
                 <table className="min-w-full text-sm">
                   <thead className="bg-slate-50 sticky top-0">
                     <tr>
-                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-16">Item No.</th>
+                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-16">Item no.</th>
                       <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Description</th>
                       <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-12">Unit</th>
-                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-20">Curr Qty</th>
-                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-24">Revised Qty</th>
-                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-44">Change Reason</th>
+                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-20">Current qty</th>
+                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-24">Revised qty</th>
+                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-44">Change reason</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1780,7 +1780,7 @@ function RevisionPanel({
                       <thead className="bg-slate-50">
                         <tr>
                           <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground">Item</th>
-                          <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground w-20">Rev Qty</th>
+                          <th className="px-3 py-1.5 text-right font-semibold text-muted-foreground w-20">Revised qty</th>
                           <th className="px-3 py-1.5 text-left font-semibold text-muted-foreground">Reason</th>
                         </tr>
                       </thead>
@@ -1821,7 +1821,7 @@ function RevisionPanel({
         <Dialog open onOpenChange={o => { if (!o) setConfirmActivate(null); }}>
           <DialogContent className="max-w-sm">
             <DialogHeader>
-              <DialogTitle className="text-base">Activate Revision?</DialogTitle>
+              <DialogTitle className="text-base">Activate revision?</DialogTitle>
             </DialogHeader>
             <div className="space-y-2 text-sm text-slate-600">
               <p>This will activate <strong>{confirmActivate.label}</strong> and update current quantities for {confirmActivate.items.length} item(s).</p>
@@ -1853,7 +1853,7 @@ function RevisionPanel({
         <Dialog open onOpenChange={o => { if (!o) setConfirmDelete(null); }}>
           <DialogContent className="max-w-sm">
             <DialogHeader>
-              <DialogTitle className="text-base">Delete Revision?</DialogTitle>
+              <DialogTitle className="text-base">Delete revision?</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-slate-600">
               This will permanently delete <strong>{confirmDelete.label}</strong> (Rev {confirmDelete.revisionNo}). This cannot be undone.

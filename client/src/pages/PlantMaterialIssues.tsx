@@ -485,19 +485,19 @@ export default function PlantMaterialIssues() {
             <img src="${window.location.origin}/${logoFile}" onerror="this.style.display='none'" />
             <h2>${companyName}</h2>
           </div>
-          <h1>Material Issues Report</h1>
+          <h1>Material issues report</h1>
           <p class="date">Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p>
           <table>
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Stock Owner</th>
+                <th>Stock owner</th>
                 <th>Material</th>
                 <th>LDO Tank</th>
                 <th>Quantity</th>
-                <th>Issued To</th>
+                <th>Issued to</th>
                 <th>Purpose</th>
-                <th>Received By</th>
+                <th>Received by</th>
               </tr>
             </thead>
             <tbody>
@@ -560,7 +560,7 @@ export default function PlantMaterialIssues() {
             )}
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{editingIssue ? "Edit Material Issue" : "Record Material Issue"}</DialogTitle>
+                <DialogTitle>{editingIssue ? "Edit material issue" : "Record material issue"}</DialogTitle>
               </DialogHeader>
               
               {hasDraft && !editingIssue && (
@@ -584,7 +584,7 @@ export default function PlantMaterialIssues() {
                 </div>
                 
                 <div>
-                  <Label>Stock Owner (Party)</Label>
+                  <Label>Stock owner (party)</Label>
                   <Select value={partyId} onValueChange={setPartyId}>
                     <SelectTrigger data-testid="select-party">
                       <SelectValue placeholder="Select party" />
@@ -651,7 +651,7 @@ export default function PlantMaterialIssues() {
                 </div>
                 
                 <div>
-                  <Label>Issued To (Site/Party)</Label>
+                  <Label>Issued to (site/party)</Label>
                   <Input value={issuedTo} onChange={(e) => { issuedToAutoSet.current = false; setIssuedTo(e.target.value.toUpperCase()); }} placeholder="e.g., SITE A, HYDERABAD OFFICE" data-testid="input-issued-to" />
                 </div>
                 
@@ -661,12 +661,12 @@ export default function PlantMaterialIssues() {
                 </div>
                 
                 <div>
-                  <Label>Received By</Label>
+                  <Label>Received by</Label>
                   <Input value={receivedBy} onChange={(e) => { receivedByAutoSet.current = false; setReceivedBy(e.target.value.toUpperCase()); }} placeholder="Person receiving the material" data-testid="input-received-by" />
                 </div>
                 
                 <div>
-                  <Label>Vehicle Number</Label>
+                  <Label>Vehicle number</Label>
                   <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())} placeholder="e.g., TS09AB1234" data-testid="input-vehicle" />
                 </div>
                 
@@ -699,15 +699,15 @@ export default function PlantMaterialIssues() {
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <Label className="text-sm">From Date</Label>
+              <Label className="text-sm">From date</Label>
               <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} data-testid="filter-date-from" />
             </div>
             <div>
-              <Label className="text-sm">To Date</Label>
+              <Label className="text-sm">To date</Label>
               <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} data-testid="filter-date-to" />
             </div>
             <div>
-              <Label className="text-sm">Stock Owner</Label>
+              <Label className="text-sm">Stock owner</Label>
               <Select value={filterPartyId} onValueChange={setFilterPartyId}>
                 <SelectTrigger data-testid="filter-party">
                   <SelectValue placeholder="All" />
@@ -764,7 +764,7 @@ export default function PlantMaterialIssues() {
             <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
               <ArrowUpRight className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">No Material Issues</h3>
+            <h3 className="text-lg font-semibold mb-2">No material issues</h3>
             <p className="text-muted-foreground">Record material issues to sites from central store.</p>
           </CardContent>
         </Card>
@@ -834,7 +834,7 @@ export default function PlantMaterialIssues() {
       <Dialog open={deleteConfirmId !== null} onOpenChange={() => setDeleteConfirmId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Material Issue?</DialogTitle>
+            <DialogTitle>Delete material issue?</DialogTitle>
           </DialogHeader>
           <p className="text-muted-foreground">This will reverse the stock balance change. This action cannot be undone.</p>
           <DialogFooter>

@@ -1871,7 +1871,7 @@ export default function SiteEdit() {
             <ChevronLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold font-display">Edit Report</h1>
+            <h1 className="text-2xl font-bold font-display">Edit report</h1>
             <p className="text-muted-foreground text-sm">{(dpr as any)?.date} — {(dpr as any)?.site}</p>
           </div>
         </div>
@@ -2119,7 +2119,7 @@ export default function SiteEdit() {
             />
           </div>
           <div>
-            <Label>Site Name</Label>
+            <Label>Site name</Label>
             <Select value={header.site} onValueChange={handleEditSiteChange}>
               <SelectTrigger data-testid="input-site">
                 <SelectValue placeholder="Select Site" />
@@ -2132,7 +2132,7 @@ export default function SiteEdit() {
             </Select>
           </div>
           <div>
-            <Label>Engineer / Submitted By</Label>
+            <Label>Engineer / submitted by</Label>
             <div className="flex gap-2">
               <Select
                 value={header.engineer}
@@ -2253,7 +2253,7 @@ export default function SiteEdit() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-sm">Structure Type</Label>
+                    <Label className="text-sm">Structure type</Label>
                     <Select value={selectType} onValueChange={handleTypeChange}>
                       <SelectTrigger data-testid={`select-structure-type-${idx}`}><SelectValue /></SelectTrigger>
                       <SelectContent>{STRUCTURE_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
@@ -2269,7 +2269,7 @@ export default function SiteEdit() {
                     {isOtherSubType && <Input placeholder="Specify sub-type…" value={item.structureSubType !== "Other" ? item.structureSubType : ""} onChange={(e) => updateField("structureSubType", e.target.value || "Other")} data-testid={`input-structure-subtype-other-${idx}`} />}
                   </div>
                   <div className="sm:col-span-2">
-                    <Label className="text-sm">Structure Name / Location</Label>
+                    <Label className="text-sm">Structure name / location</Label>
                     <Input placeholder="e.g. Culvert at Ch. 5+200" value={item.structureName} onChange={(e) => updateField("structureName", e.target.value)} data-testid={`input-structure-name-${idx}`} />
                   </div>
                   <div className="space-y-1">
@@ -2391,7 +2391,7 @@ export default function SiteEdit() {
                       }}
                       data-testid={`checkbox-no-site-work-${idx}`}
                     />
-                    <Label htmlFor={`no-site-work-${idx}`} className="text-sm cursor-pointer">No Site Work</Label>
+                    <Label htmlFor={`no-site-work-${idx}`} className="text-sm cursor-pointer">No site work</Label>
                   </div>
                   {/* Batch 06V: Incidental / Non-BOQ (compact, mutually exclusive) */}
                   <div className="flex items-center gap-2">
@@ -2850,7 +2850,7 @@ export default function SiteEdit() {
                     />
                   </div>
                   <div>
-                    <Label className="text-sm">Physical Qty ({progressUom(entry)})</Label>
+                    <Label className="text-sm">Physical quantity ({progressUom(entry)})</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -3312,7 +3312,7 @@ export default function SiteEdit() {
                 if (!selectedEquipForType || selectedEquipForType.ownership !== "hired") return null;
                 return (
                   <div>
-                    <Label className="text-sm">Entry Type</Label>
+                    <Label className="text-sm">Entry type</Label>
                     <div className="flex items-center gap-2">
                       <Select
                         value={entry.entryType ?? "time_meter"}
@@ -3362,7 +3362,7 @@ export default function SiteEdit() {
               <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div>
-                  <Label className="text-sm">Diesel Source</Label>
+                  <Label className="text-sm">Diesel source</Label>
                   <Select
                     value={entry.dieselSource ?? ""}
                      disabled={entry.plantUsageId != null && !ownerOverride}
@@ -3385,7 +3385,7 @@ export default function SiteEdit() {
                 {entry.dieselSource === "direct_purchase" && (
                   <>
                     <div>
-                      <Label className="text-sm">Fuel Station</Label>
+                      <Label className="text-sm">Fuel station</Label>
                       <Input
                         placeholder="HP / BPCL"
                         value={entry.fuelStation ?? ""}
@@ -3399,7 +3399,7 @@ export default function SiteEdit() {
                       />
                     </div>
                     <div>
-                      <Label className="text-sm">Bill No.</Label>
+                      <Label className="text-sm">Bill no.</Label>
                       <Input
                         placeholder="Receipt #"
                         value={entry.billNumber ?? ""}
@@ -3453,7 +3453,7 @@ export default function SiteEdit() {
                       />
                     </div>
                     <div>
-                      <Label className="text-sm">Trip Distance (km one-way)</Label>
+                      <Label className="text-sm">Trip distance (km one-way)</Label>
                       <Input
                         type="number"
                         step="0.1"
@@ -3485,7 +3485,7 @@ export default function SiteEdit() {
                   <p className="text-sm font-semibold text-blue-600 border-b border-blue-200 pb-1">Water Delivery</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div>
-                      <Label className="text-sm">Water Quantity (Liters)</Label>
+                      <Label className="text-sm">Water quantity (liters)</Label>
                       <Input
                         type="number"
                         step="1"
@@ -3693,7 +3693,7 @@ export default function SiteEdit() {
                 </Button>
               </div>
                 <div className="col-span-2 md:col-span-7">
-                  <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
+                  <Label className="text-sm text-muted-foreground">Link to work item (optional)</Label>
                   <ResourceWorkItemSelect row={entry} items={dprBoqItemsForMapping} activityIds={todaysResourceActivities(progress)}
                     testId={`select-labour-boqitem-${idx}`}
                     onChange={value => setLabour(rows => rows.map((row, index) => index === idx ? chooseResourceItem(row, value) : row))} />
@@ -3757,7 +3757,7 @@ export default function SiteEdit() {
                   <Input placeholder="CFT/MT" value={m.uom} onChange={e => updateMaterial(idx, 'uom', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-uom-${idx}`} />
                 </div>
                 <div>
-                  <Label>Vehicle No</Label>
+                  <Label>Vehicle no.</Label>
                   <Input placeholder="Vehicle number" value={m.vehicleNumber} onChange={e => updateMaterial(idx, 'vehicleNumber', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-vehicle-${idx}`} />
                 </div>
                 <div>
@@ -3769,11 +3769,11 @@ export default function SiteEdit() {
                   <Input placeholder="Location" value={m.location} onChange={e => updateMaterial(idx, 'location', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-location-${idx}`} />
                 </div>
                 <div>
-                  <Label>Receipt No</Label>
+                  <Label>Receipt no.</Label>
                   <Input placeholder="Receipt number" value={m.receiptNumber} onChange={e => updateMaterial(idx, 'receiptNumber', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-receipt-${idx}`} />
                 </div>
                 <div className="md:col-span-8">
-                  <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
+                  <Label className="text-sm text-muted-foreground">Link to work item (optional)</Label>
                   <ResourceWorkItemSelect row={m} items={dprBoqItemsForMapping} activityIds={todaysResourceActivities(progress)}
                     testId={`select-material-boqitem-${idx}`}
                     onChange={value => setMaterials(rows => rows.map((row, index) => index === idx ? chooseResourceItem(row, value) : row))} />
@@ -3807,7 +3807,7 @@ export default function SiteEdit() {
                   <Trash2 className="w-4 h-4" />
                 </Button>
                 <div className="md:col-span-2">
-                  <Label>Item Description</Label>
+                  <Label>Item description</Label>
                   <Input placeholder="e.g. Diesel for cleaning" value={sp.itemDescription} onChange={e => updateSitePurchase(idx, 'itemDescription', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-site-purchase-item-${idx}`} />
                 </div>
                 <div>
@@ -3815,7 +3815,7 @@ export default function SiteEdit() {
                   <Input placeholder="e.g. Local Fuel Station" value={sp.vendor} onChange={e => updateSitePurchase(idx, 'vendor', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-site-purchase-vendor-${idx}`} />
                 </div>
                 <div>
-                  <Label>Bill No</Label>
+                  <Label>Bill no.</Label>
                   <Input placeholder="e.g. INV-001" value={sp.billNo} onChange={e => updateSitePurchase(idx, 'billNo', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-site-purchase-bill-${idx}`} />
                 </div>
                 <div>
@@ -3880,7 +3880,7 @@ export default function SiteEdit() {
       <Dialog open={addPersonnelOpen} onOpenChange={setAddPersonnelOpen}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
-            <DialogTitle>Add New Personnel</DialogTitle>
+            <DialogTitle>Add new personnel</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>

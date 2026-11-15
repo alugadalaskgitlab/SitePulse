@@ -439,7 +439,7 @@ describe("DPR20 B2 snapshot fuel facts do not compete with canonical Actual", ()
     expect(text).toContain("DPR snapshot consumed: 8.00 L");
     expect(text).toContain("DPR snapshot consumed − expected variance: -2.00 L");
     expect(text).toContain("saved DPR snapshot, not the canonical performance record");
-    expect(text).not.toMatch(/Actual Consumption Rate|Expected Consumption Rate|4\.00 L\/hr/);
+    expect(text).not.toMatch(/Actual consumption rate|Expected consumption rate|4\.00 L\/hr/);
   });
 
   it("retains the master reference norm without presenting it as Actual when snapshot is unconfirmed", () => {
@@ -447,7 +447,7 @@ describe("DPR20 B2 snapshot fuel facts do not compete with canonical Actual", ()
     render(<DprEquipmentTableDetails section="performance" row={unconfirmed}
       details={buildDprEquipmentTableDetails(unconfirmed, master)} index={0} showLegacyRate={false} />);
     expect(screen.getByTestId("equipment-table-performance-0").textContent).toContain("Current master norm (reference): 5.00 L/hr");
-    expect(screen.getByTestId("equipment-table-performance-0").textContent).not.toContain("Expected Consumption Rate");
+    expect(screen.getByTestId("equipment-table-performance-0").textContent).not.toContain("Expected consumption rate");
   });
 
   it("preserves the permission-aware consumption path and opts SiteReport into compact print, retaining default audit CSS", () => {

@@ -739,7 +739,7 @@ function RebarTable({ rows, section, effectiveWallHMm, onChange }: {
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b bg-muted/20">
-              <th className="text-left py-1.5 pr-2 pl-1 font-medium text-muted-foreground w-48">Bar Type</th>
+              <th className="text-left py-1.5 pr-2 pl-1 font-medium text-muted-foreground w-48">Bar type</th>
               <th className="text-right py-1.5 pr-2 font-medium text-muted-foreground w-16">Ø (mm)</th>
               <th className="text-right py-1.5 pr-2 font-medium text-muted-foreground w-20">Spacing</th>
               <th className="text-left py-1.5 pr-2 font-medium text-muted-foreground w-36">Wall / Layers</th>
@@ -1308,7 +1308,7 @@ function RateSheet({ state }: { state: StateV2 }) {
       {/* ── Section 1: Concrete Grade Rate Build-Up ─────────────────────── */}
       <div className="space-y-3">
         <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-sm">Concrete Grade Rate Build-Up</h3>
+          <h3 className="font-semibold text-sm">Concrete grade rate build-up</h3>
           <span className="text-sm text-muted-foreground">(rates incl. OH & Margin from {firstLoc.name})</span>
           {ohsDiffer && (
             <span className="text-sm text-amber-600 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded">
@@ -1543,7 +1543,7 @@ function RateSheet({ state }: { state: StateV2 }) {
 
       {/* ── Section 3: Detailed Rate Sheet ───────────────────────────────── */}
       <div className="space-y-2">
-        <h3 className="font-semibold text-sm">Detailed Rate Sheet — All-In ₹/m (incl. OH &amp; Margin)</h3>
+        <h3 className="font-semibold text-sm">Detailed rate sheet — all-in ₹/m (incl. OH &amp; margin)</h3>
       <div className="overflow-x-auto">
         <table className="border-collapse border text-sm" style={{ minWidth: `${Math.max(500, 260 + locations.length * 240)}px` }}>
           <thead>
@@ -2003,7 +2003,7 @@ export default function ConcreteCalculatorV2() {
             <CardContent className="p-3 pt-0">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div className="space-y-1 md:col-span-2">
-                  <Label className="text-sm text-muted-foreground">Estimate / Project Name</Label>
+                  <Label className="text-sm text-muted-foreground">Estimate / project name</Label>
                   <Input className="h-8 text-sm" value={state.project.name}
                     onChange={e => updProject("name", e.target.value)} placeholder="e.g. NH-44 Road Drain Ch.0–5km" />
                 </div>
@@ -2016,11 +2016,11 @@ export default function ConcreteCalculatorV2() {
                   <Input className="h-8 text-sm" value={state.project.contractor} onChange={e => updProject("contractor", e.target.value)} placeholder="Client or contractor name" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-sm text-muted-foreground">Prepared By</Label>
+                  <Label className="text-sm text-muted-foreground">Prepared by</Label>
                   <Input className="h-8 text-sm" value={state.project.preparedBy} onChange={e => updProject("preparedBy", e.target.value)} placeholder="Name" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-sm text-muted-foreground">Structure Type</Label>
+                  <Label className="text-sm text-muted-foreground">Structure type</Label>
                   <Select value={state.project.structureType} onValueChange={v => updProject("structureType", v)}>
                     <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>

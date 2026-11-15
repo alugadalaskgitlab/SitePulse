@@ -97,7 +97,7 @@ export default function PlantDetails() {
       <div className="text-center py-12">
         <p className="text-muted-foreground">Plant report not found.</p>
         <Link href={backLink}>
-          <Button variant="outline" className="mt-4">Back to Plant Reports</Button>
+          <Button variant="outline" className="mt-4">Back to plant reports</Button>
         </Link>
       </div>
     );
@@ -230,7 +230,7 @@ export default function PlantDetails() {
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Plant Report</AlertDialogTitle>
+            <AlertDialogTitle>Delete plant report</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete this plant report? This cannot be undone.
             </AlertDialogDescription>

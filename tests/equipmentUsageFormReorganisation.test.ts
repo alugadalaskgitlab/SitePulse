@@ -34,10 +34,10 @@ describe("equipment usage form reorganisation contracts", () => {
 
   it("renders true fuel facts from one shared formula and labels physical confirmation clearly", () => {
     expect(compact).toContain("computeEquipmentFuelSummary");
-    expect(compact).toContain("Physical Tank Balance Confirmed");
-    expect(compact).toContain("Actual Consumed");
+    expect(compact).toContain("Physical tank balance confirmed");
+    expect(compact).toContain("Actual consumed");
     expect(compact).toContain("Variance");
-    expect(compact).toContain("Actual Consumption Rate");
+    expect(compact).toContain("Actual consumption rate");
     expect(plant).toContain("computeEquipmentFuelSummary");
     expect(plant).toContain("const consumed = fuel.actualConsumed");
   });
@@ -53,13 +53,13 @@ describe("equipment usage form reorganisation contracts", () => {
     expect(allocation).not.toContain("Programme distinction");
     expect(allocation).toContain("duration(segment)!.toFixed(1)");
     expect(allocation).not.toContain("Add another activity");
-    expect(allocation).toContain("Assign Item");
+    expect(allocation).toContain("Assign item");
     expect(allocation).toContain("Split time across another item");
-    expect(allocation).toContain("Add BOQ Item");
+    expect(allocation).toContain("Add BOQ item");
     expect(allocation).toContain(">Hours<");
     expect(allocation).toContain("boqItems:");
     expect(allocation).toContain("Work Assignment");
-    expect(allocation).toContain("BOQ Item");
+    expect(allocation).toContain("BOQ item");
     expect(allocation).not.toContain(">Task<");
     expect(allocation).not.toContain("calendar-picker-indicator");
     expect(compact).toContain("row.activitySegments");
@@ -74,11 +74,11 @@ describe("equipment usage form reorganisation contracts", () => {
   });
 
   it("shows distinct usage and fuel performance facts in the condensed read-only grid", () => {
-    expect(compact).toContain("Meter Working Hours");
-    expect(compact).toContain("Clock Duration");
+    expect(compact).toContain("Meter working hours");
+    expect(compact).toContain("Clock duration");
     expect(compact).toContain('testId={`equipment-compact-read-group-readings-${index}`}');
     expect(compact).not.toContain("<SectionHeading>Usage Summary</SectionHeading>");
-    expect(compact).toContain("Fuel Performance");
+    expect(compact).toContain("Fuel performance");
     expect(compact).not.toContain('label={preview.totalKm != null ? "Distance" : "Operating time"}');
     expect(allocation).toContain("Assignment validation uses the machine-day Clock Duration");
     expect(compact).not.toContain("hoursWorked: preview.basis");

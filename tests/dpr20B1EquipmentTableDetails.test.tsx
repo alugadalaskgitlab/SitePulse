@@ -37,23 +37,23 @@ describe("DPR20 B1 equipment details in existing audit-table cells", () => {
     renderSections();
     const identity = screen.getByTestId("equipment-table-identity-0").textContent!;
     expect(identity).toContain("Hired: Supplier A");
-    expect(identity).toContain("Entry / Hire Type: daily");
-    expect(identity).toContain("Daily Status: Working");
-    expect(identity).toContain("Status Reason: Historical note");
+    expect(identity).toContain("Entry / hire type: daily");
+    expect(identity).toContain("Daily status: Working");
+    expect(identity).toContain("Status reason: Historical note");
     const readings = screen.getByTestId("equipment-table-readings-0").textContent!;
-    expect(readings).toContain("Opening Meter: 100");
-    expect(readings).toContain("Closing Meter: 102");
-    expect(readings).toContain("Start Time: 8:00 AM");
-    expect(readings).toContain("End Time: 4:00 PM");
-    expect(readings).toContain("Clock Duration: 8");
+    expect(readings).toContain("Opening meter: 100");
+    expect(readings).toContain("Closing meter: 102");
+    expect(readings).toContain("Start time: 8:00 AM");
+    expect(readings).toContain("End time: 4:00 PM");
+    expect(readings).toContain("Clock duration: 8");
     expect(readings).toContain("opening and closing meter difference");
-    expect(screen.getByTestId("equipment-table-quantity-0").textContent).toContain("Meter Working Hours: 2.00 h");
-    expect(screen.getByTestId("equipment-table-tank-0").textContent).toContain("Opening Tank (L): 20.00 L");
-    expect(screen.getByTestId("equipment-table-tank-0").textContent).toContain("Closing Tank / Physical Dip (L): 22.00 L");
+    expect(screen.getByTestId("equipment-table-quantity-0").textContent).toContain("Meter working hours: 2.00 h");
+    expect(screen.getByTestId("equipment-table-tank-0").textContent).toContain("Opening tank (L): 20.00 L");
+    expect(screen.getByTestId("equipment-table-tank-0").textContent).toContain("Closing tank / physical dip (L): 22.00 L");
     const performance = screen.getByTestId("equipment-table-performance-0").textContent!;
-    expect(performance).toContain("Actual Consumed: 8.00 L");
+    expect(performance).toContain("Actual consumed: 8.00 L");
     expect(performance).toContain("Consumed − expected variance: -2.00 L");
-    expect(performance).toContain("Actual Consumption Rate · from confirmed tank dip: 4.00 L/hr");
+    expect(performance).toContain("Actual consumption rate · from confirmed tank dip: 4.00 L/hr");
     expect(screen.getByTestId("equipment-table-work-0").textContent).toContain("not payable progress");
     expect(screen.getByTestId("equipment-table-work-0").textContent).toContain("Earthwork");
     expect(screen.getByTestId("equipment-table-work-0").textContent).toContain("8:00 AM → 10:00 AM");
@@ -90,10 +90,10 @@ describe("DPR20 B1 equipment details in existing audit-table cells", () => {
       expect(screen.getByTestId("equipment-table-expected-0").textContent).toContain(oldExpected?.trim());
       expect(oldPerformance).toContain(details.confirmedRate
         ? `${details.fuel.actualRate!.toFixed(2)} ${details.fuel.actualRateUnit}`
-        : "Expected Consumption Rate · from norm, actual unavailable");
+        : "Expected consumption rate · from norm, actual unavailable");
       expect(actual).toContain(details.confirmedRate
         ? `${details.fuel.actualRate!.toFixed(2)} ${details.fuel.actualRateUnit}`
-        : "Expected Consumption Rate · from norm, actual unavailable");
+        : "Expected consumption rate · from norm, actual unavailable");
     }
   });
 
@@ -107,15 +107,15 @@ describe("DPR20 B1 equipment details in existing audit-table cells", () => {
 
   it("keeps clock duration separate when no hour-meter difference exists", () => {
     renderSections({ ...base, openingReading: null, closingReading: null });
-    expect(screen.getByTestId("equipment-table-quantity-0").textContent).toBe("Meter Working Hours: —");
+    expect(screen.getByTestId("equipment-table-quantity-0").textContent).toBe("Meter working hours: —");
     expect(screen.getByTestId("equipment-table-readings-0").textContent).toContain("not labelled as meter working time");
   });
 
   it("preserves odometer units and the existing unavailable overnight-clock result", () => {
     renderSections({ ...base, startTime: "22:00", endTime: "02:00", openingReading: 100, closingReading: 120, hoursWorked: null, totalKm: 20 },
       { ...master, meterType: "odometer" });
-    expect(screen.getByTestId("equipment-table-readings-0").textContent).toContain("Opening Odometer: 100");
-    expect(screen.getByTestId("equipment-table-readings-0").textContent).toContain("Clock Duration: —");
+    expect(screen.getByTestId("equipment-table-readings-0").textContent).toContain("Opening odometer: 100");
+    expect(screen.getByTestId("equipment-table-readings-0").textContent).toContain("Clock duration: —");
     expect(screen.getByTestId("equipment-table-quantity-0").textContent).toContain("20.00 km");
     expect(screen.getByTestId("equipment-table-performance-0").textContent).toContain("0.40 L/km");
   });

@@ -273,7 +273,7 @@ export function BillItemPicker({
       </div>
 
       <div className="space-y-1">
-        {labels && <Label className="text-sm">Work Item</Label>}
+        {labels && <Label className="text-sm">Work item</Label>}
         {isMobile ? (
           <>
             <Button

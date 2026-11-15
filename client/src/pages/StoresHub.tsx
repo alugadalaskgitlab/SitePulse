@@ -329,7 +329,7 @@ export default function StoresHub() {
                     <ArrowLeftRight className="w-5 h-5 text-amber-600" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-slate-800 group-hover:text-amber-600 transition-colors">Stock Reassignment</h3>
+                    <h3 className="font-semibold text-slate-800 group-hover:text-amber-600 transition-colors">Stock reassignment</h3>
                     <p className="text-sm text-slate-500 mt-0.5">Move ledger entries between parties — permanently changes party-wise balance totals</p>
                   </div>
                   <Settings className="w-4 h-4 text-slate-300 group-hover:text-slate-500 flex-shrink-0 mt-0.5" />
@@ -344,7 +344,7 @@ export default function StoresHub() {
                     <Settings className="w-5 h-5 text-amber-600" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-slate-800 group-hover:text-amber-600 transition-colors">Dispatch Ledger Rebuild</h3>
+                    <h3 className="font-semibold text-slate-800 group-hover:text-amber-600 transition-colors">Dispatch ledger rebuild</h3>
                     <p className="text-sm text-slate-500 mt-0.5">Rewrite component ledger entries from a chosen date cutoff using current mix proportions</p>
                   </div>
                   <Settings className="w-4 h-4 text-slate-300 group-hover:text-slate-500 flex-shrink-0 mt-0.5" />

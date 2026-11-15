@@ -19,22 +19,22 @@ export function HireBillTermsEditor({ group, equipmentName, result, onChange, on
       <Button type="button" variant="ghost" size="sm" onClick={onRemove}>Remove equipment charge</Button>
     </div>
     <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-      <div><Label htmlFor={`basis-${suffix}`}>Hire Basis</Label>
+      <div><Label htmlFor={`basis-${suffix}`}>Hire basis</Label>
         <Select value={group.basis} onValueChange={basis => onChange({ basis: basis as HireBillingBasis })}>
           <SelectTrigger id={`basis-${suffix}`} data-testid={`select-hire-basis-${suffix}`}><SelectValue /></SelectTrigger>
           <SelectContent>{(["trip", "daily", "hourly", "monthly"] as const).map(basis =>
             <SelectItem key={basis} value={basis}>{basis[0].toUpperCase() + basis.slice(1)}</SelectItem>)}</SelectContent>
         </Select>
       </div>
-      <div><Label htmlFor={`rate-${suffix}`}>Hire Rate ({HIRE_RATE_UNITS[group.basis]})</Label>
+      <div><Label htmlFor={`rate-${suffix}`}>Hire rate ({HIRE_RATE_UNITS[group.basis]})</Label>
         <Input id={`rate-${suffix}`} type="number" min="0.01" step="0.01" value={group.rate || ""}
           placeholder="Agreed rate" aria-invalid={!Number.isFinite(group.rate) || group.rate <= 0}
           onChange={e => onChange({ rate: Number(e.target.value) })} data-testid={`input-hire-rate-${suffix}`} />
         {(!Number.isFinite(group.rate) || group.rate <= 0) && <p className="mt-1 text-xs text-destructive">Enter a positive rate for this bill.</p>}
       </div>
-      <div><Label htmlFor={`from-${suffix}`}>Billing Period From</Label><Input id={`from-${suffix}`} type="date" value={group.periodFrom}
+      <div><Label htmlFor={`from-${suffix}`}>Billing period from</Label><Input id={`from-${suffix}`} type="date" value={group.periodFrom}
         onChange={e => onChange({ periodFrom: e.target.value })} /></div>
-      <div><Label htmlFor={`to-${suffix}`}>Billing Period To</Label><Input id={`to-${suffix}`} type="date" value={group.periodTo}
+      <div><Label htmlFor={`to-${suffix}`}>Billing period to</Label><Input id={`to-${suffix}`} type="date" value={group.periodTo}
         onChange={e => onChange({ periodTo: e.target.value })} /></div>
     </div>
     {group.basis === "monthly" && <div className="flex flex-wrap items-end gap-3">

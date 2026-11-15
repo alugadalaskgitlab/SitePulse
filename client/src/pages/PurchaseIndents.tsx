@@ -2192,7 +2192,7 @@ export default function PurchaseIndents() {
 <body>
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;border-bottom:2px solid #111;padding-bottom:12px;">
     <div>
-      <h1>Purchase Indent</h1>
+      <h1>Purchase indent</h1>
       <div style="font-size:20px;font-weight:800;color:#0F5F64;">${esc(indent.indentNo)}</div>
     </div>
     <div style="text-align:right;">
@@ -2215,8 +2215,8 @@ export default function PurchaseIndents() {
     <thead>
       <tr>
         <th>Description</th>
-        <th>Qty Requested</th>
-        <th>Qty Approved</th>
+        <th>Qty requested</th>
+        <th>Qty approved</th>
         <th>Purpose</th>
         <th>Priority</th>
         <th>Status</th>
@@ -2225,7 +2225,7 @@ export default function PurchaseIndents() {
     <tbody>${itemRows}</tbody>
   </table>
 
-  <h2>Audit Trail</h2>
+  <h2>Audit trail</h2>
   <table>
     <thead>
       <tr>
@@ -2482,7 +2482,7 @@ export default function PurchaseIndents() {
       >
         <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto" data-testid="dialog-route-corrections">
           <DialogHeader>
-            <DialogTitle>Review Bulk Material routes</DialogTitle>
+            <DialogTitle>Review bulk material routes</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
@@ -3752,7 +3752,7 @@ export default function PurchaseIndents() {
                               <Textarea value={st.rejectReason} onChange={(e) => updateState({rejectReason:e.target.value})} placeholder="e.g. Budget exceeded, not required now..." className="bg-white dark:bg-card border-red-300 dark:border-red-800 resize-none min-h-[60px] text-sm" rows={2} data-testid={`input-reject-reason-${item.id}`} />
                               <div className="flex justify-between items-center mt-2">
                                 <button className="text-sm text-red-700 dark:text-red-400 underline" onClick={() => updateState({action:'pending'})}>Cancel</button>
-                                <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" disabled={!st.rejectReason.trim()} onClick={() => updateState({action:'rejected'})} data-testid={`button-confirm-reject-${item.id}`}>Confirm Reject</Button>
+                                <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" disabled={!st.rejectReason.trim()} onClick={() => updateState({action:'rejected'})} data-testid={`button-confirm-reject-${item.id}`}>Confirm reject</Button>
                               </div>
                             </div>
                           )}
@@ -5082,7 +5082,7 @@ export default function PurchaseIndents() {
                   </div>
                   {bulkReceivingLocation === "site" && (
                     <div className="pt-1">
-                      <Label className="text-xs text-slate-500 mb-1 block">Select Site</Label>
+                      <Label className="text-xs text-slate-500 mb-1 block">Select site</Label>
                       <Select
                         value={bulkReceivingSiteId?.toString() ?? ""}
                         onValueChange={v => setBulkReceivingSiteId(v ? parseInt(v) : null)}
@@ -5409,7 +5409,7 @@ export default function PurchaseIndents() {
                 )}
               </div>
               <div className="space-y-1">
-                <Label className="text-sm font-semibold uppercase text-muted-foreground">Invoice No.</Label>
+                <Label className="text-sm font-semibold text-muted-foreground">Invoice no.</Label>
                 <Input
                   value={grnDialogInvoiceNo}
                   onChange={e => setGrnDialogInvoiceNo(e.target.value)}
@@ -5465,7 +5465,7 @@ export default function PurchaseIndents() {
                         </div>
                         <div className="grid grid-cols-1 gap-2">
                           <div className="space-y-1">
-                            <Label className="text-[12px] font-bold uppercase text-muted-foreground">Store Catalogue Item *</Label>
+                            <Label className="text-[12px] font-bold text-muted-foreground">Store catalogue item *</Label>
                             <div className="relative">
                               <Input
                                 value={grnOpenDropdownIdx === idx ? line.itemSearch : (selectedItem?.name || line.itemSearch)}
@@ -5629,7 +5629,7 @@ export default function PurchaseIndents() {
       <Dialog open={addStoreItemOpen} onOpenChange={open => { setAddStoreItemOpen(open); if (!open) setAddStoreItemTargetIdx(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Save as New Material</DialogTitle>
+            <DialogTitle>Save as new material</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 pt-2">
             <div className="space-y-1.5">
@@ -5757,7 +5757,7 @@ export default function PurchaseIndents() {
       </Dialog>
       <Dialog open={!!poPreview} onOpenChange={open => { if (!open) closePoPreview(); }}>
         <DialogContent className="max-w-3xl">
-          <DialogHeader><DialogTitle>Review Purchase Order</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Review purchase order</DialogTitle></DialogHeader>
           {poPreview && (
             <>
               <iframe title="Purchase Order PDF preview" src={poPreview.url} className="w-full h-[65vh] border rounded" data-testid="po-pdf-preview" />

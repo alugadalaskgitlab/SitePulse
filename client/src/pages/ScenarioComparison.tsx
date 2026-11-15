@@ -184,7 +184,7 @@ export default function ScenarioComparison() {
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-medium text-foreground">Select scenarios to compare</p>
               <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={selectAll} data-testid="btn-select-all">Select All</Button>
+                <Button variant="ghost" size="sm" onClick={selectAll} data-testid="btn-select-all">Select all</Button>
                 <Button variant="ghost" size="sm" onClick={selectNone} data-testid="btn-select-none">Clear</Button>
               </div>
             </div>
@@ -224,7 +224,7 @@ export default function ScenarioComparison() {
       </div>
 
       <div className="print:block hidden mb-4">
-        <h2 className="text-xl font-bold">Scenario Comparison — {estimate?.contractor} — {estimate?.name}</h2>
+        <h2 className="text-xl font-bold">Scenario comparison — {estimate?.contractor} — {estimate?.name}</h2>
         <p className="text-sm text-muted-foreground">
           Comparing: Base vs {scenarioEntries.map(e => e.scenario.name).join(", ")}
         </p>
@@ -246,11 +246,11 @@ export default function ScenarioComparison() {
           {/* Section 1: Final Laid Rate by Mix Type */}
           <Card>
             <CardContent className="py-4 overflow-x-auto">
-              <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide">Final Laid Rate by Mix Type</h3>
+              <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide">Final laid rate by mix type</h3>
               <table className="w-full border-collapse text-sm" data-testid="table-mix-rates">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className={th1Cls}>Mix Type</th>
+                    <th className={th1Cls}>Mix type</th>
                     <th className={thCls}>Base ₹/MT</th>
                     <th className={thCls}>Base ₹/CUM</th>
                     {scenarioEntries.map(e => (
@@ -317,13 +317,13 @@ export default function ScenarioComparison() {
           {/* Section 2: Site-wise Cost Comparison */}
           <Card>
             <CardContent className="py-4 overflow-x-auto">
-              <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide">Site-wise Cost Comparison</h3>
+              <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide">Site-wise cost comparison</h3>
               <table className="w-full border-collapse text-sm" data-testid="table-site-costs">
                 <thead>
                   <tr className="border-b border-border">
                     <th className={th1Cls}>Site</th>
                     <th className={thCls}>MT</th>
-                    <th className={thCls}>Base Cost ₹</th>
+                    <th className={thCls}>Base cost ₹</th>
                     {scenarioEntries.map(e => (
                       <th key={e.scenario.id} className={thCls} colSpan={2}>
                         {e.scenario.name}
@@ -510,7 +510,7 @@ export default function ScenarioComparison() {
           {baseRevenue && baseProfitCosts && (baseRevenue.hasAnyRevenue || scenarioEntries.some(e => e.revenue.hasAnyRevenue)) && (
             <Card>
               <CardContent className="py-4 overflow-x-auto">
-                <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide">Profitability Comparison</h3>
+                <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide">Profitability comparison</h3>
                 {baseProfitCosts.grandInScopeCost !== baseProfitCosts.grandFullCost && (
                   <p className="text-sm text-muted-foreground mb-2">Costs reflect Scope Quotation selections from the calculator.</p>
                 )}
@@ -518,9 +518,9 @@ export default function ScenarioComparison() {
                   <thead>
                     <tr className="border-b border-border">
                       <th className={th1Cls}>Site</th>
-                      <th className={thCls}>Base Revenue ₹</th>
-                      <th className={thCls}>Base Cost ₹</th>
-                      <th className={thCls}>Base Profit ₹</th>
+                      <th className={thCls}>Base revenue ₹</th>
+                      <th className={thCls}>Base cost ₹</th>
+                      <th className={thCls}>Base profit ₹</th>
                       {scenarioEntries.map(e => (
                         <Fragment key={e.scenario.id}>
                           <th className={thCls}>{e.scenario.name} Rev ₹</th>

@@ -273,7 +273,7 @@ export default function RmcBatchRecords() {
             <Button variant="ghost" size="icon" data-testid="btn-back"><ArrowLeft className="w-5 h-5" /></Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">RMC Batch Records</h1>
+            <h1 className="text-2xl font-bold">RMC batch records</h1>
             <p className="text-sm text-muted-foreground">Log concrete batches & generate delivery challans</p>
           </div>
         </div>
@@ -406,7 +406,7 @@ export default function RmcBatchRecords() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Edit Batch Record" : "New Batch Record"}</DialogTitle>
+            <DialogTitle>{editingId ? "Edit batch record" : "New batch record"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
@@ -415,7 +415,7 @@ export default function RmcBatchRecords() {
                 <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} data-testid="input-date" required />
               </div>
               <div className="space-y-1">
-                <Label>Mix Grade *</Label>
+                <Label>Mix grade *</Label>
                 <Select value={form.mixDesignId} onValueChange={v => setForm(f => ({ ...f, mixDesignId: v }))}>
                   <SelectTrigger data-testid="select-mix-design">
                     <SelectValue placeholder="Select grade" />
@@ -426,7 +426,7 @@ export default function RmcBatchRecords() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>Total Volume (m³) *</Label>
+              <Label>Total volume (m³) *</Label>
                 <Input type="number" step="0.01" value={form.totalVolumeM3} onChange={e => setForm(f => ({ ...f, totalVolumeM3: e.target.value }))} required data-testid="input-volume" />
               </div>
               <div className="space-y-1">
@@ -438,7 +438,7 @@ export default function RmcBatchRecords() {
                 <Input value={form.dcNumber} onChange={e => setForm(f => ({ ...f, dcNumber: e.target.value }))} data-testid="input-dc-number" />
               </div>
               <div className="space-y-1">
-                <Label>Truck Number</Label>
+                <Label>Truck number</Label>
                 <Input value={form.truckNumber} onChange={e => setForm(f => ({ ...f, truckNumber: e.target.value }))} data-testid="input-truck-number" />
               </div>
             </div>
@@ -447,7 +447,7 @@ export default function RmcBatchRecords() {
               <Input value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))} data-testid="input-customer" />
             </div>
             <div className="space-y-1">
-              <Label>Delivery Site</Label>
+              <Label>Delivery site</Label>
               <Input value={form.deliverySite} onChange={e => setForm(f => ({ ...f, deliverySite: e.target.value }))} data-testid="input-delivery-site" />
             </div>
             <div className="space-y-1">

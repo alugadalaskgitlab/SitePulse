@@ -218,13 +218,13 @@ export default function PlantDieselProcurementReport() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold font-display">Diesel Procurement Report</h1>
+          <h1 className="text-2xl font-bold font-display">Diesel procurement report</h1>
           <p className="text-muted-foreground text-sm">Track all diesel sourcing: plant receipts + direct site purchases</p>
         </div>
       </div>
 
       <div className="hidden print:block text-center mb-4">
-        <h1 className="text-xl font-bold">Diesel Procurement Report</h1>
+        <h1 className="text-xl font-bold">Diesel procurement report</h1>
         <p className="text-sm text-muted-foreground">
           {filterDateFrom || filterDateTo ? `${filterDateFrom || "Start"} - ${filterDateTo || "Today"}` : "All Time"}
         </p>
@@ -247,11 +247,11 @@ export default function PlantDieselProcurementReport() {
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <Label className="text-sm">From Date</Label>
+            <Label className="text-sm">From date</Label>
             <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} data-testid="input-date-from" />
           </div>
           <div>
-            <Label className="text-sm">To Date</Label>
+            <Label className="text-sm">To date</Label>
             <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} data-testid="input-date-to" />
           </div>
         </CardContent>

@@ -1685,7 +1685,7 @@ export default function PlantShiftLogManpowerReview() {
           </Button>
         </Link>
         <Users className="w-6 h-6 text-amber-700 dark:text-amber-500" />
-        <h1 className="text-2xl font-bold flex-1">Review UNKNOWN-tagged Shift-Log Workers</h1>
+        <h1 className="text-2xl font-bold flex-1">Review UNKNOWN-tagged shift-log workers</h1>
       </div>
 
       <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 p-3 text-sm flex items-start gap-2">

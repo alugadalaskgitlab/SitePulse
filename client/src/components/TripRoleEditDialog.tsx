@@ -117,12 +117,12 @@ export function TripRoleEditDialog({ trip: originalTrip, vendors, equipment, ven
         if (focused?.getAttribute("role") === "combobox" && focused.getAttribute("aria-expanded") === "true")
           event.preventDefault();
       }}>
-      <DialogHeader><DialogTitle>{canEdit ? "Edit Material Trip" : "Material Trip Details"}</DialogTitle><DialogDescription>{trip.date} · {trip.site} · {trip.material}</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>{canEdit ? "Edit material trip" : "Material trip details"}</DialogTitle><DialogDescription>{trip.date} · {trip.site} · {trip.material}</DialogDescription></DialogHeader>
       {evidence.isLoading && <div className="h-8 animate-pulse rounded bg-muted" role="status" aria-label="Loading saved vehicle association" />}
       {evidence.isError && <p role="alert" className="text-sm text-destructive">Saved vehicle association unavailable. <button type="button" className="underline" onClick={() => evidence.refetch()}>Retry</button></p>}
       {!exceptional ? <form onSubmit={e => { e.preventDefault(); setError(""); save.mutate(); }} className="space-y-4">
         <fieldset disabled={!canEdit || save.isPending || linksBusy} className="space-y-4">
-          <h3 className="text-sm font-semibold">Material Details</h3>
+          <h3 className="text-sm font-semibold">Material details</h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {(["date", "time", "site", "material", "quantity", "uom"] as const).map(key => <div key={key}><Label htmlFor={`edit-trip-${key}`}>{({ date: "Date", time: "Time", site: "Site", material: "Material", quantity: "Quantity", uom: "Unit" })[key]}</Label>
               {key === "site" ? <select id={`edit-trip-${key}`} className="w-full rounded-md border bg-background p-2 text-sm" value={fields.site} onChange={e => setFields(prev => ({ ...prev, site: e.target.value }))}>
@@ -131,13 +131,13 @@ export function TripRoleEditDialog({ trip: originalTrip, vendors, equipment, ven
               </select> : <Input id={`edit-trip-${key}`} type={key === "date" || key === "time" ? key : key === "quantity" ? "number" : "text"} step={key === "quantity" ? "any" : undefined} value={fields[key]} onChange={e => setFields(prev => ({ ...prev, [key]: e.target.value }))} />}
             </div>)}
           </div>
-          <h3 className="text-sm font-semibold">Transportation Details</h3>
+          <h3 className="text-sm font-semibold">Transportation details</h3>
           <TripTransportRoleFields choice={choice} onChoice={setChoice} value={draft} onChange={next => {
             if (next.equipmentId !== draft.equipmentId || next.vehicleNumber !== draft.vehicleNumber || next.vehicleManual !== draft.vehicleManual) equipmentTouched.current = true;
             setDraft(next);
           }} vendors={vendors} equipment={equipment} vendorsLoading={vendorsLoading} vendorsError={vendorsError} onRetryVendors={onRetryVendors} allowManualParties preserveRecordedVendorNames testIdPrefix="edit-trip" />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {(["location", "receiptNumber", "enteredBy", "notes", "workType", "unloadedAt", "yardLabel"] as const).map(key => <div key={key}><Label htmlFor={`edit-trip-${key}`}>{({ location: "Location / Chainage", receiptNumber: "Receipt Number", enteredBy: "Entered By", notes: "Notes", workType: "Work Type", unloadedAt: "Unloaded At", yardLabel: "Yard Label" })[key]}</Label>
+            {(["location", "receiptNumber", "enteredBy", "notes", "workType", "unloadedAt", "yardLabel"] as const).map(key => <div key={key}><Label htmlFor={`edit-trip-${key}`}>{({ location: "Location / chainage", receiptNumber: "Receipt number", enteredBy: "Entered by", notes: "Notes", workType: "Work type", unloadedAt: "Unloaded at", yardLabel: "Yard label" })[key]}</Label>
               {key === "workType" || key === "unloadedAt" ? <select id={`edit-trip-${key}`} className="w-full rounded-md border bg-background p-2 text-sm" value={fields[key]} onChange={e => setFields(prev => ({ ...prev, [key]: e.target.value }))}>
                 {key === "workType" ? <><option value="">Not specified</option><option value="road">Road</option><option value="structure">Structure</option></> : <><option value="stretch">Work Stretch</option><option value="yard">Temporary Yard</option></>}
               </select> : <Input id={`edit-trip-${key}`} value={fields[key]} onChange={e => setFields(prev => ({ ...prev, [key]: e.target.value }))} />}

@@ -186,7 +186,7 @@ export function EditPermissionButton({
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Request Edit Permission{canEditDirect ? " (Preview)" : ""}</DialogTitle>
+            <DialogTitle>Request edit permission{canEditDirect ? " (preview)" : ""}</DialogTitle>
             <DialogDescription>
               {canEditDirect
                 ? "This is a preview of what a request-flow user sees. Submission is disabled so no real request is created."

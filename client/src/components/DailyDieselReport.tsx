@@ -82,7 +82,7 @@ export function DailyDieselReport({ equipment, onBack }: {
   return <section className="space-y-4" data-testid="daily-diesel-report">
     <div className="flex flex-wrap items-center gap-3">
       <Button variant="outline" onClick={onBack}>BACK</Button>
-      <h1 className="text-xl font-bold">Daily Diesel Requirement Report</h1>
+      <h1 className="text-xl font-bold">Daily diesel requirement report</h1>
     </div>
     <div className="flex flex-wrap items-end gap-4">
       <label>From<Input type="date" value={from} onChange={e => setFrom(e.target.value)} data-testid="daily-from" /></label>

@@ -523,7 +523,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
                       <th className="px-2 py-2 text-left font-semibold text-slate-300">Description</th>
                       <th className="px-2 py-2 text-right font-semibold text-slate-300 w-12">Unit</th>
                       <th className="px-2 py-2 text-right font-semibold text-slate-300 w-16">Qty</th>
-                      <th className="px-2 py-2 text-left font-semibold text-slate-300 w-48">Work Category <span className="text-red-400">*</span></th>
+                      <th className="px-2 py-2 text-left font-semibold text-slate-300 w-48">Work category <span className="text-red-400">*</span></th>
                     </tr>
                   </thead>
                   <tbody>

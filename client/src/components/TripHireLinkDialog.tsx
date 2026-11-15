@@ -43,7 +43,7 @@ export function TripHireLinkReview({ trip, blocked = false, onBusyChange }: {
     onSettled: () => onBusyChange?.(false),
   });
   return <section className="space-y-3 rounded-lg border p-4" data-testid="trip-hire-link-review">
-      <h3 className="font-semibold">Equipment Master match / Hire link</h3>
+      <h3 className="font-semibold">Equipment master match / hire link</h3>
       <p className="text-sm">{trip.date} · {trip.vehicleNumber || "Registration missing"} · Transport owner: {trip.supplier || "Not recorded"}</p>
       <p className="text-xs text-muted-foreground">An audited vehicle association only. Original registration, names and quantities stay unchanged. Hire terms are reviewed separately in the authorised bill workflow.</p>
       {review.isLoading && <div className="h-24 animate-pulse rounded-md bg-muted" role="status" aria-label="Loading identity evidence" />}

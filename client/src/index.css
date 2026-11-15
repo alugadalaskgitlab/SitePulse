@@ -305,3 +305,8 @@ table tbody [class*="text-[10px]"][class*="tabular-nums"],
 table tbody [class*="text-[10px]"][class*="font-mono"] {
   font-size: 0.625rem;
 }
+
+/* Keep visible UI labels in sentence case even where older markup carries `uppercase`. */
+label, h1, h2, h3, h4, h5, h6, th, button, a, [role="tab"] {
+  text-transform: none !important;
+}

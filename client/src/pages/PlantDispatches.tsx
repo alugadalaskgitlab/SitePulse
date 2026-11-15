@@ -790,7 +790,7 @@ export default function PlantDispatches() {
             <h2 style="margin: 0; font-size: 14px; font-weight: bold;">${companyName}</h2>
           </div>
           <div class="header">
-            <h1>Plant Production and Dispatches Report</h1>
+            <h1>Plant production and dispatches report</h1>
             <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}${filterDateFrom || filterDateTo ? ` | Range: ${filterDateFrom || "Start"} to ${filterDateTo || "End"}` : ""}</p>
           </div>
           <table>
@@ -867,7 +867,7 @@ export default function PlantDispatches() {
             <ChevronLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Mix Dispatches</h1>
+            <h1 className="text-2xl font-bold">Mix dispatches</h1>
             <p className="text-muted-foreground">Record outgoing bituminous mix loads by party/job</p>
           </div>
         </div>
@@ -881,7 +881,7 @@ export default function PlantDispatches() {
           )}
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingDispatch ? "Edit Dispatch" : "Record Production Dispatch"}</DialogTitle>
+              <DialogTitle>{editingDispatch ? "Edit dispatch" : "Record production dispatch"}</DialogTitle>
             </DialogHeader>
             {hasDraft && !editingDispatch && (
               <DraftRestoreBanner
@@ -928,7 +928,7 @@ export default function PlantDispatches() {
               </div>
 
               <div>
-                <Label>Mix Template</Label>
+                <Label>Mix template</Label>
                 <Select
                   value={mixTemplateId}
                   onValueChange={(val) => {
@@ -1048,12 +1048,12 @@ export default function PlantDispatches() {
               </div>
 
               <div>
-                <Label>Load Weight (MT)</Label>
+                <Label>Load weight (MT)</Label>
                 <Input type="number" step="0.1" value={loadWeight} onChange={(e) => setLoadWeight(e.target.value)} placeholder="e.g., 20.5" data-testid="input-load-weight" />
               </div>
 
               <div>
-                <Label>Delivery Site (optional)</Label>
+                <Label>Delivery site (optional)</Label>
                 <Select value={deliveryLocation || "__none__"} onValueChange={(v) => setDeliveryLocation(v === "__none__" ? "" : v)}>
                   <SelectTrigger data-testid="input-delivery-location">
                     <SelectValue placeholder="Select site" />
@@ -1070,7 +1070,7 @@ export default function PlantDispatches() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <Label>Bitumen Tank</Label>
+                    <Label>Bitumen tank</Label>
                     {bitumenTankBalances && (
                       <div className="flex items-center gap-1.5 text-sm">
                         <span className={`px-1.5 py-0.5 rounded font-semibold ${bitumenTankNumber === "1" ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 ring-1 ring-blue-400' : 'bg-muted text-muted-foreground'}`}>
@@ -1142,11 +1142,11 @@ export default function PlantDispatches() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Owner Name (optional)</Label>
+                  <Label>Owner name (optional)</Label>
                   <Input value={ownerName} onChange={(e) => setOwnerName(e.target.value.toUpperCase())} placeholder="Vehicle owner" data-testid="input-owner-name" />
                 </div>
                 <div>
-                  <Label>Driver Name (optional)</Label>
+                  <Label>Driver name (optional)</Label>
                   <Input value={driverName} onChange={(e) => setDriverName(e.target.value.toUpperCase())} placeholder="Driver name" data-testid="input-driver-name" />
                 </div>
               </div>
@@ -1229,7 +1229,7 @@ export default function PlantDispatches() {
                   <div className="space-y-3">
                     <div>
                       <div className="flex items-center justify-between">
-                        <Label>Actual Bitumen %</Label>
+                        <Label>Actual bitumen %</Label>
                         {validationStatus.bitumen !== "ok" && (
                           <Badge variant={validationStatus.bitumen === "error" ? "destructive" : "secondary"} className="text-sm">
                             {validationStatus.bitumen === "error" ? "Exceeds ±10%" : "Variance"}
@@ -1464,7 +1464,7 @@ export default function PlantDispatches() {
       <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirm Delete</DialogTitle>
+            <DialogTitle>Confirm delete</DialogTitle>
           </DialogHeader>
           <p>Are you sure you want to delete this dispatch? This will reverse the stock ledger entries.</p>
           <DialogFooter>

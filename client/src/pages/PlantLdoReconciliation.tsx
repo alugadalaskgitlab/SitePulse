@@ -185,7 +185,7 @@ export default function PlantLdoReconciliation() {
             <ChevronLeft className="h-5 w-5" />
           </a>
           <div>
-            <h1 className="text-xl font-semibold">LDO Reconciliation Report</h1>
+            <h1 className="text-xl font-semibold">LDO reconciliation report</h1>
             <p className="text-sm text-muted-foreground">Book stock (meter-based) vs Physical stock (dip-stick)</p>
           </div>
         </div>
@@ -230,7 +230,7 @@ export default function PlantLdoReconciliation() {
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="recon-threshold" className="text-sm">Highlight Threshold (%)</Label>
+                <Label htmlFor="recon-threshold" className="text-sm">Highlight threshold (%)</Label>
                 <Input
                   id="recon-threshold"
                   data-testid="input-threshold"
@@ -348,11 +348,11 @@ export default function PlantLdoReconciliation() {
                     <thead>
                       <tr className="border-b bg-muted/40">
                         <th className="text-left px-4 py-2 font-medium whitespace-nowrap">Date</th>
-                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Opening Dip<br /><span className="text-sm font-normal text-muted-foreground">L / MT</span></th>
-                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Meter Use<br /><span className="text-sm font-normal text-muted-foreground">L</span></th>
+                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Opening dip<br /><span className="text-sm font-normal text-muted-foreground">L / MT</span></th>
+                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Meter use<br /><span className="text-sm font-normal text-muted-foreground">L</span></th>
                         <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Receipts<br /><span className="text-sm font-normal text-muted-foreground">L</span></th>
                         <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Exp. Closing<br /><span className="text-sm font-normal text-muted-foreground">L / MT</span></th>
-                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Act. Closing Dip<br /><span className="text-sm font-normal text-muted-foreground">L / MT</span></th>
+                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Actual closing dip<br /><span className="text-sm font-normal text-muted-foreground">L / MT</span></th>
                         <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Variance</th>
                         <th className="px-3 py-2 font-medium whitespace-nowrap">Status</th>
                       </tr>

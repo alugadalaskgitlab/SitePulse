@@ -8,8 +8,8 @@ import {
 } from "../shared/featureAccess";
 
 describe("feature permission catalog", () => {
-  it("defines the 29 features, 17 roles, and action columns", () => {
-    expect(FEATURES).toHaveLength(29);
+  it("defines the 30 features, 17 roles, and action columns", () => {
+    expect(FEATURES).toHaveLength(30);
     expect(ROLE_NAMES).toHaveLength(17);
     expect(FEATURE_ACTIONS).toEqual([
       "view", "add", "edit", "cancel", "verify", "allocate", "technical_verify",

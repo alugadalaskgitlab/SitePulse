@@ -13,7 +13,7 @@ export default function NewDpr() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold font-display tracking-tight">New Progress Report</h1>
+          <h1 className="text-2xl font-bold font-display tracking-tight">New progress report</h1>
           <p className="text-muted-foreground text-sm">Fill in the daily activities and resource logs.</p>
         </div>
       </div>

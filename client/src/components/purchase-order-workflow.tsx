@@ -114,7 +114,7 @@ export function PurchaseOrderWorkflow({ indentId, itemId, canRaise, allowNew, ca
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-po-workflow">
-          <DialogHeader><DialogTitle>Purchase Order {order ? `#${order.id} · ${order.status.toUpperCase()}` : "· New Draft"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Purchase order {order ? `#${order.id} · ${order.status.toUpperCase()}` : "· New draft"}</DialogTitle></DialogHeader>
           {form && <div className="space-y-4">
             <p className="text-sm text-muted-foreground">Optional PO snapshot — recording an order against the indent does not require a PO.</p>
             {data?.vendorContext.linkedVendorName && (
@@ -126,7 +126,7 @@ export function PurchaseOrderWorkflow({ indentId, itemId, canRaise, allowNew, ca
             )}
             {data?.vendorContext.vendorId != null && !order && (
               <div className="space-y-1">
-                <Label>Vendor Master selection</Label>
+                <Label>Vendor master selection</Label>
                 <Select value={String(form.vendorId ?? "")} onValueChange={value => {
                   if (Number(value) === data.vendorContext.vendorId) setForm(prev => prev ? {
                     ...prev, vendorId: data.vendorContext.vendorId,

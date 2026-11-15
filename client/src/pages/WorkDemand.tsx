@@ -2545,7 +2545,7 @@ function SuggestionBadge({
           {/* Step 2b: authorise (single action — irn or pi) */}
           {step === "authorize_alloc" && pendingAction !== "both" && (<>
             <DialogHeader>
-              <DialogTitle>{pendingAction === "irn" ? "Authorise Internal Allocation" : "Authorise Procurement Allocation"}</DialogTitle>
+              <DialogTitle>{pendingAction === "irn" ? "Authorise internal allocation" : "Authorise procurement allocation"}</DialogTitle>
             </DialogHeader>
             <div className="py-4 space-y-3 text-sm">
               <div className="bg-gray-50 rounded p-3 space-y-1">
@@ -2815,7 +2815,7 @@ function ProcurementTable({
           <thead>
             <tr style={{ background: "#0F5F64" }}>
               <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[180px]" style={{ background: "#0F5F64" }}>Material</th>
-              <th className="px-2 py-2 font-semibold text-white text-left min-w-[140px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>BOQ Work Item(s)</th>
+              <th className="px-2 py-2 font-semibold text-white text-left min-w-[140px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>BOQ work item(s)</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Unit</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Total demand</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>
@@ -3211,7 +3211,7 @@ export default function WorkDemand() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">BOM &amp; Resource Demand</h1>
+          <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">BOM &amp; resource demand</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {project?.name}
             {project?.roadLengthKm ? ` · ${project.roadLengthKm} km` : ""}
