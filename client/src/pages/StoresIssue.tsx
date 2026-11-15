@@ -229,7 +229,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                     <span className="text-sm text-muted-foreground">{format(new Date(selectedIssue.date + "T00:00:00"), "dd MMM yyyy")}</span>
                     <Badge variant="outline" className="text-[12px]">{sectionLabel(selectedIssue.issuedToSection)}</Badge>
                     {selectedIssue.siteId && siteName(selectedIssue.siteId)
-                      ? <Badge variant="outline" className="text-[12px] border-amber-400 text-amber-700 dark:text-amber-400">{siteName(selectedIssue.siteId)}</Badge>
+                      ? <Badge variant="outline" className="text-[12px] border-amber-400 text-amber-700 dark:text-amber-400 entity-name">{siteName(selectedIssue.siteId)}</Badge>
                       : null}
                   </div>
                   {/* Show site name from FK if available; fall back to free-text detail for legacy records */}
@@ -327,7 +327,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                         <SelectContent>
                           <SelectItem value="__none__">— Select site —</SelectItem>
                           {sites.filter(s => s.isActive).map(s => (
-                            <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                            <SelectItem key={s.id} value={String(s.id)} className="entity-name">{s.name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -437,7 +437,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                                             }}
                                             data-testid={`option-recent-issue-item-${idx}-${it.id}`}
                                           >
-                                            <span className="truncate">{it.name}</span>
+                                            <span className="truncate entity-name">{it.name}</span>
                                             <span className="text-muted-foreground flex-shrink-0">({it.category})</span>
                                           </div>
                                         ))}
@@ -461,7 +461,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                                         }}
                                         data-testid={`option-issue-item-${idx}-${it.id}`}
                                       >
-                                        <span className="truncate">{it.name}</span>
+                                        <span className="truncate entity-name">{it.name}</span>
                                         <span className="text-muted-foreground flex-shrink-0">({it.category})</span>
                                       </div>
                                     ))}
@@ -532,7 +532,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                 <SelectTrigger className="h-8 w-36 text-sm" data-testid="select-site-filter"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">All Sites</SelectItem>
-                  {sites.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                  {sites.map(s => <SelectItem key={s.id} value={String(s.id)} className="entity-name">{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select value={categoryFilter || "__all__"} onValueChange={v => setCategoryFilter(v === "__all__" ? "" : v)}>

@@ -245,7 +245,7 @@ export default function SiteReport() {
     <Dialog open={movingUsageId != null} onOpenChange={open => { if (!open) { setMovingUsageId(null); setMoveDestination(""); } }}>
       <DialogContent className="dpr-management-dialog"><DialogTitle>Send equipment onward</DialogTitle><DialogDescription>Choose the destination and next start date.</DialogDescription>
         <Select value={moveDestination} onValueChange={setMoveDestination}><SelectTrigger data-testid={`select-move-destination-${movingIndex}`}><SelectValue placeholder="Send to…" /></SelectTrigger><SelectContent>
-          <SelectItem value="__hmp__">HMP Plant</SelectItem><SelectItem value="__rmc__">RMC Plant</SelectItem>{sites.filter(site => site.isActive === 1).map(site => <SelectItem key={site.id} value={site.name}>{site.name}</SelectItem>)}
+          <SelectItem value="__hmp__">HMP Plant</SelectItem><SelectItem value="__rmc__">RMC Plant</SelectItem>{sites.filter(site => site.isActive === 1).map(site => <SelectItem key={site.id} value={site.name} className="entity-name">{site.name}</SelectItem>)}
         </SelectContent></Select>
         <Input type="date" value={successorDate} onChange={event => setSuccessorDate(event.target.value)} data-testid={`input-successor-date-${movingIndex}`} />
         <Button size="sm" onClick={submitMove} disabled={!moveDestination || moveMutation.isPending} data-testid={`button-confirm-move-${movingIndex}`}>{moveMutation.isPending ? "Sending…" : "Send"}</Button>

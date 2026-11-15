@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TripMasterCombobox } from "@/components/TripMasterCombobox";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { displayName } from "@shared/displayName";
 
 const isActiveVendor = (vendor: ExistingTripVendor) =>
   vendor.isActive == null || vendor.isActive === true || Number(vendor.isActive) === 1;
@@ -29,8 +30,8 @@ export function VendorMasterNamePicker({
     const search = query.trim().toLowerCase();
     return vendors.filter(vendor => isActiveVendor(vendor) && (
       !search || vendor.name.toLowerCase().includes(search) || (vendor.businessName || "").toLowerCase().includes(search)
-    )).map(vendor => ({ id: vendor.id, label: vendor.businessName && vendor.businessName !== vendor.name
-      ? `${vendor.name} · ${vendor.businessName}` : vendor.name }));
+    )).map(vendor => ({ id: vendor.id, label: displayName(vendor.businessName && vendor.businessName !== vendor.name
+      ? `${vendor.name} · ${vendor.businessName}` : vendor.name) }));
   }, [query, vendors]);
   const selectedVendor = vendors.find(vendor => vendor.name.trim().toUpperCase() === value.trim().toUpperCase());
   return <div className="space-y-1.5">

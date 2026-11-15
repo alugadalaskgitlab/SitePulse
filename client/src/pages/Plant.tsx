@@ -1996,7 +1996,7 @@ export function PlantTypeConfigSection() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">— Shared / Mobile plant —</SelectItem>
-                  {sitesList.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                  {sitesList.map(s => <SelectItem key={s.id} value={String(s.id)} className="entity-name">{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -2008,7 +2008,7 @@ export function PlantTypeConfigSection() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">— No default party —</SelectItem>
-                  {partiesList.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
+                  {partiesList.map(p => <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -2044,7 +2044,7 @@ export function PlantTypeConfigSection() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">— Shared / Mobile plant (no site) —</SelectItem>
-                  {sitesList.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                  {sitesList.map(s => <SelectItem key={s.id} value={String(s.id)} className="entity-name">{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -2080,7 +2080,7 @@ export function PlantTypeConfigSection() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">— No default party —</SelectItem>
-                  {partiesList.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
+                  {partiesList.map(p => <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -2306,7 +2306,7 @@ export function SitesMasterSection() {
                 <Label className="text-sm">Site name</Label>
               <Input
                 value={newSiteName}
-                onChange={(e) => setNewSiteName(e.target.value.toUpperCase())}
+                onChange={(e) => setNewSiteName(e.target.value)}
                 placeholder="Enter new site name"
                 className="uppercase"
                 data-testid="input-new-site"
@@ -2321,7 +2321,7 @@ export function SitesMasterSection() {
                 <SelectContent>
                   <SelectItem value="all">All parties</SelectItem>
                   {partiesList.map(p => (
-                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                    <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -2354,7 +2354,7 @@ export function SitesMasterSection() {
                   <>
                     <Input
                       value={editingSiteName}
-                      onChange={(e) => setEditingSiteName(e.target.value.toUpperCase())}
+                      onChange={(e) => setEditingSiteName(e.target.value)}
                       className="uppercase flex-1"
                       data-testid={`input-edit-site-${site.id}`}
                       autoFocus
@@ -2366,7 +2366,7 @@ export function SitesMasterSection() {
                       <SelectContent>
                         <SelectItem value="all">All parties</SelectItem>
                         {partiesList.map(p => (
-                          <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                          <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -2614,7 +2614,7 @@ export function PartyMaster() {
                 <Input
                   id="party-name"
                   value={name}
-                  onChange={(e) => setName(e.target.value.toUpperCase())}
+                  onChange={(e) => setName(e.target.value)}
                   placeholder="e.g., GIRIDHAR - BC"
                   data-testid="input-party-name"
                 />
@@ -3042,7 +3042,7 @@ export function MaterialMaster() {
                 <Input
                   id="material-name"
                   value={name}
-                  onChange={(e) => setName(e.target.value.toUpperCase())}
+                  onChange={(e) => setName(e.target.value)}
                   placeholder="e.g., 20MM AGGREGATE"
                   data-testid="input-material-name"
                 />
@@ -3404,7 +3404,7 @@ export function MaterialMaster() {
                     </SelectTrigger>
                     <SelectContent>
                       {parties?.map((party) => (
-                        <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
+                        <SelectItem key={party.id} value={String(party.id)} className="entity-name">{party.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -3814,7 +3814,7 @@ export function MixTemplateMaster() {
                 <Input
                   id="template-name"
                   value={name}
-                  onChange={(e) => setName(e.target.value.toUpperCase())}
+                  onChange={(e) => setName(e.target.value)}
                   placeholder="e.g., BC STANDARD"
                   data-testid="input-template-name"
                 />
@@ -3856,7 +3856,7 @@ export function MixTemplateMaster() {
                   <SelectContent>
                     <SelectItem value="__none__">Shared / all parties</SelectItem>
                     {parties?.filter(p => p.isActive !== 0).map(p => (
-                      <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                      <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -4783,7 +4783,7 @@ export function EquipmentMasterSection() {
               <SelectItem value="all">All Plants</SelectItem>
               <SelectItem value="__shared__">Shared / Unassigned</SelectItem>
               {allPlantSettingsForEquip.map(p => (
-                <SelectItem key={p.plantName} value={p.plantName}>{p.plantName}</SelectItem>
+                <SelectItem key={p.plantName} value={p.plantName} className="entity-name">{p.plantName}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -4803,7 +4803,7 @@ export function EquipmentMasterSection() {
                 <Input
                   id="equipment-name"
                   value={name}
-                  onChange={(e) => setName(e.target.value.toUpperCase())}
+                  onChange={(e) => setName(e.target.value)}
                   placeholder="e.g., 600 KVA GENERATOR"
                   readOnly={!!editingEquipment && isGeneratorEquipmentName(editingEquipment.name)}
                   data-testid="input-equipment-name"
@@ -4817,7 +4817,7 @@ export function EquipmentMasterSection() {
                 <Input
                   id="registration-number"
                   value={registrationNumber}
-                  onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())}
+                  onChange={(e) => setRegistrationNumber(e.target.value)}
                   placeholder="e.g., MH12AB1234"
                   data-testid="input-registration-number"
                 />
@@ -4921,7 +4921,7 @@ export function EquipmentMasterSection() {
                   <SelectContent>
                     <SelectItem value="__none__">— Shared / No specific plant —</SelectItem>
                     {allPlantSettingsForEquip.map(p => (
-                      <SelectItem key={p.plantName} value={p.plantName}>{p.plantName}</SelectItem>
+                      <SelectItem key={p.plantName} value={p.plantName} className="entity-name">{p.plantName}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -5320,7 +5320,7 @@ export function PersonnelMasterSection() {
               <Label>Name</Label>
               <Input
                 value={name}
-                onChange={(e) => setName(e.target.value.toUpperCase())}
+                onChange={(e) => setName(e.target.value)}
                 placeholder="Full name"
                 className="uppercase"
                 data-testid="input-personnel-name"
@@ -5341,7 +5341,7 @@ export function PersonnelMasterSection() {
               <Label>Phone (optional)</Label>
               <Input
                 value={phone}
-                onChange={(e) => setPhone(e.target.value.toUpperCase())}
+                onChange={(e) => setPhone(e.target.value)}
                 placeholder="Phone number"
                 className="uppercase"
                 data-testid="input-personnel-phone"

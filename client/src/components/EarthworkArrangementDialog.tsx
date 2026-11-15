@@ -44,7 +44,7 @@ import {
   bituminousDefaultComponents,
   getCategoryDescriptor,
 } from "@shared/executionArrangementCategories";
-import { boqItemDisplayName } from "@shared/boqItemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 import { ArrangementTripRatesEditor, ArrangementTripRatesView, parseTripRateDrafts, type TripRateDraft } from "./ArrangementTripRates";
 import { TripVendorPicker } from "./TripVendorPicker";
 import type { ExistingTripVendor } from "./trip-role-utils";

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { TripMasterCombobox } from "./TripMasterCombobox";
 import { Label } from "@/components/ui/label";
 import { searchTripVendors, tripVendorLabel, tripVendorNameMatches, type ExistingTripVendor, type ExistingVendorAlias } from "./trip-role-utils";
+import { displayName } from "@shared/displayName";
 
 export function TripVendorPicker({ label, name, vendorId, vendors, onChange, disabled, testId, manual, onManualChange, preserveRecordedName = false, requireRecordedNameMatch = false, required = false }: {
   label: string; name: string; vendorId?: number | null; vendors: ExistingTripVendor[];
@@ -36,7 +37,7 @@ export function TripVendorPicker({ label, name, vendorId, vendors, onChange, dis
     <TripMasterCombobox id={id} value={query} selectedId={vendorId}
       disabled={disabled} placeholder="Search Vendor Master (2+ characters)" testId={testId}
       searchable={query.trim().length >= 2}
-      options={matches.map(v => ({ id: v.id, label: tripVendorLabel(v) }))}
+       options={matches.map(v => ({ id: v.id, label: displayName(tripVendorLabel(v)) }))}
       otherOptionLabel={onManualChange ? "Other / Not in Master — keep as typed" : undefined}
       otherSelected={!!manual}
       onChange={text => {
@@ -54,7 +55,7 @@ export function TripVendorPicker({ label, name, vendorId, vendors, onChange, dis
       onSelectOther={() => onManualChange?.(true, query)}
       onDismiss={() => setQuery(savedValue)} />
     {vendorId != null && selected && (
-      <p className="text-xs text-muted-foreground">Linked to Vendor Master: {tripVendorLabel(selected)}</p>
+       <p className="text-xs text-muted-foreground">Linked to Vendor Master: <span className="entity-name">{tripVendorLabel(selected)}</span></p>
     )}
     {aliasesQuery.isError && (
       <p role="status" className="text-xs text-muted-foreground">Alias search is unavailable; search by the Vendor Master name or business name.</p>

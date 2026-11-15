@@ -23,7 +23,7 @@ import {
   defaultLayerWidthM, applicableLayerWidthM, computeGeometryPreview, suggestedFormationWidthM,
   type GeometryLayerConfig, type RoadGeometryProfileInput, type GeometryItemResult,
 } from "@shared/roadGeometry";
-import { boqItemDisplayName } from "@shared/boqItemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 
 const fmtQty = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 

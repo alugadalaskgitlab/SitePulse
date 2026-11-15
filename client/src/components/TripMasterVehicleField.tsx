@@ -8,6 +8,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { selectTripEquipment, equipmentOwnershipLabel } from "./trip-master-selection";
 import type { TripRoleDraft } from "./TripTransportRoleFields";
 import type { ExistingTripVendor } from "./trip-role-utils";
+import { displayName } from "@shared/displayName";
 
 export function TripMasterVehicleField({ value, onChange, onChoice, vendors, choice, allowOutside, testIdPrefix }: {
   value: TripRoleDraft; onChange: (value: TripRoleDraft) => void; onChoice: (choice: TripTransportRole) => void;
@@ -31,7 +32,7 @@ export function TripMasterVehicleField({ value, onChange, onChoice, vendors, cho
   const equipmentLabel = (e: NonNullable<typeof master.data>[number]) => {
     const reviewedOwner = owners.data?.find(item => item.id === e.id);
     const vendor = vendors.find(item => item.id === reviewedOwner?.vendorId);
-    return `${e.equipmentType || e.name} · ${e.registrationNumber || "Registration missing"} · ${equipmentOwnershipLabel(e, vendor?.businessName?.trim() || reviewedOwner?.linkedVendorName || vendor?.name, companyShortName)}`;
+    return displayName(`${e.equipmentType || e.name} · ${e.registrationNumber || "Registration missing"} · ${equipmentOwnershipLabel(e, vendor?.businessName?.trim() || reviewedOwner?.linkedVendorName || vendor?.name, companyShortName)}`);
   };
   return <div className="space-y-2">
     <Label htmlFor={id}>Vehicle / Tipper *</Label>
@@ -39,13 +40,13 @@ export function TripMasterVehicleField({ value, onChange, onChoice, vendors, cho
       onChange({ ...value, vehicleManual: e.target.checked, equipmentId: null, internalEquipmentId: null });
       if (e.target.checked && choice === "in_house") onChoice("different_parties");
     }} />Other / not in master</label>}
-    {value.vehicleManual ? <Input id={id} value={value.vehicleNumber} onChange={e => onChange({ ...value, vehicleNumber: e.target.value.toUpperCase() })} placeholder="Outside vehicle registration" data-testid={`input-${testIdPrefix}-vehicle`} /> : <>
+    {value.vehicleManual ? <Input id={id} value={value.vehicleNumber} onChange={e => onChange({ ...value, vehicleNumber: e.target.value })} placeholder="Outside vehicle registration" data-testid={`input-${testIdPrefix}-vehicle`} /> : <>
       {master.isLoading && <div className="h-10 animate-pulse rounded bg-muted" role="status" aria-label="Loading equipment master" />}
       {master.isError ? <p role="alert" className="text-sm text-destructive">Equipment master unavailable. <button type="button" className="underline" onClick={() => master.refetch()}>Retry</button></p> :
       <TripMasterCombobox id={id} value={selected ? equipmentLabel(selected) : value.vehicleNumber}
         selectedId={selectedId} disabled={master.isLoading} placeholder="Search registration, including last four digits"
         testId={`input-${testIdPrefix}-vehicle-search`} options={matches.map(e => ({ id: e.id, label: equipmentLabel(e) }))}
-        onChange={text => onChange({ ...value, vehicleNumber: text.toUpperCase(), equipmentId: null, internalEquipmentId: null })}
+         onChange={text => onChange({ ...value, vehicleNumber: text, equipmentId: null, internalEquipmentId: null })}
         onSelect={id => {
         const equipment = master.data?.find(item => item.id === id && !!item.isActive);
         if (!equipment) { onChange({ ...value, equipmentId: null, internalEquipmentId: null }); return; }

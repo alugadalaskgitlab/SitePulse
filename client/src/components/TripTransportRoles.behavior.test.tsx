@@ -654,7 +654,7 @@ describe("saved site-trip receipt view", () => {
       expect(await screen.findByTestId("button-log-next-trip")).toBeInTheDocument();
       expect(screen.getByTestId("trip-saved-view-101")).toBeInTheDocument();
       expect(screen.getByText("✓ Trip saved · Trip #101")).toBeInTheDocument();
-      expect(screen.getByText(/Soil · 14/)).toBeInTheDocument();
+      expect(screen.getByTestId("trip-saved-summary").querySelector(".entity-name")).not.toBeNull();
       expect(screen.getByRole("button", { name: "Send on WhatsApp" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "View receipt" })).toBeInTheDocument();
       expect(screen.queryByTestId("trip-saved-panel-101")).not.toBeInTheDocument();

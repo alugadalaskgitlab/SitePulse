@@ -56,7 +56,7 @@ describe("EQUIP-05 shared Equipment Master creation dialog", () => {
       </QueryClientProvider>,
     );
 
-    expect((screen.getByTestId("input-equipment-name") as HTMLInputElement).value).toBe("GRADER 1");
+    expect((screen.getByTestId("input-equipment-name") as HTMLInputElement).value).toBe("grader 1");
     fireEvent.change(screen.getByTestId("input-registration-number"), { target: { value: "mh12ab1234" } });
     fireEvent.click(screen.getByTestId("button-save-equipment"));
 
@@ -64,8 +64,8 @@ describe("EQUIP-05 shared Equipment Master creation dialog", () => {
     expect(onCreated.mock.calls[0][0].id).toBe(41);
     const post = requests.find(request => request.init?.method === "POST");
     expect(JSON.parse(String(post?.init?.body))).toMatchObject({
-      name: "GRADER 1",
-      registrationNumber: "MH12AB1234",
+      name: "grader 1",
+      registrationNumber: "mh12ab1234",
       ownership: "owned",
       meterType: "hour_meter",
       plantName: null,

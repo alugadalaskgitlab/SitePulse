@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { calculateEquipmentAllocationHours } from "@shared/equipmentActivityAllocations";
 import { formatEquipmentDuration, formatEquipmentTime } from "@shared/equipmentUsage";
-import { dprBoqItemDisplayName } from "@shared/dprBoqSelection";
+import { dprBoqItemDisplayName, dprBoqItemDisplayText } from "@shared/dprBoqSelection";
 
 export type EquipmentActivitySegmentBoqItem = {
   boqItemId: number;
@@ -133,7 +133,7 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
     <div className="space-y-2">{value.map((segment, segmentIndex) => (
       <div key={segmentIndex} className="rounded-md border border-slate-200 bg-slate-50/80 p-2.5 dark:border-slate-700 dark:bg-slate-950/25" data-testid={`equipment-activity-segment-${segmentIndex}`}>
         <div className="relative grid grid-cols-2 items-end gap-2 sm:flex">
-          <div className="col-span-2 min-w-0 pr-12 sm:flex-1 sm:pr-0"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">BOQ item</Label><Select value={segment.boqItems[0]?.boqItemId ? String(segment.boqItems[0].boqItemId) : ""} onValueChange={v => patchBoqItem(segmentIndex, 0, Number(v))}><SelectTrigger className="mt-1 h-11 bg-white text-sm sm:h-9 dark:bg-slate-900"><SelectValue placeholder="Select BOQ item" /></SelectTrigger><SelectContent>{boqItems.map(option => <SelectItem key={option.id} value={String(option.id)}>{dprBoqItemDisplayName(option)}</SelectItem>)}</SelectContent></Select></div>
+          <div className="col-span-2 min-w-0 pr-12 sm:flex-1 sm:pr-0"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">BOQ item</Label><Select value={segment.boqItems[0]?.boqItemId ? String(segment.boqItems[0].boqItemId) : ""} onValueChange={v => patchBoqItem(segmentIndex, 0, Number(v))}><SelectTrigger className="mt-1 h-11 bg-white text-sm sm:h-9 dark:bg-slate-900"><SelectValue placeholder="Select BOQ item" /></SelectTrigger><SelectContent>{boqItems.map(option => <SelectItem key={option.id} value={String(option.id)}>{dprBoqItemDisplayText(option)}</SelectItem>)}</SelectContent></Select></div>
           <div className="sm:w-[140px] sm:flex-none"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Start time</Label><Input className="mt-1 h-11 min-w-0 bg-white px-2 text-sm tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={segment.startTime} onChange={e => patchSegment(segmentIndex, { startTime: e.target.value, hoursWorked: undefined })} /></div>
           <div className="sm:w-[140px] sm:flex-none"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">End time</Label><Input className="mt-1 h-11 min-w-0 bg-white px-2 text-sm tabular-nums sm:h-9 dark:bg-slate-900" type="time" value={segment.endTime} onChange={e => patchSegment(segmentIndex, { endTime: e.target.value, hoursWorked: undefined })} /></div>
           <div className="sm:w-[78px] sm:flex-none"><div className="text-xs font-medium text-slate-700 dark:text-slate-200">Hours</div><div className="mt-2 text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100">{duration(segment) == null ? "—" : `${duration(segment)!.toFixed(1)} h`}</div></div>
@@ -142,7 +142,7 @@ export function EquipmentActivityAllocationEditor({ value = [], onChange, boqIte
         {segment.boqItems.slice(1).map((item, additionalIndex) => {
           const itemIndex = additionalIndex + 1;
           return <div key={itemIndex} className="mt-2 flex items-end gap-2">
-            <div className="min-w-0 flex-1"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Additional BOQ item</Label><Select value={item.boqItemId ? String(item.boqItemId) : ""} onValueChange={v => patchBoqItem(segmentIndex, itemIndex, Number(v))}><SelectTrigger className="mt-1 h-11 bg-white text-sm sm:h-9 dark:bg-slate-900"><SelectValue placeholder="Select BOQ item" /></SelectTrigger><SelectContent>{boqItems.map(option => <SelectItem key={option.id} value={String(option.id)}>{dprBoqItemDisplayName(option)}</SelectItem>)}</SelectContent></Select></div>
+            <div className="min-w-0 flex-1"><Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Additional BOQ item</Label><Select value={item.boqItemId ? String(item.boqItemId) : ""} onValueChange={v => patchBoqItem(segmentIndex, itemIndex, Number(v))}><SelectTrigger className="mt-1 h-11 bg-white text-sm sm:h-9 dark:bg-slate-900"><SelectValue placeholder="Select BOQ item" /></SelectTrigger><SelectContent>{boqItems.map(option => <SelectItem key={option.id} value={String(option.id)}>{dprBoqItemDisplayText(option)}</SelectItem>)}</SelectContent></Select></div>
             <Button type="button" variant="ghost" size="icon" className="h-11 w-11 shrink-0 text-slate-600 hover:text-destructive sm:h-9 sm:w-9" onClick={() => removeBoqItem(segmentIndex, itemIndex)} aria-label={`Remove ${itemName(item.boqItemId) || "BOQ item"}`}><Trash2 className="h-4 w-4" /></Button>
           </div>;
         })}

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, ChevronLeft, Wrench, CheckCircle2, Sparkles } from "lucide-react";
 import { classifyItem, detectAnomalies, plantToClear } from "@/lib/resourceReview";
-import { boqItemDisplayName } from "@/lib/itemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 
 type RecipeItem = {
   id: number; itemCode: string | null; description: string; unit: string;

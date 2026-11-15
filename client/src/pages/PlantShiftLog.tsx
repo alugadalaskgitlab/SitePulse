@@ -139,7 +139,7 @@ export default function PlantShiftLog() {
     const row: ManpowerRow = {
       name: mpDraft.name.trim(),
       role: mpDraft.role || null,
-      contractorName: mpDraft.contractorName.trim().toUpperCase(),
+      contractorName: mpDraft.contractorName.trim(),
       category: (mpDraft.category || "").toUpperCase(),
       gender: (mpDraft.gender || "").toUpperCase(),
     };
@@ -645,9 +645,9 @@ export default function PlantShiftLog() {
         manpower: manpower
           .filter(m => m.name?.trim())
           .map(m => ({
-            name: m.name.trim().toUpperCase(),
+            name: m.name.trim(),
             role: m.role || null,
-            contractorName: m.contractorName ? m.contractorName.trim().toUpperCase() : "",
+            contractorName: m.contractorName ? m.contractorName.trim() : "",
             category: m.category ? m.category.toUpperCase() : "",
             gender: m.gender ? m.gender.toUpperCase() : "",
           })),

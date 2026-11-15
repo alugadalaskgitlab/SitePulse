@@ -26,7 +26,7 @@ describe("DPR16 B3 activity summaries", () => {
     );
     const details = screen.getByTestId("row-progress-0") as HTMLDetailsElement;
     expect(details.open).toBe(false);
-    expect(within(details).getByText(/BOQ-44 · Excavation/)).toBeTruthy();
+    expect(within(details).getByText(/BOQ-44 · EXCAVATION/)).toBeTruthy();
     expect(within(details).getByText(/1.000 → 1.200/)).toBeTruthy();
     expect(within(details).getByText(/Measured: 600 Cum/i)).toBeTruthy();
     expect(within(details).getByText(/BOQ: 600 Cum/i)).toBeTruthy();
@@ -60,12 +60,12 @@ describe("DPR16 B3 activity summaries", () => {
     const chainage = { ...row, activity: "Full activity label", length: null, chainageFrom: "1+200", chainageTo: "1+350" };
     const item = { ...boqItem, displayName: "Saved BOQ name", canonicalDisplayName: "Classification label" };
     const { rerender } = render(<DprActivityReadOnly item={chainage} boqItem={item} index={0} />);
-    expect(screen.getByText(/Saved BOQ name/)).toBeTruthy();
+    expect(screen.getByText(/SAVED BOQ NAME/)).toBeTruthy();
     fireEvent.click(screen.getByText(/Details/));
     expect(screen.getByText("150")).toBeTruthy();
     rerender(<DprActivityReadOnly item={chainage} boqItem={item} index={0} nameStyle="activity" />);
     expect(screen.getByText(new RegExp(shortItemName(chainage.activity) || chainage.activity))).toBeTruthy();
-    expect(screen.queryByText(/Saved BOQ name/)).toBeNull();
+    expect(screen.queryByText(/SAVED BOQ NAME/)).toBeNull();
   });
 
   it("does not infer length over a recorded zero even when chainage implies a positive distance", () => {

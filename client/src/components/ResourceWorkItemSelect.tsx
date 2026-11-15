@@ -1,9 +1,9 @@
 import { Select, SelectContent, SelectGroup, SelectLabel, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { dprBoqItemDisplayName } from "@shared/dprBoqSelection";
+import { dprBoqItemDisplayText } from "@shared/dprBoqSelection";
 import { resourceSuggestion, type SuggestionRow } from "@/lib/resourceSuggestions";
 
 type Item = { id: number; description?: string | null; itemCode?: string | null; itemName?: string | null; displayName?: string | null; unit?: string | null };
-export function ResourceWorkItemSelect({ row, items, activityIds, onChange, testId, itemLabel = dprBoqItemDisplayName }: {
+export function ResourceWorkItemSelect({ row, items, activityIds, onChange, testId, itemLabel = dprBoqItemDisplayText }: {
   row: SuggestionRow; items: Item[]; activityIds: number[]; onChange: (value: string) => void; testId: string; itemLabel?: (item: Item) => string;
 }) {
   const today = activityIds.map(id => items.find(item => item.id === id) ?? { id, displayName: `Work item ${id}` });

@@ -478,7 +478,7 @@ export default function PlantMaterialReturns() {
                     </SelectTrigger>
                     <SelectContent>
                       {materialsWithIssues.map(m => (
-                        <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                        <SelectItem key={m.id} value={String(m.id)} className="entity-name">{m.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -550,12 +550,12 @@ export default function PlantMaterialReturns() {
 
                     <div>
                       <Label>Returned by (person)</Label>
-                      <Input value={returnedBy} onChange={(e) => setReturnedBy(e.target.value.toUpperCase())} placeholder="Person returning the material" data-testid="input-returned-by" />
+                      <Input value={returnedBy} onChange={(e) => setReturnedBy(e.target.value)} placeholder="Person returning the material" data-testid="input-returned-by" />
                     </div>
 
                     <div>
                       <Label>Vehicle number</Label>
-                      <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())} placeholder="e.g., TS09AB1234" data-testid="input-vehicle" />
+                      <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} placeholder="e.g., TS09AB1234" data-testid="input-vehicle" />
                     </div>
 
                     <div>
@@ -602,7 +602,7 @@ export default function PlantMaterialReturns() {
                 <SelectContent>
                   <SelectItem value="all">All Materials</SelectItem>
                   {materials?.map(m => (
-                    <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                    <SelectItem key={m.id} value={String(m.id)} className="entity-name">{m.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -618,7 +618,7 @@ export default function PlantMaterialReturns() {
               <span className="font-semibold text-green-700 dark:text-green-300">Return Totals:</span>
               {filteredTotals.map((t, i) => (
                 <Badge key={i} variant="outline" className="text-green-700 dark:text-green-300 border-green-400 dark:border-green-600 text-sm px-3 py-1">
-                  {t.materialName}: {t.total.toFixed(3)} {t.uom}
+                  <span className="entity-name">{t.materialName}</span>: {t.total.toFixed(3)} {t.uom}
                 </Badge>
               ))}
             </div>

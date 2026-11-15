@@ -488,11 +488,11 @@ export default function PlantDispatches() {
           time,
           partyId: parseInt(partyId),
           mixTemplateId: parseInt(mixTemplateId),
-          truckNumber: truckNumber.toUpperCase(),
+          truckNumber,
           loadWeight: weight,
-          deliveryLocation: deliveryLocation.toUpperCase(),
-          ownerName: ownerName.toUpperCase() || null,
-          driverName: driverName.toUpperCase() || null,
+          deliveryLocation,
+          ownerName: ownerName || null,
+          driverName: driverName || null,
           actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
           actualLdoQty,
           adjustedBy: authenticatedRole,
@@ -508,11 +508,11 @@ export default function PlantDispatches() {
         time,
         partyId: parseInt(partyId),
         mixTemplateId: parseInt(mixTemplateId),
-        truckNumber: truckNumber.toUpperCase(),
+        truckNumber,
         loadWeight: weight,
-        deliveryLocation: deliveryLocation.toUpperCase(),
-        ownerName: ownerName.toUpperCase() || null,
-        driverName: driverName.toUpperCase() || null,
+        deliveryLocation,
+        ownerName: ownerName || null,
+        driverName: driverName || null,
         actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
         actualLdoQty,
         bitumenTankNumber: parseInt(bitumenTankNumber) || 1,
@@ -921,7 +921,7 @@ export default function PlantDispatches() {
                   </SelectTrigger>
                   <SelectContent>
                     {parties?.map((party) => (
-                      <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
+                      <SelectItem key={party.id} value={String(party.id)} className="entity-name">{party.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -981,7 +981,7 @@ export default function PlantDispatches() {
                         placeholder="Search or type truck number..."
                         value={truckNumber}
                         onValueChange={(val) => {
-                          setTruckNumber(val.toUpperCase());
+                          setTruckNumber(val);
                           setTransportEquipmentId(null);
                         }}
                         data-testid="input-truck-search"
@@ -1019,10 +1019,10 @@ export default function PlantDispatches() {
                                 key={eq.id}
                                 value={`${eq.name} ${eq.registrationNumber || ""} ${eq.vendorName || ""}`}
                                 onSelect={() => {
-                                  setTruckNumber(eq.registrationNumber?.toUpperCase() || eq.name.toUpperCase());
+                                  setTruckNumber(eq.registrationNumber || eq.name);
                                   setTransportEquipmentId(eq.id);
                                   if (eq.vendorName && !ownerName) {
-                                    setOwnerName(eq.vendorName.toUpperCase());
+                                  setOwnerName(eq.vendorName);
                                   }
                                   setTruckComboOpen(false);
                                 }}
@@ -1030,7 +1030,7 @@ export default function PlantDispatches() {
                               >
                                 <Check className={cn("mr-2 h-4 w-4", transportEquipmentId === eq.id ? "opacity-100" : "opacity-0")} />
                                 <div className="flex flex-col">
-                                  <span className="font-medium">{eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""}</span>
+                                  <span className="font-medium entity-name">{eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""}</span>
                                   {eq.vendorName && <span className="text-sm text-muted-foreground">{eq.vendorName}</span>}
                                 </div>
                               </CommandItem>
@@ -1061,7 +1061,7 @@ export default function PlantDispatches() {
                   <SelectContent>
                     <SelectItem value="__none__">-- None --</SelectItem>
                     {filteredSites.map(s => (
-                      <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                      <SelectItem key={s.id} value={s.name} className="entity-name">{s.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1143,11 +1143,11 @@ export default function PlantDispatches() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Owner name (optional)</Label>
-                  <Input value={ownerName} onChange={(e) => setOwnerName(e.target.value.toUpperCase())} placeholder="Vehicle owner" data-testid="input-owner-name" />
+                  <Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="Vehicle owner" data-testid="input-owner-name" />
                 </div>
                 <div>
                   <Label>Driver name (optional)</Label>
-                  <Input value={driverName} onChange={(e) => setDriverName(e.target.value.toUpperCase())} placeholder="Driver name" data-testid="input-driver-name" />
+                  <Input value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="Driver name" data-testid="input-driver-name" />
                 </div>
               </div>
 
@@ -1344,7 +1344,7 @@ export default function PlantDispatches() {
                 <SelectContent>
                   <SelectItem value="all">All Parties</SelectItem>
                   {parties?.map((party) => (
-                    <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
+                    <SelectItem key={party.id} value={String(party.id)} className="entity-name">{party.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1564,7 +1564,7 @@ export default function PlantDispatches() {
                                   if (!eq) return null;
                                   const ownerInfo = eq.ownershipStatus === "hired" && eq.vendorName ? `HIRED: ${eq.vendorName}` : `${companyShortName} OWN`;
                                   return (
-                                    <span className="text-sm text-muted-foreground block">{eq.name}{eq.registrationNumber ? ` (${eq.registrationNumber})` : ""} — {ownerInfo}</span>
+                                    <span className="text-sm text-muted-foreground block"><span className="entity-name">{eq.name}{eq.registrationNumber ? ` (${eq.registrationNumber})` : ""}</span> — {ownerInfo}</span>
                                   );
                                 })()}
                               </div>
@@ -1657,7 +1657,7 @@ export default function PlantDispatches() {
                   <tbody>
                     {shortageInfo.shortages.map((s) => (
                       <tr key={s.materialId} className="border-b last:border-0" data-testid={`row-shortage-${s.materialId}`}>
-                        <td className="p-2 font-medium">{s.materialName}</td>
+                        <td className="p-2 font-medium entity-name">{s.materialName}</td>
                         <td className="p-2 text-right tabular-nums">{s.required.toFixed(3)} {s.uom}</td>
                         <td className="p-2 text-right tabular-nums">{s.available.toFixed(3)} {s.uom}</td>
                         <td className="p-2 text-right tabular-nums font-semibold text-amber-700 dark:text-amber-400">

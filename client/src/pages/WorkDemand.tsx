@@ -32,7 +32,7 @@ import {
   type EarthworkArrangementSummary,
   deriveEarthworkSourcingBadge,
 } from "@shared/planningEngine";
-import { boqItemDisplayName } from "@/lib/itemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 import { buildScopeBasedBomSchedule } from "@shared/scopeBomDemand";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import {
@@ -153,7 +153,7 @@ function CompactedLooseDemand({
               return (
                 <tr key={item.id} className="border-t" data-testid={`compacted-loose-demand-${item.id}`}>
                   <td className="px-3 py-2">
-                    <span className="font-medium text-slate-700">{item.displayName || item.itemName || item.description}</span>
+                    <span className="font-medium text-slate-700">{boqItemDisplayName(item)}</span>
                     {item.itemCode && <span className="ml-1 text-slate-400">[{item.itemCode}]</span>}
                     {state && (
                       <div className="mt-0.5 text-[10px] text-amber-700">
@@ -368,7 +368,7 @@ function MaterialsTable({
                         ? <ChevronUp className="w-3 h-3 text-teal-500 flex-shrink-0" />
                         : <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />
                       }
-                      <span className="font-medium text-slate-700">{row.materialName}</span>
+                      <span className="font-medium text-slate-700 entity-name">{row.materialName}</span>
                       {unscheduledBreakdown.length === row.breakdown.length && unscheduledBreakdown.length > 0 && (
                         <span className="rounded border border-amber-200 bg-amber-50 px-1 text-[10px] font-semibold text-amber-700">Not scheduled</span>
                       )}
@@ -557,7 +557,7 @@ function EquipmentTable({
                         ? <ChevronUp className="w-3 h-3 text-blue-500 flex-shrink-0" />
                         : <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />
                       }
-                      <span className="font-medium text-slate-700">{row.equipmentName}</span>
+                      <span className="font-medium text-slate-700 entity-name">{row.equipmentName}</span>
                     </div>
                   </td>
                   <td className="px-2 py-2 text-right text-muted-foreground">hr</td>
@@ -1450,7 +1450,7 @@ function ItemWiseTable({
                   </tr></thead>
                   <tbody>{row.materials.map(m => (
                     <tr key={m.name} className="border-b border-slate-50">
-                      <td className="py-1 text-slate-700">{m.name}</td>
+                      <td className="py-1 text-slate-700 entity-name">{m.name}</td>
                       <td className="py-1 text-right font-mono text-slate-500 text-[12px]">{fmtQty(m.qtyPerUnit, 4)}</td>
                       <td className="py-1 text-right font-mono text-slate-500 text-[12px]">{fmtQty(row.workQty, 2)}</td>
                       <td className="py-1 text-right font-mono font-semibold text-teal-700">{fmtQty(m.qty, 2)}</td>
@@ -1474,7 +1474,7 @@ function ItemWiseTable({
                   </tr></thead>
                   <tbody>{row.equipment.map(e => (
                     <tr key={e.name} className="border-b border-slate-50">
-                      <td className="py-1 text-slate-700">{e.name}</td>
+                      <td className="py-1 text-slate-700 entity-name">{e.name}</td>
                       <td className="py-1 text-right font-mono text-slate-500 text-[12px]">{formatPositiveRate(e.hrsPerUnit, e.hours)}</td>
                       <td className="py-1 text-right font-mono text-slate-500 text-[12px]">{fmtQty(row.workQty, 2)}</td>
                       <td className="py-1 text-right font-mono font-semibold text-blue-700">{fmtQty(e.hours, 1)} hr</td>
@@ -1852,7 +1852,7 @@ function ResolveMappingDialog({
         <div className="space-y-4 py-2 text-sm">
           <div className="bg-amber-50 border border-amber-200 rounded p-3">
             <p className="font-semibold text-amber-900">BOM Label</p>
-            <p className="text-amber-800 font-mono text-[13px]">{row.materialName} · {row.uom}</p>
+            <p className="text-amber-800 font-mono text-[13px]"><span className="entity-name">{row.materialName}</span> · {row.uom}</p>
             <p className="text-amber-700 text-[12px] mt-1">
               {row.materialMappingAmbiguous
                 ? `Multiple possible matches were found for this label. Search and select the correct canonical material below.`
@@ -1895,7 +1895,7 @@ function ResolveMappingDialog({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span>
-                        <span className="font-medium text-slate-800">{m.name}</span>
+                        <span className="font-medium text-slate-800 entity-name">{m.name}</span>
                         {m.category && <span className="ml-1.5 text-[11px] text-slate-500">{m.category}</span>}
                         {m.defaultUom && <span className="ml-1.5 text-[11px] text-muted-foreground">({m.defaultUom})</span>}
                       </span>
@@ -1924,7 +1924,7 @@ function ResolveMappingDialog({
             uomCheck.compatible ? (
               <div className={`rounded p-2 text-[12px] border ${uomCheck.mode === "bulk_density" ? "bg-blue-50 border-blue-200" : "bg-teal-50 border-teal-200"}`}>
                 <span className={`font-semibold ${uomCheck.mode === "bulk_density" ? "text-blue-800" : "text-teal-800"}`}>Will map to: </span>
-                <span className={uomCheck.mode === "bulk_density" ? "text-blue-700" : "text-teal-700"}>{selected.name}</span>
+                <span className={`entity-name ${uomCheck.mode === "bulk_density" ? "text-blue-700" : "text-teal-700"}`}>{selected.name}</span>
                 {selected.defaultUom && <span className="text-teal-600"> ({selected.defaultUom})</span>}
                 {uomCheck.mode === "bulk_density" && uomCheck.basis && (
                   <>
@@ -2463,7 +2463,7 @@ function SuggestionBadge({
             </DialogHeader>
             <div className="space-y-4 py-2 text-sm">
               <div className="bg-gray-50 rounded p-3 space-y-1">
-                <p className="font-semibold text-gray-800 truncate">{row.materialName}</p>
+                <p className="font-semibold text-gray-800 truncate entity-name">{row.materialName}</p>
                 {/* v2 breakdown */}
                 <p className="text-gray-600">Demand to horizon: <span className="font-mono font-semibold">{fmtN(row.demandUpToSelectedDate)} {row.uom}</span></p>
                 <p className="text-gray-600">{companyShortName} Stock: <span className="font-mono font-semibold">{fmtN(row.hlcRecordedStock)}</span> · Confirmed Incoming: <span className="font-mono font-semibold">{fmtN(row.confirmedIncomingPurchase)}</span></p>
@@ -2495,7 +2495,7 @@ function SuggestionBadge({
                     <SelectTrigger id="dest-plant" className="w-full"><SelectValue placeholder="Select plant…" /></SelectTrigger>
                     <SelectContent>
                       {plantsForDest.map((p: any) => (
-                        <SelectItem key={p.plantName ?? p.id} value={String(p.id ?? p.plantName)}>{p.plantName}</SelectItem>
+                        <SelectItem key={p.plantName ?? p.id} value={String(p.id ?? p.plantName)} className="entity-name">{p.plantName}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -2509,7 +2509,7 @@ function SuggestionBadge({
                   <Select value={destSiteId} onValueChange={setDestSiteId}>
                     <SelectTrigger id="dest-site" className="w-full"><SelectValue placeholder="Select site…" /></SelectTrigger>
                     <SelectContent>
-                      {sitesList.map((s: any) => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                      {sitesList.map((s: any) => <SelectItem key={s.id} value={String(s.id)} className="entity-name">{s.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -2550,7 +2550,7 @@ function SuggestionBadge({
             <div className="py-4 space-y-3 text-sm">
               <div className="bg-gray-50 rounded p-3 space-y-1">
                 <p className="text-[12px] text-muted-foreground">Requirement REQ-{createdReqId} created ✓</p>
-                <p className="font-semibold">{row.materialName}</p>
+                <p className="font-semibold entity-name">{row.materialName}</p>
                 <p className="text-gray-600">Authorised qty: <span className="font-mono font-semibold">{fmtN(totalQty)} {row.uom}</span></p>
                 {row.requiredByDate && <p className="text-gray-500 text-[12px]">Required by: {row.requiredByDate}</p>}
               </div>
@@ -2578,7 +2578,7 @@ function SuggestionBadge({
             <div className="py-3 space-y-3 text-sm">
               <div className="bg-gray-50 rounded p-3 space-y-1">
                 <p className="text-[12px] text-muted-foreground">Requirement REQ-{createdReqId} created ✓</p>
-                <p className="font-semibold">{row.materialName}</p>
+                <p className="font-semibold entity-name">{row.materialName}</p>
                 <p className="text-gray-600">Total required: <span className="font-mono font-semibold">{fmtN(totalQty)} {row.uom}</span></p>
                 {row.hlcRecordedStock > 0 && (
                   <p className="text-blue-700 text-[12px]">Suggested internal allocation (from {companyShortName} stock): {fmtN(Math.min(row.hlcRecordedStock, Math.max(0, row.demandUpToSelectedDate - row.confirmedIncomingPurchase - row.confirmedInternalIncoming)))} {row.uom}</p>
@@ -2856,7 +2856,7 @@ function ProcurementTable({
                 >
                   <td className={`px-3 py-2 font-medium sticky left-0 z-10 ${hasShortfall ? "bg-red-50/50" : isUnresolved ? "bg-amber-50/50" : "bg-white"}`}>
                     <div className="flex items-center gap-1 flex-wrap">
-                      <span className="text-slate-700">{row.materialName}</span>
+                      <span className="text-slate-700 entity-name">{row.materialName}</span>
                       {row.materialMappingAmbiguous && (
                         <span className="text-[10px] font-semibold text-orange-700 bg-orange-100 border border-orange-300 rounded px-1 py-0.5" title={`Ambiguous: ${(row.ambiguousCandidates ?? []).map(c => c.name).join(", ")}`}>Multiple matches</span>
                       )}

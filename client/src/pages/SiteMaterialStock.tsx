@@ -99,7 +99,7 @@ export default function SiteMaterialStock() {
 
                 {/* Site header + delivery log link */}
                 <div className="px-4 py-3 border-b bg-muted/40 flex items-center justify-between">
-                  <span className="font-semibold text-sm">{site}</span>
+                  <span className="font-semibold text-sm entity-name">{site}</span>
                   <Link href={`/site/material-trips/review?site=${encodeURIComponent(site)}&returnTo=${encodeURIComponent("/site/material-stock")}`}
                     className="text-xs text-muted-foreground hover:text-emerald-700 flex items-center gap-1 transition-colors"
                     data-testid={`link-trips-${site}`}>
@@ -136,7 +136,7 @@ export default function SiteMaterialStock() {
                           <td className="px-4 py-2.5 font-medium">
                             <div className="flex flex-col gap-0.5">
                               <span className="inline-flex items-center gap-1.5 flex-wrap">
-                                {r.material}
+                                <span className="entity-name">{r.material}</span>
                                 {!r.matched && (
                                   <span
                                     title="Name does not match any Materials Master entry — check PI description or recipe spelling"

@@ -37,16 +37,16 @@ export function PersonnelCombobox({
     : active;
 
   function select(name: string) {
-    onChange(name.toUpperCase());
-    setQuery(name.toUpperCase());
+    onChange(name);
+    setQuery(name);
     setOpen(false);
   }
 
   function handleBlur(e: React.FocusEvent) {
     if (listRef.current?.contains(e.relatedTarget as Node)) return;
     setOpen(false);
-    if (query.trim() && query.toUpperCase() !== value.toUpperCase()) {
-      onChange(query.trim().toUpperCase());
+    if (query.trim() && query.trim().toLocaleLowerCase() !== value.trim().toLocaleLowerCase()) {
+      onChange(query.trim());
     }
   }
 
@@ -75,7 +75,7 @@ export function PersonnelCombobox({
           {filtered.length === 0 ? (
             <div className="px-3 py-2 text-gray-400 italic text-sm">
               {query.trim()
-                ? `No match — "${query.trim().toUpperCase()}" will be saved as typed`
+                ? `No match — "${query.trim()}" will be saved as typed`
                 : "No active personnel found"}
             </div>
           ) : (
@@ -87,12 +87,12 @@ export function PersonnelCombobox({
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <User className="h-3 w-3 text-gray-400 shrink-0" />
-                  <span className="font-medium truncate">{p.name.toUpperCase()}</span>
+                  <span className="font-medium truncate">{p.name}</span>
                   {p.role && (
                     <span className="text-gray-400 shrink-0">{p.role}</span>
                   )}
                 </div>
-                {p.name.toUpperCase() === value.toUpperCase() && (
+                {p.name.trim().toLocaleLowerCase() === value.trim().toLocaleLowerCase() && (
                   <Check className="h-3 w-3 text-amber-600 shrink-0" />
                 )}
               </div>

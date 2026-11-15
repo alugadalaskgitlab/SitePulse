@@ -2,7 +2,7 @@ import { useMemo, useState, Fragment } from "react";
 import { ChevronDown, ChevronRight, Package } from "lucide-react";
 import { fmtQty, getShortName, monthLabel, type BomInputBar, type BomInputItem } from "@shared/planningEngine";
 import { canonicalizeUnit } from "@shared/boqNormalise";
-import { boqItemDisplayName } from "@/lib/itemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 import {
   buildBalanceWorkByReach,
   type WorkValueBalanceRow,

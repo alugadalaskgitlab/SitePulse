@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { boqItemDisplayName } from "@/lib/itemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 import { getShortName } from "@shared/planningEngine";
 
 type WorkValueRow = {

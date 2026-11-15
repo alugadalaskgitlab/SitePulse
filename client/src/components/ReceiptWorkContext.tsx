@@ -14,7 +14,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { boqItemDisplayName } from "@shared/boqItemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 import { barSideLabel } from "@shared/barSide";
 import {
   resolveApplicableArrangements,

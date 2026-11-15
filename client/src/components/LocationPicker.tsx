@@ -63,7 +63,7 @@ export function LocationPicker({ value, onChange, sitesList, placeholder, "data-
           </div>
         )}
         {(sitesList ?? []).map((s) => (
-          <SelectItem key={`site:${s.id}`} value={`site:${s.id}`}>{s.name}</SelectItem>
+          <SelectItem key={`site:${s.id}`} value={`site:${s.id}`} className="entity-name">{s.name}</SelectItem>
         ))}
         <div className="px-2 pt-2 pb-1 text-[12px] font-semibold uppercase tracking-wider text-muted-foreground border-t mt-1">
           Sections

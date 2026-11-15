@@ -309,7 +309,7 @@ interface SiteEntryFormData {
 // BOQ item display naming — shared single source of truth (shared/boqItemName.ts).
 // Operational screens show the item's short name; the full imported description
 // stays on the BOQ / Item Review management screens.
-import { boqItemDisplayName } from "@shared/boqItemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 import { layerFieldLabel, showLayerField } from "@shared/layerDisplay";
 
 export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectionEditorProps } = {}) {
@@ -838,7 +838,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     const target = personnelAddTarget;
     setPersonnelAddTarget(null);
     if (target?.kind === "header") {
-      setHeader((h) => ({ ...h, engineer: `${person.name.toUpperCase()} - ${person.role.toUpperCase()}` }));
+      setHeader((h) => ({ ...h, engineer: `${person.name} - ${person.role}` }));
     } else if (target?.kind === "progressRow") {
       setProgress((prev) => {
         const updated = [...prev];
@@ -1284,7 +1284,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   const changeChainage = (idx: number, field: "chainageFrom" | "chainageTo", value: string) => {
     const updated = [...progress];
     const entry = updated[idx];
-    entry[field] = value.toUpperCase();
+    entry[field] = value;
     entry.length = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
     applyCalc(entry);
     setProgress(updated);
@@ -2329,7 +2329,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               </SelectTrigger>
               <SelectContent>
                 {activeSites.map((s) => (
-                  <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                  <SelectItem key={s.id} value={s.name} className="entity-name">{s.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -2346,8 +2346,8 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 </SelectTrigger>
                 <SelectContent>
                   {(personnelList || []).filter(p => p.isActive).map((p) => (
-                    <SelectItem key={p.id} value={`${p.name.toUpperCase()} - ${p.role.toUpperCase()}`}>
-                      {p.name.toUpperCase()} - {p.role.toUpperCase()}
+                    <SelectItem key={p.id} value={`${p.name} - ${p.role}`}>
+                      {p.name} - {p.role}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -2704,7 +2704,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                       value={entry.activity}
                       onChange={(e) => {
                         const updated = [...progress];
-                        updated[idx].activity = e.target.value.toUpperCase();
+                        updated[idx].activity = e.target.value;
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -2718,7 +2718,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                       value={entry.noSiteWorkDescription}
                       onChange={(e) => {
                         const updated = [...progress];
-                        updated[idx].noSiteWorkDescription = e.target.value.toUpperCase();
+                        updated[idx].noSiteWorkDescription = e.target.value;
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -2779,7 +2779,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                         onChange={(id, it) => {
                           const updated = [...progress];
                           updated[idx].boqItemId = id;
-                          updated[idx].activity = it ? dprBoqItemDisplayName(it).toUpperCase() : "";
+                          updated[idx].activity = it ? dprBoqItemDisplayName(it) : "";
                           // 06T §3: deliberate item change — arrangement and
                           // bar link re-resolve for the new context.
                           updated[idx].earthworkArrangementId = null;
@@ -2889,7 +2889,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                         value={entry.activity}
                         onChange={(e) => {
                           const updated = [...progress];
-                          updated[idx].activity = e.target.value.toUpperCase();
+                          updated[idx].activity = e.target.value;
                           setProgress(updated);
                         }}
                         className="uppercase"
@@ -3408,7 +3408,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               </div>}
               <div><Label className="text-sm">Operator</Label>
                 <Input placeholder="Operator name" value={entry.operator} className="uppercase"
-                  onChange={event => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, operator: event.target.value.toUpperCase() } : row))}
+                  onChange={event => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, operator: event.target.value } : row))}
                   data-testid={`input-equipment-operator-${idx}`} />
               </div>
             </>;
@@ -3431,7 +3431,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                     ? { ...row, diesel: event.target.value ? Number(event.target.value) : null } : row))} /></div>
               {entry.dieselSource === "direct_purchase" && <>
                 <div><Label className="text-sm">Fuel station</Label><Input value={entry.fuelStation || ""} placeholder="HP / BPCL" className="uppercase"
-                  data-testid={`input-fuel-station-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, fuelStation: e.target.value.toUpperCase() } : row))} /></div>
+                  data-testid={`input-fuel-station-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, fuelStation: e.target.value } : row))} /></div>
                 <div><Label className="text-sm">Bill no.</Label><Input value={entry.billNumber || ""} placeholder="Receipt #" className="uppercase"
                   data-testid={`input-bill-number-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, billNumber: e.target.value.toUpperCase() } : row))} /></div>
                 <div><Label className="text-sm">Amount (Rs)</Label><Input type="number" step="0.01" value={entry.amountPaid ?? ""}
@@ -3602,7 +3602,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   value={entry.task}
                   onChange={(e) => {
                     const updated = [...labour];
-                    updated[idx].task = e.target.value.toUpperCase();
+                    updated[idx].task = e.target.value;
                     setLabour(updated);
                   }}
                   className="uppercase"
@@ -3738,7 +3738,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                     <Input
                       placeholder="e.g. WMM / VG-30 / Cement"
                       value={m.material}
-                      onChange={(e) => updateMaterial(idx, 'material', e.target.value.toUpperCase())}
+                      onChange={(e) => updateMaterial(idx, 'material', e.target.value)}
                       className="uppercase"
                       data-testid={`input-material-name-${idx}`}
                     />
@@ -3769,7 +3769,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                     <Input
                       placeholder="Where used"
                       value={m.location}
-                      onChange={(e) => updateMaterial(idx, 'location', e.target.value.toUpperCase())}
+                      onChange={(e) => updateMaterial(idx, 'location', e.target.value)}
                       className="uppercase"
                       data-testid={`input-material-location-${idx}`}
                     />
@@ -3871,7 +3871,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   <Input
                     placeholder="e.g. Diesel for cleaning"
                     value={sp.itemDescription}
-                    onChange={e => updateSitePurchase(idx, 'itemDescription', e.target.value.toUpperCase())}
+                    onChange={e => updateSitePurchase(idx, 'itemDescription', e.target.value)}
                     className="uppercase"
                     data-testid={`input-site-purchase-item-${idx}`}
                   />
@@ -3881,7 +3881,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   <Input
                     placeholder="e.g. Local Fuel Station"
                     value={sp.vendor}
-                    onChange={e => updateSitePurchase(idx, 'vendor', e.target.value.toUpperCase())}
+                    onChange={e => updateSitePurchase(idx, 'vendor', e.target.value)}
                     className="uppercase"
                     data-testid={`input-site-purchase-vendor-${idx}`}
                   />
@@ -4072,7 +4072,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               <Label>Name</Label>
               <Input
                 value={newPersonnelName}
-                onChange={(e) => { setNewPersonnelName(e.target.value.toUpperCase()); setDuplicatePersonnel(null); }}
+                onChange={(e) => { setNewPersonnelName(e.target.value); setDuplicatePersonnel(null); }}
                 placeholder="Full name"
                 className="uppercase"
                 data-testid="input-new-personnel-name"
@@ -4093,7 +4093,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               <Label>Phone (optional)</Label>
               <Input
                 value={newPersonnelPhone}
-                onChange={(e) => setNewPersonnelPhone(e.target.value.toUpperCase())}
+                onChange={(e) => setNewPersonnelPhone(e.target.value)}
                 placeholder="Phone number"
                 className="uppercase"
                 data-testid="input-new-personnel-phone"

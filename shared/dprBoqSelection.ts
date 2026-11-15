@@ -1,4 +1,4 @@
-import { boqItemDisplayName, type BoqItemNameFields } from "./boqItemName";
+import { boqItemDisplayName, boqItemDisplayText, type BoqItemNameFields } from "./boqItemName";
 
 export interface DprBoqProjectChoice {
   id: number;
@@ -324,4 +324,9 @@ export function dprSelectableBoqItems<T extends DprBoqSelectableItem>(
 /** The only user-facing BOQ label allowed in a DPR picker. */
 export function dprBoqItemDisplayName(item?: DprBoqSelectableItem | null): string {
   return boqItemDisplayName(item);
+}
+
+/** Display-only BOQ picker label, preserving long imported description case. */
+export function dprBoqItemDisplayText(item?: DprBoqSelectableItem | null): string {
+  return boqItemDisplayText(item);
 }

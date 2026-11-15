@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import type { MaterialReceiptSlipCompany, MaterialReceiptSlipData } from "./materialReceiptSlipTypes";
+import { displayName } from "@shared/displayName";
 import { loadPdfLogoDataUrl } from "@/components/vendor-bills/pdfExportStyle";
 import { formatPersonName } from "@shared/personName";
 import { formatCompanyText } from "@shared/companyIdentity";
@@ -75,15 +76,15 @@ function convertedMt(record: MaterialReceiptSlipData): string | null {
 function detailRows(record: MaterialReceiptSlipData): [string, string][] {
   const rows: [string, string][] = [];
   if (record.kind === "plant") {
-    if (record.supplier) rows.push(["Supplier/Vendor", record.supplier]);
-    if (record.transporter) rows.push(["Transporter", record.transporter]);
+    if (record.supplier) rows.push(["Supplier/Vendor", displayName(record.supplier)]);
+    if (record.transporter) rows.push(["Transporter", displayName(record.transporter)]);
   } else {
     const own = record.materialSourceType === "own_source";
     const source = own ? record.materialSourceLabel : record.materialSourceSupplier;
-    if (source) rows.push([own ? "Source" : "Supplier/Vendor", source]);
-    if (record.supplier) rows.push(["Transporter", record.supplier]);
+    if (source) rows.push([own ? "Source" : "Supplier/Vendor", displayName(source)]);
+    if (record.supplier) rows.push(["Transporter", displayName(record.supplier)]);
   }
-  if (record.vehicleNumber) rows.push(["Vehicle", record.vehicleNumber]);
+  if (record.vehicleNumber) rows.push(["Vehicle", displayName(record.vehicleNumber)]);
   if (record.driverName) rows.push(["Driver", formatPersonName(record.driverName)]);
   if (record.kind === "plant") {
     if (record.challanNumber) rows.push(["Supplier challan", record.challanNumber]);
@@ -169,8 +170,8 @@ function layout(
 
   y += 5;
   const info = record.kind === "plant"
-    ? [["Date", displayDate(record.date)], ["Time", displayTime(record.time)], ["Received at", record.plantName || company.defaultPlantName?.trim() || "Main Plant"]] as [string, string][]
-    : [["Date", displayDate(record.date)], ["Time", displayTime(record.time)], ["Site", record.site || "-"], ["Location", record.location || "-"]] as [string, string][];
+    ? [["Date", displayDate(record.date)], ["Time", displayTime(record.time)], ["Received at", displayName(record.plantName || company.defaultPlantName?.trim() || "Main Plant")]] as [string, string][]
+    : [["Date", displayDate(record.date)], ["Time", displayTime(record.time)], ["Site", displayName(record.site || "-")], ["Location", record.location || "-"]] as [string, string][];
   const widths = record.kind === "plant" ? [30, 24, 74] : [26, 20, 41, 41];
   doc.setDrawColor(...RULE);
   doc.setLineWidth(0.2);
@@ -199,18 +200,18 @@ function layout(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);
   doc.setTextColor(...INK);
-  doc.text(doc.splitTextToSize(record.materialName || "Material", 62).slice(0, 1), M + 6, y + 14.5);
+  doc.text(doc.splitTextToSize(displayName(record.materialName || "Material"), 62).slice(0, 1), M + 6, y + 14.5);
   if (record.kind === "plant") {
     label(doc, "Stock of", M + 6, y + 20.5);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7.6);
     doc.setTextColor(...INK);
-     const stockOwner = record.partyName
-       ? formatCompanyText(record.partyName, {
+      const stockOwner = record.partyName
+        ? displayName(formatCompanyText(record.partyName, {
            companyName: company.name || "Your company",
            companyShortName: company.shortName?.trim() || "Your company",
-         })
-       : company.shortName?.trim() || "Your company";
+          }))
+        : displayName(company.shortName?.trim() || "Your company");
      doc.text(doc.splitTextToSize(stockOwner, 46).slice(0, 1), M + 22, y + 20.5);
   }
   label(doc, "Quantity received", W - M - 5, y + 7, "right");
@@ -274,7 +275,7 @@ function layout(
   const half = (W - 2 * M - 12) / 2;
   const receivedByName = formatPersonName(record.receivedByName);
   const driverName = formatPersonName(record.driverName);
-  const companyName = company.name.replace(/\s+/g, " ").trim();
+  const companyName = displayName(company.name.replace(/\s+/g, " ").trim());
   const companyCaption = companyName ? `for ${companyName}` : "";
   doc.setDrawColor(...DARK);
   doc.setLineWidth(0.25);
@@ -357,8 +358,8 @@ export function materialReceiptSlipCaption(record: MaterialReceiptSlipData, comp
   return [
     heading,
     `${reference}${record.latestEditAt ? " · Revised" : ""}`,
-    `${record.materialName} — ${record.quantity} ${record.uom}`,
-    record.vehicleNumber ? `Vehicle: ${record.vehicleNumber}` : null,
+    `${displayName(record.materialName)} — ${record.quantity} ${record.uom}`,
+    record.vehicleNumber ? `Vehicle: ${displayName(record.vehicleNumber)}` : null,
     record.driverName ? `Driver: ${formatPersonName(record.driverName)}` : null,
     receivedByName ? `Received by: ${receivedByName}` : null,
     dateTime,

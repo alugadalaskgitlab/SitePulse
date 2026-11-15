@@ -774,7 +774,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
               <SelectContent>
                 <SelectItem value="unmatched">Select a Vendor Master record</SelectItem>
                 {vendorMasters.filter(vendor => vendor.isActive !== false).map(vendor => (
-                  <SelectItem key={vendor.id} value={String(vendor.id)}>{vendor.name}</SelectItem>
+                  <SelectItem key={vendor.id} value={String(vendor.id)} className="entity-name">{vendor.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -793,7 +793,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
               </SelectTrigger>
               <SelectContent>
                 {vendorNames.map(vendorName => (
-                  <SelectItem key={vendorName} value={vendorName}>{vendorName}</SelectItem>
+                  <SelectItem key={vendorName} value={vendorName} className="entity-name">{vendorName}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1058,7 +1058,7 @@ export default function RateCards({ draftVendor, onReturnToDraft }: { draftVendo
                                 </SelectTrigger>
                                 <SelectContent>
                                   {materialNameOptions.map(material => (
-                                    <SelectItem key={material} value={material}>{material}</SelectItem>
+                                    <SelectItem key={material} value={material} className="entity-name">{material}</SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>

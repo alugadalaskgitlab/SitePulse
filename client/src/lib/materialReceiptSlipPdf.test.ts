@@ -58,6 +58,26 @@ describe("material receipt slip PDF logo handling", () => {
     expect(await pdf.text()).not.toContain("/Subtype /Image");
   });
 
+  it("capitalizes entity names in receipt PDFs without changing people names", async () => {
+    loadLogo.mockResolvedValue(null);
+    const pdf = await buildMaterialReceiptSlipPdf({
+      ...receipt,
+      materialName: "20mm aggregate",
+      partyName: "high lane",
+      vehicleNumber: "ka01ab1234",
+      supplier: "North Supplier",
+      driverName: "praveen",
+      receivedByName: "sunil kumar",
+    }, company, null);
+    const text = await pdf.text();
+    expect(text).toContain("20MM AGGREGATE");
+    expect(text).toContain("HIGH LANE");
+    expect(text).toContain("KA01AB1234");
+    expect(text).toContain("NORTH SUPPLIER");
+    expect(text).toContain("Praveen");
+    expect(text).toContain("Sunil Kumar");
+  });
+
   it("uses configured short and legal company names when the logo is unavailable", async () => {
     loadLogo.mockResolvedValue(null);
     const pdf = await buildMaterialReceiptSlipPdf(
@@ -67,8 +87,8 @@ describe("material receipt slip PDF logo handling", () => {
     );
     const text = await pdf.text();
     expect(text).toContain("ABC");
-    expect(text).toContain("for Acme Roads Pvt Ltd");
-    expect(text).toContain("North Plant");
+    expect(text).toContain("for ACME ROADS PVT LTD");
+    expect(text).toContain("NORTH PLANT");
     expect(text).not.toContain("Main Plant");
   });
 
@@ -106,9 +126,9 @@ describe("material receipt slip PDF logo handling", () => {
     expect(text).toContain("Praveen");
     expect(text).toContain("Sunil Kumar");
     expect(text).toContain("Received by");
-    expect(text).toContain("for High Lane Constructions Pvt Ltd");
+    expect(text).toContain("for HIGH LANE CONSTRUCTIONS PVT LTD");
     expect(text.indexOf("(Sunil Kumar) Tj")).toBeLessThan(text.indexOf("(Received by) Tj"));
-    expect(text.indexOf("(Received by) Tj")).toBeLessThan(text.indexOf("(for High Lane Constructions Pvt Ltd) Tj"));
+    expect(text.indexOf("(Received by) Tj")).toBeLessThan(text.indexOf("(for HIGH LANE CONSTRUCTIONS PVT LTD) Tj"));
     expect(text).toContain("Driver");
     expect(text).not.toContain("Received in good order");
     expect(materialReceiptSlipCaption(receipt)).toContain("Driver: Praveen");
@@ -126,7 +146,7 @@ describe("material receipt slip PDF logo handling", () => {
     const text = await pdf.text();
 
     expect(text).toContain("Received by");
-    expect(text).toContain("for High Lane Constructions Pvt Ltd");
+    expect(text).toContain("for HIGH LANE CONSTRUCTIONS PVT LTD");
     expect(text).toContain("Driver");
     expect(text).not.toContain("(null) Tj");
     expect(text).not.toContain("(undefined) Tj");

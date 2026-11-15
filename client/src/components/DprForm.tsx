@@ -76,7 +76,7 @@ export function DprForm() {
                   </FormControl>
                   <SelectContent>
                     {activeSites.map((s) => (
-                      <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                      <SelectItem key={s.id} value={s.name} className="entity-name">{s.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -91,7 +91,7 @@ export function DprForm() {
               <FormItem>
                 <FormLabel>Engineer Name</FormLabel>
                 <FormControl>
-                  <Input placeholder="John Doe" className="uppercase" {...field} onChange={e => field.onChange(e.target.value.toUpperCase())} />
+                  <Input placeholder="John Doe" {...field} onChange={e => field.onChange(e.target.value)} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -205,7 +205,7 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
                       <FormItem className="col-span-1 md:col-span-2 lg:col-span-1">
                         <FormLabel>Activity Description</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g. BC Laying" className="uppercase" {...field} onChange={e => field.onChange(e.target.value.toUpperCase())} />
+                          <Input placeholder="e.g. BC Laying" {...field} onChange={e => field.onChange(e.target.value)} />
                         </FormControl>
                       </FormItem>
                     )}
@@ -264,7 +264,7 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
                       <FormItem>
                         <FormLabel>Chainage From</FormLabel>
                         <FormControl>
-                          <Input placeholder="0+000" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} />
+                          <Input placeholder="0+000" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value)} />
                         </FormControl>
                       </FormItem>
                     )}
@@ -276,7 +276,7 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
                       <FormItem>
                         <FormLabel>Chainage To</FormLabel>
                         <FormControl>
-                          <Input placeholder="0+100" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} />
+                          <Input placeholder="0+100" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value)} />
                         </FormControl>
                       </FormItem>
                     )}
@@ -466,7 +466,7 @@ function EquipmentRow({ control, index, remove }: { control: Control<CreateDprRe
               <FormItem>
                 <FormLabel>Machine Name</FormLabel>
                 <FormControl>
-                  <Input placeholder="e.g. Excavator 01" className="uppercase" {...field} onChange={e => field.onChange(e.target.value.toUpperCase())} />
+                  <Input placeholder="e.g. Excavator 01" {...field} onChange={e => field.onChange(e.target.value)} />
                 </FormControl>
               </FormItem>
             )}
@@ -478,7 +478,7 @@ function EquipmentRow({ control, index, remove }: { control: Control<CreateDprRe
               <FormItem>
                 <FormLabel>Operator Name (Optional)</FormLabel>
                 <FormControl>
-                  <Input placeholder="Name" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} />
+                  <Input placeholder="Name" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value)} />
                 </FormControl>
               </FormItem>
             )}
@@ -634,7 +634,7 @@ function EquipmentRow({ control, index, remove }: { control: Control<CreateDprRe
               <FormItem>
                 <FormLabel>Task Performed</FormLabel>
                 <FormControl>
-                  <Input placeholder="e.g. Rolling WMM" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} />
+                  <Input placeholder="e.g. Rolling WMM" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value)} />
                 </FormControl>
               </FormItem>
             )}
@@ -872,7 +872,7 @@ function MaterialSection({ control }: { control: Control<CreateDprRequest> }) {
                 <FormItem>
                   <FormLabel>Material Name</FormLabel>
                   <FormControl>
-                     <Input placeholder="e.g. Cement" className="uppercase" {...field} onChange={e => field.onChange(e.target.value.toUpperCase())} />
+                     <Input placeholder="e.g. Cement" {...field} onChange={e => field.onChange(e.target.value)} />
                   </FormControl>
                 </FormItem>
               )}
@@ -884,7 +884,7 @@ function MaterialSection({ control }: { control: Control<CreateDprRequest> }) {
                 <FormItem>
                   <FormLabel>Supplier</FormLabel>
                   <FormControl>
-                     <Input placeholder="e.g. ABC Corp" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} />
+                     <Input placeholder="e.g. ABC Corp" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value)} />
                   </FormControl>
                 </FormItem>
               )}
@@ -978,7 +978,7 @@ function SitePurchasesSection({ control }: { control: Control<CreateDprRequest> 
                 <FormItem className="md:col-span-2">
                   <FormLabel>Item Description</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. Diesel for cleaning" className="uppercase" {...field} onChange={e => field.onChange(e.target.value.toUpperCase())} data-testid={`input-site-purchase-item-${index}`} />
+                    <Input placeholder="e.g. Diesel for cleaning" {...field} onChange={e => field.onChange(e.target.value)} data-testid={`input-site-purchase-item-${index}`} />
                   </FormControl>
                 </FormItem>
               )}
@@ -990,7 +990,7 @@ function SitePurchasesSection({ control }: { control: Control<CreateDprRequest> 
                 <FormItem>
                   <FormLabel>Vendor</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. Local Fuel Station" className="uppercase" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value.toUpperCase())} data-testid={`input-site-purchase-vendor-${index}`} />
+                    <Input placeholder="e.g. Local Fuel Station" {...field} value={field.value || ''} onChange={e => field.onChange(e.target.value)} data-testid={`input-site-purchase-vendor-${index}`} />
                   </FormControl>
                 </FormItem>
               )}

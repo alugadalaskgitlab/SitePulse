@@ -39,7 +39,7 @@ import type {
   BoqMixTemplateLink,
 } from "@shared/schema";
 import { buildSnlSearchUrl, getSnlSearchItemTitle, getSnlSourceDisplayName, groupSnlSearchResults } from "@shared/normBook";
-import { boqItemDisplayName } from "@shared/boqItemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -761,7 +761,7 @@ function EquipmentTab({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__manual__">— Enter manually —</SelectItem>
-                    {masterList.map((m) => <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>)}
+                    {masterList.map((m) => <SelectItem key={m.id} value={String(m.id)} className="entity-name">{m.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 {row.planningEquipTypeId === "__manual__" && (

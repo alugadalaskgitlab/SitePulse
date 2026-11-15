@@ -302,7 +302,7 @@ function LogForm({
           <SelectTrigger data-testid="select-maint-equipment"><SelectValue placeholder="Select equipment..." /></SelectTrigger>
           <SelectContent>
             {equipment.map(e => (
-              <SelectItem key={e.id} value={String(e.id)}>{e.name}{e.registrationNumber ? ` (${e.registrationNumber})` : ""}</SelectItem>
+              <SelectItem key={e.id} value={String(e.id)} className="entity-name">{e.name}{e.registrationNumber ? ` (${e.registrationNumber})` : ""}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -1012,7 +1012,7 @@ export default function PlantMaintenance() {
             <SelectTrigger className="w-44" data-testid="filter-equipment"><SelectValue placeholder="All equipment" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All equipment</SelectItem>
-              {(canReadEquipment ? equipment : equipmentOptions).map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}
+              {(canReadEquipment ? equipment : equipmentOptions).map(e => <SelectItem key={e.id} value={String(e.id)} className="entity-name">{e.name}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={filterStatus} onValueChange={setFilterStatus}>

@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { hireStatementExportFromData, type WholeBillSnapshot } from "./wholeBillSnapshot";
 import { buildWholeBillEquipmentPdf } from "./wholeBillEquipmentPdf";
+import { displayName } from "@shared/displayName";
 
 export type BillingMaintenance = {
   businessDate?: string;
@@ -660,7 +661,7 @@ function activityStatementRow(
   const status = isBreakdown ? "Breakdown" : review ? "Review‡" : "Billed";
   const values: Array<string | number> = [
     dateLabel(row.date),
-    item?.projectSite || data.projectSite || "—",
+    displayName(item?.projectSite || data.projectSite || "—"),
     number(item?.openingMeter),
     number(item?.closingMeter),
     item?.workingHours == null ? "—" : formatHoursMinutes(item.workingHours),
@@ -744,7 +745,7 @@ export function exportEquipmentHireCalendar(
   const safeName = (data.billNo || "equipment-hire-bill").replace(/[^\w-]+/g, "-");
   const metadata: Array<Array<string | number | null>> = [
     ["Equipment Hire Daily Activity"],
-    ["Equipment", data.equipmentName],
+    ["Equipment", displayName(data.equipmentName)],
     ...(data.projectSite ? [["Project / Site", data.projectSite]] : []),
     ["Bill period", `${dateLabel(data.periodFrom)} to ${dateLabel(data.periodTo)}`],
     ...(fuelIsContractorScope ? [["Fuel / Diesel", "Contractor Scope"]] : []),
@@ -793,11 +794,11 @@ export function exportEquipmentHireCalendar(
     ? pdfText(money(data.rate / divisorValue))
     : isMonthly ? "Varies by month" : "Not applicable";
   const detailLine = [
-    `Vendor: ${data.vendorName || "Not recorded"}`,
-    `Equipment: ${data.equipmentName} · Master ref: ${data.equipmentMasterReference ?? "Not recorded"}`,
+    `Vendor: ${displayName(data.vendorName || "Not recorded")}`,
+    `Equipment: ${displayName(data.equipmentName)} · Master ref: ${displayName(String(data.equipmentMasterReference ?? "Not recorded"))}`,
     `Hire basis: ${data.hireBasis} · Rate: ${pdfText(money(data.rate))} · Rate/day: ${ratePerDay}`,
     `Monthly divisor: ${divisorLabel}`,
-    `Site: ${data.projectSite || "Not recorded"} · Diesel norm: ${data.consumptionNorm == null ? "Not recorded" : `${number(data.consumptionNorm, 2)} ${data.consumptionRateUnit || ""}`}`,
+    `Site: ${displayName(data.projectSite || "Not recorded")} · Diesel norm: ${data.consumptionNorm == null ? "Not recorded" : `${number(data.consumptionNorm, 2)} ${data.consumptionRateUnit || ""}`}`,
   ].join(" · ");
   const header = {
     title: "ACTIVITY STATEMENT",
@@ -838,7 +839,8 @@ export function exportEquipmentHireCalendar(
     const tableRows = active.map(row => {
       const projected = activityStatementRow(row, data, tripColumn, fuelIsContractorScope, consumptionUnit);
       reviewSeen ||= projected.review;
-      return projected.values.map(value => pdfText(String(value)));
+      return projected.values.map((value, index) =>
+        pdfText(index === 1 ? displayName(String(value)) : String(value)));
     });
     tableRows.push(activityMonthTotalRow(active, title, activityHeaders, tripColumn, fuelIsContractorScope, consumptionUnit));
     autoTable(doc, {

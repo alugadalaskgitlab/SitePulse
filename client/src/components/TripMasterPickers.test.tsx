@@ -130,7 +130,7 @@ describe("Master comboboxes", () => {
     fireEvent.change(input, { target: { value: "4308" } });
     expect(screen.getAllByRole("option")).toHaveLength(2);
     expect(screen.queryByRole("option", { name: /LEGACY|Inactive/ })).toBeNull();
-    const option = screen.getByRole("option", { name: /TS15UF 4308.*Hired.*G N Transport/ });
+    const option = screen.getByRole("option", { name: /TS15UF 4308.*HIRED.*G N TRANSPORT/ });
     fireEvent.pointerDown(option, { pointerType: "touch" });
     fireEvent.pointerUp(option, { pointerType: "touch" });
     fireEvent.click(option);
@@ -147,15 +147,17 @@ describe("Master comboboxes", () => {
     renderWithQuery(<VehicleWithTransporterFilter />);
     const input = screen.getByRole("combobox");
     fireEvent.change(input, { target: { value: "4308" } });
-    expect(screen.getByRole("option", { name: /TS15UF 4308.*G N Transport/ })).toBeTruthy();
+    expect(screen.getByRole("option", { name: /TS15UF 4308.*G N TRANSPORT/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Change transporter" }));
-    expect(screen.queryByRole("option", { name: /TS15UF 4308.*G N Transport/ })).toBeNull();
+    expect(screen.queryByRole("option", { name: /TS15UF 4308.*G N TRANSPORT/ })).toBeNull();
   });
   it("separates outside registration from Master results", () => {
     renderWithQuery(<Vehicle />);
     fireEvent.click(screen.getByRole("checkbox"));
     expect(screen.queryByRole("combobox")).toBeNull();
-    fireEvent.change(screen.getByTestId("input-test-vehicle"), { target: { value: "OUTSIDE4308" } });
-    expect(JSON.parse(screen.getByTestId("draft").textContent!)).toMatchObject({ equipmentId: null, vehicleManual: true, vehicleNumber: "OUTSIDE4308" });
+    const input = screen.getByTestId("input-test-vehicle") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "ka 01 ab 1234" } });
+    expect(input.value).toBe("ka 01 ab 1234");
+    expect(JSON.parse(screen.getByTestId("draft").textContent!)).toMatchObject({ equipmentId: null, vehicleManual: true, vehicleNumber: "ka 01 ab 1234" });
   });
 });

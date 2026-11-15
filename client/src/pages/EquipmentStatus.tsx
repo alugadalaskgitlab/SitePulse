@@ -218,7 +218,7 @@ export default function EquipmentStatus() {
                 <option value="all">All permitted machines</option>
                 {equipment.map(item => {
                   const vendor = equipmentVendorLabel(item);
-                  return <option key={item.equipmentId} value={String(item.equipmentId)}>{item.name}{vendor ? ` · ${vendor}` : ""}</option>;
+                  return <option key={item.equipmentId} value={String(item.equipmentId)} className="entity-name">{item.name}{vendor ? ` · ${vendor}` : ""}</option>;
                 })}
               </select>
             </Filter>
@@ -287,7 +287,7 @@ export default function EquipmentStatus() {
           <p>{dateFrom} to {dateTo}</p>
           {rows.map(item => (
             <article key={item.equipmentId}>
-              <h2>{item.name}{equipmentVendorLabel(item) ? ` · ${equipmentVendorLabel(item)}` : ""}{item.linkedVendorName && item.vendorName && item.linkedVendorName !== item.vendorName ? ` (recorded: ${item.vendorName})` : ""}</h2>
+              <h2><span className="entity-name">{item.name}</span>{equipmentVendorLabel(item) ? <> · <span className="entity-name">{equipmentVendorLabel(item)}</span></> : null}{item.linkedVendorName && item.vendorName && item.linkedVendorName !== item.vendorName ? <> (recorded: <span className="entity-name">{item.vendorName}</span>)</> : null}</h2>
               <table>
                 <thead><tr><th>Working</th><th>Idle · no work available</th><th>Idle · operator unavailable</th><th>Breakdown</th><th>Logged (status not specified)</th><th>Not logged</th></tr></thead>
                 <tbody><tr><td>{item.summary.working}</td><td>{item.summary.idleNoWork}</td><td>{item.summary.idleNoOperator}</td><td>{item.summary.breakdown}</td><td>{item.summary.loggedUnspecified}</td><td>{item.summary.notLogged}</td></tr></tbody>
@@ -325,8 +325,8 @@ function FragmentRows({ item, open, onToggle }: {
             {open ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-500" />}
             <Truck className="h-4 w-4 text-[#286475]" />
             <span>
-              <strong>{item.name}</strong>
-              <span className="block text-xs font-normal text-slate-500">{item.ownership || "—"}{equipmentVendorLabel(item) ? ` · ${equipmentVendorLabel(item)}` : ""}{item.linkedVendorName && item.vendorName && item.linkedVendorName !== item.vendorName ? ` · recorded: ${item.vendorName}` : ""}</span>
+              <strong className="entity-name">{item.name}</strong>
+              <span className="block text-xs font-normal text-slate-500">{item.ownership || "—"}{equipmentVendorLabel(item) ? <> · <span className="entity-name">{equipmentVendorLabel(item)}</span></> : null}{item.linkedVendorName && item.vendorName && item.linkedVendorName !== item.vendorName ? <> · recorded: <span className="entity-name">{item.vendorName}</span></> : null}</span>
             </span>
           </button>
         </th>

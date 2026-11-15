@@ -493,7 +493,7 @@ export default function PlantLdoDipBackfill() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={defaultPlantName}>{defaultPlantName}</SelectItem>
+                  <SelectItem value={defaultPlantName} className="entity-name">{defaultPlantName}</SelectItem>
                 </SelectContent>
               </Select>
             </div>

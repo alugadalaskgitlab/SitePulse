@@ -85,7 +85,7 @@ function FreeTextCombobox({
       <Input
         value={value}
         onChange={e => { onChange(e.target.value); setOpen(true); }}
-        onBlur={e => onChange(e.target.value.toUpperCase())}
+        onBlur={e => onChange(e.target.value)}
         onFocus={() => setOpen(true)}
         placeholder={placeholder}
         className="uppercase"
@@ -100,7 +100,7 @@ function FreeTextCombobox({
               className="px-3 py-2 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20"
               onMouseDown={e => { e.preventDefault(); onChange(opt); setOpen(false); }}
             >
-              {opt}
+               <span className="entity-name">{opt}</span>
             </div>
           ))}
         </div>
@@ -156,7 +156,7 @@ function MaterialCombobox({
           onChange(e.target.value, "");
           setOpen(true);
         }}
-        onBlur={e => onChange(e.target.value.toUpperCase(), "")}
+        onBlur={e => onChange(e.target.value, "")}
         onFocus={() => setOpen(true)}
         placeholder="TYPE ITEM NAME OR SELECT FROM LIST"
         className="uppercase"
@@ -176,12 +176,12 @@ function MaterialCombobox({
                   className="px-3 py-2 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-900/20 flex items-center justify-between gap-2"
                   onMouseDown={e => {
                     e.preventDefault();
-                    onChange(m.name.toUpperCase(), m.uom.toUpperCase(), m.id);
+                    onChange(m.name, m.uom.toUpperCase(), m.id);
                     setOpen(false);
                   }}
                   data-testid={`option-recent-indent-item-${m.id}`}
                 >
-                  <span>{m.name.toUpperCase()}</span>
+                  <span className="entity-name">{m.name}</span>
                   <span className="text-[12px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{m.category} · {m.uom.toUpperCase()}</span>
                 </div>
               ))}
@@ -198,11 +198,11 @@ function MaterialCombobox({
               className="px-3 py-2 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center justify-between gap-2"
               onMouseDown={e => {
                 e.preventDefault();
-                onChange(m.name.toUpperCase(), m.uom.toUpperCase(), m.id);
+                onChange(m.name, m.uom.toUpperCase(), m.id);
                 setOpen(false);
               }}
             >
-              <span>{m.name.toUpperCase()}</span>
+              <span className="entity-name">{m.name}</span>
               <span className="text-[12px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{m.category} · {m.uom.toUpperCase()}</span>
             </div>
           ))}
@@ -912,7 +912,7 @@ export default function PurchaseIndents() {
         const updated = [...formItems];
         updated[addStoreItemTargetIdx] = {
           ...updated[addStoreItemTargetIdx],
-          description: newItem.name.toUpperCase(),
+          description: newItem.name,
           uom: (newItem.defaultUom || "NOS").toUpperCase(),
           materialId: newItem.id,
         };
@@ -991,7 +991,7 @@ export default function PurchaseIndents() {
     const procureItems = sourceIrn.items.filter((i) => i.procureQty && i.procureQty > 0);
     if (procureItems.length === 0) return;
     setFormItems(procureItems.map((i) => ({
-      description: i.material.toUpperCase(),
+      description: i.material,
       spec: "",
       partNo: "",
       qty: i.procureQty!,
@@ -1645,7 +1645,7 @@ export default function PurchaseIndents() {
       // Auto-create a store item for this plant material
       try {
         const res = await apiRequest("POST", "/api/stores/items", {
-          name: pm.name.toUpperCase(),
+          name: pm.name,
           category: pm.category || "Aggregate",
           defaultUom: pm.defaultUom || l.uom || "CFT",
           isActive: 1,
@@ -1828,7 +1828,7 @@ export default function PurchaseIndents() {
       date: formDate,
       indentNo: "",
       proposedBy: formProposedBy.toUpperCase(),
-      raisedBy: formRaisedBy.toUpperCase(),
+      raisedBy: formRaisedBy,
       remarks: formRemarks.toUpperCase() || null,
       siteId: formSiteId ?? null,
       raisedFrom: formRaisedFrom ?? null,
@@ -2058,7 +2058,7 @@ export default function PurchaseIndents() {
       data: {
         purchaseStatus: update.purchaseStatus,
         qtyPurchased: update.qtyPurchased ? parseFloat(update.qtyPurchased) : undefined,
-        vendor: update.vendor.toUpperCase() || undefined,
+        vendor: update.vendor || undefined,
         billNo: update.billNo.toUpperCase() || undefined,
         rate: update.rate ? parseFloat(update.rate) : undefined,
         amount: update.amount ? parseFloat(update.amount) : undefined,
@@ -2692,7 +2692,7 @@ export default function PurchaseIndents() {
                     <SelectContent>
                       <SelectItem value="all">ALL LOCATIONS</SelectItem>
                       {(sitesList ?? []).map(s => (
-                        <SelectItem key={`site-${s.id}`} value={s.name}>{s.name}</SelectItem>
+                        <SelectItem key={`site-${s.id}`} value={s.name} className="entity-name">{s.name}</SelectItem>
                       ))}
                       {SECTION_OPTIONS.filter(o => !o.rmcOnly || rmcEnabled).map(o => (
                         <SelectItem key={`sec-${o.value}`} value={o.value}>{o.label}</SelectItem>
@@ -4048,7 +4048,7 @@ export default function PurchaseIndents() {
                                 ...prev,
                                 [item.id]: {
                                   ...pd,
-                                  vendor: value.toUpperCase(),
+                                  vendor: value,
                                   vendorId: requiresVendorMaster ? resolvePurchaseVendorId(value) : null,
                                 },
                               }));
@@ -4068,7 +4068,7 @@ export default function PurchaseIndents() {
                                       <SelectContent>
                                         <SelectItem value="manual">Type a name or known alias below</SelectItem>
                                         {(purchaseVendorOptions.data?.vendors || []).map(vendor => (
-                                          <SelectItem key={vendor.id} value={String(vendor.id)}>{vendor.name}</SelectItem>
+                                          <SelectItem key={vendor.id} value={String(vendor.id)} className="entity-name">{vendor.name}</SelectItem>
                                         ))}
                                       </SelectContent>
                                     </Select>
@@ -4822,7 +4822,7 @@ export default function PurchaseIndents() {
                               <Input
                                 value={procData.vendor || ""}
                                 onChange={e => setProcData({ vendor: e.target.value })}
-                                onBlur={e => setProcData({ vendor: e.target.value.toUpperCase() })}
+                                onBlur={e => setProcData({ vendor: e.target.value })}
                                 placeholder="Type vendor name..."
                                 className="uppercase"
                                 data-testid={`input-procure-vendor-${item.id}`}
@@ -5092,7 +5092,7 @@ export default function PurchaseIndents() {
                         </SelectTrigger>
                         <SelectContent>
                           {allSites.map(site => (
-                            <SelectItem key={site.id} value={site.id.toString()}>{site.name}</SelectItem>
+                            <SelectItem key={site.id} value={site.id.toString()} className="entity-name">{site.name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -5222,7 +5222,7 @@ export default function PurchaseIndents() {
                   <Input
                     value={reportFilterVendor}
                     onChange={(e) => setReportFilterVendor(e.target.value)}
-                    onBlur={(e) => setReportFilterVendor(e.target.value.toUpperCase())}
+                    onBlur={(e) => setReportFilterVendor(e.target.value)}
                     placeholder="SEARCH VENDOR..."
                     className="uppercase"
                     data-testid="report-filter-vendor"
@@ -5396,7 +5396,7 @@ export default function PurchaseIndents() {
                 <Input
                   value={grnDialogSupplier}
                   onChange={e => setGrnDialogSupplier(e.target.value)}
-                  onBlur={e => setGrnDialogSupplier(e.target.value.toUpperCase())}
+                  onBlur={e => setGrnDialogSupplier(e.target.value)}
                   placeholder="Vendor name"
                   className="uppercase"
                   data-testid="input-grn-supplier"
@@ -5492,7 +5492,7 @@ export default function PurchaseIndents() {
                                           e.preventDefault();
                                           setGrnOpenDropdownIdx(null);
                                           const prefill = line.itemSearch.trim() || line.description;
-                                          setAddStoreItemForm({ name: prefill.toUpperCase(), category: "Spares", uom: line.uom || "NOS" });
+                                          setAddStoreItemForm({ name: prefill, category: "Spares", uom: line.uom || "NOS" });
                                           setAddStoreItemTargetIdx(idx);
                                           setAddStoreItemFromGrn(true);
                                           setAddStoreItemOpen(true);
@@ -5520,7 +5520,7 @@ export default function PurchaseIndents() {
                                       }}
                                       data-testid={`grn-item-option-${si.id}-${idx}`}
                                     >
-                                      <span className="font-medium">{si.name}</span>
+                                      <span className="font-medium entity-name">{si.name}</span>
                                       <span className="flex items-center gap-1.5 text-sm text-muted-foreground ml-2">
                                         {si.isPlantMaterial && (
                                           <span className="inline-flex items-center text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0">Bulk</span>
@@ -5674,7 +5674,7 @@ export default function PurchaseIndents() {
                 type="button"
                 size="sm"
                 disabled={!addStoreItemForm.name.trim() || addStoreItemMutation.isPending}
-                onClick={() => addStoreItemMutation.mutate({ name: addStoreItemForm.name.trim().toUpperCase(), category: addStoreItemForm.category, defaultUom: addStoreItemForm.uom, isActive: 1 })}
+                onClick={() => addStoreItemMutation.mutate({ name: addStoreItemForm.name.trim(), category: addStoreItemForm.category, defaultUom: addStoreItemForm.uom, isActive: 1 })}
                 data-testid="button-save-new-store-item"
               >
                 {addStoreItemMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save as New Item"}

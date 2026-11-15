@@ -959,7 +959,7 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
                 onChange={(value) =>
                   setForm((current) => ({
                     ...current,
-                    vehicleNumber: value.toUpperCase(),
+                    vehicleNumber: value,
                   }))
                 }
                 onSuggestionSelected={(vehicleNumber) =>
@@ -967,7 +967,7 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
                     const association = vehicleSupplierAssociationFor(vehicleSuppliers, vehicleNumber);
                     return {
                       ...current,
-                      vehicleNumber: vehicleNumber.toUpperCase(),
+                      vehicleNumber,
                       ...(association?.status === "linked" && association.supplier
                         ? { supplier: association.supplier }
                         : {}),
@@ -1005,7 +1005,7 @@ function RecordReceiptDialog({ open, onOpenChange, props, arrangement, piMatch, 
                 onChange={(value) =>
                   setForm((current) => ({
                     ...current,
-                    supplier: value.toUpperCase(),
+                    supplier: value,
                   }))
                 }
                 suggestions={supplierSuggestions}

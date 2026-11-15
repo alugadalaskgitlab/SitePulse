@@ -239,7 +239,7 @@ export default function PlantStockTransfer() {
               </SelectTrigger>
               <SelectContent>
                 {materials?.map(m => (
-                  <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                  <SelectItem key={m.id} value={String(m.id)} className="entity-name">{m.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -263,7 +263,7 @@ export default function PlantStockTransfer() {
               </SelectTrigger>
               <SelectContent>
                 {parties?.map(p => (
-                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                  <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -287,7 +287,7 @@ export default function PlantStockTransfer() {
               </SelectTrigger>
               <SelectContent>
                 {parties?.filter(p => String(p.id) !== fromPartyId).map(p => (
-                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                  <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

@@ -1378,7 +1378,7 @@ export default function PlantMaterialReceipts() {
               <div className="space-y-3 pt-2" data-testid="plant-receipt-saved-view">
                 <div className="rounded-md bg-muted/60 px-3 py-2 text-sm space-y-1" data-testid="plant-receipt-saved-summary">
                   <p className="font-semibold">
-                    {savedReceiptForSlip.materialName} · {savedReceiptForSlip.quantity} {savedReceiptForSlip.uom}
+                    <span className="entity-name">{savedReceiptForSlip.materialName}</span> · {savedReceiptForSlip.quantity} {savedReceiptForSlip.uom}
                   </p>
                   {Boolean(savedReceiptForSlip.vehicleNumber || savedReceiptForSlip.driverName || savedReceiptForSlip.receivedByName) && (
                     <p className="text-muted-foreground">
@@ -1390,7 +1390,7 @@ export default function PlantMaterialReceipts() {
                     </p>
                   )}
                   {savedReceiptForSlip.partyName && (
-                    <p className="text-muted-foreground">Stock of: {savedReceiptForSlip.partyName}</p>
+                    <p className="text-muted-foreground">Stock of: <span className="entity-name">{savedReceiptForSlip.partyName}</span></p>
                   )}
                 </div>
                 {(savedReceiptAction === "created" || savedReceiptForSlip.slipSendWindowOpen) && (
@@ -1452,7 +1452,7 @@ export default function PlantMaterialReceipts() {
                   </SelectTrigger>
                   <SelectContent>
                     {materials?.map((material) => (
-                      <SelectItem key={material.id} value={String(material.id)}>{material.name}</SelectItem>
+                      <SelectItem key={material.id} value={String(material.id)} className="entity-name">{material.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1499,7 +1499,7 @@ export default function PlantMaterialReceipts() {
                   </SelectTrigger>
                   <SelectContent>
                     {parties?.map((party) => (
-                      <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
+                      <SelectItem key={party.id} value={String(party.id)} className="entity-name">{party.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1604,7 +1604,7 @@ export default function PlantMaterialReceipts() {
                 ) : (
                   <div>
                     <Label>Source (for record)</Label>
-                    <Input value={supplier} onChange={(e) => setSupplier(e.target.value.toUpperCase())} placeholder="e.g. Own stock / crusher name" data-testid="input-supplier" />
+                    <Input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="e.g. Own stock / crusher name" data-testid="input-supplier" />
                   </div>
                 )}
                 {isHlcOwnedReceipt ? (
@@ -1620,7 +1620,7 @@ export default function PlantMaterialReceipts() {
                 ) : (
                   <div>
                     <Label>Transporter (for record) <span className="text-muted-foreground text-sm">(optional)</span></Label>
-                    <Input value={transporter} onChange={(e) => setTransporter(e.target.value.toUpperCase())} placeholder="e.g. Own stock / crusher name" data-testid="input-transporter" />
+                    <Input value={transporter} onChange={(e) => setTransporter(e.target.value)} placeholder="e.g. Own stock / crusher name" data-testid="input-transporter" />
                   </div>
                 )}
               </div>
@@ -1637,7 +1637,7 @@ export default function PlantMaterialReceipts() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Vehicle no.</Label>
-                  <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())} placeholder="e.g., KA-01-XX-1234" data-testid="input-vehicle" />
+                  <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} placeholder="e.g., KA-01-XX-1234" data-testid="input-vehicle" />
                 </div>
                 <div>
                   <Label>Driver (optional)</Label>
@@ -1984,7 +1984,7 @@ export default function PlantMaterialReceipts() {
                 <SelectContent>
                   <SelectItem value="all">All Parties</SelectItem>
                   {parties?.map((party) => (
-                    <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
+                    <SelectItem key={party.id} value={String(party.id)} className="entity-name">{party.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1998,7 +1998,7 @@ export default function PlantMaterialReceipts() {
                 <SelectContent>
                   <SelectItem value="all">All Materials</SelectItem>
                   {materials?.map((material) => (
-                    <SelectItem key={material.id} value={String(material.id)}>{material.name}</SelectItem>
+                    <SelectItem key={material.id} value={String(material.id)} className="entity-name">{material.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -2056,7 +2056,7 @@ export default function PlantMaterialReceipts() {
               <span className="font-semibold text-green-700 dark:text-green-300">Filtered Totals:</span>
               {filteredTotals.map((t, i) => (
                 <Badge key={i} variant="outline" className="text-green-700 dark:text-green-300 border-green-400 dark:border-green-600 text-sm px-3 py-1">
-                  {t.materialName}: {t.total.toFixed(3)} {t.uom}
+                  <span className="entity-name">{t.materialName}</span>: {t.total.toFixed(3)} {t.uom}
                 </Badge>
               ))}
               {showDieselFigures && (
@@ -2144,7 +2144,7 @@ export default function PlantMaterialReceipts() {
                                 </span>
                                 <span className="font-semibold">{getMaterialName(receipt.materialId)}</span>
                                 <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
-                                {receipt.vehicleNumber && <span className="text-sm text-muted-foreground">{receipt.vehicleNumber}</span>}
+                                {receipt.vehicleNumber && <span className="entity-name text-sm text-muted-foreground">{receipt.vehicleNumber}</span>}
                                 {receipt.driverName && <span className="text-sm text-muted-foreground">Driver: {formatPersonName(receipt.driverName)}</span>}
                                 {receipt.receivedByName && <span className="text-sm text-muted-foreground">Received by: {formatPersonName(receipt.receivedByName)}</span>}
                                 <div className="ml-auto" onClick={event => event.stopPropagation()}>
@@ -2155,7 +2155,7 @@ export default function PlantMaterialReceipts() {
                                     logoFile={logoFile}
                                   />
                                 </div>
-                                {receipt.supplier && <span className="text-sm text-muted-foreground">{receipt.supplier}</span>}
+                                {receipt.supplier && <span className="entity-name text-sm text-muted-foreground">{receipt.supplier}</span>}
                                 {isPartyReceipt(receipt) && (
                                   <Badge
                                     variant="outline"

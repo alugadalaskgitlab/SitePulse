@@ -467,7 +467,7 @@ export function SourceTransportReviewPage() {
             {vendorsQuery.isLoading && <div role="status" className="h-9 animate-pulse rounded bg-muted" aria-label="Loading vendors" />}
             {vendorsQuery.isError && <p role="alert" className="text-xs text-destructive">Vendor Master could not be loaded. <button type="button" className="underline" onClick={() => void vendorsQuery.refetch()}>Retry</button></p>}
             <select id="source-vendor" className="w-full rounded-md border bg-background p-2 text-sm" value={vendorId} disabled={!canVerify || vendorsQuery.isLoading || vendorsQuery.isError} onChange={event => setVendorId(event.target.value)}>
-              <option value="">Choose a vendor</option>{vendors.map(vendor => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+              <option value="">Choose a vendor</option>{vendors.map(vendor => <option key={vendor.id} value={vendor.id} className="entity-name">{vendor.name}</option>)}
             </select>{!canVerify && <p className="text-xs text-muted-foreground">Vendor source cannot be applied without site_materials verify permission.</p>}
             {vendorsQuery.isSuccess && !vendors.length && <p className="text-xs text-muted-foreground">No active Vendor Master records are available.</p>}
           </div>}
@@ -517,13 +517,13 @@ export function SourceTransportReviewPage() {
                     {!unambiguous && chosen == null && <p className="text-xs font-medium text-amber-700">Vehicle not matched — select manually to create a hired-vehicle audit link.</p>}
                     <Label htmlFor={`equipment-${trip.id}`} className="text-xs">Hired vehicle link</Label>
                     <select id={`equipment-${trip.id}`} className="w-full rounded-md border bg-background p-2 text-sm" value={chosen == null ? "" : String(chosen)} disabled={blocked} onChange={event => setEquipmentByTripId(old => ({ ...old, [String(trip.id)]: event.target.value ? Number(event.target.value) : null }))}>
-                      <option value="">No vehicle link</option>{choices.map(item => <option key={item.id} value={item.id}>{item.registrationNumber || item.name} · {item.linkedVendorName || "Owner not shown"}</option>)}
+                      <option value="">No vehicle link</option>{choices.map(item => <option key={item.id} value={item.id} className="entity-name">{item.registrationNumber || item.name} · {item.linkedVendorName || "Owner not shown"}</option>)}
                     </select>
                   </div>}
                   {transportType === "in_house" && <div className="mt-2 space-y-1">
                     <Label htmlFor={`equipment-${trip.id}`} className="text-xs">Owned equipment</Label>
                     <select id={`equipment-${trip.id}`} className="w-full rounded-md border bg-background p-2 text-sm" value={chosen == null ? "" : String(chosen)} disabled={blocked} onChange={event => setEquipmentByTripId(old => ({ ...old, [String(trip.id)]: event.target.value ? Number(event.target.value) : null }))}>
-                      <option value="">Choose owned equipment</option>{choices.map(item => <option key={item.id} value={item.id}>{item.registrationNumber || item.name}</option>)}
+                      <option value="">Choose owned equipment</option>{choices.map(item => <option key={item.id} value={item.id} className="entity-name">{item.registrationNumber || item.name}</option>)}
                     </select>
                   </div>}
                   {billNote && <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">{billNote}</p>}

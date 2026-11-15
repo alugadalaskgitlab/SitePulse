@@ -591,7 +591,7 @@ export default function PlantMaterialIssues() {
                     </SelectTrigger>
                     <SelectContent>
                       {parties?.map(p => (
-                        <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                        <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -605,7 +605,7 @@ export default function PlantMaterialIssues() {
                     </SelectTrigger>
                     <SelectContent>
                       {materials?.map(m => (
-                        <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                        <SelectItem key={m.id} value={String(m.id)} className="entity-name">{m.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -652,7 +652,7 @@ export default function PlantMaterialIssues() {
                 
                 <div>
                   <Label>Issued to (site/party)</Label>
-                  <Input value={issuedTo} onChange={(e) => { issuedToAutoSet.current = false; setIssuedTo(e.target.value.toUpperCase()); }} placeholder="e.g., SITE A, HYDERABAD OFFICE" data-testid="input-issued-to" />
+                  <Input value={issuedTo} onChange={(e) => { issuedToAutoSet.current = false; setIssuedTo(e.target.value); }} placeholder="e.g., Site A, Hyderabad office" data-testid="input-issued-to" />
                 </div>
                 
                 <div>
@@ -662,12 +662,12 @@ export default function PlantMaterialIssues() {
                 
                 <div>
                   <Label>Received by</Label>
-                  <Input value={receivedBy} onChange={(e) => { receivedByAutoSet.current = false; setReceivedBy(e.target.value.toUpperCase()); }} placeholder="Person receiving the material" data-testid="input-received-by" />
+                  <Input value={receivedBy} onChange={(e) => { receivedByAutoSet.current = false; setReceivedBy(e.target.value); }} placeholder="Person receiving the material" data-testid="input-received-by" />
                 </div>
                 
                 <div>
                   <Label>Vehicle number</Label>
-                  <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())} placeholder="e.g., TS09AB1234" data-testid="input-vehicle" />
+                  <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} placeholder="e.g., TS09AB1234" data-testid="input-vehicle" />
                 </div>
                 
                 <div>
@@ -715,7 +715,7 @@ export default function PlantMaterialIssues() {
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
                   {parties?.map(p => (
-                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                    <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -729,7 +729,7 @@ export default function PlantMaterialIssues() {
                 <SelectContent>
                   <SelectItem value="all">All Materials</SelectItem>
                   {materials?.map(m => (
-                    <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                    <SelectItem key={m.id} value={String(m.id)} className="entity-name">{m.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -746,7 +746,7 @@ export default function PlantMaterialIssues() {
               <span className="font-semibold text-orange-700 dark:text-orange-300">Filtered Totals:</span>
               {filteredTotals.map((t, i) => (
                 <Badge key={i} variant="outline" className="text-orange-700 dark:text-orange-300 border-orange-400 dark:border-orange-600 text-sm px-3 py-1">
-                  {t.materialName}: {t.total.toFixed(3)} {t.uom}
+                  <span className="entity-name">{t.materialName}</span>: {t.total.toFixed(3)} {t.uom}
                 </Badge>
               ))}
             </div>

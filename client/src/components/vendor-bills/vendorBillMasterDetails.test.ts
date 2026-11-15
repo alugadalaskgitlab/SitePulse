@@ -2,6 +2,22 @@ import { describe, expect, it } from "vitest";
 import { vendorBillMasterBottomRows, vendorBillMasterTopRows } from "./vendorBillMasterDetails";
 
 describe("vendor bill Vendor Master display rows", () => {
+  it("capitalizes vendor account names but keeps the contact person's name", () => {
+    const details = {
+      name: "Sample Vendor",
+      businessName: "Sample Transport",
+      contactPersonName: "ramesh sharma",
+      bankAccountName: "Sample Transport",
+    };
+    expect(vendorBillMasterTopRows(details)).toEqual([
+      { label: "Business name", value: "SAMPLE TRANSPORT" },
+      { label: "Contact person", value: "Ramesh Sharma" },
+    ]);
+    expect(vendorBillMasterBottomRows(details)).toEqual([
+      { label: "Bank account name", value: "SAMPLE TRANSPORT" },
+    ]);
+  });
+
   it("omits blank values and suppresses a business name identical to the master name", () => {
     const details = {
       name: "SAMPLE VENDOR",

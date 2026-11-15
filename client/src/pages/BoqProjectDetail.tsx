@@ -26,7 +26,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { BoqImportWizard } from "@/components/BoqImportWizard";
 import { BoqItemRecipeDialog } from "@/pages/BoqItemRecipes";
 import type { BoqProject, BoqItemWithCategory, BoqRevisionWithItems } from "@shared/schema";
-import { boqItemDisplayName } from "@shared/boqItemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 import { normalizeWeightUnit } from "@shared/stockUnits";
 import { uppercaseBusinessText } from "@shared/businessText";
 import { resolveBoqDisplayUnit, resolveBoqUomProfile } from "@shared/dprGeometry";

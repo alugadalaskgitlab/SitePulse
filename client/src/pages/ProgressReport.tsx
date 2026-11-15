@@ -50,7 +50,7 @@ import {
 } from "@shared/progressReport";
 import { layerDisplayName, showLayerField } from "@shared/layerDisplay";
 import { parseChainageKm, formatChainageKm } from "@shared/barSide";
-import { boqItemDisplayName } from "@shared/boqItemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 import {
   type ProgressReportState, parseReportState, progressReportUrl, dprLinkWithReturn,
   isOverlapReviewOpen, overlapReviewTargetId,

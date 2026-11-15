@@ -735,11 +735,11 @@ export function HeatingSessionDialog({
                         <SelectTrigger data-testid="select-dg-generator"><SelectValue placeholder="Pick a generator" /></SelectTrigger>
                         <SelectContent>
                           {(generatorMasters || []).map(g => (
-                            <SelectItem key={g.name} value={g.name}>{g.name}</SelectItem>
+                            <SelectItem key={g.name} value={g.name} className="entity-name">{g.name}</SelectItem>
                           ))}
                           {form.dgGeneratorName &&
                             !(generatorMasters || []).some(g => g.name === form.dgGeneratorName) && (
-                              <SelectItem value={form.dgGeneratorName}>{form.dgGeneratorName} (new)</SelectItem>
+                              <SelectItem value={form.dgGeneratorName} className="entity-name">{form.dgGeneratorName} (new)</SelectItem>
                             )}
                           <SelectItem value="__new__" data-testid="select-dg-generator-new">+ New generator…</SelectItem>
                         </SelectContent>

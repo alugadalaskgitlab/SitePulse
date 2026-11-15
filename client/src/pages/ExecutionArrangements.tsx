@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, Check, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { executionArrangementCategoryForItem, bituminousItemTypeOf } from "@shared/planningEngine";
-import { boqItemDisplayName } from "@shared/boqItemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 import { hasRecordedArrangementStatusChange, latestRecordedArrangementStatusChange } from "@shared/arrangementStatusHistory";
 import {
   deriveExecutionState,

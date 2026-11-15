@@ -11,7 +11,7 @@
  * No fuzzy matching; stored activity text is never rewritten.
  */
 
-import { boqItemDisplayName, type BoqItemNameFields } from "@shared/boqItemName";
+import { boqItemDisplayText, type BoqItemNameFields } from "@shared/boqItemName";
 
 // ── Canonical activity identity ───────────────────────────────────────────────
 
@@ -97,7 +97,7 @@ export function buildActivityFilterOptions(
       let label: string;
       if (p.boqItemId != null && p.boqItem) {
         // BOQ item fields present — use authoritative display name
-        label = boqItemDisplayName(p.boqItem) || p.activity;
+        label = boqItemDisplayText(p.boqItem) || p.activity;
       } else if (p.boqItemId != null) {
         // BOQ-linked but no item fields in payload — fall back to activity text
         label = p.activity;

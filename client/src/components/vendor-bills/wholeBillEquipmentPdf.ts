@@ -12,6 +12,7 @@ import {
 import { drawPdfBillFooter, drawPdfBillHeader, INK_LIGHT_TABLE } from "./pdfExportStyle";
 import { vendorBillMasterBottomRows, vendorBillMasterTopRows } from "./vendorBillMasterDetails";
 import { vendorBillSettlementLine } from "@shared/vendorBillSettlement";
+import { displayName } from "@shared/displayName";
 
 const printable = (value: unknown) => String(value ?? "")
   .replace(/₹/g, "Rs. ").replace(/[−–—→]/g, "-").replace(/×/g, "x").replace(/·/g, " / ");
@@ -92,6 +93,8 @@ function monthlyRows(statements: HireStatementExport[], snapshot: WholeBillSnaps
 function detailLines(snapshot: WholeBillSnapshot, statements: HireStatementExport[]) {
   const unique = (values: Array<string | number | null | undefined>) =>
     Array.from(new Set(values.map(value => String(value ?? "").trim()).filter(Boolean))).join("; ") || "Not recorded";
+  const uniqueName = (values: Array<string | number | null | undefined>) =>
+    unique(values.map(value => displayName(String(value ?? ""))));
   const equipmentLabels = statements.map(statement => {
     const rawName = String(statement.equipmentName || "").trim();
     const placeholder = /^equipment\s*#\s*\d+$/i.test(rawName);
@@ -99,7 +102,8 @@ function detailLines(snapshot: WholeBillSnapshot, statements: HireStatementExpor
       ? statement.equipmentType || snapshot.equipmentType || "Equipment"
       : rawName || statement.equipmentType || snapshot.equipmentType || "Equipment";
     const master = typeof statement.masterReference === "string" ? statement.masterReference.trim() : "";
-    return master && !name.includes(master) ? `${name} · ${master}` : name;
+    const label = displayName(name);
+    return master && !label.includes(displayName(master)) ? `${label} · ${displayName(master)}` : label;
   });
   const basisLines = statements.map(statement => {
     const monthly = statement.basis.toLowerCase().includes("monthly");
@@ -121,7 +125,7 @@ function detailLines(snapshot: WholeBillSnapshot, statements: HireStatementExpor
   const norms = statements.map(statement => statement.dieselNorm == null
     ? "" : `${statement.dieselNorm.toLocaleString("en-IN")} ${statement.dieselNormUnit || ""}`.trim());
   return [
-    `Vendor: ${snapshot.vendorName} · Equipment: ${unique(equipmentLabels)} · Site: ${unique(statements.map(statement => statement.site || snapshot.site))}`,
+    `Vendor: ${displayName(snapshot.vendorName)} · Equipment: ${uniqueName(equipmentLabels)} · Site: ${uniqueName(statements.map(statement => displayName(statement.site || snapshot.site)))}`,
     `Hire basis: ${unique(basisLines)} · Diesel norm: ${unique(norms)}`,
   ];
 }
@@ -222,7 +226,7 @@ function makeHeader(snapshot: WholeBillSnapshot, statements: HireStatementExport
       ...(details.length
         ? details
         : snapshot.equipmentType
-          ? [`Vendor: ${snapshot.vendorName} · Equipment type: ${snapshot.equipmentType} · Site: ${snapshot.site || "Not recorded"}`]
+          ? [`Vendor: ${displayName(snapshot.vendorName)} · Equipment type: ${displayName(snapshot.equipmentType)} · Site: ${displayName(snapshot.site || "Not recorded")}`]
           : []),
       ...vendorDetails,
     ],
@@ -231,7 +235,7 @@ function makeHeader(snapshot: WholeBillSnapshot, statements: HireStatementExport
 
 function addSignatures(doc: jsPDF, y: number, companyShortName: string) {
   const width = doc.internal.pageSize.getWidth();
-  const labels = [`Prepared · ${companyShortName}`, "Verified", "Approved", "Received · Vendor"];
+  const labels = [`Prepared · ${displayName(companyShortName)}`, "Verified", "Approved", "Received · Vendor"];
   const left = 10;
   const gap = 4;
   const blockWidth = (width - 20 - gap * 3) / 4;
@@ -480,7 +484,11 @@ export function buildWholeBillEquipmentPdf(snapshot: WholeBillSnapshot): jsPDF {
       .map((_, index) => index)
       .filter(index => content.values.some(row => row[index] != null && String(row[index]).trim() !== ""));
     const headers = visibleColumns.map(index => printable(content.headers[index]));
-    const values = content.values.map(row => visibleColumns.map(index => printable(row[index])));
+    const values = content.values.map(row => visibleColumns.map(index => {
+      const header = String(content.headers[index] ?? "").trim();
+      const isEntityName = /^(material|materials|equipment|vendor|site|party|transporter|supplier|vehicle)(\s|$)/i.test(header);
+      return printable(isEntityName ? displayName(String(row[index] ?? "")) : row[index]);
+    }));
     if (!headers.length) continue;
     doc.addPage("a4", "landscape");
     const nonHireHeaderBottom = drawPdfBillHeader(doc, header);

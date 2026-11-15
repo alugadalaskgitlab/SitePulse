@@ -119,7 +119,7 @@ export default function EquipmentHireBilling() {
             <SelectContent>
               <SelectItem value="all">ALL SITES</SelectItem>
               {(sites.data || []).map(site => (
-                <SelectItem key={site.id} value={String(site.id)}>{site.name}</SelectItem>
+                <SelectItem key={site.id} value={String(site.id)} className="entity-name">{site.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>

@@ -2,7 +2,7 @@ import { Fragment, type ReactNode } from "react";
 import { managementNumber, managementQuantity } from "@/lib/dprManagementPresentation";
 import { Badge } from "@/components/ui/badge";
 import { calculateLengthFromChainage, dprMeasurementSummary } from "@shared/dprGeometry";
-import { boqItemDisplayName, shortItemName } from "@shared/boqItemName";
+import { boqItemDisplayText as boqItemDisplayName, shortItemName } from "@shared/boqItemName";
 import { layerDisplayName } from "@shared/layerDisplay";
 import { barSideLabel } from "@shared/barSide";
 import { normalizeDprSideKey } from "@shared/dprProgrammeLink";

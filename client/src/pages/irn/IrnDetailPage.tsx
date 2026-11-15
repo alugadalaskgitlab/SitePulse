@@ -1343,7 +1343,7 @@ export default function IrnDetailPage() {
                                               <SelectContent>
                                                 <SelectItem value="__none__">— No party —</SelectItem>
                                                 {parties.map(p => (
-                                                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                                                  <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>
                                                 ))}
                                               </SelectContent>
                                             </Select>
@@ -1364,7 +1364,7 @@ export default function IrnDetailPage() {
                                               <SelectContent>
                                                 <SelectItem value="__none__">— None (text only) —</SelectItem>
                                                 {storeItems.map(si => (
-                                                  <SelectItem key={si.id} value={String(si.id)}>{si.name} ({si.category})</SelectItem>
+                                                  <SelectItem key={si.id} value={String(si.id)} className="entity-name">{si.name} ({si.category})</SelectItem>
                                                 ))}
                                               </SelectContent>
                                             </Select>

@@ -71,11 +71,11 @@ export default function PayablesPreviewPanel({ vendors, sites, canExport = false
     {open && <CardContent className="space-y-5">
       <form onSubmit={e => { e.preventDefault(); if (ready) setRequest(currentRequest()); }} className="grid grid-cols-1 gap-3 md:grid-cols-4">
         <div><Label htmlFor="preview-vendor">Vendor</Label><select id="preview-vendor" className="mt-1 h-10 w-full rounded-md border bg-background px-2 text-sm" value={vendor} onChange={e => { setVendor(e.target.value); setGstOverrides({}); }}>
-          <option value="">Select a vendor</option>{vendors.map(name => <option key={name} value={name}>{name}</option>)}</select></div>
+          <option value="">Select a vendor</option>{vendors.map(name => <option key={name} value={name} className="entity-name">{name}</option>)}</select></div>
         <div><Label htmlFor="preview-from">Period from</Label><Input id="preview-from" type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
         <div><Label htmlFor="preview-to">Period to</Label><Input id="preview-to" type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
         <div><Label htmlFor="preview-site">Site (optional)</Label><select id="preview-site" className="mt-1 h-10 w-full rounded-md border bg-background px-2 text-sm" value={siteId} onChange={e => setSiteId(e.target.value)}>
-          <option value="">All authorized sites</option>{sites.map(site => <option key={site.id} value={site.id}>{site.name}</option>)}</select></div>
+          <option value="">All authorized sites</option>{sites.map(site => <option key={site.id} value={site.id} className="entity-name">{site.name}</option>)}</select></div>
         <Button type="submit" disabled={!ready || preview.isFetching || exporting} className="md:col-span-4 md:justify-self-start">Generate preview</Button>
       </form>
       {!request && <div className="rounded border border-dashed px-4 py-6 text-sm text-muted-foreground">Choose a vendor and period. Saved drafts and issued bills will be excluded from this forecast.</div>}

@@ -112,11 +112,11 @@ describe("whole-bill workbook and PDF", () => {
     };
     const fullPdf = buildWholeBillPdf(snapshot).output();
     for (const detail of [
-      "Business name: Narasimhulu Transport", "Address: 17 Road, Jaipur",
+      "Business name: NARASIMHULU TRANSPORT", "Address: 17 Road, Jaipur",
       "GSTIN: 08ABCDE1234F1Z5", "Contact person: Ramesh Sharma", "Phone: 9876543210",
     ]) expect(fullPdf).toContain(detail);
     for (const detail of [
-      "PAN: ABCDE1234F", "Bank account name: Narasimhulu Transport", "Bank name: State Bank",
+      "PAN: ABCDE1234F", "Bank account name: NARASIMHULU TRANSPORT", "Bank name: State Bank",
       "Account number: 1234567890", "IFSC: SBIN0000123",
     ]) expect(fullPdf).toContain(detail);
 

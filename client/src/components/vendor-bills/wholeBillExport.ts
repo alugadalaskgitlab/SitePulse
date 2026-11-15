@@ -7,6 +7,7 @@ import {
 } from "./EquipmentHireBillOutput";
 import { getBaseSiteName } from "@shared/siteName";
 import { buildWholeBillEquipmentPdf } from "./wholeBillEquipmentPdf";
+import { displayName } from "@shared/displayName";
 import { loadPdfLogoDataUrl } from "./pdfExportStyle";
 import {
   BILL_EXPORT_SHEET_NAMES, DRAFT_BILL_NOTICE, billExportIsDraft, billExportStatus,
@@ -92,9 +93,9 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const headerLines = [
-    `Vendor: ${snapshot.vendorName} | Bill: ${snapshot.saved ? snapshot.billNo : "Not yet saved"} | Status: ${billExportStatus(snapshot)}`,
+    `Vendor: ${displayName(snapshot.vendorName)} | Bill: ${snapshot.saved ? snapshot.billNo : "Not yet saved"} | Status: ${billExportStatus(snapshot)}`,
     `Bill date: ${snapshot.billDate} | Period: ${snapshot.periodFrom} to ${snapshot.periodTo}`,
-    `Site: ${getBaseSiteName(snapshot.site || "")} | Bill type: ${snapshot.billTypeLabel} | Generated: ${snapshot.generatedAt}`,
+    `Site: ${displayName(getBaseSiteName(snapshot.site || ""))} | Bill type: ${snapshot.billTypeLabel} | Generated: ${snapshot.generatedAt}`,
     ...(snapshot.equipmentType ? [`Equipment type: ${snapshot.equipmentType}`] : []),
     ...vendorBillMasterTopRows(snapshot.vendorMasterDetails).map(({ label, value }) => `${label}: ${value}`),
   ];
@@ -133,9 +134,10 @@ export function buildWholeBillPdf(snapshot: WholeBillSnapshot): jsPDF {
         : row.map((value, index) => {
         const money = headers[index] === "Amount" || headers[index] === "Gross Amount (₹)" || (headers[index] === "Value / Amount" && typeof value === "number");
         const qty = headers[index] === "Qty";
+        const isEntityName = /^(material|materials|equipment|vendor|site|party|transporter|supplier|vehicle)(\s|$)/i.test(headers[index] ?? "");
         return typeof value === "number" && (money || qty)
           ? value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-          : printable(value);
+          : printable(isEntityName ? displayName(String(value ?? "")) : value);
       })),
       theme: "grid", styles: { fontSize: 6.4, cellPadding: 1.5, overflow: "linebreak" },
       headStyles: { fillColor: [180, 83, 9] },

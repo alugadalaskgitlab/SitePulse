@@ -556,7 +556,7 @@ export default function SiteMaterialTrips() {
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold">PI-Linked Delivery — log each truckload below</p>
                   <p className="text-xs mt-0.5 text-teal-600 dark:text-teal-400">
-                    Material: <strong>{piParams.material}</strong> · Site: <strong>{piParams.site}</strong> · Remaining: <strong>{piParams.qty} {piParams.uom}</strong>
+                    Material: <strong className="entity-name">{piParams.material}</strong> · Site: <strong className="entity-name">{piParams.site}</strong> · Remaining: <strong>{piParams.qty} {piParams.uom}</strong>
                   </p>
                 </div>
                 <button type="button" onClick={() => navigate(returnTo)} className="text-teal-500 hover:text-teal-700 text-xs underline shrink-0">← Back to PI</button>
@@ -593,7 +593,7 @@ export default function SiteMaterialTrips() {
                     </SelectTrigger>
                     <SelectContent>
                       {activeSites.map((s) => (
-                        <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                        <SelectItem key={s.id} value={s.name} className="entity-name">{s.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -758,7 +758,7 @@ export default function SiteMaterialTrips() {
                       <p className="text-sm font-medium">✓ Trip saved · Trip #{savedTripForSlip.id}</p>
                       <div className="rounded-md bg-background/70 px-3 py-2 text-sm space-y-1" data-testid="trip-saved-summary">
                         <p className="font-semibold">
-                          {savedTripForSlip.materialName} · {savedTripForSlip.quantity} {savedTripForSlip.uom}
+                          <span className="entity-name">{savedTripForSlip.materialName}</span> · {savedTripForSlip.quantity} {savedTripForSlip.uom}
                         </p>
                         {Boolean(savedTripForSlip.vehicleNumber || savedTripForSlip.driverName || savedTripForSlip.receivedByName) && (
                           <p className="text-muted-foreground">
@@ -815,7 +815,7 @@ export default function SiteMaterialTrips() {
                   <p className="font-semibold text-indigo-800 dark:text-indigo-200">
                     Tomorrow's Requirement allocation: {companyText(fulfilmentLabel(fulfilmentSuggestion.entry) || "")}
                   </p>
-                  <p className="text-indigo-700 dark:text-indigo-300">{companyText(fulfilmentSuggestion.suggestion.note)} ({fulfilmentSuggestion.materialName})</p>
+                  <p className="text-indigo-700 dark:text-indigo-300">{companyText(fulfilmentSuggestion.suggestion.note)} (<span className="entity-name">{fulfilmentSuggestion.materialName}</span>)</p>
                   <div className="flex items-center gap-3 flex-wrap">
                     {newTrip.materialSourceType !== "own_source" && fulfilmentSuggestion.suggestion.supplierSuggestion && (
                       <button
@@ -948,7 +948,7 @@ export default function SiteMaterialTrips() {
               <Label className="text-xs">Chosen site</Label>
               <Select value={siteFilter || "all"} onValueChange={setSiteFilter}>
                 <SelectTrigger data-testid="select-recent-trip-site"><SelectValue placeholder="Choose site" /></SelectTrigger>
-                <SelectContent><SelectItem value="all">Choose a site</SelectItem>{activeSites.map(site => <SelectItem key={site.id} value={site.name}>{site.name}</SelectItem>)}</SelectContent>
+                <SelectContent><SelectItem value="all">Choose a site</SelectItem>{activeSites.map(site => <SelectItem key={site.id} value={site.name} className="entity-name">{site.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>}
             {isReviewPage && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-3">
@@ -966,7 +966,7 @@ export default function SiteMaterialTrips() {
                   <SelectTrigger data-testid="select-filter-site"><SelectValue placeholder="All Sites" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All sites</SelectItem>
-                    {activeSites.map((s) => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
+                    {activeSites.map((s) => <SelectItem key={s.id} value={s.name} className="entity-name">{s.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -976,17 +976,17 @@ export default function SiteMaterialTrips() {
                   <SelectTrigger data-testid="select-filter-material"><SelectValue placeholder="All Materials" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All materials</SelectItem>
-                    {SITE_MATERIAL_TRIP_MATERIAL_OPTIONS.map((material) => <SelectItem key={material} value={material}>{material}</SelectItem>)}
+                    {SITE_MATERIAL_TRIP_MATERIAL_OPTIONS.map((material) => <SelectItem key={material} value={material} className="entity-name">{material}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
                 <Label className="text-xs">Vehicle number</Label>
-                <FreeTextSuggestionInput value={vehicleFilter} onChange={(value) => setVehicleFilter(value.toUpperCase())} suggestions={filterVehicleSuggestions} match="vehicle" suggestionsError={filterSuggestionError} placeholder="All vehicles" data-testid="input-filter-vehicle" />
+                <FreeTextSuggestionInput value={vehicleFilter} onChange={setVehicleFilter} suggestions={filterVehicleSuggestions} match="vehicle" suggestionsError={filterSuggestionError} placeholder="All vehicles" data-testid="input-filter-vehicle" />
               </div>
               <div>
                 <Label className="text-xs">Transporter</Label>
-                <FreeTextSuggestionInput value={supplierFilter} onChange={(value) => setSupplierFilter(value.toUpperCase())} suggestions={filterSupplierSuggestions} match="supplier" suggestionsError={filterSuggestionError} placeholder="All transporters" data-testid="input-filter-supplier" />
+                <FreeTextSuggestionInput value={supplierFilter} onChange={setSupplierFilter} suggestions={filterSupplierSuggestions} match="supplier" suggestionsError={filterSuggestionError} placeholder="All transporters" data-testid="input-filter-supplier" />
               </div>
               <label className="flex items-end gap-2 pb-2 text-sm">
                 <input type="checkbox" checked={onlyUnassigned} onChange={(event) => { setOnlyUnassigned(event.target.checked); setRoleFilter("all"); }} data-testid="checkbox-filter-only-unassigned" />
@@ -1051,24 +1051,24 @@ export default function SiteMaterialTrips() {
                       <tr key={trip.id} className="border-b hover:bg-muted/30" data-testid={`row-trip-${trip.id}`}>
                         <td className="p-2 whitespace-nowrap">{trip.date ? format(new Date(trip.date + "T00:00:00"), "dd-MMM-yyyy").toUpperCase() : "-"}</td>
                         <td className="p-2">{trip.time || '-'}</td>
-                        <td className="p-2 font-medium">{trip.site}</td>
+                        <td className="p-2 font-medium"><span className="entity-name">{trip.site}</span></td>
                         <td className="p-2">
-                          {trip.material}
+                          <span className="entity-name">{trip.material}</span>
                           <p className={`mt-1 min-w-64 text-xs ${classifyTripRoles(trip) === "unresolved" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`} data-testid={`trip-role-description-${trip.id}`}>
                             {tripRoleDescription(trip, internalEquipment.find((item) => item.id === trip.internalEquipmentId)?.name)}
                           </p>
                           <TripWorkContextSummary trip={trip} testIdPrefix="trip-list-ctx" />
                           {trip.earthworkArrangementId == null && <p className="text-xs text-amber-700" data-testid={`trip-no-arrangement-${trip.id}`}>No arrangement linked</p>}
                         </td>
-                        <td className="p-2">{trip.supplier || '-'}</td>
+                         <td className="p-2"><span className="entity-name">{trip.supplier || '-'}</span></td>
                         <td className="p-2" data-testid={`trip-material-source-${trip.id}`}>{trip.materialSourceType === "own_source" ? <>
                           Our own borrow area
                           {trip.materialSourceLabel && <p className="text-xs text-muted-foreground">{trip.materialSourceLabel}</p>}
-                        </> : trip.materialSourceSupplier?.trim() || '-'}
+                         </> : <span className="entity-name">{trip.materialSourceSupplier?.trim() || '-'}</span>}
                           <p className="mt-1 text-xs text-muted-foreground">Receipt/Challan No.: <span className="break-words" data-testid={`trip-receipt-${trip.id}`}>{trip.receiptNumber?.trim() || "-"}</span></p>
                         </td>
                         <td className="p-2">
-                          {trip.vehicleNumber || '-'}
+                           <span className="entity-name">{trip.vehicleNumber || '-'}</span>
                           {trip.driverName && <p className="text-xs text-muted-foreground">Driver: {formatPersonName(trip.driverName)}</p>}
                           {trip.enteredBy && <p className="text-xs text-muted-foreground">Received by: {formatPersonName(trip.enteredBy)}</p>}
                           <p className="mt-1 text-xs text-muted-foreground" data-testid={`text-trip-entered-by-${trip.id}`}>

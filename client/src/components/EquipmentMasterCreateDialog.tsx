@@ -40,7 +40,7 @@ export function EquipmentMasterCreateDialog({
     if (controlledOpen === undefined) setInternalOpen(next);
     onOpenChange?.(next);
   };
-  const [name, setName] = useState(initialName.toUpperCase());
+  const [name, setName] = useState(initialName);
   const [registrationNumber, setRegistrationNumber] = useState("");
   const [ownership, setOwnership] = useState("owned");
   const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
@@ -69,7 +69,7 @@ export function EquipmentMasterCreateDialog({
   });
 
   const reset = () => {
-    setName(initialName.toUpperCase());
+    setName(initialName);
     setRegistrationNumber("");
     setOwnership("owned");
     setSelectedVendorId(null);
@@ -92,7 +92,7 @@ export function EquipmentMasterCreateDialog({
   };
 
   useEffect(() => {
-    if (open) setName(initialName.toUpperCase());
+    if (open) setName(initialName);
   }, [open, initialName]);
 
   const createMutation = useMutation({
@@ -177,8 +177,8 @@ export function EquipmentMasterCreateDialog({
           <DialogDescription>Enter the Equipment Master details used for usage, fuel, and planning records.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-4">
-          <div><Label htmlFor="create-equipment-name">Equipment name</Label><Input id="create-equipment-name" value={name} onChange={e => setName(e.target.value.toUpperCase())} placeholder="e.g., 600 KVA GENERATOR" data-testid="input-equipment-name" /></div>
-          <div><Label htmlFor="create-registration-number">Registration / ID Number</Label><Input id="create-registration-number" value={registrationNumber} onChange={e => setRegistrationNumber(e.target.value.toUpperCase())} placeholder="e.g., MH12AB1234" data-testid="input-registration-number" /></div>
+          <div><Label htmlFor="create-equipment-name">Equipment name</Label><Input id="create-equipment-name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g., 600 KVA GENERATOR" data-testid="input-equipment-name" /></div>
+          <div><Label htmlFor="create-registration-number">Registration / ID Number</Label><Input id="create-registration-number" value={registrationNumber} onChange={e => setRegistrationNumber(e.target.value)} placeholder="e.g., MH12AB1234" data-testid="input-registration-number" /></div>
           <div>
             <Label htmlFor="create-equipment-ownership">Ownership</Label>
             <select
@@ -240,7 +240,7 @@ export function EquipmentMasterCreateDialog({
           )}
           <div><Label>Meter type</Label><Select value={meterType} onValueChange={setMeterType}><SelectTrigger data-testid="select-meter-type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hour_meter">Hour meter (hrs)</SelectItem><SelectItem value="odometer">Odometer (km)</SelectItem></SelectContent></Select></div>
           <div><Label>Consumption norm ({meterType === "hour_meter" ? "L/hr" : "L/km"})</Label><Input type="number" step="0.1" value={consumptionNorm} onChange={e => setConsumptionNorm(e.target.value)} placeholder="e.g., 50" data-testid="input-consumption-norm" /></div>
-          <div><Label>Plant <span className="text-muted-foreground text-sm">(leave blank if shared across plants)</span></Label><Select value={plantName || "__none__"} onValueChange={value => setPlantName(value === "__none__" ? "" : value)}><SelectTrigger data-testid="select-equipment-plant"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">— Shared / No specific plant —</SelectItem>{plants.map(plant => <SelectItem key={plant.plantName} value={plant.plantName}>{plant.plantName}</SelectItem>)}</SelectContent></Select></div>
+          <div><Label>Plant <span className="text-muted-foreground text-sm">(leave blank if shared across plants)</span></Label><Select value={plantName || "__none__"} onValueChange={value => setPlantName(value === "__none__" ? "" : value)}><SelectTrigger data-testid="select-equipment-plant"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">— Shared / No specific plant —</SelectItem>{plants.map(plant => <SelectItem key={plant.plantName} value={plant.plantName} className="entity-name">{plant.plantName}</SelectItem>)}</SelectContent></Select></div>
           <div className="border border-dashed border-teal-200 rounded-lg">
             <button type="button" className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-teal-700" onClick={() => setShowPlanningOutput(value => !value)} data-testid="button-toggle-planning-output">
               <span><span className="text-[12px] font-bold uppercase tracking-wide text-teal-600">Standard Outputs</span> <span className="text-[12px] text-muted-foreground font-normal">(for auto-duration in Work Programme)</span></span>

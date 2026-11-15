@@ -1,4 +1,5 @@
 import { formatPersonName } from "@shared/personName";
+import { displayName } from "@shared/displayName";
 
 export type VendorMasterBillDetails = {
   name?: string | null;
@@ -30,7 +31,7 @@ export function vendorBillMasterTopRows(
   const masterName = valueOf(details.name);
   const businessNameDiffers = businessName && businessName.toLocaleLowerCase() !== masterName.toLocaleLowerCase();
   return [
-    businessNameDiffers ? row("Business name", businessName) : null,
+    businessNameDiffers ? row("Business name", displayName(businessName)) : null,
     row("Address", details.address),
     row("GSTIN", details.gstNumber),
     row("Contact person", formatPersonName(details.contactPersonName)),
@@ -44,7 +45,7 @@ export function vendorBillMasterBottomRows(
   if (!details) return [];
   return [
     row("PAN", details.panNumber),
-    row("Bank account name", details.bankAccountName),
+    row("Bank account name", displayName(valueOf(details.bankAccountName))),
     row("Bank name", details.bankName),
     row("Account number", details.bankAccountNumber),
     row("IFSC", details.bankIfsc),

@@ -4,7 +4,7 @@ import type { DprEquipmentFields } from "@/components/DprEquipmentCompact";
 import type { DprActualEfficiency } from "@/lib/dprEquipmentEfficiency";
 import { resolveDprRowConsumption } from "@shared/dprEquipmentConsumption";
 import { resolveEquipmentBoqHours } from "@shared/equipmentActivityAllocations";
-import { boqItemDisplayName } from "@shared/boqItemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 import { formatEquipmentTime, formatEquipmentDuration } from "@shared/equipmentUsage";
 import { breakdownDurationHours } from "@/components/BreakdownStoppageEditor";
 import "@/components/dprEquipmentReadOnly.css";

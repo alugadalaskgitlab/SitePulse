@@ -211,7 +211,7 @@ const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 
 // BOQ item labels use the shared display-name helper (shared/boqItemName.ts)
 // so operational naming can't drift between Guided DPR, Detailed DPR and pickers.
-import { boqItemDisplayName } from "@shared/boqItemName";
+import { boqItemDisplayName as rawBoqItemDisplayName, boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 import { layerFieldLabel, showLayerField } from "@shared/layerDisplay";
 
 const newEntryKey = (): string =>
@@ -1030,7 +1030,7 @@ export default function GuidedDpr() {
       entryKey: newEntryKey(),
       noSiteWork: false,
       noSiteWorkDescription: "",
-      activity: boqItemDisplayName(item) || `BOQ item ${bar.boqItemId}`,
+      activity: rawBoqItemDisplayName(item) || `BOQ item ${bar.boqItemId}`,
       boqItemId: bar.boqItemId,
       programmeBarId: bar.id,
       earthworkArrangementId: null,
@@ -1852,7 +1852,7 @@ export default function GuidedDpr() {
             <Select value={siteName} onValueChange={handleSiteChange}>
               <SelectTrigger data-testid="select-site"><SelectValue placeholder="Select site" /></SelectTrigger>
               <SelectContent>
-                {activeSites.map((s) => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
+                {activeSites.map((s) => <SelectItem key={s.id} value={s.name} className="entity-name">{s.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -1862,7 +1862,7 @@ export default function GuidedDpr() {
               <SelectTrigger data-testid="select-engineer"><SelectValue placeholder="Select engineer" /></SelectTrigger>
               <SelectContent>
                 {personnelList.map((p) => (
-                  <SelectItem key={p.id} value={`${p.name.toUpperCase()} - ${p.role.toUpperCase()}`}>
+                  <SelectItem key={p.id} value={`${p.name} - ${p.role}`}>
                     {p.name} ({p.role})
                   </SelectItem>
                 ))}
@@ -2042,7 +2042,7 @@ export default function GuidedDpr() {
                   <Input
                     placeholder="e.g., RE-CLEARING VEGETATION, MACHINERY SHIFTING"
                     value={e.activity}
-                    onChange={(ev) => updateEntry(idx, { activity: ev.target.value.toUpperCase() })}
+                    onChange={(ev) => updateEntry(idx, { activity: ev.target.value })}
                     className="uppercase"
                     data-testid={`input-nowork-activity-${idx}`}
                   />
@@ -2052,7 +2052,7 @@ export default function GuidedDpr() {
                   <Textarea
                     placeholder="Describe what was done and why it isn't billable progress…"
                     value={e.noSiteWorkDescription}
-                    onChange={(ev) => updateEntry(idx, { noSiteWorkDescription: ev.target.value.toUpperCase() })}
+                    onChange={(ev) => updateEntry(idx, { noSiteWorkDescription: ev.target.value })}
                     className="uppercase"
                     rows={3}
                     data-testid={`input-nowork-description-${idx}`}
@@ -2724,7 +2724,7 @@ export default function GuidedDpr() {
                           <div>
                             <Label className="text-xs text-muted-foreground">Fuel station</Label>
                             <Input placeholder="HP / BPCL" value={pt.fuelStation ?? ""}
-                              onChange={(ev) => setPassthroughField(i, "fuelStation", ev.target.value.toUpperCase(), false)}
+                              onChange={(ev) => setPassthroughField(i, "fuelStation", ev.target.value, false)}
                               className="uppercase" data-testid={`input-eq-fuel-station-${i}`} />
                           </div>
                           <div>

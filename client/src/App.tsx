@@ -134,7 +134,6 @@ const EquipmentHireBilling = lazy(() => import("@/pages/EquipmentHireBilling"));
 // Admin pages
 const AdminSettings    = lazy(() => import("@/pages/AdminSettings"));
 const AccessRoles      = lazy(() => import("@/pages/AccessRoles"));
-const NamesTidyUp      = lazy(() => import("@/pages/NamesTidyUp"));
 const AdminReports     = lazy(() => import("@/pages/AdminReports"));
 const ManagementReport = lazy(() => import("@/pages/ManagementReport"));
 const DataSync         = lazy(() => import("@/pages/DataSync"));
@@ -492,7 +491,6 @@ function AuthedShell() {
           <Route path="/admin/site-backfill" component={ownerGated(SiteBackfill)} />
           <Route path="/admin/settings/roles" component={ownerGated(AccessRoles)} />
           <Route path="/admin/settings" component={ownerGated(AdminSettings)} />
-          <Route path="/admin/settings/names-tidy-up" component={featureGated(NamesTidyUp, "names_tidy_up")} />
           <Route path="/admin/users" component={featureGated(UserManagement, "users_permissions")} />
           <Route path="/admin/devices" component={ownerGated(DeviceApproval)} />
           <Route path="/admin/reports" component={ownerGated(AdminReports)} />

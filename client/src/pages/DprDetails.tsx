@@ -16,7 +16,7 @@ import { InsufficientDieselDialog, parseInsufficientPlantStock, type Insufficien
 import { useToast } from "@/hooks/use-toast";
 import { DprPhotoGroups } from "@/components/DprPhotoGroups";
 import type { EquipmentMasterType, Personnel, Site } from "@shared/schema";
-import { boqItemDisplayName } from "@shared/boqItemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 import { dprMeasurementSummary, resolveBoqDisplayUnit } from "@shared/dprGeometry";
 import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { DprEquipmentReadOnlyRow, DprEquipmentReadOnlyTable } from "@/components/DprEquipmentReadOnlyRow";

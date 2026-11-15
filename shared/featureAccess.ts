@@ -34,7 +34,7 @@ export type FeatureId =
   | "irn" | "purchase_indent" | "purchase_orders" | "vendor_bills"
   | "rate_cards" | "payables"
   | "boq_programme" | "progress_actual" | "ra_bills"
-  | "fund_planner" | "reports" | "masters" | "users_permissions" | "estimating" | "names_tidy_up";
+  | "fund_planner" | "reports" | "masters" | "users_permissions" | "estimating";
 
 export type FeatureDefinition = {
   id: FeatureId;
@@ -77,7 +77,6 @@ export const FEATURES: readonly FeatureDefinition[] = [
   { id: "reports", label: "Reports", group: "office", actions: ["view", "export"] },
   { id: "masters", label: "Masters", group: "office", actions: viewAddEdit },
   { id: "users_permissions", label: "Users & permissions", group: "office", actions: viewAddEdit },
-  { id: "names_tidy_up", label: "Names tidy-up", group: "office", actions: ["view", "edit"] },
   { id: "estimating", label: "Estimating", group: "office", actions: ["view", "add", "edit", "cancel", "export"], license: "estimating" },
 ] as const;
 
@@ -284,7 +283,6 @@ export const LEGACY_FEATURE_KEYS: Readonly<Record<FeatureId, readonly SectionKey
   reports: ["reports", "reports_hub", "report_management", "report_site_purchases", "plant_daily_reports", "plant_variance", "plant_audit", "plant_diesel_proc", "plant_stock", "plant_ldo_reconciliation", "stock_reconciliation", "equipment_performance_report", "rmc_daily_report", "plant_heating_trends", "reports_analysis"],
   masters: ["master_parties", "master_materials", "master_equipment", "master_personnel", "site_management", "sites_plants_manage", "vendor_masters_manage"],
   users_permissions: ["user_management", "permission_manager"],
-  names_tidy_up: [],
   estimating: ["estimator_portal", "mix_calculator", "concrete_calculator", "concrete_estimates_manage", "estimates_manager"],
 };
 
@@ -361,10 +359,6 @@ export function can(
   if (!user || user.isActive === false || !definition || definition.inactive ||
       !isFeatureLicensed(feature, state.licensedModules)) return false;
   if (user.isOwner) return true;
-  // The new name review screen is Owner-only until an Owner explicitly grants
-  // a configured feature tick; legacy Admin's broad compatibility bypass does
-  // not grant access to it.
-  if (feature === "names_tidy_up" && !state.rolesConfigured) return false;
   // Fund planning is deliberately separate from broad Work programme access,
   // including the legacy unconfigured-role Admin bypass.
   if (feature === "fund_planner") {
@@ -487,7 +481,6 @@ export const FEATURE_ROUTE_ALIASES: Readonly<Partial<Record<SectionKey, readonly
 
 export function featureForPath(path: string): FeatureId[] {
   const p = path.toLowerCase();
-  if (/\/(api\/admin\/)?names-tidy-up(\/|$)/.test(p)) return ["names_tidy_up"];
   if (/\/(reports|api\/reports)(\/|$)/.test(p)) return ["reports"];
   if (/\/api\/auth\/users|\/api\/access-control/.test(p)) return ["users_permissions"];
   if (/\/api\/(site-requirements|material-requirements|earthwork-arrangements)/.test(p)) return ["site_requirements"];

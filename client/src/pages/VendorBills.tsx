@@ -41,6 +41,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias, Site, AuditLog } from "@shared/schema";
 import { siteMatchesPermitted } from "@shared/siteName";
+import { displayName } from "@shared/displayName";
 import { filterFinancialBills, billPaymentPosition, getBillFinancialTotals, type BillScope } from "@shared/vendorBillFinancialReport";
 import { VendorBillTaxesSummary } from "@/components/vendor-bills/VendorBillTaxesSummary";
 import { defaultConvertedQuantity, isDifferentBillingUnit, matchingRateCardsForGroup, normalizeRateCardPart, selectAutoMaterialRateConversion, type RateCardUnitOption, type VendorRateCardRecord } from "@/lib/vendorBillRateSelection";
@@ -564,7 +565,7 @@ export function VendorBillPaymentDetails({
               <Input
                 value={payerName}
                 onChange={(e) => setPayerName(e.target.value)}
-                onBlur={(e) => setPayerName(e.target.value.toUpperCase())}
+                onBlur={(e) => setPayerName(e.target.value)}
                 placeholder="WHO PAID?"
                 className="uppercase"
                 data-testid="input-vb-payer-name"
@@ -2632,7 +2633,7 @@ export default function VendorBills() {
       ...(editingBillId === null || selectedSiteId !== siteAnswerAtEdit
         ? { siteId: selectedSiteId === "all" ? null : Number(selectedSiteId) }
         : {}),
-      vendorName: vendorName.toUpperCase(),
+      vendorName,
       ...(matchingBillingIdentities.length === 1 ? { billingVendorId: matchingBillingIdentities[0].id } : {}),
       periodFrom: periodFrom || null,
       periodTo: periodTo || null,
@@ -2913,7 +2914,7 @@ export default function VendorBills() {
         <td>${escHtml(formatDate(item.date))}</td>
         <td style="text-align:center">${item.category ? escHtml(getCategoryLabel(item.category).toUpperCase()) : "-"}</td>
         <td>${escHtml(item.description)}${siteHtml}</td>
-        ${hasSuppliedOrTransporter ? `<td>${item.suppliedTo ? escHtml(item.suppliedTo) : "—"}</td><td>${item.transporter ? escHtml(item.transporter) : "—"}</td>` : ""}
+        ${hasSuppliedOrTransporter ? `<td>${item.suppliedTo ? escHtml(displayName(item.suppliedTo)) : "—"}</td><td>${item.transporter ? escHtml(displayName(item.transporter)) : "—"}</td>` : ""}
         <td style="text-align:center">${formatQty(item.qty)}</td>
         <td style="text-align:center">${item.unit || ""}</td>
         ${hasLeadDistance ? `<td style="text-align:center">${item.leadDistance ? `${formatQty(item.leadDistance)} (RT: ${formatQty(item.leadDistance * 2)})` : "-"}</td>` : ""}
@@ -3239,7 +3240,7 @@ export default function VendorBills() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">ALL SITES</SelectItem>
-                    {sites.map(site => <SelectItem key={site.id} value={String(site.id)}>{site.name}</SelectItem>)}
+                    {sites.map(site => <SelectItem key={site.id} value={String(site.id)} className="entity-name">{site.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               {editingBillId !== null && !selectedSiteId && (
@@ -3267,7 +3268,7 @@ export default function VendorBills() {
                       <SelectContent>
                         <SelectItem value="manual">Type a name or choose a saved suggestion</SelectItem>
                         {(billingIdentities.data || []).map(identity => (
-                          <SelectItem key={identity.id} value={String(identity.id)}>{identity.name}</SelectItem>
+                          <SelectItem key={identity.id} value={String(identity.id)} className="entity-name">{identity.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -3471,7 +3472,7 @@ export default function VendorBills() {
                     >
                       <div className="flex flex-col gap-1 min-w-0 flex-1">
                         <span className="font-semibold text-sm truncate" data-testid={`text-vendor-name-${vendor.vendorName}`}>
-                           {isHireVendorDisplay ? vendorBillingIdentityLabel(vendor.vendorName, billingIdentities.data) : vendor.vendorName}
+                           <span className="entity-name">{isHireVendorDisplay ? vendorBillingIdentityLabel(vendor.vendorName, billingIdentities.data) : vendor.vendorName}</span>
                         </span>
                         <div className="flex items-center gap-2 flex-wrap">
                            <span className="text-sm text-muted-foreground" data-testid={`text-record-count-${vendor.vendorName}`}>
@@ -4448,12 +4449,12 @@ export default function VendorBills() {
                   </td>
                   {hasSuppliedOrTransporter && (
                     <td className="px-2 py-1.5">
-                      <span className="text-sm text-muted-foreground" data-testid={`text-item-supplied-to-${idx}`}>{item.suppliedTo || "—"}</span>
+                      <span className="text-sm text-muted-foreground entity-name" data-testid={`text-item-supplied-to-${idx}`}>{item.suppliedTo || "—"}</span>
                     </td>
                   )}
                   {hasSuppliedOrTransporter && (
                     <td className="px-2 py-1.5">
-                      <span className="text-sm text-muted-foreground" data-testid={`text-item-transporter-${idx}`}>{item.transporter || "—"}</span>
+                      <span className="text-sm text-muted-foreground entity-name" data-testid={`text-item-transporter-${idx}`}>{item.transporter || "—"}</span>
                     </td>
                   )}
                   <td className="px-2 py-1.5">
@@ -5445,7 +5446,7 @@ export default function VendorBills() {
             <div className="flex justify-between items-start flex-wrap gap-3">
               <div>
                 <p className="text-sm text-muted-foreground uppercase">Vendor</p>
-                <p className="text-xl font-bold" data-testid="text-vendor-name">{detailVendorName}</p>
+                <p className="text-xl font-bold entity-name" data-testid="text-vendor-name">{detailVendorName}</p>
                 {vendorBillMasterTopRows(bill.vendorMasterDetails).length > 0 && (
                   <dl className="mt-1 space-y-0.5 text-sm text-muted-foreground" data-testid="vendor-master-top-details">
                     {vendorBillMasterTopRows(bill.vendorMasterDetails).map(({ label, value }) => (
@@ -5511,7 +5512,7 @@ export default function VendorBills() {
               <div>
                 <p className="text-sm text-muted-foreground uppercase">Site</p>
                 <div className="flex items-center gap-1">
-                  <p className="text-sm font-semibold" data-testid="text-bill-site">{detailSiteName}</p>
+                  <p className="text-sm font-semibold entity-name" data-testid="text-bill-site">{detailSiteName}</p>
                   <VendorBillSiteCorrection bill={bill} sites={sites || []} isOwner={!!user?.isOwner} />
                 </div>
               </div>
@@ -5926,8 +5927,8 @@ export default function VendorBills() {
                       </div>
                     </div>
                   </td>
-                  {hasSuppliedOrTransporter && <td className="px-2 py-2 text-sm text-muted-foreground" data-testid={`text-detail-item-supplied-to-${idx}`}>{item.suppliedTo || "—"}</td>}
-                  {hasSuppliedOrTransporter && <td className="px-2 py-2 text-sm text-muted-foreground" data-testid={`text-detail-item-transporter-${idx}`}>{item.transporter || "—"}</td>}
+                  {hasSuppliedOrTransporter && <td className="px-2 py-2 text-sm text-muted-foreground entity-name" data-testid={`text-detail-item-supplied-to-${idx}`}>{item.suppliedTo || "—"}</td>}
+                  {hasSuppliedOrTransporter && <td className="px-2 py-2 text-sm text-muted-foreground entity-name" data-testid={`text-detail-item-transporter-${idx}`}>{item.transporter || "—"}</td>}
                   <td className="px-2 py-2 text-sm">{formatQty(item.qty)}</td>
                   <td className="px-2 py-2 text-sm">{item.unit}</td>
                   {hasLead && (
@@ -6357,7 +6358,7 @@ export default function VendorBills() {
                   <SelectContent>
                     <SelectItem value="all">ALL VENDORS</SelectItem>
                     {vendorNames.map(name => (
-                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                      <SelectItem key={name} value={name} className="entity-name">{name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -6425,8 +6426,8 @@ export default function VendorBills() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">ALL PARTIES</SelectItem>
-                      {partyNames.map(name => (
-                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                    {partyNames.map(name => (
+                      <SelectItem key={name} value={name} className="entity-name">{name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -6450,7 +6451,7 @@ export default function VendorBills() {
                     {filterSite && !sites.some(site => siteMatchesPermitted(site.name, [filterSite])) && (
                       <SelectItem value={filterSite}>{filterSite}</SelectItem>
                     )}
-                    {sites.map(site => <SelectItem key={site.id} value={site.name}>{site.name}</SelectItem>)}
+                    {sites.map(site => <SelectItem key={site.id} value={site.name} className="entity-name">{site.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 {filterSite && (
@@ -6523,7 +6524,7 @@ export default function VendorBills() {
               <CardContent className="py-3">
                 <div className="flex justify-between items-center flex-wrap gap-2">
                   <div className="min-w-0">
-                    <p className="font-bold text-sm uppercase truncate" title={bill.vendorName !== vendorDisplayName(bill) ? `As recorded: ${bill.vendorName}` : undefined} data-testid={`text-bill-vendor-${bill.id}`}>{vendorDisplayName(bill)}</p>
+                    <p className="font-bold text-sm entity-name truncate" title={bill.vendorName !== vendorDisplayName(bill) ? `As recorded: ${bill.vendorName}` : undefined} data-testid={`text-bill-vendor-${bill.id}`}>{vendorDisplayName(bill)}</p>
                     <p className="text-sm text-muted-foreground" data-testid={`text-bill-meta-${bill.id}`}>
                       {bill.billNo} &bull; {getBillTypeLabel(bill.billType)}
                       {` \u2022 Bill date ${bill.billDate ? formatDate(bill.billDate) : "not recorded"}`}
@@ -6612,7 +6613,7 @@ export default function VendorBills() {
                   </SelectTrigger>
                   <SelectContent>
                     {vendorNames.map(name => (
-                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                      <SelectItem key={name} value={name} className="entity-name">{name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -6622,7 +6623,7 @@ export default function VendorBills() {
                 <Input
                   value={aliasValue}
                   onChange={e => setAliasValue(e.target.value)}
-                  onBlur={e => setAliasValue(e.target.value.toUpperCase())}
+                  onBlur={e => setAliasValue(e.target.value)}
                   placeholder="ALTERNATE NAME"
                   className="text-sm h-8 uppercase"
                   data-testid="input-alias-value"

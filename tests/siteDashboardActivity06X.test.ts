@@ -215,7 +215,7 @@ describe("H: buildActivityFilterOptions — BOQ item fields drive label", () => 
     const opts = buildActivityFilterOptions(dprs);
     const opt = opts.find((o) => o.value === "boq:10");
     expect(opt).toBeDefined();
-    expect(opt!.label).toBe("Scarifying & Loosening");
+    expect(opt!.label).toBe("SCARIFYING & LOOSENING");
   });
 
   it("falls back to activity text when boqItem is null", () => {

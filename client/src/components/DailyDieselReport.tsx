@@ -89,7 +89,7 @@ export function DailyDieselReport({ equipment, onBack }: {
       <label>To<Input type="date" value={to} onChange={e => setTo(e.target.value)} data-testid="daily-to" /></label>
       <label>Equipment<select className="block border rounded p-2 bg-background" value={equipmentId} onChange={e => setEquipmentId(e.target.value)} data-testid="daily-equipment">
         <option value="">All equipment</option>
-        {equipment.map(e => <option key={e.id} value={e.id}>{e.name}{e.registrationNumber ? ` (${e.registrationNumber})` : ""} [#{e.id}]</option>)}
+        {equipment.map(e => <option key={e.id} value={e.id} className="entity-name">{e.name}{e.registrationNumber ? ` (${e.registrationNumber})` : ""} [#{e.id}]</option>)}
       </select></label>
       <Button variant="outline" disabled={!data || isFetching || !valid || !!error} onClick={() => exportReport("pdf")} data-testid="daily-export-pdf">EXPORT PDF</Button>
       <Button variant="outline" disabled={!data || isFetching || !valid || !!error} onClick={() => exportReport("xlsx")} data-testid="daily-export-excel">EXPORT EXCEL</Button>

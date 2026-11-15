@@ -126,8 +126,8 @@ export function TripRoleEditDialog({ trip: originalTrip, vendors, equipment, ven
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {(["date", "time", "site", "material", "quantity", "uom"] as const).map(key => <div key={key}><Label htmlFor={`edit-trip-${key}`}>{({ date: "Date", time: "Time", site: "Site", material: "Material", quantity: "Quantity", uom: "Unit" })[key]}</Label>
               {key === "site" ? <select id={`edit-trip-${key}`} className="w-full rounded-md border bg-background p-2 text-sm" value={fields.site} onChange={e => setFields(prev => ({ ...prev, site: e.target.value }))}>
-                {!sitesList.some(s => s.name === fields.site) && <option value={fields.site}>{fields.site}</option>}
-                {sitesList.filter(s => s.isActive || s.name === fields.site).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                {!sitesList.some(s => s.name === fields.site) && <option value={fields.site} className="entity-name">{fields.site}</option>}
+                {sitesList.filter(s => s.isActive || s.name === fields.site).map(s => <option key={s.id} value={s.name} className="entity-name">{s.name}</option>)}
               </select> : <Input id={`edit-trip-${key}`} type={key === "date" || key === "time" ? key : key === "quantity" ? "number" : "text"} step={key === "quantity" ? "any" : undefined} value={fields[key]} onChange={e => setFields(prev => ({ ...prev, [key]: e.target.value }))} />}
             </div>)}
           </div>

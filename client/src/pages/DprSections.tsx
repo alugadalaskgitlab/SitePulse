@@ -267,7 +267,7 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
       {snapshot && !final && overlapIssues.length > 0 && <DprSectionsSubmitIssues issues={overlapIssues} onAction={(issue, action) => fix(issue, action)} />}
       {!resolved && !initial && <div className="grid sm:grid-cols-2 gap-4 rounded-lg border p-5">
         <div><Label htmlFor="dpr-site">Site</Label><select id="dpr-site" className="w-full border rounded p-2" value={context.site} onChange={e => setContext({ ...context, site: e.target.value, boqProjectId: null })}>
-          <option value="">Choose site</option>{(sites.data ?? []).filter(s => s.isActive !== false && s.isActive !== 0).map(s => <option key={s.id} value={normalizeDprSectionContext({ site: s.name }).site}>{s.name}</option>)}
+          <option value="">Choose site</option>{(sites.data ?? []).filter(s => s.isActive !== false && s.isActive !== 0).map(s => <option key={s.id} value={normalizeDprSectionContext({ site: s.name }).site} className="entity-name">{s.name}</option>)}
         </select>{sites.error && <p role="alert">Sites could not be loaded.</p>}</div>
         <div><Label htmlFor="dpr-date">Reporting date</Label><Input id="dpr-date" type="date" value={context.date} onChange={e => setContext({ ...context, date: e.target.value })} /></div>
         <div><Label htmlFor="dpr-project">BOQ project</Label><select id="dpr-project" className="w-full border rounded p-2" value={context.boqProjectId ?? ""} onChange={e => setContext({ ...context, boqProjectId: e.target.value ? Number(e.target.value) : null })}>

@@ -208,12 +208,7 @@ input[type="text"],
 input[type="search"],
 input:not([type]),
 textarea {
-  text-transform: uppercase;
-}
-
-/* Vendor Master names show the actual value being typed; casing is normalized on save. */
-input.vendor-master-name-input[type="text"] {
-  text-transform: none;
+  text-transform: none !important;
 }
 
 input[type="number"]::-webkit-inner-spin-button,
@@ -309,4 +304,9 @@ table tbody [class*="text-[10px]"][class*="font-mono"] {
 /* Keep visible UI labels in sentence case even where older markup carries `uppercase`. */
 label, h1, h2, h3, h4, h5, h6, th, button, a, [role="tab"] {
   text-transform: none !important;
+}
+
+/* Read-only entity labels opt in; this never changes editable input values. */
+.entity-name {
+  text-transform: uppercase !important;
 }

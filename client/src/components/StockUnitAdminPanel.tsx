@@ -430,7 +430,7 @@ export function StockUnitAdminPanel({ visible }: { visible: boolean }) {
                     <SelectTrigger><SelectValue placeholder="Choose source" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__plant__">Plant common</SelectItem>
-                      {partiesQuery.data?.map(party => <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>)}
+                      {partiesQuery.data?.map(party => <SelectItem key={party.id} value={String(party.id)} className="entity-name">{party.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -440,7 +440,7 @@ export function StockUnitAdminPanel({ visible }: { visible: boolean }) {
                     <SelectTrigger><SelectValue placeholder="Choose destination" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__plant__">Plant common</SelectItem>
-                      {partiesQuery.data?.map(party => <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>)}
+                      {partiesQuery.data?.map(party => <SelectItem key={party.id} value={String(party.id)} className="entity-name">{party.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>

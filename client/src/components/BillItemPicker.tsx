@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import { BOQ_WORK_CATEGORIES } from "@shared/boqWorkCategories";
 import { shortItemName } from "@shared/boqItemName";
-import { dprBoqItemDisplayName, dprSelectableBoqItems } from "@shared/dprBoqSelection";
+import { dprBoqItemDisplayText, dprSelectableBoqItems } from "@shared/dprBoqSelection";
 import { resolveBoqDisplayUnit } from "@shared/dprGeometry";
 
 export type BillItem = {
@@ -64,7 +64,7 @@ function itemGroup(it: BillItem | null): string {
 }
 
 function ItemRow({ it, unitSuffix }: { it: BillItem; unitSuffix: string }) {
-  const short = dprBoqItemDisplayName(it);
+  const short = dprBoqItemDisplayText(it);
   return (
     <div className="flex flex-col min-w-0" title={it.description}>
       <span className="flex items-center gap-1.5 font-medium leading-snug truncate">

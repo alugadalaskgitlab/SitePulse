@@ -309,7 +309,7 @@ export default function SitePurchasesReport() {
                     {purchases.map((p) => (
                       <tr key={`${p.source || 'purchase'}-${p.id}`} className="border-b last:border-0" data-testid={`row-purchase-${p.source || 'purchase'}-${p.id}`}>
                         <td className="p-2 whitespace-nowrap">{format(new Date(p.date + 'T00:00:00'), "dd-MMM-yyyy").toUpperCase()}</td>
-                        <td className="p-2">{p.site}</td>
+                         <td className="p-2"><span className="entity-name">{p.site}</span></td>
                         <td className="p-2 text-center">
                           <span className={`text-[12px] font-semibold px-1.5 py-0.5 rounded ${p.source === 'diesel' ? 'bg-orange-100 text-orange-700' : 'bg-teal-100 text-teal-700'}`}>
                             {p.source === 'diesel' ? 'DIESEL' : 'PURCHASE'}
@@ -325,7 +325,7 @@ export default function SitePurchasesReport() {
                           )}
                         </td>
                         <td className="p-2">{p.itemDescription}</td>
-                        <td className="p-2">{p.vendor || "-"}</td>
+                         <td className="p-2"><span className="entity-name">{p.vendor || "-"}</span></td>
                         <td className="p-2">{p.billNo || "-"}</td>
                         <td className="p-2 text-right">{p.quantity ?? "-"}</td>
                         <td className="p-2">{p.uom || "-"}</td>
@@ -427,7 +427,7 @@ export default function SitePurchasesReport() {
               <Label className="text-sm">Item description</Label>
               <Input
                 value={editForm.itemDescription}
-                onChange={(e) => setEditForm(f => ({ ...f, itemDescription: e.target.value.toUpperCase() }))}
+                onChange={(e) => setEditForm(f => ({ ...f, itemDescription: e.target.value }))}
                 data-testid="input-edit-item"
               />
             </div>
@@ -455,7 +455,7 @@ export default function SitePurchasesReport() {
               <Label className="text-sm">Vendor</Label>
               <Input
                 value={editForm.vendor}
-                onChange={(e) => setEditForm(f => ({ ...f, vendor: e.target.value.toUpperCase() }))}
+                onChange={(e) => setEditForm(f => ({ ...f, vendor: e.target.value }))}
                 data-testid="input-edit-vendor"
               />
             </div>

@@ -1157,7 +1157,7 @@ export default function SiteDashboard() {
                     <SelectContent>
                       <SelectItem value="all">All Materials</SelectItem>
                       {uniqueMaterials.map((material) => (
-                        <SelectItem key={material} value={material}>{material}</SelectItem>
+                        <SelectItem key={material} value={material} className="entity-name">{material}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

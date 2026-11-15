@@ -106,7 +106,7 @@ describe("Materials Received → View → shared Edit", () => {
     expect(screen.getByTestId("dialog-trip-roles").contains(supplier)).toBe(true);
     fireEvent.click(supplier);
     fireEvent.change(screen.getByRole("combobox", { name: /Transporter/ }), { target: { value: "NARSI" } });
-    fireEvent.click(screen.getByRole("option", { name: "G N Transport" }));
+    fireEvent.click(screen.getByRole("option", { name: "G N TRANSPORT" }));
     fireEvent.change(screen.getByRole("combobox", { name: /Vehicle \/ Tipper/ }), { target: { value: "4308" } });
     fireEvent.click(screen.getByRole("option", { name: /TS15UF 4308/ }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -118,6 +118,7 @@ describe("Materials Received → View → shared Edit", () => {
     }));
     expect((vi.mocked(apiRequest).mock.calls[0][2] as any).boqItemId).toBeUndefined();
     await screen.findByText("Material Entry — Soil");
+    expect(screen.getByTestId("detail-material-source-supplier").classList.contains("entity-name")).toBe(true);
     expect(screen.getByTestId("detail-material-source-supplier").textContent).toBe("Saravana");
     fireEvent.click(screen.getByTestId("btn-admin-edit"));
     await screen.findByTestId("dialog-trip-roles");

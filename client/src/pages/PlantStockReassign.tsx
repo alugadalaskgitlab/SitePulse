@@ -186,7 +186,7 @@ export default function PlantStockReassign() {
               <SelectTrigger data-testid="select-material"><SelectValue placeholder="Select material" /></SelectTrigger>
               <SelectContent>
                 {materials?.map(m => (
-                  <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                  <SelectItem key={m.id} value={String(m.id)} className="entity-name">{m.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -197,7 +197,7 @@ export default function PlantStockReassign() {
               <SelectTrigger data-testid="select-from-party"><SelectValue placeholder="Select party" /></SelectTrigger>
               <SelectContent>
                 {parties?.map(p => (
-                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                  <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -208,7 +208,7 @@ export default function PlantStockReassign() {
               <SelectTrigger data-testid="select-to-party"><SelectValue placeholder="Select party" /></SelectTrigger>
               <SelectContent>
                 {parties?.filter(p => String(p.id) !== fromPartyId).map(p => (
-                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                  <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

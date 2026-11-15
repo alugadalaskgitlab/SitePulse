@@ -606,7 +606,7 @@ export default function SiteRequirementNew() {
                 </SelectTrigger>
                 <SelectContent>
                   {sites.map((s: any) => (
-                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                    <SelectItem key={s.id} value={String(s.id)} className="entity-name">{s.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

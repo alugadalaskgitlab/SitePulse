@@ -151,7 +151,9 @@ describe("whole bill PDF layout", () => {
     expect(pages[1].join("")).toContain("EQUIPMENT HIRE BILL");
     expect(pdf.output()).toContain("Acme Roads Pvt Ltd");
     expect(pdf.output()).toContain("Prepared · ABC");
-    expect(pages[1].join("")).toContain("Excavator");
+    expect(pages[1].join("")).toContain("EXCAVATOR");
+    expect(pages[1].join("")).toContain("Vendor: VENDOR");
+    expect(pages[1].join("")).toContain("Site: ROAD SITE");
     expect(pages[1].join("")).toContain("EX-07");
     expect(pages[1].join("")).not.toContain("Equipment #49");
     expect(pdf.output()).not.toContain("ACTIVITY STATEMENT");
@@ -164,13 +166,13 @@ describe("whole bill PDF layout", () => {
     expect(pdf.output()).toContain("3,080.65");
     expect(pdf.output()).toContain("NET PAYABLE");
     for (const detail of [
-      "Business name: Vendor Equipment Works",
+      "Business name: VENDOR EQUIPMENT WORKS",
       "Address: 17 Road, Jaipur",
       "GSTIN: 08ABCDE1234F1Z5",
       "Contact person: Ramesh Sharma",
       "Phone: 9876543210",
       "PAN: ABCDE1234F",
-      "Bank account name: Vendor Equipment Works",
+      "Bank account name: VENDOR EQUIPMENT WORKS",
       "Bank name: State Bank",
       "Account number: 1234567890",
       "IFSC: SBIN0000123",

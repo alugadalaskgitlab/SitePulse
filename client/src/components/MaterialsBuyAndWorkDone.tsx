@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { PlanVsActualRow } from "@shared/schema";
 import { getShortName } from "@shared/planningEngine";
-import { boqItemDisplayName } from "@/lib/itemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 
 export type MaterialPlanRow = {
   materialName: string;
@@ -183,7 +183,7 @@ export function MaterialsBuyAndWorkDone({
       "Actually received/dispatched": actual == null ? "—" : `${actual.toLocaleString("en-IN", { maximumFractionDigits: 2 })} ${row.uom}`,
       Difference: differenceText(expected, actual, row.uom),
       "BOQ items": row.lines.map(line =>
-        `${line.itemCode ? `[${line.itemCode}] ` : ""}${line.itemName || line.description} · ${line.materialNeed == null ? "—" : `${line.materialNeed} ${row.uom}`}`,
+        `${line.itemCode ? `[${line.itemCode}] ` : ""}${boqItemDisplayName(line)} · ${line.materialNeed == null ? "—" : `${line.materialNeed} ${row.uom}`}`,
       ).join("; "),
     }));
     const workbook = XLSX.utils.book_new();

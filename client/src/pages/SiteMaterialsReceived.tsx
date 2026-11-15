@@ -298,14 +298,14 @@ export default function SiteMaterialsReceived() {
                           <div>{trip.date ? format(new Date(trip.date + "T00:00:00"), "dd-MMM-yyyy").toUpperCase() : "-"}</div>
                           {trip.time && <div className="text-muted-foreground text-xs">{trip.time}</div>}
                         </td>
-                        <td className="p-2 border text-sm">{trip.site || "-"}</td>
+                        <td className="p-2 border text-sm"><span className="entity-name">{trip.site || "-"}</span></td>
                         <td className="p-2 border text-sm" data-testid={`cell-transporter-${trip.source}-${trip.id}`}>
-                          {trip.supplier && <div>{trip.supplier}</div>}
-                          {trip.vehicleNumber && <div className="text-xs text-muted-foreground">{trip.vehicleNumber}</div>}
+                           {trip.supplier && <div className="entity-name">{trip.supplier}</div>}
+                           {trip.vehicleNumber && <div className="entity-name text-xs text-muted-foreground">{trip.vehicleNumber}</div>}
                           {!trip.supplier && !trip.vehicleNumber && <span>–</span>}
                         </td>
                         <td className="p-2 border text-sm font-medium">
-                          {trip.material || "-"}
+                          <span className="entity-name">{trip.material || "-"}</span>
                           {trip.source === "trip" && <TripWorkContextSummary trip={trip} testIdPrefix="received-list-ctx" />}
                         </td>
                         <td className="p-2 border text-sm text-right">{formatTripQuantity(trip)}</td>
@@ -316,7 +316,7 @@ export default function SiteMaterialsReceived() {
                           {trip.materialSourceType === "own_source" ? <>
                             Our own borrow area
                             {trip.materialSourceLabel && <p className="text-xs text-muted-foreground">{trip.materialSourceLabel}</p>}
-                          </> : trip.materialSourceSupplier || "–"}
+                          </> : <span className="entity-name">{trip.materialSourceSupplier || "–"}</span>}
                         </td>
                         <td className="p-2 border text-sm">{trip.receiptNumber || "-"}</td>
                         <td className="p-2 border text-center"><WorkTypeBadge workType={trip.workType} /></td>
@@ -428,11 +428,11 @@ export default function SiteMaterialsReceived() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Supplier / Party</p>
-                    <p className="font-semibold mt-0.5">{selectedTrip.supplier || "—"}</p>
+                    <p className="font-semibold mt-0.5 entity-name">{selectedTrip.supplier || "—"}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Material source / supplier</p>
-                    <p className="font-semibold mt-0.5" data-testid="detail-material-source-supplier">{selectedTrip.materialSourceType === "own_source" ? "Our own borrow area" : selectedTrip.materialSourceSupplier || "—"}</p>
+                    <p className="font-semibold mt-0.5 entity-name" data-testid="detail-material-source-supplier">{selectedTrip.materialSourceType === "own_source" ? "Our own borrow area" : selectedTrip.materialSourceSupplier || "—"}</p>
                     {selectedTrip.materialSourceType === "own_source" && selectedTrip.materialSourceLabel && <p className="mt-1 text-sm text-muted-foreground" data-testid="detail-material-source-label">{selectedTrip.materialSourceLabel}</p>}
                   </div>
                   <div>

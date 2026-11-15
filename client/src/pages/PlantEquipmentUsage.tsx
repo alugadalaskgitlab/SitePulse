@@ -700,7 +700,7 @@ export default function PlantEquipmentUsage() {
         dieselSource: effectiveDieselSource,
         dieselBalanceInTank: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? parseFloat(dieselBalanceInTank) : null,
         dieselBalanceConfirmed: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? dieselBalanceConfirmed : false,
-        siteName: workingPlant === "OTHER" ? (siteName.toUpperCase() || null) : workingPlant,
+        siteName: workingPlant === "OTHER" ? (siteName || null) : workingPlant,
         remarks: remarks ? remarks.toUpperCase() : null,
         status: "open",
         openedByUserId: user?.id ?? null,
@@ -746,7 +746,7 @@ export default function PlantEquipmentUsage() {
         // Configured terms are calculated by the statement workflow. Keep a
         // loaded historical amount intact when editing, rather than replacing it.
         hireAmount: hasConfiguredHireTerms ? ((editingUsage as any)?.hireAmount ?? null) : (hireAmount ? parseFloat(hireAmount) : null),
-        siteName: workingPlant === "OTHER" ? (siteName.toUpperCase() || null) : workingPlant,
+        siteName: workingPlant === "OTHER" ? (siteName || null) : workingPlant,
         dieselBalanceInTank: null,
         dieselBalanceConfirmed: false,
         remarks: remarks.toUpperCase(),
@@ -792,7 +792,7 @@ export default function PlantEquipmentUsage() {
       hireAmount: hasConfiguredHireTerms
         ? ((editingUsage as any)?.hireAmount ?? null)
         : (["hourly", "daily", "monthly", "trip_based"].includes(entryType) && hireAmount ? parseFloat(hireAmount) : null),
-      siteName: workingPlant === "OTHER" ? (siteName.toUpperCase() || null) : workingPlant,
+      siteName: workingPlant === "OTHER" ? (siteName || null) : workingPlant,
       dieselBalanceInTank: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? parseFloat(dieselBalanceInTank) : null,
       dieselBalanceConfirmed: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? dieselBalanceConfirmed : false,
       remarks: remarks.toUpperCase(),
@@ -1292,7 +1292,7 @@ export default function PlantEquipmentUsage() {
                   <Input
                     className="mt-2"
                     value={siteName}
-                    onChange={(e) => setSiteName(e.target.value.toUpperCase())}
+                    onChange={(e) => setSiteName(e.target.value)}
                     placeholder="Enter location or site name"
                     data-testid="input-working-location-custom"
                   />
@@ -1415,7 +1415,7 @@ export default function PlantEquipmentUsage() {
                         <SelectContent>
                           <SelectItem value="PLANT">PLANT</SelectItem>
                           {sitesList?.filter(s => s.isActive === 1).map((site) => (
-                            <SelectItem key={site.id} value={site.name}>{site.name}</SelectItem>
+                            <SelectItem key={site.id} value={site.name} className="entity-name">{site.name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -1429,7 +1429,7 @@ export default function PlantEquipmentUsage() {
                         <SelectContent>
                           <SelectItem value="PLANT">PLANT</SelectItem>
                           {sitesList?.filter(s => s.isActive === 1).map((site) => (
-                            <SelectItem key={site.id} value={site.name}>{site.name}</SelectItem>
+                            <SelectItem key={site.id} value={site.name} className="entity-name">{site.name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -1501,7 +1501,7 @@ export default function PlantEquipmentUsage() {
                     </SelectTrigger>
                     <SelectContent>
                       {sitesList?.filter(s => s.isActive === 1).map((site) => (
-                        <SelectItem key={site.id} value={site.name}>{site.name}</SelectItem>
+                        <SelectItem key={site.id} value={site.name} className="entity-name">{site.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1629,7 +1629,7 @@ export default function PlantEquipmentUsage() {
                           <Label className="text-sm">Site name</Label>
                           <Input 
                             value={siteName} 
-                            onChange={(e) => setSiteName(e.target.value.toUpperCase())} 
+                            onChange={(e) => setSiteName(e.target.value)}
                             placeholder="Site location" 
                             data-testid="input-site-name"
                           />
@@ -1638,7 +1638,7 @@ export default function PlantEquipmentUsage() {
                           <Label className="text-sm">Fuel station</Label>
                           <Input 
                             value={fuelStation} 
-                            onChange={(e) => setFuelStation(e.target.value.toUpperCase())} 
+                            onChange={(e) => setFuelStation(e.target.value)}
                             placeholder="HP / BPCL / etc." 
                             data-testid="input-fuel-station"
                           />

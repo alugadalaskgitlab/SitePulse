@@ -6,6 +6,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { FileSpreadsheet, FileText, ArrowLeft } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
+import { displayName } from "@shared/displayName";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -96,7 +97,7 @@ export default function MaterialBalanceReport() {
   });
 
   const exportRows = useMemo(() => (reportQuery.data?.rows ?? []).map((row) => ({
-    Material: row.materialName,
+    Material: displayName(row.materialName),
     "BOQ quantity / unit": row.rolledQuantity == null ? "—" : `${number(row.rolledQuantity)} ${row.rolledUom}`,
     "Required compacted (Cum)": number(row.compactedCum),
     "Required (MT)": number(row.requiredMt),
@@ -131,13 +132,13 @@ export default function MaterialBalanceReport() {
     doc.setFontSize(15);
     doc.text("Material Balance Report", 14, 15);
     doc.setFontSize(9);
-    doc.text(`${report.projectName} · ${report.siteName} · Actuals: ${from} to ${to}`, 14, 22);
+    doc.text(`${report.projectName} · ${displayName(report.siteName)} · Actuals: ${from} to ${to}`, 14, 22);
     doc.text("Difference = Received minus Used. BOQ requirement is the full current project quantity.", 14, 27);
     autoTable(doc, {
       startY: 32,
       head: [["Material", "BOQ quantity / unit", "Required comp. Cum", "Required MT", "Loose Cum / CFT", "Wastage MT / loose Cum", "Received qty", "Used qty", "Difference", "Received Cum", "Used Cum", "Difference Cum", "Source / attribution"]],
       body: report.rows.map((row) => [
-        row.materialName,
+        displayName(row.materialName),
         row.rolledQuantity == null ? "—" : `${number(row.rolledQuantity)} ${row.rolledUom}`,
         number(row.compactedCum),
         number(row.requiredMt),
@@ -179,7 +180,7 @@ export default function MaterialBalanceReport() {
             >
               <option value="">Choose a project</option>
               {(projectsQuery.data ?? []).map((project) => (
-                <option key={project.id} value={project.id}>{project.name}{project.siteName ? ` · ${project.siteName}` : ""}</option>
+                <option key={project.id} value={project.id} className="entity-name">{project.name}{project.siteName ? ` · ${project.siteName}` : ""}</option>
               ))}
             </select>
           </div>
@@ -206,7 +207,7 @@ export default function MaterialBalanceReport() {
         {reportQuery.data && (
           <>
             <p className="text-xs text-muted-foreground">
-              {reportQuery.data.projectName} · {reportQuery.data.siteName} · Actuals {from}–{to}. Difference = Received − Used.
+              {reportQuery.data.projectName} · <span className="entity-name">{reportQuery.data.siteName}</span> · Actuals {from}–{to}. Difference = Received − Used.
               Plant dispatch and store issue quantities are attributed by site; DPR use is linked by BOQ project/item.
             </p>
             <div className="overflow-x-auto rounded-lg border bg-card">
@@ -222,7 +223,7 @@ export default function MaterialBalanceReport() {
                   {reportQuery.data.rows.map((row) => (
                     <tr key={row.materialName} className="border-t align-top">
                       <td className="px-3 py-2 font-medium">
-                        {row.materialName}
+                        <span className="entity-name">{row.materialName}</span>
                         {!row.valuesConfigured && <div className="text-[10px] font-normal text-amber-700">{row.earthwork ? "Values not set — Open Soil" : "Values not set"}</div>}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap">{row.rolledQuantity == null ? "—" : `${number(row.rolledQuantity)} ${row.rolledUom}`}</td>

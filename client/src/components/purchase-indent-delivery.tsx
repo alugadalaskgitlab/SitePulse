@@ -37,7 +37,7 @@ export function DestinationFields({ value, siteId, sites, onChange, id }: {
     </label>
     {value === "site" && <label className="text-sm font-medium">Receiving site *
       <select aria-label="Receiving site" data-testid={`destination-site-${id}`} className="mt-1 block w-full border rounded-md bg-background p-2" value={siteId} onChange={e => onChange(value, e.target.value)}>
-        <option value="">Select receiving site</option>{sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        <option value="">Select receiving site</option>{sites.map(s => <option key={s.id} value={s.id} className="entity-name">{s.name}</option>)}
       </select>
     </label>}
   </div>;

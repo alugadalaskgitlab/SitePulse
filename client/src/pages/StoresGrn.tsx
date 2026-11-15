@@ -865,7 +865,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-cancelled">CANCELLED</Badge>
                     )}
                     {/* Site badge — only when a site is actually set */}
-                    {selectedGrn.siteId && (() => { const s = sites.find(x => x.id === selectedGrn.siteId); return s ? <Badge variant="outline" className="text-[12px] border-amber-400 text-amber-700 dark:text-amber-400">{s.name}</Badge> : null; })()}
+                    {selectedGrn.siteId && (() => { const s = sites.find(x => x.id === selectedGrn.siteId); return s ? <Badge variant="outline" className="text-[12px] border-amber-400 text-amber-700 dark:text-amber-400 entity-name">{s.name}</Badge> : null; })()}
                     {/* Secondary PI reference chip */}
                     {selectedGrn.indentRef && (
                       <Badge variant="outline" className="text-[12px] border-violet-400 text-violet-700 dark:text-violet-400">Linked PI: {selectedGrn.indentRef}</Badge>
@@ -1433,7 +1433,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                                                 }}
                                                 data-testid={`option-recent-item-${idx}-${it.id}`}
                                               >
-                                                <span className="truncate">{it.name}</span>
+                                                <span className="truncate entity-name">{it.name}</span>
                                                 <span className="text-muted-foreground flex-shrink-0">({it.category})</span>
                                               </div>
                                             ))}
@@ -1736,7 +1736,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       <SelectContent>
                         <SelectItem value="__none__" className="text-sm text-muted-foreground">— Not assigned —</SelectItem>
                         {sites.map(s => (
-                          <SelectItem key={s.id} value={String(s.id)} className="text-sm">{s.name}</SelectItem>
+                          <SelectItem key={s.id} value={String(s.id)} className="text-sm entity-name">{s.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1794,7 +1794,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     </div>
                     {stockPreview.map(row => (
                       <div key={row.itemId} className="grid grid-cols-12 gap-x-2 px-1 items-center text-sm" data-testid={`preview-row-${row.itemId}`}>
-                        <span className="col-span-5 truncate font-medium">{row.name}</span>
+                        <span className="col-span-5 truncate font-medium entity-name">{row.name}</span>
                         <span className="col-span-2 text-right text-muted-foreground tabular-nums">
                           {row.current % 1 === 0 ? row.current : row.current.toFixed(2)} <span className="text-[11px]">{row.uom}</span>
                         </span>
@@ -1884,7 +1884,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       }}
                       data-testid={`button-use-suggestion-${it.id}`}
                     >
-                      <div className="font-medium text-sm">{it.name}</div>
+                      <div className="font-medium text-sm entity-name">{it.name}</div>
                       <div className="text-xs text-muted-foreground mt-0.5">{it.category} · {it.uom}</div>
                     </button>
                   ))}
@@ -1995,7 +1995,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   <SelectContent>
                     <SelectItem value="__all__" className="text-sm text-muted-foreground">All sites</SelectItem>
                     {sites.map(s => (
-                      <SelectItem key={s.id} value={String(s.id)} className="text-sm">{s.name}</SelectItem>
+                      <SelectItem key={s.id} value={String(s.id)} className="text-sm entity-name">{s.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -2050,7 +2050,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             )}
                             {!grn.isCancelled && grn.status !== "draft" && grn.acceptanceStatus && getAcceptanceBadge(grn.acceptanceStatus)}
                             {/* Site destination — only shown when a site is actually set */}
-                            {grn.siteId && (() => { const s = sites.find(x => x.id === grn.siteId); return s ? <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{s.name}</span> : null; })()}
+                            {grn.siteId && (() => { const s = sites.find(x => x.id === grn.siteId); return s ? <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 entity-name">{s.name}</span> : null; })()}
                             {/* Linked PI — full reference as a clickable link */}
                             {grn.indentRef && (
                               <Link href={`/plant/purchase-indents?indentRef=${encodeURIComponent(grn.indentRef)}&context=stores`} onClick={e => e.stopPropagation()}>

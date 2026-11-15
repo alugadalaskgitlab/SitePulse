@@ -115,7 +115,7 @@ function ProjectFormFields({
             <SelectContent>
               <SelectItem value="__none__">— None —</SelectItem>
               {sites.map(s => (
-                <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                <SelectItem key={s.id} value={String(s.id)} className="entity-name">{s.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>

@@ -363,7 +363,7 @@ function MarkAsPaidDialog({ requirement, open, onClose }: { requirement: DieselR
           {payer === "personal" && (
             <div>
               <Label className="text-sm">PAYER NAME</Label>
-              <Input value={payerName} onChange={(e) => setPayerName(e.target.value)} onBlur={(e) => setPayerName(e.target.value.toUpperCase())} placeholder="WHO PAID?" className="uppercase" data-testid="input-markpaid-payer" />
+              <Input value={payerName} onChange={(e) => setPayerName(e.target.value)} placeholder="Who paid?" data-testid="input-markpaid-payer" />
             </div>
           )}
         </div>
@@ -924,7 +924,7 @@ export default function DieselRequirements() {
       .filter((i) => i.equipmentName)
       .map((i) => ({
         equipmentId: i.equipmentId ? Number(i.equipmentId) : null,
-        equipmentName: i.equipmentName.toUpperCase(),
+        equipmentName: i.equipmentName,
         purpose: (i.purpose || "").toUpperCase() || null,
         estHours: parseFloat(i.estHours) || null,
         norm: parseFloat(i.norm) || null,
@@ -933,7 +933,7 @@ export default function DieselRequirements() {
       }));
     const payload = {
       date: formDate,
-      raisedBy: formRaisedBy.toUpperCase(),
+      raisedBy: formRaisedBy,
       totalPlanned: formTotal,
       status: "pending",
       remarks: formRemarks.toUpperCase() || null,
@@ -1322,7 +1322,7 @@ export default function DieselRequirements() {
                     <SelectContent>
                       <SelectItem value="all">ALL LOCATIONS</SelectItem>
                       {(sitesList ?? []).map(s => (
-                        <SelectItem key={`site-${s.id}`} value={s.name}>{s.name}</SelectItem>
+                        <SelectItem key={`site-${s.id}`} value={s.name} className="entity-name">{s.name}</SelectItem>
                       ))}
                       {SECTION_OPTIONS.filter(o => !o.rmcOnly || rmcEnabled).map(o => (
                         <SelectItem key={`sec-${o.value}`} value={o.value}>{o.label}</SelectItem>
@@ -1445,7 +1445,7 @@ export default function DieselRequirements() {
                 </div>
                 <div>
                   <Label className="text-sm">RAISED BY</Label>
-                  <Input value={formRaisedBy} onChange={(e) => setFormRaisedBy(e.target.value)} onBlur={(e) => setFormRaisedBy(e.target.value.toUpperCase())} placeholder="E.G., RAJU" className="uppercase" data-testid="input-form-raised-by" />
+                  <Input value={formRaisedBy} onChange={(e) => setFormRaisedBy(e.target.value)} placeholder="e.g., Raju" data-testid="input-form-raised-by" />
                 </div>
                 <div>
                   <Label className="text-sm">RAISED FROM <span className="text-red-500">*</span></Label>
@@ -2108,7 +2108,7 @@ export default function DieselRequirements() {
                         <Input
                           value={purchasePayerName}
                           onChange={(e) => setPurchasePayerName(e.target.value)}
-                          onBlur={(e) => setPurchasePayerName(e.target.value.toUpperCase())}
+                          onBlur={(e) => setPurchasePayerName(e.target.value)}
                           placeholder="WHO PAID?"
                           className="uppercase"
                           data-testid="input-payer-name"

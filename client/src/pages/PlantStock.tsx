@@ -24,6 +24,7 @@ import { NegativeBalanceBannerMulti } from "@/components/NegativeBalanceBanner";
 import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 import { convertStockQuantity, stockUnitForMaterial } from "@shared/stockUnits";
+import { displayName } from "@shared/displayName";
 
 type StockBalanceAsOf = {
   materialId: number;
@@ -1008,8 +1009,8 @@ export default function PlantStock() {
   const exportToExcel = async () => {
     try {
       const summaryData = stockSummary.map(item => ({
-        Material: item.materialName,
-        "Stock Owner": item.partyName,
+        Material: displayName(item.materialName),
+        "Stock Owner": displayName(item.partyName),
         Opening: item.openingStock.toFixed(3),
         Received: item.received.toFixed(3),
         Consumed: item.consumed.toFixed(3),
@@ -1109,8 +1110,8 @@ export default function PlantStock() {
       doc.text("Stock Summary", 14, 36);
       
       const summaryTableData = stockSummary.map(item => [
-        item.materialName,
-        item.partyName,
+        displayName(item.materialName),
+        displayName(item.partyName),
         item.openingStock.toFixed(3),
         item.received.toFixed(3),
         item.consumed.toFixed(3),
@@ -1312,8 +1313,8 @@ export default function PlantStock() {
             <tbody>
               ${stockSummary.map(item => `
                 <tr>
-                  <td>${item.materialName}</td>
-                  <td>${item.partyName}</td>
+                  <td>${escapeHtml(displayName(item.materialName))}</td>
+                  <td>${escapeHtml(displayName(item.partyName))}</td>
                   <td class="text-right">${item.openingStock.toFixed(3)}</td>
                   <td class="text-right text-green">+${item.received.toFixed(3)}</td>
                   <td class="text-right text-red">-${item.consumed.toFixed(3)}</td>
@@ -1565,7 +1566,7 @@ export default function PlantStock() {
                 <SelectContent>
                   <SelectItem value="all">All Parties</SelectItem>
                   {parties?.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                      <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1579,7 +1580,7 @@ export default function PlantStock() {
                 <SelectContent>
                   <SelectItem value="all">All Materials</SelectItem>
                   {materials?.map((m) => (
-                    <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                      <SelectItem key={m.id} value={String(m.id)} className="entity-name">{m.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1736,7 +1737,7 @@ export default function PlantStock() {
                           const rows = [];
                           rows.push(
                             <tr key={`g-${gIdx}`} className="border-b bg-muted/20 font-semibold">
-                              <td className="py-3 px-2 font-semibold">{global.materialName}</td>
+                              <td className="py-3 px-2 font-semibold entity-name">{global.materialName}</td>
                               <td className="py-3 px-2">
                                 <span className="px-2 py-0.5 text-sm rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
                                   All Parties
@@ -1756,7 +1757,7 @@ export default function PlantStock() {
                           global._rows.forEach((item, idx) => {
                             rows.push(
                               <tr key={`g-${gIdx}-p-${idx}`} className="border-b last:border-0 text-muted-foreground">
-                                <td className="py-2 pl-6 pr-2 text-sm">↳ {item.materialName}</td>
+                                <td className="py-2 pl-6 pr-2 text-sm">↳ <span className="entity-name">{item.materialName}</span></td>
                                 <td className="py-2 px-2">
                                   <span className={`px-2 py-0.5 text-sm rounded ${
                                     item.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' :
@@ -1783,7 +1784,7 @@ export default function PlantStock() {
                         const hasConversion = item.conversionFactor && item.convertedClosing !== null;
                         return (
                           <tr key={idx} className="border-b last:border-0">
-                            <td className="py-3 px-2 font-medium">{item.materialName}</td>
+                            <td className="py-3 px-2 font-medium entity-name">{item.materialName}</td>
                             <td className="py-3 px-2">
                               <span className={`px-2 py-0.5 text-sm rounded ${
                                 item.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
@@ -1884,7 +1885,7 @@ export default function PlantStock() {
                             data-testid={`card-global-balance-${global.materialId}`}
                           >
                             <div className="flex items-start justify-between mb-2">
-                              <h3 className="font-semibold text-foreground">{global.materialName}</h3>
+                              <h3 className="font-semibold text-foreground entity-name">{global.materialName}</h3>
                               <span className="px-2 py-0.5 text-sm rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium">
                                 {isGlobalTank ? 'PHYSICAL TANK BALANCE' : 'BOOK / THEORETICAL BALANCE'}
                               </span>
@@ -1973,7 +1974,7 @@ export default function PlantStock() {
                       data-testid={`card-balance-${b.materialId}-${b.partyId}`}
                     >
                       <div className="flex items-start justify-between mb-2">
-                        <h3 className="font-semibold text-foreground">{b.materialName}</h3>
+                        <h3 className="font-semibold text-foreground entity-name">{b.materialName}</h3>
                         {b.balance < 0 && !/bitumen|ldo/i.test(b.materialName) ? (
                           <span className="px-2 py-0.5 text-sm rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium">
                             RECON. REQUIRED
@@ -2349,7 +2350,7 @@ export default function PlantStock() {
                     <SelectTrigger data-testid="recon-select-party"><SelectValue placeholder="Select party" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">— Select party —</SelectItem>
-                      {parties?.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
+                      {parties?.map(p => <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -2359,7 +2360,7 @@ export default function PlantStock() {
                     <SelectTrigger data-testid="recon-select-material"><SelectValue placeholder="Select material" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">— Select material —</SelectItem>
-                      {materials?.map(m => <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>)}
+                      {materials?.map(m => <SelectItem key={m.id} value={String(m.id)} className="entity-name">{m.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -2385,7 +2386,7 @@ export default function PlantStock() {
               {reconData && (() => {
                 const { uom, rows, totals } = reconData;
                 const partyName = parties?.find(p => String(p.id) === stmtPartyId)?.name ?? "Party";
-                const materialName = materials?.find(m => String(m.id) === stmtMaterialId)?.name ?? "Material";
+                const materialName = displayName(materials?.find(m => String(m.id) === stmtMaterialId)?.name ?? "Material");
                 const dateRange = [stmtDateFrom, stmtDateTo].filter(Boolean).join(' to ') || 'All Dates';
                 const hasMismatches = rows.some(r => r.delta != null && Math.abs(r.delta) > 0.001);
                 const hasLegacy = rows.some(r => r.isLegacy);
@@ -2422,7 +2423,7 @@ export default function PlantStock() {
                     .mismatch-banner{background:#fef3c7;border:1px solid #fbbf24;border-radius:4px;padding:6px 10px;margin:8px 0;font-weight:bold}</style></head><body>
                     <h1>${escapeHtml(PROJECT_NAME)}</h1>
                     <h2>${escapeHtml(companyShortName)} Borrow Reconciliation</h2>
-                    <p><strong>Party:</strong> ${escapeHtml(partyName)} &nbsp;|&nbsp; <strong>Material:</strong> ${escapeHtml(materialName)} &nbsp;|&nbsp; <strong>Period:</strong> ${escapeHtml(dateRange)}</p>
+                    <p><strong>Party:</strong> ${escapeHtml(displayName(partyName))} &nbsp;|&nbsp; <strong>Material:</strong> ${escapeHtml(materialName)} &nbsp;|&nbsp; <strong>Period:</strong> ${escapeHtml(dateRange)}</p>
                     ${hasMismatches ? '<div class="mismatch-banner">&#9888; Mismatches detected &#8212; highlighted rows require review</div>' : '<p style="color:#059669;font-weight:bold">&#10003; No mismatches detected &#8212; ledgers are reconciled</p>'}
                     <table><thead><tr>
                       <th>Date</th><th>Dispatch Site</th>
@@ -2451,7 +2452,7 @@ export default function PlantStock() {
                   doc.setFontSize(12);
                   doc.text(`${companyShortName} Borrow Reconciliation`, 14, 20);
                   doc.setFontSize(9);
-                  doc.text(`Party: ${partyName}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, 27);
+                  doc.text(`Party: ${displayName(partyName)}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, 27);
                   doc.text(hasMismatches ? '⚠ Mismatches detected — highlighted rows require review' : '✓ No mismatches — ledgers are reconciled', 14, 33);
                   autoTable(doc, {
                     startY: 38,
@@ -2652,7 +2653,7 @@ export default function PlantStock() {
                     <SelectTrigger data-testid="stmt-select-party"><SelectValue placeholder="Select party" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">— Select party —</SelectItem>
-                      {parties?.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
+                      {parties?.map(p => <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -2662,7 +2663,7 @@ export default function PlantStock() {
                     <SelectTrigger data-testid="stmt-select-material"><SelectValue placeholder="Select material" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">— Select material —</SelectItem>
-                      {materials?.map(m => <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>)}
+                      {materials?.map(m => <SelectItem key={m.id} value={String(m.id)} className="entity-name">{m.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -2732,7 +2733,7 @@ export default function PlantStock() {
                       <td>${e.invoiceDate || '-'}</td>
                       <td>${e.entryDate ? `${e.entryDate}${e.entryTime ? ` ${e.entryTime}` : ''}` : '-'}</td>
                       <td>${typeLabel(e.displayType)}</td>
-                      <td>${materialName}</td>
+                      <td>${escapeHtml(materialName)}</td>
                       <td style="text-align:right">${qIn > 0 ? qIn.toFixed(3) : '-'}</td>
                       <td style="text-align:right">${tplQty}</td>
                       <td style="text-align:right">${ownQtyStr}</td>
@@ -2758,7 +2759,7 @@ export default function PlantStock() {
                     .note{font-size:10px;color:#555;margin-top:6px}</style></head><body>
                     <h1>${PROJECT_NAME}</h1>
                     <h2>Party supply obligation statement</h2>
-                    <p><strong>Party:</strong> ${partyName} &nbsp;|&nbsp; <strong>Material:</strong> ${materialName} &nbsp;|&nbsp; <strong>Period:</strong> ${dateRange}</p>
+                    <p><strong>Party:</strong> ${displayName(partyName)} &nbsp;|&nbsp; <strong>Material:</strong> ${materialName} &nbsp;|&nbsp; <strong>Period:</strong> ${dateRange}</p>
                     <div class="summary">
                       <div class="card"><div class="card-label">Total Received</div><div class="card-value">${summary.totalReceived.toFixed(3)} ${uom}</div></div>
                       <div class="card"><div class="card-label">From Own Stock</div><div class="card-value">${summary.dispatchedOwn.toFixed(3)} ${uom}</div></div>
@@ -2800,7 +2801,7 @@ export default function PlantStock() {
                   doc.setFontSize(12);
                   doc.text(`Party Supply Obligation Statement`, 14, 20);
                   doc.setFontSize(9);
-                  doc.text(`Party: ${partyName}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, 27);
+                  doc.text(`Party: ${displayName(partyName)}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, 27);
                   doc.text([
                     `Received: ${summary.totalReceived.toFixed(3)} ${uom}`,
                     `From Own Stock: ${summary.dispatchedOwn.toFixed(3)} ${uom}`,
@@ -2826,7 +2827,7 @@ export default function PlantStock() {
                         e.invoiceDate || '-',
                         e.entryDate ? `${e.entryDate}${e.entryTime ? ` ${e.entryTime}` : ''}` : '-',
                         typeLabel(e.displayType),
-                        materialName,
+                        displayName(materialName),
                         (e.quantityIn || 0) > 0 ? (e.quantityIn || 0).toFixed(3) : '-',
                         isDispatch && e.templateQty != null ? e.templateQty.toFixed(3) : '-',
                         isDispatch && e.ownQty != null ? e.ownQty.toFixed(3) : '-',
@@ -2836,7 +2837,7 @@ export default function PlantStock() {
                       ];
                     }),
                     foot: [[
-                      '', 'Totals', materialName,
+                      '', 'Totals', displayName(materialName),
                       summary.totalReceived.toFixed(3),
                       totalOut.toFixed(3),
                       summary.dispatchedOwn.toFixed(3),

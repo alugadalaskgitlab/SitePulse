@@ -209,7 +209,7 @@ export function VendorBillSiteCorrection({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">ALL SITES</SelectItem>
-                {sites.map(site => <SelectItem key={site.id} value={String(site.id)}>{site.name}</SelectItem>)}
+                {sites.map(site => <SelectItem key={site.id} value={String(site.id)} className="entity-name">{site.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

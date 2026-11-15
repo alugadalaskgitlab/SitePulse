@@ -1152,7 +1152,7 @@ export default function PlantBitumenStock() {
                 <SelectContent>
                   <SelectItem value="all">All Parties</SelectItem>
                   {parties?.map(p => (
-                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                    <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1166,7 +1166,7 @@ export default function PlantBitumenStock() {
                 <SelectContent>
                   <SelectItem value="all">All Mixes</SelectItem>
                   {mixTemplates?.map(t => (
-                    <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                    <SelectItem key={t.id} value={String(t.id)} className="entity-name">{t.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

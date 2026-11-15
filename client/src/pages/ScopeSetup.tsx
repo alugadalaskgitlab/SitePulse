@@ -25,7 +25,7 @@ import { apiRequest } from "@/lib/queryClient";
 import type { BoqProject, ProjectScopeSegment } from "@shared/schema";
 import { SCOPE_SEGMENT_TYPE_LABELS, type ScopeSegmentType } from "@shared/projectScope";
 import { emptyScopeForm, scopeFormFromSegment, type SegFormState } from "@/lib/scopeForm";
-import { boqItemDisplayName } from "@shared/boqItemName";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 
 const SIDE_OPTIONS = [
   { value: "", label: "Both / full width" },

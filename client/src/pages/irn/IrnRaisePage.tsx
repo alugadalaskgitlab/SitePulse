@@ -209,7 +209,7 @@ export default function IrnRaisePage() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       raisedFrom: prefillLabel || "Site Operations",
-      raisedBy: user?.fullName?.toUpperCase() ?? user?.email ?? "",
+      raisedBy: user?.fullName ?? user?.email ?? "",
       siteId: prefillSiteId ?? null,
       remarks: "",
       items: [{

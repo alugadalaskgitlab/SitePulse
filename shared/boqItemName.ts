@@ -152,3 +152,13 @@ export function boqItemDisplayName(item?: BoqItemNameFields | null): string {
   }
   return "";
 }
+
+/**
+ * Display-ready BOQ label: short saved names use capitals, while the long
+ * imported department description keeps its original casing.
+ */
+export function boqItemDisplayText(item?: BoqItemNameFields | null): string {
+  if (!item) return "";
+  const shortName = String(item.displayName ?? item.itemName ?? "").replace(/\s+/g, " ").trim();
+  return shortName ? shortName.toUpperCase() : boqItemDisplayName(item);
+}

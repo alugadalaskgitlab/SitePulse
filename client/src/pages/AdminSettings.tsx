@@ -360,10 +360,6 @@ export default function AdminSettings() {
       <Link href="/admin/settings/roles">
         <Button variant="outline" data-testid="button-access-roles">Access roles</Button>
       </Link>
-      <Link href="/admin/settings/names-tidy-up">
-        <Button variant="outline" data-testid="button-names-tidy-up">Names tidy-up</Button>
-      </Link>
-
       <StockUnitAdminPanel visible={user?.isOwner === true} />
 
       <Card>
@@ -428,7 +424,7 @@ export default function AdminSettings() {
               <Input
                 id="brandingShortName"
                 value={brandingShortName}
-                onChange={(e) => setBrandingShortName(e.target.value.toUpperCase())}
+                onChange={(e) => setBrandingShortName(e.target.value)}
                 placeholder={`e.g. ${companyShortName}`}
                 maxLength={10}
                 data-testid="input-branding-short-name"
@@ -521,7 +517,7 @@ export default function AdminSettings() {
             >
               <option value="">Use legacy company-name matching when applicable</option>
               {(ownCompanyPartyData?.parties ?? []).map(party => (
-                <option key={party.id} value={party.id}>{party.name}</option>
+                <option key={party.id} value={party.id} className="entity-name">{party.name}</option>
               ))}
             </select>
             {ownCompanyPartyData && (
@@ -840,7 +836,7 @@ export default function AdminSettings() {
               <Input
                 id="ldoTank1ReceivedBy"
                 value={ldoTank1ReceivedBy}
-                onChange={(e) => setLdoTank1ReceivedBy(e.target.value.toUpperCase())}
+                onChange={(e) => setLdoTank1ReceivedBy(e.target.value)}
                 placeholder={LDO_FALLBACK}
                 className="uppercase"
                 data-testid="input-ldo-tank1-received-by"
@@ -851,7 +847,7 @@ export default function AdminSettings() {
               <Input
                 id="ldoTank2ReceivedBy"
                 value={ldoTank2ReceivedBy}
-                onChange={(e) => setLdoTank2ReceivedBy(e.target.value.toUpperCase())}
+                onChange={(e) => setLdoTank2ReceivedBy(e.target.value)}
                 placeholder={LDO_FALLBACK}
                 className="uppercase"
                 data-testid="input-ldo-tank2-received-by"

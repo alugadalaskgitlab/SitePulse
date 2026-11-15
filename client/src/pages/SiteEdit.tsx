@@ -1276,7 +1276,7 @@ export default function SiteEdit() {
   const changeChainage = (idx: number, field: "chainageFrom" | "chainageTo", value: string) => {
     const updated = [...progress];
     const entry = updated[idx];
-    entry[field] = value.toUpperCase();
+    entry[field] = value;
     entry.length = calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
     applyCalc(entry);
     setProgress(updated);
@@ -1937,7 +1937,7 @@ export default function SiteEdit() {
                       <SelectItem value="__unlinked__">Not linked</SelectItem>
                       {ownerCorrectionItems.map((item: any) => (
                         <SelectItem key={item.id} value={String(item.id)}>
-                          {item.itemCode ? `[${item.itemCode}] ` : ""}{item.itemName || item.description}
+                          {item.itemCode ? `[${item.itemCode}] ` : ""}{boqItemDisplayName(item)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -2126,7 +2126,7 @@ export default function SiteEdit() {
               </SelectTrigger>
               <SelectContent>
                 {activeSites.map((s) => (
-                  <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                  <SelectItem key={s.id} value={s.name} className="entity-name">{s.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -2148,8 +2148,8 @@ export default function SiteEdit() {
                     <SelectItem value={header.engineer}>{header.engineer} (LEGACY)</SelectItem>
                   )}
                   {(personnelList || []).filter(p => p.isActive).map((p) => (
-                    <SelectItem key={p.id} value={`${p.name.toUpperCase()} - ${p.role.toUpperCase()}`}>
-                      {p.name.toUpperCase()} - {p.role.toUpperCase()}
+                    <SelectItem key={p.id} value={`${p.name} - ${p.role}`}>
+                      {p.name} - {p.role}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -2434,7 +2434,7 @@ export default function SiteEdit() {
                       value={entry.activity}
                       onChange={(e) => {
                         const updated = [...progress];
-                        updated[idx].activity = e.target.value.toUpperCase();
+                        updated[idx].activity = e.target.value;
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -2448,7 +2448,7 @@ export default function SiteEdit() {
                       value={entry.noSiteWorkDescription}
                       onChange={(e) => {
                         const updated = [...progress];
-                        updated[idx].noSiteWorkDescription = e.target.value.toUpperCase();
+                        updated[idx].noSiteWorkDescription = e.target.value;
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -2588,7 +2588,7 @@ export default function SiteEdit() {
                         onChange={(boqItemId, boqItem) => {
                           const updated = [...progress];
                           updated[idx].boqItemId = boqItemId;
-                          updated[idx].activity = boqItem ? dprBoqItemDisplayName(boqItem).toUpperCase() : "";
+                          updated[idx].activity = boqItem ? dprBoqItemDisplayName(boqItem) : "";
                           if (boqItem) updated[idx].uom = resolveBoqUomProfile(boqItem).uom;
                           // Deliberate BOQ context change: arrangement and bar
                           // links must be resolved again for the selected item.
@@ -2604,7 +2604,7 @@ export default function SiteEdit() {
                           value={entry.activity}
                           onChange={(e) => {
                             const updated = [...progress];
-                            updated[idx].activity = e.target.value.toUpperCase();
+                            updated[idx].activity = e.target.value;
                             setProgress(updated);
                           }}
                           className="uppercase"
@@ -3349,7 +3349,7 @@ export default function SiteEdit() {
                   value={entry.operator}
                   onChange={(e) => {
                     const updated = [...equipment];
-                    updated[idx].operator = e.target.value.toUpperCase();
+                    updated[idx].operator = e.target.value;
                     setEquipment(updated);
                   }}
                   className="uppercase"
@@ -3391,7 +3391,7 @@ export default function SiteEdit() {
                         value={entry.fuelStation ?? ""}
                         onChange={(e) => {
                           const updated = [...equipment];
-                          updated[idx].fuelStation = e.target.value.toUpperCase();
+                          updated[idx].fuelStation = e.target.value;
                           setEquipment(updated);
                         }}
                         className="uppercase"
@@ -3668,7 +3668,7 @@ export default function SiteEdit() {
                   value={entry.task}
                   onChange={(e) => {
                     const updated = [...labour];
-                    updated[idx].task = e.target.value.toUpperCase();
+                    updated[idx].task = e.target.value;
                     setLabour(updated);
                   }}
                   className="uppercase"
@@ -3746,7 +3746,7 @@ export default function SiteEdit() {
                 </div>
                 <div className="md:col-span-2">
                   <Label>Material</Label>
-                  <Input placeholder="e.g. 20MM AGGREGATE" value={m.material} onChange={e => updateMaterial(idx, 'material', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-name-${idx}`} />
+                  <Input placeholder="e.g. 20MM AGGREGATE" value={m.material} onChange={e => updateMaterial(idx, 'material', e.target.value)} data-testid={`input-material-name-${idx}`} />
                 </div>
                 <div>
                   <Label>Qty</Label>
@@ -3758,15 +3758,15 @@ export default function SiteEdit() {
                 </div>
                 <div>
                   <Label>Vehicle no.</Label>
-                  <Input placeholder="Vehicle number" value={m.vehicleNumber} onChange={e => updateMaterial(idx, 'vehicleNumber', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-vehicle-${idx}`} />
+                  <Input placeholder="Vehicle number" value={m.vehicleNumber} onChange={e => updateMaterial(idx, 'vehicleNumber', e.target.value)} data-testid={`input-material-vehicle-${idx}`} />
                 </div>
                 <div>
                   <Label>Supplier</Label>
-                  <Input placeholder="Supplier name" value={m.supplier} onChange={e => updateMaterial(idx, 'supplier', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-supplier-${idx}`} />
+                  <Input placeholder="Supplier name" value={m.supplier} onChange={e => updateMaterial(idx, 'supplier', e.target.value)} data-testid={`input-material-supplier-${idx}`} />
                 </div>
                 <div>
                   <Label>Location</Label>
-                  <Input placeholder="Location" value={m.location} onChange={e => updateMaterial(idx, 'location', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-material-location-${idx}`} />
+                  <Input placeholder="Location" value={m.location} onChange={e => updateMaterial(idx, 'location', e.target.value)} data-testid={`input-material-location-${idx}`} />
                 </div>
                 <div>
                   <Label>Receipt no.</Label>
@@ -3808,11 +3808,11 @@ export default function SiteEdit() {
                 </Button>
                 <div className="md:col-span-2">
                   <Label>Item description</Label>
-                  <Input placeholder="e.g. Diesel for cleaning" value={sp.itemDescription} onChange={e => updateSitePurchase(idx, 'itemDescription', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-site-purchase-item-${idx}`} />
+                  <Input placeholder="e.g. Diesel for cleaning" value={sp.itemDescription} onChange={e => updateSitePurchase(idx, 'itemDescription', e.target.value)} data-testid={`input-site-purchase-item-${idx}`} />
                 </div>
                 <div>
                   <Label>Vendor</Label>
-                  <Input placeholder="e.g. Local Fuel Station" value={sp.vendor} onChange={e => updateSitePurchase(idx, 'vendor', e.target.value.toUpperCase())} className="uppercase" data-testid={`input-site-purchase-vendor-${idx}`} />
+                  <Input placeholder="e.g. Local Fuel Station" value={sp.vendor} onChange={e => updateSitePurchase(idx, 'vendor', e.target.value)} data-testid={`input-site-purchase-vendor-${idx}`} />
                 </div>
                 <div>
                   <Label>Bill no.</Label>
@@ -3887,7 +3887,7 @@ export default function SiteEdit() {
               <Label>Name</Label>
               <Input
                 value={newPersonnelName}
-                onChange={(e) => setNewPersonnelName(e.target.value.toUpperCase())}
+                onChange={(e) => setNewPersonnelName(e.target.value)}
                 placeholder="Full name"
                 className="uppercase"
                 data-testid="input-new-personnel-name"
@@ -3908,7 +3908,7 @@ export default function SiteEdit() {
               <Label>Phone (optional)</Label>
               <Input
                 value={newPersonnelPhone}
-                onChange={(e) => setNewPersonnelPhone(e.target.value.toUpperCase())}
+                onChange={(e) => setNewPersonnelPhone(e.target.value)}
                 placeholder="Phone number"
                 className="uppercase"
                 data-testid="input-new-personnel-phone"
