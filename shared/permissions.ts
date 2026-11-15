@@ -20,6 +20,7 @@ export const SECTION_KEYS = [
   // ── Site DPRs ─────────────────────────────────────────────────────────────
   "site_dprs",
   "site_materials",
+  "dpr_layer_assignment",
 
   // ── Purchase Indents (granular: view / raise / approve) ───────────────────
   "site_procurement",            // legacy broad key — kept for backward compat
@@ -154,6 +155,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   // Site
   site_dprs: "Site DPRs — File & View",
   site_materials: "Site Materials Received",
+  dpr_layer_assignment: "DPR layer assignment — Owner only",
 
   // Purchase Indents
   site_procurement: "Purchase Indents (legacy)",

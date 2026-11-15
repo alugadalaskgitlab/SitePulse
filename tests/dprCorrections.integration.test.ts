@@ -160,6 +160,42 @@ it("lets the Owner directly correct an incidental rework flag and BOQ link after
   expect((await service.list(f.id))[0]).toMatchObject({ status: "owner_corrected", requestedByName: "Fixture Owner" });
 });
 
+it("lets an Owner directly correct a reviewed layer and only the linked BOQ unit", async () => {
+  const owner = { id: 3, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
+  const f = await fixture();
+  await db.insert(schema.boqItems).values({
+    id: 7001, boqProjectId: 7001, description: "Layer fixture", itemName: "Layer fixture", unit: "SQM",
+  });
+  await db.update(schema.dprs).set({ boqProjectId: 7001 }).where(eq(schema.dprs.id, f.id));
+  await db.update(schema.progressEntries).set({ boqItemId: 7001, uom: "CUM" }).where(eq(schema.progressEntries.id, f.p.id));
+  f.form.header.boqProjectId = 7001;
+  Object.assign(f.form.progress[0], { boqItemId: 7001, uom: "SQM", layerNo: 2 });
+
+  const review = await service.preview(f.id, f.form, owner);
+  expect(review.blocked).toEqual([]);
+  expect(review.ownerDirectAllowed).toBe(true);
+  expect(review.changes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ field: "layerNo", oldValue: null, newValue: 2, requiresApproval: true }),
+    expect.objectContaining({ field: "uom", oldValue: "CUM", newValue: "SQM", requiresApproval: true }),
+  ]));
+  const result: any = await service.submit(f.id, {
+    form: f.form, baseHash: review.baseHash, reason: "Checked against the signed layer register", confirmImpact: true,
+  }, owner);
+  expect(result.pending).toBeUndefined();
+  expect(await db.query.progressEntries.findFirst({ where: eq(schema.progressEntries.id, f.p.id) }))
+    .toMatchObject({ layerNo: 2, uom: "SQM", quantity: 100, boqItemId: 7001 });
+
+  const invalid = await fixture();
+  await db.update(schema.dprs).set({ boqProjectId: 7001 }).where(eq(schema.dprs.id, invalid.id));
+  await db.update(schema.progressEntries).set({ boqItemId: 7001 }).where(eq(schema.progressEntries.id, invalid.p.id));
+  invalid.form.header.boqProjectId = 7001;
+  Object.assign(invalid.form.progress[0], { boqItemId: 7001, uom: "MT", layerNo: 1 });
+  const invalidReview = await service.preview(invalid.id, invalid.form, owner);
+  expect(invalidReview.blocked).toEqual(expect.arrayContaining([
+    expect.objectContaining({ field: "uom", message: expect.stringContaining("linked BOQ item's unit") }),
+  ]));
+});
+
 async function thicknessCorrectionFixture() {
   const f = await fixture();
   await db.update(schema.progressEntries).set({

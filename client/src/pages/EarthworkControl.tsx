@@ -104,7 +104,7 @@ export default function EarthworkControl() {
   const projectId = parseInt(params.id ?? "0", 10);
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { featureCan } = useAuth();
+  const { featureCan, isOwner } = useAuth();
   const canManageReconciliation = featureCan("dpr", "approve");
   const [activationDate, setActivationDate] = useState("");
   const [openingQty, setOpeningQty] = useState<Record<number, string>>({});
@@ -201,6 +201,15 @@ export default function EarthworkControl() {
         >
           Work Demand
         </Link>
+        {isOwner && (
+          <Link
+            href={`/work-program/${projectId}/assign-layers`}
+            className="inline-flex items-center gap-1 text-[12px] font-medium text-teal-700 hover:text-teal-900"
+            data-testid="link-assign-dpr-layers"
+          >
+            Assign layers
+          </Link>
+        )}
       </div>
       <div className="text-[11px] text-slate-400" data-testid="text-breadcrumb">
         Work programme › Earthwork classification & cut/fill

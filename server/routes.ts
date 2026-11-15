@@ -64,6 +64,7 @@ import {
 } from "@shared/schema";
 import { db, pool } from "./db";
 import { dprCorrectionService } from "./dprCorrections";
+import { dprLayerAssignmentService, requireDprLayerAssignmentOwner } from "./dprLayerAssignment";
 import { readPermissionAccessAudit } from "./permissionAccessMigration";
 import { TransportRateInputError } from "@shared/transportRate";
 import { registerVendorMasterRoutes } from "./vendor-master";
@@ -4114,6 +4115,7 @@ export async function registerRoutes(
     return null;
   }
 
+  const dprLayerAssignments = dprLayerAssignmentService(db);
   const corrections = dprCorrectionService(db, async (candidate, original, changes, actor, tx) => {
     const projectChanged = Number(candidate.boqProjectId ?? 0) !== Number(original.boqProjectId ?? 0);
     if (projectChanged) {
@@ -17553,6 +17555,32 @@ export async function registerRoutes(
     } catch (err) {
       console.error("GET /api/boq/projects:", err);
       res.status(500).json({ error: "Failed to fetch BOQ projects" });
+    }
+  });
+
+  // Owner-only historical DPR layer assignment. Preview is read-only; the
+  // service applies only layer_no / uom after confirming its data fingerprint.
+  app.get("/api/boq/projects/:id/dpr-layer-assignment", requireDprLayerAssignmentOwner, async (req, res) => {
+    try {
+      res.json(await dprLayerAssignments.get(Number(req.params.id)));
+    } catch (error: any) {
+      res.status(error?.status ?? 500).json({ message: error?.message ?? "Could not load DPR layer assignment data." });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/dpr-layer-assignment/preview", requireDprLayerAssignmentOwner, async (req, res) => {
+    try {
+      res.json(await dprLayerAssignments.preview(Number(req.params.id), req.body));
+    } catch (error: any) {
+      res.status(error?.status ?? 500).json({ message: error?.message ?? "Could not build the DPR layer preview." });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/dpr-layer-assignment/apply", requireDprLayerAssignmentOwner, async (req, res) => {
+    try {
+      res.json(await dprLayerAssignments.apply(Number(req.params.id), req.body, req.authUser!));
+    } catch (error: any) {
+      res.status(error?.status ?? 500).json({ message: error?.message ?? "Could not apply DPR layer assignments." });
     }
   });
 

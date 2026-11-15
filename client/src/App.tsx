@@ -154,6 +154,7 @@ const PlanningMasters    = lazy(() => import("@/pages/PlanningMasters"));
 const BoqItemReview      = lazy(() => import("@/pages/BoqItemReview"));
 const NormsLibrary       = lazy(() => import("@/pages/NormsLibrary"));
 const EarthworkControl   = lazy(() => import("@/pages/EarthworkControl"));
+const DprLayerAssignment = lazy(() => import("@/pages/DprLayerAssignment"));
 const ExecutionArrangements = lazy(() => import("@/pages/ExecutionArrangements"));
 const ScopeSetup         = lazy(() => import("@/pages/ScopeSetup"));
 const RoadGeometry       = lazy(() => import("@/pages/RoadGeometry"));
@@ -463,6 +464,7 @@ function AuthedShell() {
           {/* BOQ / Work Programme pages */}
           {WP_ENABLED && <Route path="/work-program" component={featureGated(BoqProjects, "boq_programme")} />}
           {WP_ENABLED && <Route path="/work-program/planning-masters" component={featureGated(PlanningMasters, "boq_programme", "edit")} />}
+          {WP_ENABLED && <Route path="/work-program/:id/assign-layers" component={gated(ownerGated(DprLayerAssignment), "dpr_layer_assignment")} />}
           {WP_ENABLED && <Route path="/work-program/:id" component={featureGated(BoqProjectDetail, "boq_programme")} />}
           {WP_ENABLED && <Route path="/work-program/:id/settings" component={featureGated(BoqProgramSettings, "boq_programme", "edit")} />}
           {WP_ENABLED && <Route path="/work-program/:id/programme" component={featureGated(WorkProgramme, "boq_programme")} />}

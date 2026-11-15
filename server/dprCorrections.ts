@@ -24,7 +24,7 @@ const reasonText = (value: any) => {
 const checkActor = (actor: Actor) => { if (!Number.isInteger(actor?.id)) correctionError("Authentication required.", 401); };
 const ownerDirectProgressFields = new Set([
   "chainageFrom", "chainageTo", "side", "width", "thickness", "length", "quantity",
-  "boqItemId", "isIncidental", "reworkNoNewMaterial", "split",
+  "boqItemId", "uom", "layerNo", "isIncidental", "reworkNoNewMaterial", "split",
 ]);
 const ownerCanApplyDirectly = (actor: Actor, review: any) => actor.isOwner === true
   && review.requiresApproval
@@ -94,6 +94,23 @@ export function dprCorrectionService(database: any, validate: Validate) {
   }
   async function review(tx: any, saved: any, form: any, actor: Actor) {
     const plan = planDprCorrection(saved, form, actor);
+    for (const change of plan.changes.filter((entry: any) => entry.section === "progress" && entry.field === "uom")) {
+      const row = plan.candidate.progress.find((entry: any) => entry.id === change.rowId);
+      const [linkedItem] = row?.boqItemId == null
+        ? []
+        : await tx.select({ id: boqItems.id, boqProjectId: boqItems.boqProjectId, unit: boqItems.unit })
+          .from(boqItems).where(eq(boqItems.id, Number(row.boqItemId))).limit(1);
+      const expected = String(linkedItem?.unit ?? "").trim();
+      if (!linkedItem
+          || Number(linkedItem.boqProjectId) !== Number(plan.candidate.boqProjectId)
+          || row.uom == null
+          || String(row.uom) !== expected) {
+        plan.blocked.push({
+          section: "progress", rowId: change.rowId, field: "uom",
+          message: "A corrected unit must exactly match the linked BOQ item's unit in this project.",
+        });
+      }
+    }
     const setDerived = (row: any, field: string, value: any) => {
       const old = saved.progress.find((p: any) => p.id === row.id);
       if (value == null) return;

@@ -1017,6 +1017,14 @@
       "view": "Open Manage Permissions for Other Users. Other action switches do not grant page access. Shared pages or actions also accept: User Management — View & Edit Profiles (View)."
     }
   },
+  "dpr_layer_assignment": {
+    "actions": [
+      "view"
+    ],
+    "tooltips": {
+      "view": "Open the Owner-only DPR Assign Layers tool."
+    }
+  },
   "device_approval": {
     "actions": [
       "view",
