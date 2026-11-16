@@ -1,6 +1,10 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
 import { effectiveMaterialBulkDensity, withEffectiveMaterialDensity } from "../shared/compactedLoose";
-import { buildScopeProgrammeAlignment } from "../shared/scopeBomDemand";
+import {
+  buildScopeProgrammeAlignment,
+  type ScopeProgrammeAlignmentExpectedUpdate,
+  type ScopeProgrammeAlignmentPreview,
+} from "../shared/scopeBomDemand";
 import { buildPiTimeline } from "../shared/piTimeline";
 import { confirmTripHireLink, readTripHireLinks, guardTripHireOrdinaryItems, type NewTripHireLink } from "./tripHireLink";
 import { prepareTripMasterSelection, saveTripMasterSelection, type TripMasterSelection } from "./tripMasterSelection";
@@ -719,12 +723,19 @@ export interface IStorage {
   updateDraftDpr(id: number, dpr: CreateDprRequest, actorUserId?: number | null, scopeVersionToken?: string | null, _legacyRecoveryHint?: boolean, sectionGuard?: any): Promise<Dpr | undefined>;
   submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string, audit?: DprEquipmentClosureAudit, scopeVersionToken?: string | null, _legacyRecoveryHint?: boolean, sectionGuard?: any): Promise<Dpr | undefined>;
   getProjectScopeVersionToken(boqProjectId: number): Promise<string>;
+  getProgrammeScopeAlignmentPreview(boqProjectId: number): Promise<ScopeProgrammeAlignmentPreview>;
   applyProgrammeScopeAlignment(
     boqProjectId: number,
     scopeVersionToken: string,
     expectedBars: Array<{ id: number; chainageFrom: number | null; chainageTo: number | null; plannedQty: number }>,
+    expectedUpdates: ScopeProgrammeAlignmentExpectedUpdate[],
     actor: { userId: number; userName: string; userRole: string },
-  ): Promise<{ updatedCount: number; suggestedRemoveCount: number }>;
+  ): Promise<{
+    updatedCount: number;
+    notUpdated: Array<{ barId: number | null; itemName: string; reason: string }>;
+    suggestedRemoveCount: number;
+    expectedUpdateCount: number;
+  }>;
   assertProjectScopeVersionToken(boqProjectId: number, expectedToken: string): Promise<void>;
   getProjectScopeSegments(boqProjectId: number): Promise<ProjectScopeSegment[]>;
   getInitialScopeCorrectionEligibility(segmentId: number): Promise<{
@@ -3859,15 +3870,75 @@ export class DatabaseStorage implements IStorage {
     return this.getProjectScopeVersionTokenTx(db, boqProjectId);
   }
 
+  private async buildProgrammeScopeAlignmentDataTx(
+    tx: any,
+    boqProjectId: number,
+    barsOverride?: any[],
+  ) {
+    const currentBars = barsOverride ?? await tx.select().from(workProgramBars)
+      .where(eq(workProgramBars.boqProjectId, boqProjectId))
+      .orderBy(asc(workProgramBars.id));
+    const currentItems = await tx.select({
+      id: boqItems.id,
+      categoryId: boqItems.categoryId,
+      itemCode: boqItems.itemCode,
+      itemName: boqItems.itemName,
+      description: boqItems.description,
+      unit: boqItems.unit,
+      canonicalUnit: boqItems.canonicalUnit,
+      currentQty: boqItems.currentQty,
+      workCategory: boqCategories.name,
+      layerConfig: boqItems.layerConfig,
+      fixedQuantity: boqItems.fixedQuantity,
+      fixedQuantityReachId: boqItems.fixedQuantityReachId,
+      planningWorkType: boqItems.planningWorkType,
+    }).from(boqItems)
+      .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
+      .where(eq(boqItems.boqProjectId, boqProjectId));
+    const currentSegments = await tx.select().from(projectScopeSegments)
+      .where(eq(projectScopeSegments.boqProjectId, boqProjectId))
+      .orderBy(asc(projectScopeSegments.id));
+    const alignment = buildScopeProgrammeAlignment({
+      items: currentItems as any[],
+      bars: currentBars as any[],
+      segments: currentSegments as any[],
+    });
+    return { currentBars, alignment };
+  }
+
+  async getProgrammeScopeAlignmentPreview(
+    boqProjectId: number,
+  ): Promise<ScopeProgrammeAlignmentPreview> {
+    return db.transaction(async (tx) => {
+      const [project] = await tx.select({ id: boqProjects.id }).from(boqProjects)
+        .where(eq(boqProjects.id, boqProjectId)).limit(1);
+      if (!project) throw new Error("PROJECT_NOT_FOUND");
+      const { currentBars, alignment } = await this.buildProgrammeScopeAlignmentDataTx(tx, boqProjectId);
+      const scopeVersionToken = await this.getProjectScopeVersionTokenTx(tx, boqProjectId);
+      return {
+        ...alignment,
+        scopeVersionToken,
+        expectedBars: currentBars.map(bar => ({
+          id: Number(bar.id),
+          chainageFrom: bar.chainageFrom == null ? null : Number(bar.chainageFrom),
+          chainageTo: bar.chainageTo == null ? null : Number(bar.chainageTo),
+          plannedQty: Number(bar.plannedQty) || 0,
+        })),
+      };
+    });
+  }
+
   async applyProgrammeScopeAlignment(
     boqProjectId: number,
     scopeVersionToken: string,
     expectedBars: Array<{ id: number; chainageFrom: number | null; chainageTo: number | null; plannedQty: number }>,
+    expectedUpdates: ScopeProgrammeAlignmentExpectedUpdate[],
     actor: { userId: number; userName: string; userRole: string },
   ): Promise<{
     updatedCount: number;
     notUpdated: Array<{ barId: number | null; itemName: string; reason: string }>;
     suggestedRemoveCount: number;
+    expectedUpdateCount: number;
   }> {
     return db.transaction(async (tx) => {
       const project = await this.lockProjectAndCheckScopeTx(tx, boqProjectId, scopeVersionToken);
@@ -3886,101 +3957,117 @@ export class DatabaseStorage implements IStorage {
       })) {
         throw new Error("PROGRAMME_BARS_CHANGED");
       }
-      const currentItems = await tx.select({
-        id: boqItems.id,
-        categoryId: boqItems.categoryId,
-        itemCode: boqItems.itemCode,
-        itemName: boqItems.itemName,
-        description: boqItems.description,
-        unit: boqItems.unit,
-        canonicalUnit: boqItems.canonicalUnit,
-        currentQty: boqItems.currentQty,
-        workCategory: boqCategories.name,
-        layerConfig: boqItems.layerConfig,
-        fixedQuantity: boqItems.fixedQuantity,
-        fixedQuantityReachId: boqItems.fixedQuantityReachId,
-        planningWorkType: boqItems.planningWorkType,
-      }).from(boqItems)
-        .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
-        .where(eq(boqItems.boqProjectId, boqProjectId));
-      const currentSegments = await tx.select().from(projectScopeSegments)
-        .where(eq(projectScopeSegments.boqProjectId, boqProjectId))
-        .orderBy(asc(projectScopeSegments.id));
-      const alignment = buildScopeProgrammeAlignment({
-        items: currentItems as any[],
-        bars: currentBars as any[],
-        segments: currentSegments as any[],
-      });
+      const { alignment } = await this.buildProgrammeScopeAlignmentDataTx(tx, boqProjectId, currentBars);
       const barsById = new Map(currentBars.map(bar => [Number(bar.id), bar]));
       let updatedCount = 0;
       const notUpdated: Array<{ barId: number | null; itemName: string; reason: string }> = [];
-      for (const change of alignment.rows) {
-        if (change.action === "suggest_remove" || change.action === "add_bar_needed") continue;
-        if (change.action === "blocked") {
-          const reason = change.reason || "This bar needs manual review before it can be updated.";
-          notUpdated.push({ barId: change.barId, itemName: change.itemName, reason });
-          await tx.insert(auditLogs).values({
-            module: "work_program_bar",
-            transactionId: change.barId ?? 0,
-            action: "scope_alignment_not_updated",
-            userId: actor.userId,
-            userName: actor.userName,
-            userRole: actor.userRole,
-            oldValues: null,
-            newValues: {
-              result: "not_updated",
-              boqItemId: change.boqItemId,
-              itemCode: change.itemCode,
-              itemName: change.itemName,
-              reason,
-            },
+      const previewUpdatesById = new Map<number, ScopeProgrammeAlignmentExpectedUpdate>();
+      for (const row of expectedUpdates) {
+        if (!Number.isSafeInteger(Number(row.barId)) || Number(row.barId) <= 0 || previewUpdatesById.has(Number(row.barId))) {
+          throw new Error("INVALID_SCOPE_ALIGNMENT_PREVIEW");
+        }
+        previewUpdatesById.set(Number(row.barId), row);
+      }
+      const alignmentRowsById = new Map(
+        alignment.rows.filter(row => row.barId != null).map(row => [Number(row.barId), row]),
+      );
+
+      const recordNotUpdated = async (
+        barId: number | null,
+        itemName: string,
+        reason: string,
+        oldValues: Record<string, unknown> | null,
+        newValues: Record<string, unknown>,
+        boqItemId?: number,
+        itemCode?: string | null,
+      ) => {
+        notUpdated.push({ barId, itemName, reason });
+        await tx.insert(auditLogs).values({
+          module: "work_program_bar",
+          transactionId: barId ?? 0,
+          action: "scope_alignment_not_updated",
+          userId: actor.userId,
+          userName: actor.userName,
+          userRole: actor.userRole,
+          oldValues,
+          newValues: {
+            result: "not_updated",
+            ...newValues,
+            ...(boqItemId == null ? {} : { boqItemId }),
+            itemCode: itemCode ?? null,
+            itemName,
             reason,
+          },
+          reason,
+        });
+      };
+
+      const sameValue = (left: number | null, right: number | null) =>
+        left == null ? right == null : right != null && Math.abs(left - right) <= 0.000001;
+
+      for (const [barId, expected] of previewUpdatesById) {
+        const current = barsById.get(barId);
+        const change = alignmentRowsById.get(barId);
+        if (!current) {
+          await recordNotUpdated(barId, expected.itemName, "This bar is no longer in the project programme.", null, {
+            proposedChainageFrom: expected.proposedChainageFrom,
+            proposedChainageTo: expected.proposedChainageTo,
+            proposedQuantity: expected.proposedQuantity,
           });
           continue;
         }
-        if (change.action !== "update") continue;
-        const current = change.barId == null ? undefined : barsById.get(Number(change.barId));
-        let failureReason: string | null = null;
-        if (change.barId == null) failureReason = "The preview row has no programme bar number.";
-        else if (!current) failureReason = "This bar is no longer in the project programme.";
-        else if (change.proposedQuantity == null) failureReason = "A planned quantity could not be calculated for this bar.";
-        if (failureReason) {
-          notUpdated.push({ barId: change.barId, itemName: change.itemName, reason: failureReason });
-          await tx.insert(auditLogs).values({
-            module: "work_program_bar",
-            transactionId: change.barId ?? 0,
-            action: "scope_alignment_not_updated",
-            userId: actor.userId,
-            userName: actor.userName,
-            userRole: actor.userRole,
-            oldValues: current ? {
-              chainageFrom: current.chainageFrom,
-              chainageTo: current.chainageTo,
-              plannedQty: current.plannedQty,
-            } : null,
-            newValues: {
-              result: "not_updated",
-              boqItemId: change.boqItemId,
-              itemCode: change.itemCode,
-              itemName: change.itemName,
-              proposedChainageFrom: change.proposedChainageFrom,
-              proposedChainageTo: change.proposedChainageTo,
-              proposedQuantity: change.proposedQuantity,
-              reason: failureReason,
-            },
-            reason: failureReason,
+        if (expected.proposedQuantity == null) {
+          await recordNotUpdated(barId, expected.itemName, "A planned quantity could not be calculated for this bar.", {
+            chainageFrom: current.chainageFrom,
+            chainageTo: current.chainageTo,
+            plannedQty: current.plannedQty,
+          }, {
+            proposedChainageFrom: expected.proposedChainageFrom,
+            proposedChainageTo: expected.proposedChainageTo,
+            proposedQuantity: null,
           });
           continue;
         }
-        const oldValues = {
-          chainageFrom: current.chainageFrom,
-          chainageTo: current.chainageTo,
-          plannedQty: current.plannedQty,
-        };
+        if (!change || change.action !== "update") {
+          const reason = change?.reason || "The bar no longer needs an update; open the review again.";
+          await recordNotUpdated(barId, change?.itemName ?? expected.itemName, reason, {
+            chainageFrom: current.chainageFrom,
+            chainageTo: current.chainageTo,
+            plannedQty: current.plannedQty,
+          }, {
+            proposedChainageFrom: expected.proposedChainageFrom,
+            proposedChainageTo: expected.proposedChainageTo,
+            proposedQuantity: expected.proposedQuantity,
+          }, change?.boqItemId);
+          continue;
+        }
+        if (
+          change.proposedQuantity == null ||
+          !sameValue(change.proposedChainageFrom, expected.proposedChainageFrom) ||
+          !sameValue(change.proposedChainageTo, expected.proposedChainageTo) ||
+          Math.abs(change.proposedQuantity - expected.proposedQuantity) > 0.000001
+        ) {
+          await recordNotUpdated(barId, change.itemName, "The alignment inputs changed since this preview; open the review again.", {
+            chainageFrom: current.chainageFrom,
+            chainageTo: current.chainageTo,
+            plannedQty: current.plannedQty,
+          }, {
+            proposedChainageFrom: change.proposedChainageFrom,
+            proposedChainageTo: change.proposedChainageTo,
+            proposedQuantity: change.proposedQuantity,
+          }, change.boqItemId, change.itemCode);
+          continue;
+        }
+
         const newValues = {
           chainageFrom: change.proposedChainageFrom,
           chainageTo: change.proposedChainageTo,
           plannedQty: change.proposedQuantity,
+        };
+        const oldValues = {
+          chainageFrom: current.chainageFrom,
+          chainageTo: current.chainageTo,
+          plannedQty: current.plannedQty,
         };
         let saved = false;
         let saveError: unknown = null;
@@ -3988,7 +4075,7 @@ export class DatabaseStorage implements IStorage {
           saved = await tx.transaction(async rowTx => {
             const [updated] = await rowTx.update(workProgramBars)
               .set(newValues)
-              .where(and(eq(workProgramBars.id, change.barId!), eq(workProgramBars.boqProjectId, boqProjectId)))
+              .where(and(eq(workProgramBars.id, barId), eq(workProgramBars.boqProjectId, boqProjectId)))
               .returning({ id: workProgramBars.id });
             return !!updated;
           });
@@ -4003,30 +4090,12 @@ export class DatabaseStorage implements IStorage {
           const reason = saveError
             ? `Save failed: ${saveDetail || "database error"}`
             : "The update returned no saved row.";
-          notUpdated.push({ barId: change.barId, itemName: change.itemName, reason });
-          await tx.insert(auditLogs).values({
-            module: "work_program_bar",
-            transactionId: change.barId,
-            action: "scope_alignment_not_updated",
-            userId: actor.userId,
-            userName: actor.userName,
-            userRole: actor.userRole,
-            oldValues,
-            newValues: {
-              result: "not_updated",
-              ...newValues,
-              boqItemId: change.boqItemId,
-              itemCode: change.itemCode,
-              itemName: change.itemName,
-              reason,
-            },
-            reason,
-          });
+          await recordNotUpdated(barId, change.itemName, reason, oldValues, newValues, change.boqItemId, change.itemCode);
           continue;
         }
         await tx.insert(auditLogs).values({
           module: "work_program_bar",
-          transactionId: change.barId,
+          transactionId: barId,
           action: "scope_alignment",
           userId: actor.userId,
           userName: actor.userName,
@@ -4044,10 +4113,29 @@ export class DatabaseStorage implements IStorage {
         });
         updatedCount += 1;
       }
+
+      for (const change of alignment.rows) {
+        if (change.barId == null || previewUpdatesById.has(Number(change.barId))) continue;
+        if (change.action === "suggest_remove" || change.action === "add_bar_needed") continue;
+        const current = barsById.get(Number(change.barId));
+        const reason = change.action === "blocked"
+          ? change.reason || "This bar needs manual review before it can be updated."
+          : "This update was not present in the confirmed preview; open the review again.";
+        await recordNotUpdated(change.barId, change.itemName, reason, current ? {
+          chainageFrom: current.chainageFrom,
+          chainageTo: current.chainageTo,
+          plannedQty: current.plannedQty,
+        } : null, {
+          proposedChainageFrom: change.proposedChainageFrom,
+          proposedChainageTo: change.proposedChainageTo,
+          proposedQuantity: change.proposedQuantity,
+        }, change.boqItemId, change.itemCode);
+      }
       return {
         updatedCount,
         notUpdated,
         suggestedRemoveCount: alignment.rows.filter(row => row.action === "suggest_remove").length,
+        expectedUpdateCount: expectedUpdates.length,
       };
     });
   }
@@ -31972,6 +32060,8 @@ export class DatabaseStorage implements IStorage {
         dprConversionFactor: boqItems.dprConversionFactor,
         includedInPlanning: boqItems.includedInPlanning,
         planningWorkType: boqItems.planningWorkType,
+        fixedQuantity: boqItems.fixedQuantity,
+        fixedQuantityReachId: boqItems.fixedQuantityReachId,
         snlCode: boqItems.snlCode,
         excelRow: boqItems.excelRow,
         bulkMaterialClassification: boqItems.bulkMaterialClassification,

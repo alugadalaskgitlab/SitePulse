@@ -10,6 +10,7 @@ export type ScopeAlignmentOutsideRow = {
 export type ScopeAlignmentApplyResult = {
   updatedCount: number;
   notUpdated: ScopeAlignmentNotUpdated[];
+  expectedUpdateCount?: number;
 };
 
 export function ScopeAlignmentApplySummary({
@@ -56,6 +57,10 @@ export function ScopeAlignmentApplySummary({
                 ))}
               </ul>
             </>
+          ) : result.expectedUpdateCount != null && result.expectedUpdateCount > result.updatedCount ? (
+            <p role="alert" className="mt-1 text-xs">
+              These bars could not be updated: no saved result was confirmed for every previewed row. Open the review again.
+            </p>
           ) : <p className="mt-1 text-xs">Every applicable Update row was saved.</p>}
         </div>
       )}

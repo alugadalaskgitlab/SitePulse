@@ -59,6 +59,26 @@ export type ScopeProgrammeAlignment = {
   blockedCount: number;
 };
 
+export type ScopeProgrammeAlignmentBarSnapshot = {
+  id: number;
+  chainageFrom: number | null;
+  chainageTo: number | null;
+  plannedQty: number;
+};
+
+export type ScopeProgrammeAlignmentExpectedUpdate = {
+  barId: number;
+  itemName: string;
+  proposedChainageFrom: number | null;
+  proposedChainageTo: number | null;
+  proposedQuantity: number | null;
+};
+
+export type ScopeProgrammeAlignmentPreview = ScopeProgrammeAlignment & {
+  scopeVersionToken: string;
+  expectedBars: ScopeProgrammeAlignmentBarSnapshot[];
+};
+
 type ItemScopePlan = {
   item: ScopeBomItem;
   allocation: WorkingReachAllocation;

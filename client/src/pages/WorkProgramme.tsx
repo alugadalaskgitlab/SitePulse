@@ -64,7 +64,7 @@ import { BAR_SIDES, BAR_SIDE_LABELS, barSideLabel, geometryApplicability, areSid
 import { scopeReachesToStretchRows, scopeConstraints, scopeFingerprint } from "@shared/autoSequenceScope";
 import { SCOPE_SEGMENT_TYPE_LABELS } from "@shared/projectScope";
 import { allocateBoqQuantityToWorkingReaches } from "@shared/workingReachValue";
-import { buildScopeProgrammeAlignment } from "@shared/scopeBomDemand";
+import type { ScopeProgrammeAlignmentPreview } from "@shared/scopeBomDemand";
 import { isStructureOrLocationScheduledItem, isShoulderDesc, classifyShoulderLayer, SHOULDER_DEPENDENCY_NOTES, SHOULDER_CLASSES, type ShoulderClass } from "@shared/workTypeRecipes";
 import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { boqDisplaySourceKey, buildBoqDisplayHierarchy } from "@shared/boqDisplayOrder";
@@ -3568,6 +3568,7 @@ export default function WorkProgramme() {
   const [scopeAlignmentApplyResult, setScopeAlignmentApplyResult] = useState<{
     updatedCount: number;
     notUpdated: Array<{ barId: number | null; itemName: string; reason: string }>;
+     expectedUpdateCount?: number;
   } | null>(null);
   const [seqFronts, setSeqFronts] = useState("");         // "" = auto
   const [seqStagger, setSeqStagger] = useState("1");      // months (0 = concurrent)
@@ -4002,20 +4003,17 @@ export default function WorkProgramme() {
     queryKey: [`/api/boq/projects/${projectId}/scope-segments`],
     enabled: !isNaN(projectId),
   });
-  const { data: scopeVersionToken } = useQuery<string>({
-    queryKey: [`/api/boq/projects/${projectId}/scope-version`],
+  const scopeAlignmentPreviewQuery = useQuery<ScopeProgrammeAlignmentPreview>({
+    queryKey: [`/api/boq/projects/${projectId}/scope-alignment/preview`],
     queryFn: async () => {
-      const response = await fetch(`/api/boq/projects/${projectId}/scope-version`, { credentials: "include" });
-      if (!response.ok) throw new Error("Could not check the current scope version.");
-      const body = await response.json();
-      return String(body.scopeVersionToken ?? "");
+      const response = await fetch(`/api/boq/projects/${projectId}/scope-alignment/preview`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load the current bar review.");
+      return response.json();
     },
     enabled: !isNaN(projectId) && !!user?.isOwner,
+    staleTime: 0,
   });
-  const scopeAlignment = useMemo(
-    () => buildScopeProgrammeAlignment({ items: items as any[], bars: bars as any[], segments: scopeSegments }),
-    [items, bars, scopeSegments],
-  );
+  const scopeAlignment = scopeAlignmentPreviewQuery.data ?? { rows: [], blockedCount: 0 };
   const scopeAlignmentRows = scopeAlignment.rows;
   const scopeAlignmentUpdateCount = scopeAlignmentRows.filter(row => row.action === "update").length;
   const scopeAlignmentOutsideRows = scopeAlignmentRows.filter(row => row.action === "suggest_remove");
@@ -4030,15 +4028,20 @@ export default function WorkProgramme() {
   });
   const applyScopeAlignmentMutation = useMutation({
     mutationFn: async () => {
-      if (!scopeVersionToken) throw new Error("Reload the scope preview before applying.");
+      const preview = scopeAlignmentPreviewQuery.data;
+      if (!preview?.scopeVersionToken) throw new Error("Reload the scope preview before applying.");
       const response = await apiRequest("POST", `/api/boq/projects/${projectId}/scope-alignment/apply`, {
-        scopeVersionToken,
-        expectedBars: bars.map(bar => ({
-          id: Number(bar.id),
-          chainageFrom: bar.chainageFrom == null ? null : Number(bar.chainageFrom),
-          chainageTo: bar.chainageTo == null ? null : Number(bar.chainageTo),
-          plannedQty: Number(bar.plannedQty) || 0,
-        })),
+        scopeVersionToken: preview.scopeVersionToken,
+        expectedBars: preview.expectedBars,
+        expectedUpdates: preview.rows
+          .filter(row => row.action === "update" && row.barId != null)
+          .map(row => ({
+            barId: Number(row.barId),
+            itemName: row.itemName,
+            proposedChainageFrom: row.proposedChainageFrom,
+            proposedChainageTo: row.proposedChainageTo,
+            proposedQuantity: row.proposedQuantity == null ? null : Number(row.proposedQuantity),
+          })),
       });
       return response.json();
     },
@@ -4049,7 +4052,7 @@ export default function WorkProgramme() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "bom"] }),
-        queryClient.invalidateQueries({ queryKey: [`/api/boq/projects/${projectId}/scope-version`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/boq/projects/${projectId}/scope-alignment/preview`] }),
         queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "work-value"] }),
       ]);
       toast({
@@ -5293,6 +5296,7 @@ export default function WorkProgramme() {
           setScopeAlignmentApplyResult(null);
           setScopeAlignmentConfirm(false);
           setScopeAlignmentOpen(true);
+        void scopeAlignmentPreviewQuery.refetch();
         }}
       />}
 
@@ -5307,6 +5311,19 @@ export default function WorkProgramme() {
           <p className="text-sm text-muted-foreground">
             Preview only. Applying changes updates chainage and planned quantity; dates, progress and manual notes stay as saved. “Suggest remove” is only a suggestion—no bar is deleted.
           </p>
+          {scopeAlignmentPreviewQuery.isFetching && (
+            <p role="status" className="text-sm text-muted-foreground">Refreshing the bar review…</p>
+          )}
+          {scopeAlignmentPreviewQuery.isError && (
+            <div role="alert" className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {scopeAlignmentPreviewQuery.error instanceof Error
+                ? scopeAlignmentPreviewQuery.error.message
+                : "Could not load the current bar review."}
+              <Button size="sm" variant="outline" className="ml-2" onClick={() => void scopeAlignmentPreviewQuery.refetch()}>
+                Try again
+              </Button>
+            </div>
+          )}
           {scopeAlignment.blockedCount > 0 && (
             <div role="alert" className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
               {scopeAlignment.blockedCount} bar(s) need a split or manual review and will remain unchanged. Other Update rows can still be applied.
@@ -5364,7 +5381,7 @@ export default function WorkProgramme() {
                 <Button
                   size="sm"
                   onClick={() => applyScopeAlignmentMutation.mutate()}
-                  disabled={applyScopeAlignmentMutation.isPending || !scopeVersionToken || !scopeAlignmentRows.some(row => row.action === "update")}
+                  disabled={applyScopeAlignmentMutation.isPending || scopeAlignmentPreviewQuery.isFetching || !scopeAlignmentPreviewQuery.data?.scopeVersionToken || !scopeAlignmentRows.some(row => row.action === "update")}
                 >
                   {applyScopeAlignmentMutation.isPending ? "Applying…" : "Confirm and save"}
                 </Button>
@@ -5377,7 +5394,7 @@ export default function WorkProgramme() {
                 <Button variant="outline" onClick={() => setScopeAlignmentOpen(false)}>Close</Button>
                 <Button
                   onClick={() => setScopeAlignmentConfirm(true)}
-                  disabled={!scopeVersionToken || !scopeAlignmentRows.some(row => row.action === "update")}
+                  disabled={scopeAlignmentPreviewQuery.isFetching || !scopeAlignmentPreviewQuery.data?.scopeVersionToken || !scopeAlignmentRows.some(row => row.action === "update")}
                 >
                   Apply updates
                 </Button>

@@ -17814,6 +17814,21 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/boq/projects/:id/scope-alignment/preview", async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      if (!req.authUser.isOwner) return res.status(403).json({ error: "owner_only" });
+      const projectId = Number(req.params.id);
+      if (!Number.isInteger(projectId) || projectId <= 0) return res.status(400).json({ error: "invalid_project_id" });
+      const preview = await storage.getProgrammeScopeAlignmentPreview(projectId);
+      return res.json(preview);
+    } catch (err: any) {
+      if (err?.message === "PROJECT_NOT_FOUND") return res.status(404).json({ error: "project_not_found" });
+      console.error("GET scope-alignment/preview:", err);
+      return res.status(500).json({ error: "Failed to build programme scope alignment preview" });
+    }
+  });
+
   app.post("/api/boq/projects/:id/scope-alignment/apply", async (req, res) => {
     try {
       if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
@@ -17821,16 +17836,27 @@ export async function registerRoutes(
       const projectId = Number(req.params.id);
       const scopeVersionToken = String(req.body?.scopeVersionToken ?? "");
       const expectedBars = req.body?.expectedBars;
+      const expectedUpdates = req.body?.expectedUpdates;
       if (!Number.isInteger(projectId) || projectId <= 0) return res.status(400).json({ error: "invalid_project_id" });
-      if (!scopeVersionToken || !Array.isArray(expectedBars)) {
-        return res.status(400).json({ error: "scope_version_and_bar_snapshot_required" });
+      if (!scopeVersionToken || !Array.isArray(expectedBars) || !Array.isArray(expectedUpdates)) {
+        return res.status(400).json({ error: "scope_version_and_preview_snapshot_required" });
+      }
+      if (expectedUpdates.some((row: any) =>
+        !Number.isSafeInteger(Number(row?.barId)) ||
+        Number(row.barId) <= 0 ||
+        typeof row.itemName !== "string" ||
+        (row.proposedQuantity != null && !Number.isFinite(Number(row.proposedQuantity))) ||
+        (row.proposedChainageFrom != null && !Number.isFinite(Number(row.proposedChainageFrom))) ||
+        (row.proposedChainageTo != null && !Number.isFinite(Number(row.proposedChainageTo)))
+      )) {
+        return res.status(400).json({ error: "invalid_scope_alignment_preview" });
       }
       const actor = {
         userId: Number(req.authUser.id),
         userName: String(req.authUser.fullName ?? req.authUser.email ?? "Owner"),
         userRole: "Owner",
       };
-      const result = await storage.applyProgrammeScopeAlignment(projectId, scopeVersionToken, expectedBars, actor);
+      const result = await storage.applyProgrammeScopeAlignment(projectId, scopeVersionToken, expectedBars, expectedUpdates, actor);
       return res.json(result);
     } catch (err: any) {
       if (err instanceof ScopeChangedDuringPlanningError || err?.code === "SCOPE_CHANGED_DURING_PLANNING") {
@@ -17841,6 +17867,9 @@ export async function registerRoutes(
       }
       if (err?.message === "SCOPE_ALIGNMENT_BLOCKED") {
         return res.status(409).json({ error: "scope_alignment_blocked", message: "Some bars need manual review before updates can be applied." });
+      }
+      if (err?.message === "INVALID_SCOPE_ALIGNMENT_PREVIEW") {
+        return res.status(400).json({ error: "invalid_scope_alignment_preview" });
       }
       console.error("POST scope-alignment/apply:", err);
       return res.status(500).json({ error: "Failed to apply programme scope alignment" });

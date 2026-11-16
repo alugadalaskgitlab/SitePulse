@@ -55,7 +55,10 @@ const harness = vi.hoisted(() => {
       },
     })),
   };
-  const transaction = vi.fn(async (callback: (executor: any) => Promise<unknown>) => callback(tx));
+  const transaction = vi.fn(async (callback: (executor: any) => Promise<unknown>) => {
+    selectIndex = 0;
+    return callback(tx);
+  });
   return {
     tx,
     transaction,
@@ -75,6 +78,14 @@ const harness = vi.hoisted(() => {
       selectIndex = 0;
     },
     get bars() { return bars; },
+    setItemCurrentQty(itemId: number, quantity: number) {
+      const item = items.find(candidate => Number(candidate.id) === Number(itemId));
+      if (item) item.currentQty = quantity;
+    },
+    setUpdateOrder(ids: number[]) {
+      updateOrder = [...ids];
+      updateIndex = 0;
+    },
     reset() {
       updatedValues.length = 0;
       auditValues.length = 0;
@@ -140,6 +151,48 @@ const remainingStructureBars = [
   structureChainageKm: null,
 }));
 
+const exactBeforeStateBars = [
+  { id: 953, boqProjectId: 2, boqItemId: 23, chainageFrom: 1.6, chainageTo: 3.2, plannedQty: 13.665, baselineStartDate: "2026-09-24", baselineEndDate: "2026-09-29", startDate: "2026-10-25", endDate: "2026-10-30", revisionHistory: [{ type: "cascade_shift", delta: 31, sourceBarId: 930 }], isQtyOverride: true },
+  { id: 954, boqProjectId: 2, boqItemId: 24, chainageFrom: 1.6, chainageTo: 3.2, plannedQty: 2.885, baselineStartDate: "2026-09-24", baselineEndDate: "2026-09-29", startDate: "2026-10-25", endDate: "2026-10-30", revisionHistory: [{ type: "cascade_shift", delta: 31, sourceBarId: 930 }], isQtyOverride: true },
+  { id: 955, boqProjectId: 2, boqItemId: 25, chainageFrom: 1.6, chainageTo: 3.2, plannedQty: 1.965, baselineStartDate: "2026-10-03", baselineEndDate: "2026-10-03", startDate: "2026-11-03", endDate: "2026-11-03", revisionHistory: [{ type: "cascade_shift", delta: 31, sourceBarId: 930 }], isQtyOverride: true },
+].map(bar => ({
+  ...bar,
+  startMonth: 1,
+  endMonth: 2,
+  notes: "keep this note",
+  side: "full_width",
+  structureChainageKm: null,
+}));
+const exactBeforeStateSegments = [
+  ...scope,
+  {
+    id: 6,
+    segmentType: "no_scope",
+    label: "No scope",
+    chainageFrom: 1.6,
+    chainageTo: 1.9,
+    side: "full_width",
+    status: "confirmed",
+    applicability: "all_linear",
+  },
+];
+
+async function previewUpdates() {
+  const preview = await storage.getProgrammeScopeAlignmentPreview(2);
+  return {
+    preview,
+    expectedUpdates: preview.rows
+      .filter(row => row.action === "update" && row.barId != null)
+      .map(row => ({
+        barId: Number(row.barId),
+        itemName: row.itemName,
+        proposedChainageFrom: row.proposedChainageFrom,
+        proposedChainageTo: row.proposedChainageTo,
+        proposedQuantity: row.proposedQuantity == null ? null : Number(row.proposedQuantity),
+      })),
+  };
+}
+
 describe("Owner programme scope alignment apply", () => {
   beforeEach(() => harness.reset());
 
@@ -148,9 +201,7 @@ describe("Owner programme scope alignment apply", () => {
     // bar must carry the full BOQ quantity over the confirmed 1.9–2.9 km reach.
     harness.setFixture({ bars: remainingStructureBars, items: structureItems, segments: scope });
     expect(harness.bars.some(bar => bar.id === 948)).toBe(false);
-    const snapshot = harness.bars.map(({ id, chainageFrom, chainageTo, plannedQty }) => ({
-      id, chainageFrom, chainageTo, plannedQty,
-    }));
+    const { preview, expectedUpdates } = await previewUpdates();
     const protectedState = harness.bars.map(({ id, startDate, endDate, baselineStartDate, baselineEndDate, revisionHistory, isQtyOverride, notes }) => ({
       id, startDate, endDate, baselineStartDate, baselineEndDate, revisionHistory, isQtyOverride, notes,
     }));
@@ -158,11 +209,12 @@ describe("Owner programme scope alignment apply", () => {
     const result = await storage.applyProgrammeScopeAlignment(
       2,
       "scope-token",
-      snapshot,
+      preview.expectedBars,
+      expectedUpdates,
       { userId: 7, userName: "Project Owner", userRole: "Owner" },
     );
 
-    expect(result).toEqual({ updatedCount: 3, notUpdated: [], suggestedRemoveCount: 1 });
+    expect(result).toEqual({ updatedCount: 3, notUpdated: [], suggestedRemoveCount: 1, expectedUpdateCount: 3 });
     expect(harness.bars.map(bar => [bar.id, bar.chainageFrom, bar.chainageTo, bar.plannedQty])).toEqual([
       [953, 1.9, 2.9, 27.33],
       [954, 1.9, 2.9, 5.77],
@@ -189,18 +241,18 @@ describe("Owner programme scope alignment apply", () => {
   it("reports a row with no returned update while applying the other rows", async () => {
     harness.setFixture({ bars: remainingStructureBars, items: structureItems, segments: scope });
     harness.failedUpdateIds.add(954);
-    const snapshot = harness.bars.map(({ id, chainageFrom, chainageTo, plannedQty }) => ({
-      id, chainageFrom, chainageTo, plannedQty,
-    }));
+    const { preview, expectedUpdates } = await previewUpdates();
 
     const result = await storage.applyProgrammeScopeAlignment(
       2,
       "scope-token",
-      snapshot,
+      preview.expectedBars,
+      expectedUpdates,
       { userId: 7, userName: "Project Owner", userRole: "Owner" },
     );
 
     expect(result.updatedCount).toBe(2);
+    expect(result.expectedUpdateCount).toBe(3);
     expect(result.notUpdated).toEqual([{
       barId: 954,
       itemName: "Sand filling in foundation",
@@ -225,18 +277,87 @@ describe("Owner programme scope alignment apply", () => {
 
   it("refuses all updates when scope changed after the preview", async () => {
     harness.setFixture({ bars: remainingStructureBars, items: structureItems, segments: scope, scopeToken: "new-scope" });
-    const snapshot = harness.bars.map(({ id, chainageFrom, chainageTo, plannedQty }) => ({
-      id, chainageFrom, chainageTo, plannedQty,
-    }));
+    const { preview, expectedUpdates } = await previewUpdates();
 
     await expect(storage.applyProgrammeScopeAlignment(
       2,
       "old-scope",
-      snapshot,
+      preview.expectedBars,
+      expectedUpdates,
       { userId: 7, userName: "Project Owner", userRole: "Owner" },
     )).rejects.toMatchObject({ code: "SCOPE_CHANGED_DURING_PLANNING" });
 
     expect(harness.updatedValues).toHaveLength(0);
     expect(harness.auditValues).toHaveLength(0);
+  });
+
+  it("previews and applies the exact three remaining structure fronts across a no-scope gap", async () => {
+    harness.setFixture({
+      bars: exactBeforeStateBars,
+      items: structureItems,
+      segments: exactBeforeStateSegments,
+    });
+
+    const { preview, expectedUpdates } = await previewUpdates();
+    expect(preview.rows.filter(row => row.action === "update").map(row => [
+      row.barId,
+      row.currentChainageFrom,
+      row.currentChainageTo,
+      row.currentQuantity,
+      row.proposedChainageFrom,
+      row.proposedChainageTo,
+      row.proposedQuantity,
+    ])).toEqual([
+      [953, 1.6, 3.2, 13.665, 1.9, 2.9, 27.33],
+      [954, 1.6, 3.2, 2.885, 1.9, 2.9, 5.77],
+      [955, 1.6, 3.2, 1.965, 1.9, 2.9, 3.93],
+    ]);
+    expect(expectedUpdates).toHaveLength(3);
+
+    const result = await storage.applyProgrammeScopeAlignment(
+      2,
+      preview.scopeVersionToken,
+      preview.expectedBars,
+      expectedUpdates,
+      { userId: 7, userName: "Project Owner", userRole: "Owner" },
+    );
+
+    expect(result).toMatchObject({ updatedCount: 3, notUpdated: [], expectedUpdateCount: 3 });
+    expect(harness.bars.map(({ id, chainageFrom, chainageTo, plannedQty }) => [id, chainageFrom, chainageTo, plannedQty])).toEqual([
+      [953, 1.9, 2.9, 27.33],
+      [954, 1.9, 2.9, 5.77],
+      [955, 1.9, 2.9, 3.93],
+    ]);
+  });
+
+  it("reports a previewed row when its proposal changes before Apply and continues other rows", async () => {
+    harness.setFixture({
+      bars: exactBeforeStateBars,
+      items: structureItems,
+      segments: exactBeforeStateSegments,
+    });
+    const { preview, expectedUpdates } = await previewUpdates();
+    harness.setItemCurrentQty(23, 30);
+    harness.setUpdateOrder([954, 955]);
+
+    const result = await storage.applyProgrammeScopeAlignment(
+      2,
+      preview.scopeVersionToken,
+      preview.expectedBars,
+      expectedUpdates,
+      { userId: 7, userName: "Project Owner", userRole: "Owner" },
+    );
+
+    expect(result.updatedCount).toBe(2);
+    expect(result.notUpdated).toEqual([{
+      barId: 953,
+      itemName: "Earthwork excavation for culverts",
+      reason: "The alignment inputs changed since this preview; open the review again.",
+    }]);
+    expect(harness.bars.map(({ id, chainageFrom, chainageTo, plannedQty }) => [id, chainageFrom, chainageTo, plannedQty])).toEqual([
+      [953, 1.6, 3.2, 13.665],
+      [954, 1.9, 2.9, 5.77],
+      [955, 1.9, 2.9, 3.93],
+    ]);
   });
 });

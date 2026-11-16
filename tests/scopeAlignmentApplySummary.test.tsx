@@ -26,11 +26,23 @@ describe("scope alignment result summary", () => {
       outsideRows={[]}
       result={{
         updatedCount: 2,
+        expectedUpdateCount: 3,
         notUpdated: [{ barId: 954, itemName: "Sand filling", reason: "No row was returned." }],
       }}
       onReview={vi.fn()}
     />);
     expect(screen.getByTestId("scope-alignment-result").textContent).toContain("2 bars updated");
     expect(screen.getByTestId("scope-alignment-result").textContent).toContain("#954 · Sand filling — No row was returned.");
+  });
+
+  it("never reports every update saved when a previewed row is unaccounted for", () => {
+    render(<ScopeAlignmentApplySummary
+      updateCount={0}
+      outsideRows={[]}
+      result={{ updatedCount: 0, expectedUpdateCount: 3, notUpdated: [] }}
+      onReview={vi.fn()}
+    />);
+    expect(screen.getByRole("alert").textContent).toContain("These bars could not be updated");
+    expect(screen.queryByText("Every applicable Update row was saved.")).toBeNull();
   });
 });
