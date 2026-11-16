@@ -21,6 +21,10 @@ import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION, N
 import { useToast } from "@/hooks/use-toast";
 import { normalizeWeightUnit } from "@shared/stockUnits";
 import {
+  shouldShowMixTemplateProportionMaterial,
+  shouldShowMixTemplateRebuildBanner,
+} from "@shared/mixTemplateMaterialDisplay";
+import {
   calculateCompactedLooseQuantity,
   compactedLooseProfileFromInputs,
   extraLoosePercentFromFactor,
@@ -3544,7 +3548,7 @@ export function MixTemplateMaster() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [newMixTypeDialogOpen, setNewMixTypeDialogOpen] = useState(false);
   const [newMixTypeName, setNewMixTypeName] = useState("");
-  const [postSaveAlertTemplate, setPostSaveAlertTemplate] = useState<{ id: number; name: string } | null>(null);
+  const [postSaveAlertTemplate, setPostSaveAlertTemplate] = useState<{ id: number; dispatchCount: number } | null>(null);
 
   const { data: templates, isLoading } = useQuery<MixTemplate[]>({
     queryKey: ["/api/plant-module/mix-templates"],
@@ -3566,7 +3570,9 @@ export function MixTemplateMaster() {
     queryKey: ["/api/plant-module/parties"],
   });
 
-  const aggregateMaterials = materials?.filter(m => m.category === "Aggregate") || [];
+  const aggregateMaterials = materials?.filter(m =>
+    m.category === "Aggregate" || m.category === "Filler"
+  ) || [];
   
   const createMixTypeMutation = useMutation({
     mutationFn: async (data: { name: string }) => {
@@ -3620,7 +3626,7 @@ export function MixTemplateMaster() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data, _proportionsChanged: _ }: { id: number; _proportionsChanged?: boolean; data: { 
+    mutationFn: async ({ id, data }: { id: number; _proportionsChanged?: boolean; data: {
       name?: string; 
       mixType?: string; 
       bitumenPercent?: number; 
@@ -3632,15 +3638,21 @@ export function MixTemplateMaster() {
       wastagePct?: number | null;
       notes?: string;
       components?: { materialId: number; percent: number; uom: string }[];
-    }}) => apiRequest("PATCH", `/api/plant-module/mix-templates/${id}`, data),
-    onSuccess: (_, variables) => {
+    }}) => {
+      const response = await apiRequest("PATCH", `/api/plant-module/mix-templates/${id}`, data);
+      return response.json() as Promise<{ dispatchCount?: number }>;
+    },
+    onSuccess: (result, variables) => {
       const savedId = variables.id;
-      const savedName = name;
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-templates"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/mix-template-components"] });
       setDialogOpen(false);
       resetForm();
-      if (canEdit && variables._proportionsChanged) setPostSaveAlertTemplate({ id: savedId, name: savedName });
+      if (canEdit && shouldShowMixTemplateRebuildBanner(!!variables._proportionsChanged, result?.dispatchCount)) {
+        setPostSaveAlertTemplate({ id: savedId, dispatchCount: Number(result.dispatchCount) });
+      } else {
+        setPostSaveAlertTemplate(null);
+      }
       toast({ title: "Mix template updated successfully" });
     },
     onError: (error: any) => {
@@ -3783,7 +3795,11 @@ export function MixTemplateMaster() {
       const proportionsChanged =
         nextComponents.some(nc => Math.abs((prevMap.get(nc.materialId) ?? -1) - nc.percent) > 0.001) ||
         prevComponents.some(pc => !nextComponents.find(nc => nc.materialId === pc.materialId));
-      updateMutation.mutate({ id: editingTemplate.id, data, _proportionsChanged: proportionsChanged });
+      updateMutation.mutate({
+        id: editingTemplate.id,
+        data,
+        _proportionsChanged: proportionsChanged,
+      });
     } else {
       createMutation.mutate(data);
     }
@@ -3981,7 +3997,7 @@ export function MixTemplateMaster() {
               </div>
               
               <div className="space-y-2">
-                <Label>Aggregate proportions</Label>
+                <Label>Aggregate and filler proportions</Label>
                 <div className="rounded-md border overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50">
@@ -3994,11 +4010,14 @@ export function MixTemplateMaster() {
                       </tr>
                     </thead>
                     <tbody>
-                      {aggregateMaterials.filter(mat => {
-                        // Granular fractions (WMM/GSB) don't belong in bituminous templates.
-                        const isBit = /^(BC|DBM|SDBC|BM)$/i.test(String(mixType).trim());
-                        return !(isBit && /^(WMM|GSB)$/i.test(String(mat.name).trim()));
-                      }).map((mat, idx) => {
+                      {aggregateMaterials
+                        .filter(mat => shouldShowMixTemplateProportionMaterial({
+                          category: mat.category,
+                          name: mat.name,
+                          mixType,
+                          bitumenPercent: bitumenVal,
+                        }))
+                        .map((mat, idx) => {
                         const mc = parseFloat(aggregateMoistureContent[mat.id] || "0") || 0;
                         const wf = parseFloat(aggregateWastageFactors[mat.id] || "0") || 0;
                         const multiplier = (1 + wf / 100) / (1 - mc / 100);
@@ -4145,7 +4164,7 @@ export function MixTemplateMaster() {
             <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                Proportions updated for <strong>{postSaveAlertTemplate.name}</strong>. Rebuild the stock ledger to recompute historical dispatch entries.
+                This mix design is used in {postSaveAlertTemplate.dispatchCount} past dispatches. Rebuild the plant stock ledger to recalculate the materials they used.
               </p>
             </div>
             <div className="flex items-center gap-1 shrink-0">

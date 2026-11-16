@@ -8,6 +8,7 @@ interface UseAutosaveOptions<T> {
   enabled?: boolean;
   debounceMs?: number;
   onRestore?: (data: T) => void;
+  shouldPersistDraft?: (data: T) => boolean;
 }
 
 interface UseAutosaveReturn<T> {
@@ -27,6 +28,7 @@ export function useAutosave<T>({
   enabled = true,
   debounceMs = 1000,
   onRestore,
+  shouldPersistDraft,
 }: UseAutosaveOptions<T>): UseAutosaveReturn<T> {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
@@ -50,6 +52,10 @@ export function useAutosave<T>({
       try {
         const draft = await loadFormDraft<T>(formKey);
         if (draft && !hasRestoredRef.current) {
+          if (shouldPersistDraft && !shouldPersistDraft(draft.data)) {
+            await clearFormDraft(formKey);
+            return;
+          }
           setRestoredData(draft.data);
           setHasDraft(true);
           setDraftAge(formatDraftAge(draft.savedAt));
@@ -62,7 +68,7 @@ export function useAutosave<T>({
     }
 
     checkForDraft();
-  }, [formKey, enabled]);
+  }, [formKey, enabled, shouldPersistDraft]);
 
   useEffect(() => {
     if (!enabled || isLoading || hasDraft || lastSavedAt !== null) {
@@ -86,8 +92,12 @@ export function useAutosave<T>({
     if (!enabled || isLoading || hasDraft) return;
 
     const currentDataStr = JSON.stringify(data);
-    
     if (currentDataStr === lastSavedDataRef.current) return;
+    if (shouldPersistDraft && !shouldPersistDraft(data)) {
+      void clearFormDraft(formKey);
+      lastSavedDataRef.current = currentDataStr;
+      return;
+    }
 
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -108,7 +118,7 @@ export function useAutosave<T>({
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [formKey, data, enabled, debounceMs, isLoading, hasDraft]);
+  }, [formKey, data, enabled, debounceMs, isLoading, hasDraft, shouldPersistDraft]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -116,6 +126,10 @@ export function useAutosave<T>({
     const handleVisibilityChange = async () => {
       if (document.visibilityState === "hidden" && !hasDraft) {
         try {
+          if (shouldPersistDraft && !shouldPersistDraft(data)) {
+            await clearFormDraft(formKey);
+            return;
+          }
           await saveFormDraft(formKey, data);
           lastSavedDataRef.current = JSON.stringify(data);
           setLastSavedAt(new Date());
@@ -128,6 +142,10 @@ export function useAutosave<T>({
     const handleBeforeUnload = async () => {
       if (!hasDraft) {
         try {
+          if (shouldPersistDraft && !shouldPersistDraft(data)) {
+            await clearFormDraft(formKey);
+            return;
+          }
           await saveFormDraft(formKey, data);
         } catch (error) {
           console.error("Error saving before unload:", error);
@@ -142,7 +160,7 @@ export function useAutosave<T>({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [formKey, data, enabled, hasDraft]);
+  }, [formKey, data, enabled, hasDraft, shouldPersistDraft]);
 
   const restoreDraft = useCallback(() => {
     if (restoredData && onRestore) {

@@ -12,6 +12,12 @@ import { chooseResourceItem, newResourceRow, todaysResourceActivities, resourceS
 import { readDprWriteTokens, requireDprWriteTokens, type DprWriteTokens } from "@/lib/dprSectionTokens";
 import { useLocation, useRoute, Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
+import {
+  canRestoreDprLocalDraft,
+  dprLocalDraftKey,
+  parseDprLocalDraft,
+  removeDprLocalDrafts,
+} from "@/lib/dprLocalDraft";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { ChevronLeft, Plus, Trash2, Save, Loader2, UserPlus, X, Shield, Check, Send, Camera, Image as ImageIcon, Paperclip } from "lucide-react";
 import { useUpload } from "@/hooks/use-upload";
@@ -427,7 +433,7 @@ export default function SiteEdit() {
   const { featureCan, user: authUser } = useAuth();
   const id = parseInt(params?.id || "0");
   const backToReport = withReturnTo(`/site/report/${id}`, DPR_REGISTER_PATH);
-  const DRAFT_KEY = `dpr_draft_${id}`;
+  const DRAFT_KEY = dprLocalDraftKey(id, authUser?.id);
   const _searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   const _returnTo = _searchParams.get("returnTo");
   const _validatedReturnTo = resolveReturnTo(
@@ -514,7 +520,7 @@ export default function SiteEdit() {
   // Clear credentials and draft after successful save
   const clearCredentials = () => {
     sessionStorage.removeItem(`edit_pin_${id}`);
-    sessionStorage.removeItem(DRAFT_KEY);
+    removeDprLocalDrafts(sessionStorage, id);
   };
 
   const [draftRestored, setDraftRestored] = useState(false);
@@ -928,7 +934,7 @@ export default function SiteEdit() {
   ]);
 
   useEffect(() => {
-    if (!dpr) return;
+    if (!dpr || authUser?.id == null) return;
     // Submitted corrections retain mounted raw input across history refreshes,
     // pending submissions and administrative decisions.
     if (dpr.dprStatus === "submitted" && formInitializedForIdRef.current === id) return;
@@ -950,11 +956,22 @@ export default function SiteEdit() {
     });
     serverSnapshotRef.current = serverJson;
 
-    // Check for a saved draft first — restore it instead of overwriting with server data
-    const savedDraft = sessionStorage.getItem(DRAFT_KEY);
-    if (savedDraft) {
-      try {
-        const { _writeTokens, ...draft } = JSON.parse(savedDraft);
+    // Older keys did not identify the user, so they are never restored.
+    sessionStorage.removeItem(`dpr_draft_${id}`);
+    if (dpr.dprStatus === "submitted") {
+      // Submitted reports always use the server snapshot. Remove stale local
+      // edits so they cannot blank or corrupt a later correction screen.
+      removeDprLocalDrafts(sessionStorage, id);
+    }
+
+    // Only a saved server draft for this user can restore browser-local edits.
+    const savedDraft = dpr.dprStatus === "draft" && DRAFT_KEY
+      ? sessionStorage.getItem(DRAFT_KEY)
+      : null;
+    if (savedDraft && DRAFT_KEY) {
+      const parsedDraft = parseDprLocalDraft(savedDraft);
+      if (parsedDraft && canRestoreDprLocalDraft(dpr.dprStatus, parsedDraft)) {
+        const { _writeTokens, ...draft } = parsedDraft as any;
         // Only restore the draft if it actually differs from the server state
         if (JSON.stringify(draft) !== serverJson) {
           // A restored local form must carry its own original server baseline,
@@ -997,8 +1014,9 @@ export default function SiteEdit() {
         }
         // Draft matches server — treat as stale, remove it
         sessionStorage.removeItem(DRAFT_KEY);
-      } catch {
-        // Corrupted draft — discard it and fall through to server data
+      } else {
+        // Empty or malformed drafts are not useful recovery data. Discard them
+        // quietly and hydrate the saved server state instead.
         sessionStorage.removeItem(DRAFT_KEY);
       }
     }
@@ -1015,12 +1033,17 @@ export default function SiteEdit() {
     formInitializedRef.current = true;
     formInitializedForIdRef.current = id;
     setBoqCataloguePreviewReady(true);
-  }, [dpr]);
+  }, [dpr, id, DRAFT_KEY, authUser?.id]);
 
   // Auto-save draft to sessionStorage whenever form state changes (only after initial load,
   // and only when the state actually differs from what the server provided — prevents stale drafts)
   useEffect(() => {
     if (!formInitializedRef.current) return;
+    if (!DRAFT_KEY || authUser?.id == null) return;
+    if (dpr && dpr.dprStatus !== "draft") {
+      removeDprLocalDrafts(sessionStorage, id);
+      return;
+    }
     // Keep project recovery context alongside row edits. In particular, a
     // pending positive target must survive reload without being mistaken for
     // a confirmed server project; this prevents restoring linked rows with an
@@ -1063,6 +1086,9 @@ export default function SiteEdit() {
     sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, _writeTokens: draftWriteTokensRef.current }));
   }, [
     dpr,
+    id,
+    DRAFT_KEY,
+    authUser?.id,
     header,
     workType,
     structureItems,
@@ -1577,7 +1603,7 @@ export default function SiteEdit() {
     },
     onSuccess: async (data, payload) => {
       adoptPersistedDraft(data, labourSubmissionRef.current.get(payload));
-      sessionStorage.removeItem(DRAFT_KEY);
+      removeDprLocalDrafts(sessionStorage, id);
       // Batch 06C §22: draft saves keep the same DPR id — upload staged
       // per-activity photos now so they survive close/reopen.
       let failedPhotoCount = 0;
@@ -1635,7 +1661,7 @@ export default function SiteEdit() {
       return response.json();
     },
     onSuccess: async (data) => {
-      sessionStorage.removeItem(DRAFT_KEY);
+      removeDprLocalDrafts(sessionStorage, id);
       // Batch 06C §22: upload any still-staged per-activity photos against
       // the submitted DPR's id before navigating away.
       if (Object.values(entryPhotos).some((f) => f.length > 0)) {
@@ -1794,7 +1820,7 @@ export default function SiteEdit() {
       }
       clearCredentials();
       setSplitProgress(null);
-      sessionStorage.removeItem(DRAFT_KEY);
+      removeDprLocalDrafts(sessionStorage, id);
       toast({ title: `DPR #${result.id} corrected` });
       setLocation(withDprFocus(resolveDprCompletionReturnTo(
         typeof window !== "undefined" ? window.location.search : "",
@@ -2074,7 +2100,7 @@ export default function SiteEdit() {
             variant="ghost"
             className="shrink-0 text-amber-700 hover:text-amber-900 dark:text-amber-400 h-7 px-2"
             onClick={() => {
-              sessionStorage.removeItem(DRAFT_KEY);
+              removeDprLocalDrafts(sessionStorage, id);
               setDraftRestored(false);
               if (dpr) {
                 if (dpr.dprStatus === "draft") {

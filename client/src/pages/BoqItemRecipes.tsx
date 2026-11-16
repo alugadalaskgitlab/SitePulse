@@ -1308,6 +1308,58 @@ interface SnlMapping {
   mappedAt: string;
 }
 
+export function SnlNormResultCard({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: SnlSearchResult;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const title = getSnlSearchItemTitle(item);
+  const fullDescription = item.description?.trim() || title;
+  const hasMore = fullDescription !== title || fullDescription.length > 120;
+  return (
+    <div className={`rounded-lg border transition-colors ${selected ? "border-teal-500 bg-teal-50/60" : "border-slate-200 hover:border-teal-300 hover:bg-slate-50/50"}`}>
+      <button
+        type="button"
+        onClick={onSelect}
+        className="w-full text-left p-2.5"
+        data-testid={`norm-result-${item.id}`}
+      >
+        <div className="flex items-start gap-2 justify-between">
+          <div className="min-w-0">
+            <p className="text-[12px] font-mono font-semibold text-teal-700">{item.itemCode}</p>
+            <p
+              className={`text-sm font-medium whitespace-normal ${expanded ? "" : "line-clamp-2"}`}
+              title={fullDescription}
+            >
+              {expanded ? fullDescription : title}
+            </p>
+            <p className="text-xs text-muted-foreground">{getSnlSourceDisplayName(item.sourceCode, item.sourceName)}</p>
+          </div>
+          {item.hasGradingVariants && <Badge variant="outline" className="text-[8px] h-3.5 px-1 border-amber-300 text-amber-600">grading</Badge>}
+        </div>
+        {item.shiftOutput && <p className="text-[12px] text-muted-foreground mt-0.5">{item.shiftOutput} {item.outputUnit}/shift</p>}
+      </button>
+      {hasMore && (
+        <button
+          type="button"
+          className="px-2.5 pb-2 text-xs text-teal-700 underline underline-offset-2"
+          onClick={() => setExpanded(value => !value)}
+          aria-expanded={expanded}
+          aria-label={`${expanded ? "Show less" : "Show more"} for ${item.itemCode}`}
+          data-testid={`norm-result-more-${item.id}`}
+        >
+          {expanded ? "Less" : "More"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 const CATEGORY_LABELS = ["LARGE", "MEDIUM", "SMALL"];
 const GRADING_OPTIONS: Record<string, string[]> = {
   "4.01A": ["Grading I", "Grading II", "Grading III"],
@@ -1424,26 +1476,12 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
                 <section className="space-y-1" aria-label="MoRTH results">
                   <p className="sticky top-0 z-10 bg-background px-1 py-0.5 text-[11px] font-semibold text-slate-600">MoRTH</p>
                   {resultGroups.morth.map(r => (
-                <button
-                  key={r.id}
-                  onClick={() => { setSelectedSnlId(r.id === selectedSnlId ? null : r.id); setGradingVariant(""); }}
-                  className={`w-full text-left rounded-lg border p-2.5 transition-colors ${selectedSnlId === r.id ? "border-teal-500 bg-teal-50/60" : "border-slate-200 hover:border-teal-300 hover:bg-slate-50/50"}`}
-                  data-testid={`norm-result-${r.id}`}
-                >
-                  <div className="flex items-center gap-2 justify-between">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-[12px] font-mono font-semibold text-teal-700 shrink-0">{r.itemCode}</span>
-                      <span className="text-sm font-medium whitespace-normal line-clamp-2">{getSnlSearchItemTitle(r)}</span>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-xs text-muted-foreground">{getSnlSourceDisplayName(r.sourceCode, r.sourceName)}</span>
-                      {r.hasGradingVariants && <Badge variant="outline" className="text-[8px] h-3.5 px-1 border-amber-300 text-amber-600">grading</Badge>}
-                    </div>
-                  </div>
-                  {r.shiftOutput && (
-                    <p className="text-[12px] text-muted-foreground mt-0.5">{r.shiftOutput} {r.outputUnit}/shift</p>
-                  )}
-                </button>
+                    <SnlNormResultCard
+                      key={r.id}
+                      item={r}
+                      selected={selectedSnlId === r.id}
+                      onSelect={() => { setSelectedSnlId(r.id === selectedSnlId ? null : r.id); setGradingVariant(""); }}
+                    />
               ))}
                 </section>
               )}
@@ -1451,22 +1489,12 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
                 <section className="space-y-1" aria-label="Other books results">
                   <p className="sticky top-0 z-10 bg-background px-1 py-0.5 text-[11px] font-semibold text-slate-600">Other books</p>
                   {resultGroups.otherBooks.map(r => (
-                    <button
+                    <SnlNormResultCard
                       key={r.id}
-                      onClick={() => { setSelectedSnlId(r.id === selectedSnlId ? null : r.id); setGradingVariant(""); }}
-                      className={`w-full text-left rounded-lg border p-2.5 transition-colors ${selectedSnlId === r.id ? "border-teal-500 bg-teal-50/60" : "border-slate-200 hover:border-teal-300 hover:bg-slate-50/50"}`}
-                      data-testid={`norm-result-${r.id}`}
-                    >
-                      <div className="flex items-start gap-2 justify-between">
-                        <div className="min-w-0">
-                          <p className="text-[12px] font-mono font-semibold text-teal-700">{r.itemCode}</p>
-                          <p className="text-sm font-medium whitespace-normal line-clamp-2">{getSnlSearchItemTitle(r)}</p>
-                          <p className="text-xs text-muted-foreground">{getSnlSourceDisplayName(r.sourceCode, r.sourceName)}</p>
-                        </div>
-                        {r.hasGradingVariants && <Badge variant="outline" className="text-[8px] h-3.5 px-1 border-amber-300 text-amber-600">grading</Badge>}
-                      </div>
-                      {r.shiftOutput && <p className="text-[12px] text-muted-foreground mt-0.5">{r.shiftOutput} {r.outputUnit}/shift</p>}
-                    </button>
+                      item={r}
+                      selected={selectedSnlId === r.id}
+                      onSelect={() => { setSelectedSnlId(r.id === selectedSnlId ? null : r.id); setGradingVariant(""); }}
+                    />
                   ))}
                 </section>
               )}

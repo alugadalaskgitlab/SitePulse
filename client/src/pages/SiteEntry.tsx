@@ -47,6 +47,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
+import { hasDprLocalDraftContent } from "@/lib/dprLocalDraft";
 import { CompactedLooseReminder } from "@/components/CompactedLooseReminder";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -322,6 +324,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   const [, setLocation] = useLocation();
   const searchStr = useSearch();
   const { toast } = useToast();
+  const { user: authUser } = useAuth();
   // Honor ?returnTo= so the originating screen is restored after completion.
   const _urlParams = new URLSearchParams(searchStr);
   const requestedReturnTo = _urlParams.get("returnTo");
@@ -1238,10 +1241,11 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   }, [sectionFingerprint, sectionHydrated]);
 
   const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<SiteEntryFormData>({
-    formKey: "site-entry-new",
+    formKey: `site-entry-new-user_${authUser?.id ?? "unresolved"}`,
     data: formData,
     onRestore: handleRestoreDraft,
-    enabled: !sectionEditor,
+    enabled: !sectionEditor && authUser?.id != null,
+    shouldPersistDraft: hasDprLocalDraftContent,
   });
 
   const { confirmLeave } = useBeforeUnload(sectionEditor ? sectionDirty : isDirty);

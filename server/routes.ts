@@ -5086,7 +5086,11 @@ export async function registerRoutes(
       if (profileError) return res.status(400).json({ message: profileError });
       const result = await storage.updateMixTemplate(Number(req.params.id), template, components);
       if (!result) return res.status(404).json({ message: "Mix template not found" });
-      res.json(result);
+      const [usage] = await db.select({
+        dispatchCount: sql<number>`COUNT(*)::int`,
+      }).from(truckDispatchesTable)
+        .where(eq(truckDispatchesTable.mixTemplateId, Number(req.params.id)));
+      res.json({ ...result, dispatchCount: Number(usage?.dispatchCount ?? 0) });
     } catch (err) {
       res.status(500).json({ message: "Failed to update mix template" });
     }
