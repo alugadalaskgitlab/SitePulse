@@ -1,7 +1,7 @@
 {
   "fixture": "SECTION-QTY-01 synthetic item and scope fixture",
   "noDatabaseWrites": true,
-  "sectionWrites": 0,
+  "interceptedSectionSaves": 1,
   "screenshots": {
     "item": "/home/runner/workspace/screenshots/section-qty-01/item-edit-typical-section-SYNTHETIC.png",
     "workValueAndBom": "/home/runner/workspace/screenshots/section-qty-01/work-value-and-bom-before-after-SYNTHETIC.png"
