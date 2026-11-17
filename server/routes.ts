@@ -1,5 +1,6 @@
 import { DPR_SECTIONS, DPR_SECTION_FIELDS, normalizeDprSectionContext } from "../shared/dprSections";
 import { can as canFeature, type FeatureAction, type FeatureId } from "@shared/featureAccess";
+import { canEditBoqItemSections } from "@shared/permissions";
 import { requirementApprovalBlock, isRequirementDecision } from "../shared/siteRequirementApproval";
 import { attachVendorBillEquipmentEvidence, resolveSavedEquipmentEvidenceSources } from "./vendorBillEquipmentEvidence";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, readSectionAggregate, saveDprSection, sectionSnapshot } from "./dprSections";
@@ -18265,7 +18266,7 @@ export async function registerRoutes(
 
   app.get("/api/boq/projects/:id/items", async (req, res) => {
     try {
-      const items = await storage.getBoqItems(parseInt(req.params.id));
+      const items = await storage.getBoqItemsWithSections(parseInt(req.params.id));
       res.json(items);
     } catch (err) {
       console.error("GET /api/boq/projects/:id/items:", err);
@@ -18404,6 +18405,43 @@ export async function registerRoutes(
     } catch (err) {
       console.error("PATCH /api/boq/items/:id:", err);
       res.status(500).json({ error: "Failed to update BOQ item" });
+    }
+  });
+
+  app.get("/api/boq/items/:id/sections", async (req, res) => {
+    try {
+      if (!assertView(req, res, "qto_boq")) return;
+      const itemId = Number(req.params.id);
+      if (!Number.isSafeInteger(itemId) || itemId <= 0) return res.status(400).json({ error: "A valid BOQ item is required." });
+      const item = await storage.getBoqItem(itemId);
+      if (!item) return res.status(404).json({ error: "BOQ item not found." });
+      res.json(await storage.getBoqItemSections(itemId));
+    } catch (err) {
+      console.error("GET /api/boq/items/:id/sections:", err);
+      res.status(500).json({ error: "Failed to fetch typical sections." });
+    }
+  });
+
+  app.put("/api/boq/items/:id/sections", async (req, res) => {
+    try {
+      const explicitlyAllowed = canEditBoqItemSections(req.authUser?.isOwner === true, req.authPermissions);
+      if (!explicitlyAllowed) return res.status(403).json({ error: "Only the Owner or a user explicitly granted BOQ Typical Sections edit access can save these sections." });
+      const itemId = Number(req.params.id);
+      const projectId = Number(req.body?.projectId);
+      if (!Number.isSafeInteger(itemId) || itemId <= 0 || !Number.isSafeInteger(projectId) || projectId <= 0) {
+        return res.status(400).json({ error: "A valid BOQ item and project are required." });
+      }
+      if (!Array.isArray(req.body?.sections)) return res.status(400).json({ error: "sections must be an array." });
+      const saved = await storage.saveBoqItemSections(itemId, projectId, req.body.sections, req.authUser!.id);
+      res.json(saved);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      if (message === "BOQ_ITEM_NOT_FOUND") return res.status(404).json({ error: "BOQ item not found in this project." });
+      if (message.startsWith("TYPICAL_SECTIONS_INVALID:")) {
+        return res.status(400).json({ error: message.slice("TYPICAL_SECTIONS_INVALID:".length) });
+      }
+      console.error("PUT /api/boq/items/:id/sections:", err);
+      res.status(500).json({ error: "Failed to save typical sections." });
     }
   });
 
@@ -21399,7 +21437,8 @@ export async function registerRoutes(
           planningWorkType: item.planningWorkType,
           workCategory: item.workCategory,
           layerConfig: item.layerConfig,
-        }, scopeSegments);
+          sections: item.sections,
+        }, scopeSegments, item.sections);
         scopeAllocationByItem.set(itemId, scopeAllocation);
         const scopedItem = { ...item, currentQty: scopeAllocation.workingQuantity };
         const scopeRatio = itemQty > 0 ? scopeAllocation.workingQuantity / itemQty : 0;
@@ -22132,7 +22171,8 @@ export async function registerRoutes(
           planningWorkType: item.planningWorkType,
           workCategory: item.workCategory,
           layerConfig: item.layerConfig,
-        }, scopeSegments);
+          sections: item.sections,
+        }, scopeSegments, item.sections);
         const rateValue = item.clientRate == null ? null : Number(item.clientRate);
         const rate = rateValue != null && Number.isFinite(rateValue) ? rateValue : null;
         const rowsForItem = progressRows.filter(row => Number(row.boqItemId) === itemId && row.chainageReviewStatus !== "review_required");
@@ -22487,9 +22527,11 @@ export async function registerRoutes(
           categoryId: item.categoryId ?? null,
           isLinear: item.isLinear ?? null,
           currentQty: Number(item.currentQty) || 0,
+          unit: item.canonicalUnit ?? item.unit,
           fixedQuantity: item.fixedQuantity ?? null,
           fixedQuantityReachId: item.fixedQuantityReachId ?? null,
-        }, previewSegments).shares.length > 0)
+          sections: item.sections,
+        }, previewSegments, item.sections).shares.length > 0)
         .map(item => Number(item.id)));
       const works: FundPlanWork[] = [];
       for (const row of req.body.works) {
@@ -22702,7 +22744,8 @@ export async function registerRoutes(
           planningWorkType: (item as any).planningWorkType,
           workCategory: (item as any).workCategory,
           layerConfig: (item as any).layerConfig,
-        }, scopeSegments);
+          sections: (item as any).sections,
+        }, scopeSegments, (item as any).sections);
         const materials: Array<{ name: string; qtyPerBoqUnit: number; uom: string; profile: any; wastagePct: number }> = [];
         const directGranular = itemData.layerConfig?.layerType === "granular" && itemData.layerConfig?.granularSource !== "plant";
         const directHint = directGranular ? directGranularMasterHint(itemData) : null;

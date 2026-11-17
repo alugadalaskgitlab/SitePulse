@@ -17,7 +17,28 @@ export type WorkingReachItem = ScopeItemQuery & {
   planningWorkType?: string | null;
   workCategory?: string | null;
   layerConfig?: Record<string, unknown> | null;
+  sections?: BoqTypicalSection[];
 };
+
+export type TypicalSectionUnit = "CUM" | "SQM";
+
+export interface BoqTypicalSection {
+  id?: number;
+  chainageFrom: number;
+  chainageTo: number;
+  topWidthM: number;
+  thicknessMm: number | null;
+  sideSlope: number;
+  note?: string | null;
+}
+
+export interface TypicalSectionAllocation {
+  sectionIndex: number;
+  sectionId?: number;
+  quantityPerMetre: number;
+  effectiveLengthM: number;
+  stretchQuantity: number;
+}
 
 export interface WorkingReachShare {
   reachId: number | null;
@@ -35,6 +56,80 @@ export interface WorkingReachAllocation {
   notNeededQuantity: number;
   scoped: boolean;
   shares: WorkingReachShare[];
+  /** Present only when valid typical sections were supplied and applied. */
+  sectionResults?: TypicalSectionAllocation[];
+  /** Quantity by which section-based planning exceeds the item's current BOQ quantity. */
+  overBoqQuantity?: number;
+}
+
+export function typicalSectionUnit(unit: unknown): TypicalSectionUnit | null {
+  const normalized = String(unit ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (["CUM", "M3", "CBM"].includes(normalized)) return "CUM";
+  if (["SQM", "M2"].includes(normalized)) return "SQM";
+  return null;
+}
+
+export function typicalSectionQuantityPerMetre(
+  unit: unknown,
+  section: Pick<BoqTypicalSection, "topWidthM" | "thicknessMm" | "sideSlope">,
+): number | null {
+  const sectionUnit = typicalSectionUnit(unit);
+  const width = Number(section.topWidthM);
+  if (!sectionUnit || !Number.isFinite(width) || width <= 0) return null;
+  if (sectionUnit === "SQM") return width;
+  const thicknessMm = Number(section.thicknessMm);
+  const slope = Number(section.sideSlope);
+  if (!Number.isFinite(thicknessMm) || thicknessMm <= 0 || !Number.isFinite(slope) || slope < 0) return null;
+  const thicknessM = thicknessMm / 1000;
+  return (width + slope * thicknessM) * thicknessM;
+}
+
+export function typicalSectionsValidationError(
+  unit: unknown,
+  sections: BoqTypicalSection[],
+): string | null {
+  if (Array.isArray(sections) && sections.length === 0) return null;
+  const sectionUnit = typicalSectionUnit(unit);
+  if (!sectionUnit) return "Typical sections are allowed only for CUM and SQM items.";
+  if (!Array.isArray(sections) || sections.length > 500) return "Enter no more than 500 typical sections.";
+  const ordered = sections.map((section, index) => {
+    const hasNumber = (value: unknown) =>
+      (typeof value === "number" || (typeof value === "string" && value.trim() !== ""))
+      && Number.isFinite(Number(value));
+    const from = Number(section.chainageFrom);
+    const to = Number(section.chainageTo);
+    const width = Number(section.topWidthM);
+    const slope = Number(section.sideSlope);
+    const thickness = section.thicknessMm == null ? null : Number(section.thicknessMm);
+    if (!hasNumber(section.chainageFrom) || from < 0 || !hasNumber(section.chainageTo) || to <= from) {
+      return { index, from, to, error: `Row ${index + 1}: enter a valid chainage range.` };
+    }
+    if (!hasNumber(section.topWidthM) || width <= 0) {
+      return { index, from, to, error: `Row ${index + 1}: top width must be greater than zero.` };
+    }
+    if (!hasNumber(section.sideSlope) || slope < 0) {
+      return { index, from, to, error: `Row ${index + 1}: side slope must be zero or greater.` };
+    }
+    if (sectionUnit === "CUM" && (thickness == null || !hasNumber(section.thicknessMm) || thickness <= 0)) {
+      return { index, from, to, error: `Row ${index + 1}: thickness must be greater than zero for CUM.` };
+    }
+    if (sectionUnit === "SQM" && thickness != null) {
+      return { index, from, to, error: `Row ${index + 1}: thickness is not used for SQM.` };
+    }
+    if (typicalSectionQuantityPerMetre(unit, { topWidthM: width, thicknessMm: thickness, sideSlope: slope }) == null) {
+      return { index, from, to, error: `Row ${index + 1}: section values are invalid.` };
+    }
+    return { index, from, to, error: null };
+  });
+  const invalid = ordered.find(row => row.error);
+  if (invalid?.error) return invalid.error;
+  const sorted = [...ordered].sort((a, b) => a.from - b.from || a.to - b.to);
+  for (let index = 1; index < sorted.length; index += 1) {
+    if (sorted[index].from < sorted[index - 1].to) {
+      return `Rows ${sorted[index - 1].index + 1} and ${sorted[index].index + 1} overlap. Adjust the chainages before saving.`;
+    }
+  }
+  return null;
 }
 
 function confirmedSegments(segments: ScopeSegmentLike[]) {
@@ -90,6 +185,7 @@ function unionLengthByCorridor(segments: ScopeSegmentLike[]): number {
 export function allocateBoqQuantityToWorkingReaches(
   item: WorkingReachItem,
   sourceSegments: ScopeSegmentLike[],
+  sections?: BoqTypicalSection[],
 ): WorkingReachAllocation {
   const segments = confirmedSegments(sourceSegments);
   const query: ScopeItemQuery = {
@@ -187,15 +283,77 @@ export function allocateBoqQuantityToWorkingReaches(
       quantity: currentQty * effectiveLengthKm / denominatorKm,
     };
   }).filter(share => share.effectiveLengthKm > 0);
-  const workingLengthKm = shares.reduce((sum, share) => sum + share.effectiveLengthKm, 0);
-  const workingQuantity = shares.reduce((sum, share) => sum + share.quantity, 0);
+  if (!sections?.length || !typicalSectionUnit(item.unit)) {
+    const workingLengthKm = shares.reduce((sum, share) => sum + share.effectiveLengthKm, 0);
+    const workingQuantity = shares.reduce((sum, share) => sum + share.quantity, 0);
+    return {
+      denominatorKm,
+      workingLengthKm,
+      workingQuantity,
+      notNeededQuantity: Math.max(0, currentQty - workingQuantity),
+      scoped: true,
+      shares,
+    };
+  }
+  const sectionsError = typicalSectionsValidationError(item.unit, sections);
+  if (sectionsError) throw new Error(sectionsError);
+
+  const coveredLengthBySection = sections.map(section => {
+    let effectiveKm = 0;
+    for (const reach of workingSegments) {
+      const from = Math.max(Number(reach.chainageFrom), Number(section.chainageFrom));
+      const to = Math.min(Number(reach.chainageTo), Number(section.chainageTo));
+      if (to <= from) continue;
+      const clippedReach: ScopeSegmentLike = { ...reach, chainageFrom: from, chainageTo: to };
+      effectiveKm += resolveEligibleScope([clippedReach, ...masks], query).eligibleSideLenKm;
+    }
+    return effectiveKm;
+  });
+  const sectionResults: TypicalSectionAllocation[] = sections.map((section, sectionIndex) => {
+    const quantityPerMetre = typicalSectionQuantityPerMetre(item.unit, section)!;
+    const effectiveLengthM = coveredLengthBySection[sectionIndex] * 1000;
+    return {
+      sectionIndex,
+      ...(section.id != null ? { sectionId: section.id } : {}),
+      quantityPerMetre,
+      effectiveLengthM,
+      stretchQuantity: quantityPerMetre * effectiveLengthM,
+    };
+  });
+  const adjustedShares = shares.map(share => {
+    const reach = workingSegments.find(segment => Number(segment.id ?? -1) === Number(share.reachId ?? -2));
+    if (!reach) return share;
+    let coveredKm = 0;
+    for (const section of sections) {
+      const from = Math.max(Number(reach.chainageFrom), Number(section.chainageFrom));
+      const to = Math.min(Number(reach.chainageTo), Number(section.chainageTo));
+      if (to <= from) continue;
+      const clippedReach: ScopeSegmentLike = { ...reach, chainageFrom: from, chainageTo: to };
+      coveredKm += resolveEligibleScope([clippedReach, ...masks], query).eligibleSideLenKm;
+    }
+    coveredKm = Math.min(share.effectiveLengthKm, coveredKm);
+    const sectionQuantity = sections.reduce((sum, section, sectionIndex) => {
+      const from = Math.max(Number(reach.chainageFrom), Number(section.chainageFrom));
+      const to = Math.min(Number(reach.chainageTo), Number(section.chainageTo));
+      if (to <= from) return sum;
+      const clippedReach: ScopeSegmentLike = { ...reach, chainageFrom: from, chainageTo: to };
+      const eligibleKm = resolveEligibleScope([clippedReach, ...masks], query).eligibleSideLenKm;
+      return sum + sectionResults[sectionIndex].quantityPerMetre * eligibleKm * 1000;
+    }, 0);
+    const uncoveredQuantity = currentQty * Math.max(0, share.effectiveLengthKm - coveredKm) / denominatorKm;
+    return { ...share, quantity: sectionQuantity + uncoveredQuantity };
+  });
+  const workingLengthKm = adjustedShares.reduce((sum, share) => sum + share.effectiveLengthKm, 0);
+  const workingQuantity = adjustedShares.reduce((sum, share) => sum + share.quantity, 0);
   return {
     denominatorKm,
     workingLengthKm,
     workingQuantity,
     notNeededQuantity: Math.max(0, currentQty - workingQuantity),
     scoped: true,
-    shares,
+    shares: adjustedShares,
+    sectionResults,
+    overBoqQuantity: Math.max(0, workingQuantity - currentQty),
   };
 }
 

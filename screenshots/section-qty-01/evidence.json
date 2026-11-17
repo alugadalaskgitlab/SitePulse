@@ -1,0 +1,15 @@
+{
+  "fixture": "SECTION-QTY-01 synthetic item and scope fixture",
+  "noDatabaseWrites": true,
+  "sectionWrites": 0,
+  "screenshots": {
+    "item": "/home/runner/workspace/screenshots/section-qty-01/item-edit-typical-section-SYNTHETIC.png",
+    "workValueAndBom": "/home/runner/workspace/screenshots/section-qty-01/work-value-and-bom-before-after-SYNTHETIC.png"
+  },
+  "values": {
+    "quantityPerMetre": 5.75,
+    "sectionQuantity": 7187.5,
+    "workValueBefore": 1000000,
+    "workValueAfter": 718750
+  }
+}

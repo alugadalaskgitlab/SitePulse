@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { BoqImportWizard } from "@/components/BoqImportWizard";
+import { BoqItemTypicalSections } from "@/components/BoqItemTypicalSections";
 import { BoqItemRecipeDialog } from "@/pages/BoqItemRecipes";
 import type { BoqProject, BoqItemWithCategory, BoqRevisionWithItems } from "@shared/schema";
 import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
@@ -32,6 +33,7 @@ import { uppercaseBusinessText } from "@shared/businessText";
 import { resolveBoqDisplayUnit, resolveBoqUomProfile } from "@shared/dprGeometry";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import { buildSnlSearchUrl, getSnlSearchItemTitle, getSnlSourceDisplayName, groupSnlSearchResults } from "@shared/normBook";
+import { canEditBoqItemSections } from "@shared/permissions";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -170,7 +172,7 @@ export function buildBoqItemEditPatch(
   };
 }
 
-function ItemEditDialog({
+export function ItemEditDialog({
   item,
   onClose,
   projectId,
@@ -180,8 +182,9 @@ function ItemEditDialog({
   projectId: number;
 }) {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, permissions } = useAuth();
   const isOwner = user?.isOwner === true;
+  const canEditTypicalSections = canEditBoqItemSections(isOwner, permissions);
   const [form, setForm] = useState(() => initialBoqItemEditForm(item));
   const { data: scopeSegments = [] } = useQuery<any[]>({
     queryKey: ["/api/boq/projects", projectId, "scope-segments"],
@@ -190,7 +193,7 @@ function ItemEditDialog({
       if (!response.ok) throw new Error("Could not load working reaches.");
       return response.json();
     },
-    enabled: isOwner,
+    enabled: true,
   });
   const physicalUnit = canonicalizeUnit(resolveBoqUomProfile({
     unit: form.unit,
@@ -241,7 +244,7 @@ function ItemEditDialog({
 
   return (
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-base flex items-center gap-2">
             <Pencil className="w-4 h-4 text-blue-600" />
@@ -361,6 +364,14 @@ function ItemEditDialog({
               );
             })()}
           </div>
+          <BoqItemTypicalSections
+            item={item}
+            projectId={projectId}
+            unit={form.unit}
+            fixedQuantityMode={form.fixedQuantityMode}
+            scopeSegments={scopeSegments}
+            canEdit={canEditTypicalSections}
+          />
           {isOwner && <section className="space-y-3 rounded-md border bg-amber-50/50 p-3" data-testid="work-value-owner-settings">
             <h3 className="text-sm font-semibold">Work value settings · Owner</h3>
             <div>

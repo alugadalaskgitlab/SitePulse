@@ -3599,6 +3599,24 @@ export const boqItems = pgTable("boq_items", {
   projectIdx: index("boq_items_project_idx").on(t.boqProjectId),
 }));
 
+export const boqItemSections = pgTable("boq_item_sections", {
+  id: serial("id").primaryKey(),
+  boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
+  projectId: integer("project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
+  chainageFrom: real("chainage_from").notNull(),
+  chainageTo: real("chainage_to").notNull(),
+  topWidthM: real("top_width_m").notNull(),
+  thicknessMm: real("thickness_mm"),
+  sideSlope: real("side_slope").notNull().default(2),
+  note: text("note"),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  projectItemIdx: index("boq_item_sections_project_item_idx").on(table.projectId, table.boqItemId),
+  itemChainageIdx: index("boq_item_sections_item_chainage_idx").on(table.boqItemId, table.chainageFrom, table.chainageTo),
+}));
+
 export const boqRevisions = pgTable("boq_revisions", {
   id: serial("id").primaryKey(),
   boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
@@ -3851,6 +3869,7 @@ export const insertBoqItemSchema = createInsertSchema(boqItems).omit({
   createdAt: true,
   recipeManualOverride: true,
 });
+export const insertBoqItemSectionSchema = createInsertSchema(boqItemSections).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertBoqRevisionSchema = createInsertSchema(boqRevisions).omit({ id: true, createdAt: true, approvedAt: true });
 export const insertBoqRevisionItemSchema = createInsertSchema(boqRevisionItems).omit({ id: true });
 export const insertWorkProgramBarSchema = createInsertSchema(workProgramBars).omit({ id: true, createdAt: true });
@@ -3872,6 +3891,8 @@ export type BoqCategory = typeof boqCategories.$inferSelect;
 export type InsertBoqCategory = z.infer<typeof insertBoqCategorySchema>;
 export type BoqItem = typeof boqItems.$inferSelect;
 export type InsertBoqItem = z.infer<typeof insertBoqItemSchema>;
+export type BoqItemSection = typeof boqItemSections.$inferSelect;
+export type InsertBoqItemSection = z.infer<typeof insertBoqItemSectionSchema>;
 export type BoqRevision = typeof boqRevisions.$inferSelect;
 export type InsertBoqRevision = z.infer<typeof insertBoqRevisionSchema>;
 export type BoqRevisionItem = typeof boqRevisionItems.$inferSelect;
@@ -3908,6 +3929,7 @@ export type InsertBoqMixTemplateLink = z.infer<typeof insertBoqMixTemplateLinkSc
 
 // Composite types for API responses
 export type BoqItemWithCategory = BoqItem & {
+  sections?: BoqItemSection[];
   categoryName: string | null;
   categorySourceBillNo?: string | null;
   categorySortOrder?: number | null;

@@ -96,6 +96,7 @@ export const SECTION_KEYS = [
   "mix_calculator",
   "concrete_calculator",
   "qto_boq",
+  "boq_item_sections",
   "planning_masters",
   "work_programme",
   "work_programme_review",
@@ -231,6 +232,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   mix_calculator: "Bituminous Mix Rate Calculator",
   concrete_calculator: "Concrete Rate Calculator (v1 & v2)",
   qto_boq: "QTO & BOQ Estimator",
+  boq_item_sections: "BOQ Typical Sections — Edit",
   planning_masters: "Work Programme — Planning Masters",
   work_programme: "Work Programme — Programme & Execution Setup",
   work_programme_review: "Work Programme — Review & Demand",
@@ -272,6 +274,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
 
 export const SECTION_DESCRIPTIONS: Partial<Record<SectionKey, string>> = {
   fund_planner: "Bill value, material cost and margin planning",
+  boq_item_sections: "Owner-only by default; does not change saved BOQ quantities",
 };
 
 export const ACTIONS = ["view", "create", "edit", "delete", "view_reports", "export", "approve", "notify"] as const;
@@ -300,6 +303,13 @@ export type SectionPermission = {
 };
 
 export type PermissionMatrix = Record<SectionKey, SectionPermission>;
+
+export function canEditBoqItemSections(
+  isOwner: boolean,
+  permissions: Partial<PermissionMatrix> | null | undefined,
+): boolean {
+  return isOwner || permissions?.boq_item_sections?.edit === true;
+}
 
 export const EMPTY_PERMISSION: SectionPermission = {
   view: false,
@@ -334,6 +344,7 @@ export function fullMatrix(): PermissionMatrix {
   const out = {} as PermissionMatrix;
   for (const k of SECTION_KEYS) out[k] = { ...FULL_PERMISSION };
   out.vendor_financials = { ...EMPTY_PERMISSION };
+  out.boq_item_sections = { ...EMPTY_PERMISSION };
   return out;
 }
 
@@ -676,7 +687,7 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
   {
     id: "calculators",
     label: "Rate Calculators & Estimator",
-    sections: ["estimator_portal", "mix_calculator", "concrete_calculator", "qto_boq", "planning_masters", "work_programme", "work_programme_review", "norms_library", "project_scope", "rate_cards"],
+    sections: ["estimator_portal", "mix_calculator", "concrete_calculator", "qto_boq", "boq_item_sections", "planning_masters", "work_programme", "work_programme_review", "norms_library", "project_scope", "rate_cards"],
   },
   {
     id: "fund_planner",

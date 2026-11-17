@@ -221,6 +221,7 @@ import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITE
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { trustedCanonicalBoqName } from "@shared/boqItemName";
+import { typicalSectionsValidationError, type BoqTypicalSection } from "@shared/workingReachValue";
 import {
   EquipmentActivityAllocationError,
   resolveEquipmentAllocationParentHours,
@@ -411,6 +412,7 @@ import {
   boqProjects,
   boqCategories,
   boqItems,
+  boqItemSections,
   boqRevisions,
   boqRevisionItems,
   workProgramBars,
@@ -435,6 +437,7 @@ import {
   type BoqCategory,
   type InsertBoqCategory,
   type BoqItem,
+  type BoqItemSection,
   type InsertBoqItem,
   type BoqRevision,
   type InsertBoqRevision,
@@ -3895,11 +3898,24 @@ export class DatabaseStorage implements IStorage {
     }).from(boqItems)
       .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
       .where(eq(boqItems.boqProjectId, boqProjectId));
+    const currentSections = await tx.select().from(boqItemSections)
+      .where(eq(boqItemSections.projectId, boqProjectId))
+      .orderBy(asc(boqItemSections.boqItemId), asc(boqItemSections.chainageFrom), asc(boqItemSections.id));
+    const sectionsByItem = new Map<number, BoqItemSection[]>();
+    for (const section of currentSections) {
+      const rows = sectionsByItem.get(section.boqItemId) ?? [];
+      rows.push(section);
+      sectionsByItem.set(section.boqItemId, rows);
+    }
+    const itemsWithSections = currentItems.map(item => ({
+      ...item,
+      sections: sectionsByItem.get(item.id) ?? [],
+    }));
     const currentSegments = await tx.select().from(projectScopeSegments)
       .where(eq(projectScopeSegments.boqProjectId, boqProjectId))
       .orderBy(asc(projectScopeSegments.id));
     const alignment = buildScopeProgrammeAlignment({
-      items: currentItems as any[],
+      items: itemsWithSections as any[],
       bars: currentBars as any[],
       segments: currentSegments as any[],
     });
@@ -32131,6 +32147,112 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  async getBoqItemSections(boqItemId: number): Promise<BoqItemSection[]> {
+    return db.select().from(boqItemSections)
+      .where(eq(boqItemSections.boqItemId, boqItemId))
+      .orderBy(boqItemSections.chainageFrom, boqItemSections.id);
+  }
+
+  async getBoqItemSectionsForProject(projectId: number): Promise<BoqItemSection[]> {
+    return db.select().from(boqItemSections)
+      .where(eq(boqItemSections.projectId, projectId))
+      .orderBy(boqItemSections.boqItemId, boqItemSections.chainageFrom, boqItemSections.id);
+  }
+
+  async getBoqItemsWithSections(boqProjectId: number): Promise<BoqItemWithCategory[]> {
+    const [items, sections] = await Promise.all([
+      this.getBoqItems(boqProjectId),
+      this.getBoqItemSectionsForProject(boqProjectId),
+    ]);
+    const byItem = new Map<number, BoqItemSection[]>();
+    for (const section of sections) {
+      const rows = byItem.get(section.boqItemId) ?? [];
+      rows.push(section);
+      byItem.set(section.boqItemId, rows);
+    }
+    return items.map(item => ({ ...item, sections: byItem.get(item.id) ?? [] }));
+  }
+
+  async saveBoqItemSections(
+    boqItemId: number,
+    projectId: number,
+    rows: Array<{
+      id?: number | null;
+      chainageFrom: number | string;
+      chainageTo: number | string;
+      topWidthM: number | string;
+      thicknessMm?: number | string | null;
+      sideSlope: number | string;
+      note?: string | null;
+    }>,
+    userId: number,
+  ): Promise<BoqItemSection[]> {
+    return db.transaction(async tx => {
+      const [item] = await tx.select({
+        id: boqItems.id,
+        boqProjectId: boqItems.boqProjectId,
+        unit: boqItems.unit,
+        canonicalUnit: boqItems.canonicalUnit,
+      }).from(boqItems).where(eq(boqItems.id, boqItemId)).for("update");
+      if (!item || item.boqProjectId !== projectId) throw new Error("BOQ_ITEM_NOT_FOUND");
+      const validationError = typicalSectionsValidationError(
+        item.canonicalUnit ?? item.unit,
+        rows as unknown as BoqTypicalSection[],
+      );
+      if (validationError) throw new Error(`TYPICAL_SECTIONS_INVALID:${validationError}`);
+      if (rows.some(row => row.note != null && (typeof row.note !== "string" || row.note.length > 1000))) {
+        throw new Error("TYPICAL_SECTIONS_INVALID:Notes must be 1,000 characters or fewer.");
+      }
+      const requestedIds = rows
+        .filter(row => row.id != null)
+        .map(row => Number(row.id));
+      if (requestedIds.some(id => !Number.isSafeInteger(id) || id <= 0)
+        || new Set(requestedIds).size !== requestedIds.length) {
+        throw new Error("TYPICAL_SECTIONS_INVALID:Section row ids are invalid or repeated.");
+      }
+      const existing = await tx.select().from(boqItemSections)
+        .where(and(eq(boqItemSections.boqItemId, boqItemId), eq(boqItemSections.projectId, projectId)));
+      const existingIds = new Set(existing.map(row => row.id));
+      if (requestedIds.some(id => !existingIds.has(id))) {
+        throw new Error("TYPICAL_SECTIONS_INVALID:A section row no longer belongs to this item. Reload and try again.");
+      }
+      const retainedIds = new Set(requestedIds);
+      for (const old of existing) {
+        if (!retainedIds.has(old.id)) {
+          await tx.delete(boqItemSections)
+            .where(and(eq(boqItemSections.id, old.id), eq(boqItemSections.boqItemId, boqItemId)));
+        }
+      }
+      for (const row of rows) {
+        const values = {
+          projectId,
+          chainageFrom: Number(row.chainageFrom),
+          chainageTo: Number(row.chainageTo),
+          topWidthM: Number(row.topWidthM),
+          thicknessMm: row.thicknessMm == null || row.thicknessMm === "" ? null : Number(row.thicknessMm),
+          sideSlope: Number(row.sideSlope),
+          note: row.note?.trim() || null,
+          updatedAt: new Date(),
+        };
+        if (row.id != null) {
+          const [updated] = await tx.update(boqItemSections).set(values)
+            .where(and(eq(boqItemSections.id, Number(row.id)), eq(boqItemSections.boqItemId, boqItemId)))
+            .returning();
+          if (!updated) throw new Error("TYPICAL_SECTIONS_INVALID:A section row was not found while saving. Reload and try again.");
+        } else {
+          await tx.insert(boqItemSections).values({
+            ...values,
+            boqItemId,
+            createdBy: userId,
+          });
+        }
+      }
+      return tx.select().from(boqItemSections)
+        .where(and(eq(boqItemSections.boqItemId, boqItemId), eq(boqItemSections.projectId, projectId)))
+        .orderBy(boqItemSections.chainageFrom, boqItemSections.id);
+    });
+  }
+
   async getBoqItem(id: number): Promise<BoqItem | null> {
     const [row] = await db.select().from(boqItems).where(eq(boqItems.id, id)).limit(1);
     return row ?? null;
@@ -34407,7 +34529,7 @@ export class DatabaseStorage implements IStorage {
 
   // Get all BOQ items with their recipes for BOM calculation
   async getBoqItemsWithRecipes(boqProjectId: number): Promise<BoqItemWithRecipes[]> {
-    const items = await this.getBoqItems(boqProjectId);
+    const items = await this.getBoqItemsWithSections(boqProjectId);
     if (!items.length) return [];
 
     const itemIds = items.map((i) => i.id);

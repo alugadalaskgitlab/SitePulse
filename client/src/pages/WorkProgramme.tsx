@@ -2374,7 +2374,8 @@ function InlineGanttTable({
     planningWorkType: item.planningWorkType,
     workCategory: item.workCategory,
     layerConfig: item.layerConfig,
-  }, coverageScopeSegments as any[]).workingQuantity;
+    sections: item.sections,
+  }, coverageScopeSegments as any[], item.sections).workingQuantity;
   const totalMonths = project.totalMonths ?? 12;
   // 027A: full calendar-month columns — a mid-month project start needs one
   // extra column so the programme window fits on the calendar axis.

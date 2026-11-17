@@ -135,6 +135,7 @@ function toWorkingReachItem(item: ScopeBomItem): WorkingReachItem {
     planningWorkType: item.planningWorkType,
     workCategory: item.workCategory,
     layerConfig: item.layerConfig as Record<string, unknown> | null | undefined,
+    sections: item.sections,
   };
 }
 
@@ -160,7 +161,7 @@ function makeItemScopePlan(
     segment.segmentType === "withdrawn" ||
     segment.segmentType === "temporary_block",
   );
-  const allocation = allocateBoqQuantityToWorkingReaches(toWorkingReachItem(item), segments);
+  const allocation = allocateBoqQuantityToWorkingReaches(toWorkingReachItem(item), segments, item.sections);
   const unrestricted = allocation.shares.some(share => share.label === "Full BOQ") ||
     (allocation.shares.some(share => share.label === "Whole road") && workingSegments.length === 0);
   const parts: ItemScopePlan["parts"] = [];
@@ -232,6 +233,7 @@ function alignmentFixedAllocation(
   return allocateBoqQuantityToWorkingReaches(
     { ...toWorkingReachItem(item), fixedQuantity: true },
     segments,
+    item.sections,
   );
 }
 

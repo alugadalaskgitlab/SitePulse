@@ -12,6 +12,7 @@ import {
   findMissingDemandMappings,
   type DemandComponentMappingWarning,
 } from "./executionArrangementCategories";
+import type { BoqTypicalSection } from "./workingReachValue";
 
 export const WORKING_DAYS_DEFAULT = 26;
 export const WORKING_HRS_DEFAULT = 8;
@@ -973,6 +974,7 @@ export interface BomInputItem {
   planningWorkType?: string | null;
   fixedQuantity?: boolean | null;
   fixedQuantityReachId?: number | null;
+  sections?: BoqTypicalSection[];
   materials: Array<{
     materialName: string;
     uom: string;
