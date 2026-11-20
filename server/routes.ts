@@ -51,7 +51,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, userPermissions, vendors, vendorAliases, sites as sitesTable, boqProjects as boqProjectsTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, mixTemplateComponents, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, materialRequirements, storeIssues as storeIssuesTable, storeIssueItems as storeIssueItemsTable, storeItems as storeItemsTable, boqItems, snlBoqMappings, snlItems, snlSources, snlCompositeComponents, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertMaterialReceiptSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, normalizeVendorBillAdditionalAdjustments, insertPlantSettingsSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, purchaseIndentItems, purchaseOrders, users, userPermissions, vendors, vendorAliases, sites as sitesTable, personnel, boqProjects as boqProjectsTable, appSettings, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, mixTemplateComponents, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, materialRequirements, storeIssues as storeIssuesTable, storeIssueItems as storeIssueItemsTable, storeItems as storeItemsTable, boqItems, snlBoqMappings, snlItems, snlSources, snlCompositeComponents, workProgramBars, programmeBarOutcomeEvents, earthworkArrangements as earthworkArrangementsTable, earthworkArrangementProgrammeAllocations, projectScopeSegments as projectScopeSegmentsTable, equipmentLogs, equipmentUsage } from "@shared/schema";
 import {
   insertPartySchema,
   insertPlantMaterialSchema,
@@ -3387,7 +3387,10 @@ export async function registerRoutes(
       const context = normalizeDprSectionContext(sectionContextSchema.parse(req.body.context));
       const dprId = z.number().int().positive().optional().parse(req.body.dprId);
       const data = z.record(z.unknown()).parse(req.body.data);
-      const allowed = new Set([...DPR_SECTION_FIELDS[section], "engineer"]);
+      if (data.engineerPersonnelId !== undefined) {
+        data.engineerPersonnelId = z.number().int().positive().nullable().parse(data.engineerPersonnelId);
+      }
+      const allowed = new Set([...DPR_SECTION_FIELDS[section], "engineer", "engineerPersonnelId"]);
       if (Object.keys(data).some(key => !allowed.has(key))) return res.status(400).json({ message: "Payload contains fields owned by a different section" });
       if (!dprId) z.string().trim().min(1).parse(data.engineer);
       const permitted = await getPermittedSiteNames(req);
@@ -3413,6 +3416,15 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "site_dprs")) return;
       const input = api.dprs.create.input.parse(req.body);
       requestedDprStatus = (input as any).dprStatus;
+      if (input.engineerPersonnelId != null) {
+        const [engineer] = await db.select({ id: personnel.id, isActive: personnel.isActive })
+          .from(personnel).where(eq(personnel.id, input.engineerPersonnelId)).limit(1);
+        if (!engineer || engineer.isActive !== 1) return res.status(400).json({ message: "Choose an active staff member as Engineer." });
+      } else {
+        const activeStaff = await db.select({ id: personnel.id }).from(personnel)
+          .where(eq(personnel.isActive, 1)).limit(1);
+        if (activeStaff.length) return res.status(400).json({ message: "Choose an active staff member as Engineer." });
+      }
       const permittedSiteNames = await getPermittedSiteNames(req);
       if (permittedSiteNames !== null && !siteMatchesPermitted(input.site, permittedSiteNames)) {
         return res.status(403).json({ message: "Access denied for this site" });
@@ -4134,6 +4146,29 @@ export async function registerRoutes(
         throw Object.assign(new Error("Choose a BOQ project linked to the same site as this DPR."), {
           correctionSection: "header", correctionRowId: original.id, correctionField: "boqProjectId",
         });
+      }
+    }
+    const engineerLinkChanged = changes.some(change =>
+      change.section === "header" && change.field === "engineerPersonnelId");
+    if (engineerLinkChanged) {
+      if (actor.isOwner !== true) {
+        throw Object.assign(new Error("Only the Owner may link a submitted DPR to a staff member."), {
+          correctionSection: "header", correctionRowId: original.id, correctionField: "engineerPersonnelId",
+        });
+      }
+      if (candidate.engineerPersonnelId != null) {
+        const [staff] = await tx.select({ id: personnel.id, name: personnel.name, role: personnel.role, isActive: personnel.isActive })
+          .from(personnel).where(eq(personnel.id, Number(candidate.engineerPersonnelId))).limit(1);
+        if (!staff || staff.isActive !== 1) {
+          throw Object.assign(new Error("Choose an active staff member for this DPR."), {
+            correctionSection: "header", correctionRowId: original.id, correctionField: "engineerPersonnelId",
+          });
+        }
+        if (candidate.engineer !== `${staff.name} - ${staff.role}`) {
+          throw Object.assign(new Error("The engineer name must match the selected staff record."), {
+            correctionSection: "header", correctionRowId: original.id, correctionField: "engineer",
+          });
+        }
       }
     }
     const changedIds = new Set(changes.filter(c => c.section === "progress").map(c => c.rowId));

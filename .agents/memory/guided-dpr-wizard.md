@@ -4,7 +4,7 @@ description: Wizard step model, No Work semantics in Guided, and the entryKey ph
 ---
 
 ## Wizard
-- Guided DPR is a 5-step wizard (Report → Activities → Details → Photos & crew → Review). Step model lives in `client/src/lib/guidedWizard.ts` (pure, tested). Steps 1–2 gate Next; 3–4 stay draft-lenient; Submit only on step 5. `step` is persisted in the autosave blob (clamped on restore).
+- Guided DPR is an 8-step wizard (Report → Activities → Details → Site activities → Labour → Equipment → Photos → Review). Step model lives in `client/src/lib/guidedWizard.ts`; `restoreGuidedStep` translates old 7-step autosaves so old steps 4–7 still open Labour, Equipment, Photos and Review. Site activities is optional; steps 3–7 stay draft-lenient and Submit is on step 8.
 
 ## No Site Work in Guided
 - Guided rows carry `noSiteWork` mirroring Detailed semantics: ticking clears geometry/quantity; payload emits a stripped row; readiness/overlap/validate skip them (server already skipped them everywhere). Draft hydration must NOT filter out no-work rows.
@@ -23,8 +23,9 @@ description: Wizard step model, No Work semantics in Guided, and the entryKey ph
 - Guided equipment master query must NOT be gated on open usages; master select + work-item link ride the passthrough bag (equipmentId/boqItemId; changing item clears structureId, changing machine resets plantUsageId).
 - Guided labour rows now carry gender/task/boqItemId/structureId end-to-end; legacy autosave blobs are normalised with a newLabourRow() spread on restore.
 
-## Batch 06C-P (Aug 2026)
-- Wizard is now 7 steps (Report/Activities/Details/Labour/Equipment/Photos/Review) — guidedWizard.ts is the only step model; steps 3–6 stay draft-lenient.
+## Batch 06C-P and DPR-ACTIVITY-02
+- `guidedWizard.ts` is the sole step model. Site activities sits after Details and before Labour, shares saved data with Detailed DPR, and must be omitted from a draft payload until loaded; an accidental empty list would remove saved entries.
+- Wizard steps 3–7 stay draft-lenient.
 - Length is display-only, derived via shared/dprGeometry calculateLengthFromChainage; never re-implement chainage arithmetic in a page.
 - SiteEntry's legacy internal step-wizard (guidedMode/showStep/GUIDED_STEPS) is fully removed — Detailed is a continuous Classic form; /site/guided is the SOLE guided experience. Do not reintroduce an internal wizard toggle.
 - SiteEntry's Remarks & general-photos card is now an always-visible Classic section (it was previously reachable only through the removed wizard).

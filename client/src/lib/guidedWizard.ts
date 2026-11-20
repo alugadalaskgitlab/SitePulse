@@ -20,7 +20,7 @@
 
 export const GUIDED_STEPS = [
   { id: 1, key: "report", label: "Report" },
-  { id: 2, key: "activities", label: "Activities" },
+  { id: 2, key: "activities", label: "Work done" },
   { id: 3, key: "details", label: "Details" },
   { id: 4, key: "siteActivities", label: "Site activities" },
   { id: 5, key: "labour", label: "Labour" },

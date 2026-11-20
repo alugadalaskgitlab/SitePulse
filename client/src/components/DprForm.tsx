@@ -166,7 +166,7 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
     <div className="form-section">
       <div className="form-section-title text-blue-600">
         <Activity className="w-5 h-5" />
-        <h3>Activity Progress</h3>
+        <h3>Work done</h3>
       </div>
       <div className="space-y-4">
         <Button

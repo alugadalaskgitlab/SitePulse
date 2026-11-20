@@ -3660,6 +3660,7 @@ export class DatabaseStorage implements IStorage {
         date: dprData.date,
         site: dprData.site.toUpperCase(),
         engineer: dprData.engineer.toUpperCase(),
+        engineerPersonnelId: dprData.engineerPersonnelId ?? null,
         submittedAt: submittedAt,
         dprStatus: dprStatusVal,
         workType: dprData.workType ?? "road",
@@ -4607,6 +4608,7 @@ export class DatabaseStorage implements IStorage {
           date: dprData.date,
           site: dprData.site.toUpperCase(),
           engineer: dprData.engineer.toUpperCase(),
+          ...(dprData.engineerPersonnelId !== undefined ? { engineerPersonnelId: dprData.engineerPersonnelId } : {}),
           workType: dprData.workType ?? "road",
           boqProjectId: (dprData as any).boqProjectId ?? null,
           remarks: (dprData as any).remarks ?? null,
@@ -4737,6 +4739,7 @@ export class DatabaseStorage implements IStorage {
           date: dprData.date,
           site: dprData.site,
           engineer: dprData.engineer,
+          ...(dprData.engineerPersonnelId !== undefined ? { engineerPersonnelId: dprData.engineerPersonnelId } : {}),
           workType: dprData.workType ?? "road",
         })
         .where(eq(dprs.id, id))
@@ -4893,6 +4896,7 @@ export class DatabaseStorage implements IStorage {
         date: original.date,
         site: newSiteName,
         engineer: original.engineer.toUpperCase(),
+        engineerPersonnelId: original.engineerPersonnelId ?? null,
         role: editedBy,
         submittedAt: original.submittedAt,
         createdAt: original.createdAt,
@@ -5205,6 +5209,7 @@ export class DatabaseStorage implements IStorage {
         boqProjectId: dprs.boqProjectId,
         site: dprs.site,
         isSuperseded: dprs.isSuperseded,
+        engineerPersonnelId: dprs.engineerPersonnelId,
       }).from(dprs).where(eq(dprs.id, originalId)).for("update").limit(1);
       if (!originalAudit) throw new Error("DPR_NOT_FOUND");
       if (originalAudit.dprStatus === "draft") {
@@ -5295,6 +5300,7 @@ export class DatabaseStorage implements IStorage {
         date: dprData.date,
         site: newSiteName,
         engineer: dprData.engineer.toUpperCase(),
+        engineerPersonnelId: dprData.engineerPersonnelId ?? originalAudit?.engineerPersonnelId ?? null,
         role: editedBy,
         submittedAt: originalAudit?.submittedAt ?? dateTime,
         createdAt: originalAudit?.createdAt ?? undefined,

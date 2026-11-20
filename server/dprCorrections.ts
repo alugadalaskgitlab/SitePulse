@@ -32,6 +32,7 @@ const ownerCanApplyDirectly = (actor: Actor, review: any) => actor.isOwner === t
   && review.requiresApproval
   && review.changes.filter((change: any) => change.requiresApproval).every((change: any) =>
     change.section === "header" && change.field === "boqProjectId" && change.oldValue == null && Number(change.newValue) > 0
+      || change.section === "header" && change.field === "engineerPersonnelId"
       || change.section === "siteActivities"
       || change.section === "progress" && (
         ownerDirectProgressFields.has(change.field)

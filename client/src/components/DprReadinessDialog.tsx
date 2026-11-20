@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import type { DprReadinessIssue, DprReadinessResult } from "@shared/dprSubmitReadiness";
 
 const SECTION_LABELS: Record<string, string> = {
-  activities: "Activities",
+  activities: "Work done",
   equipment: "Equipment",
   labour: "Labour",
   materials: "Materials",

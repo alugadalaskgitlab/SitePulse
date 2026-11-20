@@ -287,6 +287,7 @@ export async function updateUserProfile(userId: number, patch: Partial<{
   sessionPolicy: SessionPolicy;
   canManagePermissions: boolean;
   permissionManagerScope: string;
+  personnelId: number | null;
 }>): Promise<User | undefined> {
   const update: Record<string, unknown> = {};
   if (patch.fullName !== undefined) update.fullName = patch.fullName.trim();
@@ -299,6 +300,7 @@ export async function updateUserProfile(userId: number, patch: Partial<{
   if (patch.sessionPolicy !== undefined) update.sessionPolicy = patch.sessionPolicy;
   if (patch.canManagePermissions !== undefined) update.canManagePermissions = patch.canManagePermissions;
   if (patch.permissionManagerScope !== undefined) update.permissionManagerScope = patch.permissionManagerScope;
+  if (patch.personnelId !== undefined) update.personnelId = patch.personnelId;
   if (Object.keys(update).length === 0) return getUserById(userId);
   const [row] = await db.update(users).set(update).where(eq(users.id, userId)).returning();
   return row;

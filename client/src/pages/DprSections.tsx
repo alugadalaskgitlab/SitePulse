@@ -21,6 +21,8 @@ import { createDprSectionSaveAttempt } from "@/lib/dprSectionSaveAttempt";
 import { refreshDprDerivedQueries } from "@/lib/dprQueryInvalidation";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
+import type { Personnel } from "@shared/schema";
 
 const editorSection = (section: DprReadinessIssue["section"]): DprSection =>
   section === "activities" ? "activity" : section;
@@ -75,6 +77,7 @@ export function DprWorkEntry() {
 export default function DprSections({ initialId }: { initialId?: number } = {}) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
   const search = useSearch();
   const params = new URLSearchParams(search);
   const initial = initialId ?? (Number(params.get("dprId") || params.get("draftId")) || undefined);
@@ -84,6 +87,7 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
     boqProjectId: params.get("boqProjectId"),
   }));
   const [engineer, setEngineer] = useState(params.get("engineer") ?? "");
+  const [engineerPersonnelId, setEngineerPersonnelId] = useState<number | null>(Number(params.get("engineerPersonnelId")) || null);
   const [snapshot, setSnapshot] = useState<DprSectionSnapshot>();
   const snapshotRef = useRef<DprSectionSnapshot>();
   const saveAttempt = useRef(createDprSectionSaveAttempt());
@@ -98,7 +102,30 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
   const [submitIssues, setSubmitIssues] = useState<DprSubmitIssue[]>([]);
   const initialIssueHandled = useRef(false);
   const sites = useQuery<any[]>({ queryKey: ["/api/sites"] });
+  const personnel = useQuery<Personnel[]>({
+    queryKey: ["/api/personnel", "includeInactive"],
+    queryFn: async () => {
+      const response = await fetch("/api/personnel?includeInactive=true", { credentials: "include" });
+      if (!response.ok) throw new Error("Staff list could not be loaded.");
+      return response.json();
+    },
+  });
+  const activePersonnel = (personnel.data ?? []).filter(person => person.isActive === 1);
+  const currentEngineer = snapshot?.dpr.engineerPersonnelId == null ? undefined
+    : personnel.data?.find(person => person.id === Number(snapshot.dpr.engineerPersonnelId));
+  const engineerChoices = [
+    ...activePersonnel,
+    ...(currentEngineer && currentEngineer.isActive !== 1 ? [currentEngineer] : []),
+  ];
   const boq = useDprBoqItems({ siteName: context.site, sites: sites.data ?? [], preferredProjectId: context.boqProjectId, recoveryEvidence: snapshot?.dpr });
+  useEffect(() => {
+    if (initial || engineer.trim() || engineerPersonnelId != null || !personnel.data) return;
+    const linked = activePersonnel.find(person => person.id === user?.personnelId);
+    if (linked) {
+      setEngineerPersonnelId(linked.id);
+      setEngineer(`${linked.name} - ${linked.role}`);
+    }
+  }, [initial, engineer, engineerPersonnelId, personnel.data, user?.personnelId]);
   useEffect(() => {
     if (initial || resolved || context.site) return;
     const available = (sites.data ?? []).filter(site => site.isActive !== false && site.isActive !== 0);
@@ -110,6 +137,7 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
     setSnapshot(next);
     setContext(next.context);
     setEngineer(next.dpr.engineer ?? "");
+    setEngineerPersonnelId(next.dpr.engineerPersonnelId == null ? null : Number(next.dpr.engineerPersonnelId));
     setResolved(true);
     setCandidates(undefined);
     const url = new URL(window.location.href);
@@ -141,7 +169,7 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
         dprId: current?.dpr.id, context: context.boqProjectId == null && recoveredProjectId != null
           ? { ...context, boqProjectId: recoveredProjectId } : context,
         sectionToken: current?.sectionTokens[section], headerToken: current?.headerToken,
-        data: { ...(data as Record<string, unknown>), ...(!current ? { engineer: firstEngineer } : {}) },
+        data: { ...(data as Record<string, unknown>), engineer: firstEngineer, engineerPersonnelId },
       }, section));
       adopt(next);
       setError("");
@@ -198,7 +226,10 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
         ...(context.boqProjectId == null ? {} : { boqProjectId: String(context.boqProjectId) }),
         returnTo: resolveReturnTo(search, DPR_REGISTER_PATH) })}`;
     const query = new URLSearchParams({ returnTo: back, site: routeSite, date: routeContext.date,
-      type: routeContext.workType, engineer: current?.dpr.engineer ?? engineer, boqProjectId: routeContext.boqProjectId == null ? "" : String(routeContext.boqProjectId) });
+      type: routeContext.workType, engineer: current?.dpr.engineer ?? engineer,
+      ...(current?.dpr.engineerPersonnelId != null ? { engineerPersonnelId: String(current.dpr.engineerPersonnelId) }
+        : engineerPersonnelId != null ? { engineerPersonnelId: String(engineerPersonnelId) } : {}),
+      boqProjectId: routeContext.boqProjectId == null ? "" : String(routeContext.boqProjectId) });
     query.set("submitReturnTo", resolveReturnTo(search, DPR_REGISTER_PATH));
     if (current) {
       query.set("draftId", String(current.dpr.id));
@@ -206,6 +237,34 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
       query.set("draft", "1");
     }
     setLocation(`${guided ? "/site/guided/combined" : current ? `/site/edit/${current.dpr.id}` : "/site/combined"}?${query}`);
+  };
+  const engineerPicker = !personnel.data
+    ? <p className="text-sm text-muted-foreground" role={personnel.isError ? "alert" : "status"}>
+        {personnel.isError ? "Staff list could not be loaded." : "Loading staff…"}
+      </p>
+    : activePersonnel.length > 0
+      ? <select id="dpr-engineer" className="w-full rounded border p-2"
+          value={engineerPersonnelId == null ? "" : String(engineerPersonnelId)}
+          onChange={event => {
+            const person = engineerChoices.find(candidate => candidate.id === Number(event.target.value));
+            setEngineerPersonnelId(person?.id ?? null);
+            setEngineer(person ? `${person.name} - ${person.role}` : "");
+          }}
+          data-testid="select-engineer-personnel">
+          <option value="">Choose staff member</option>
+          {engineerChoices.map(person => <option key={person.id} value={person.id}>
+            {person.name.toUpperCase()} — {person.role}{person.isActive !== 1 ? " (inactive, existing link)" : ""}
+          </option>)}
+        </select>
+      : <Input id="dpr-engineer" value={engineer} onChange={event => setEngineer(event.target.value)} />;
+  const engineerReady = personnel.isSuccess && (activePersonnel.length === 0
+    ? engineer.trim().length > 0
+    : engineerPersonnelId != null);
+  const contextLine = (value: DprSectionContext) => {
+    const projectName = value.boqProjectId == null ? "No project"
+      : boq.projects.find(project => Number(project.id) === Number(value.boqProjectId))?.name?.toUpperCase() ?? "Project name unavailable";
+    const workLabel = value.workType === "structure" ? "Structure works" : "Road works";
+    return `${value.site.toUpperCase()} · ${format(new Date(`${value.date}T00:00:00`), "dd MMM yyyy")} · ${workLabel} · ${projectName}`;
   };
   return <main className="max-w-5xl mx-auto space-y-5 pb-16">
     {error && <div className="border border-destructive rounded p-4 space-y-3">
@@ -222,7 +281,7 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
       }}>Reload &amp; review persisted DPR</Button>
     </div>}
     {section && !final ? <SiteEntry key={`${section}-${generation}`} sectionEditor={{
-      section, context, snapshot, engineer, onSave: save, onReturn: () => { setSection(undefined); setReview(false); },
+       section, context, snapshot, engineer, engineerPersonnelId, onSave: save, onReturn: () => { setSection(undefined); setReview(false); },
       target, onFixOtherSection: fix,
     }} /> : <>
       <div className="flex items-center justify-between gap-3">
@@ -266,14 +325,14 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
         </p>)}
       {snapshot && !final && overlapIssues.length > 0 && <DprSectionsSubmitIssues issues={overlapIssues} onAction={(issue, action) => fix(issue, action)} />}
       {!resolved && !initial && <div className="grid sm:grid-cols-2 gap-4 rounded-lg border p-5">
-        <div><Label htmlFor="dpr-site">Site</Label><select id="dpr-site" className="w-full border rounded p-2" value={context.site} onChange={e => setContext({ ...context, site: e.target.value, boqProjectId: null })}>
-          <option value="">Choose site</option>{(sites.data ?? []).filter(s => s.isActive !== false && s.isActive !== 0).map(s => <option key={s.id} value={normalizeDprSectionContext({ site: s.name }).site} className="entity-name">{s.name}</option>)}
+         <div><Label htmlFor="dpr-site">Site</Label><select id="dpr-site" className="w-full border rounded p-2 entity-name" value={context.site} onChange={e => setContext({ ...context, site: e.target.value, boqProjectId: null })}>
+           <option value="">Choose site</option>{(sites.data ?? []).filter(s => s.isActive !== false && s.isActive !== 0).map(s => <option key={s.id} value={normalizeDprSectionContext({ site: s.name }).site}>{s.name.toUpperCase()}</option>)}
         </select>{sites.error && <p role="alert">Sites could not be loaded.</p>}</div>
         <div><Label htmlFor="dpr-date">Reporting date</Label><Input id="dpr-date" type="date" value={context.date} onChange={e => setContext({ ...context, date: e.target.value })} /></div>
-        <div><Label htmlFor="dpr-project">BOQ project</Label><select id="dpr-project" className="w-full border rounded p-2" value={context.boqProjectId ?? ""} onChange={e => setContext({ ...context, boqProjectId: e.target.value ? Number(e.target.value) : null })}>
-          <option value="">No project</option>{boq.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+         <div><Label htmlFor="dpr-project">BOQ project</Label><select id="dpr-project" className="w-full border rounded p-2 entity-name" value={context.boqProjectId ?? ""} onChange={e => setContext({ ...context, boqProjectId: e.target.value ? Number(e.target.value) : null })}>
+           <option value="">No project</option>{boq.projects.map(p => <option key={p.id} value={p.id}>{p.name.toUpperCase()}</option>)}
         </select>{boq.projectsError && <p role="alert">Projects could not be loaded. Retry before choosing a context.</p>}</div>
-        <div><Label htmlFor="dpr-engineer">Engineer (first save)</Label><Input id="dpr-engineer" value={engineer} onChange={e => setEngineer(e.target.value)} /></div>
+         <div><Label htmlFor="dpr-engineer">Engineer (first save)</Label>{engineerPicker}</div>
         <Button disabled={busy || !context.site || !context.date || !!boq.projectsError || boq.projectsLoading} onClick={() => void run(resolve)}>Open sections</Button>
       </div>}
       {candidates && <section className="rounded border p-4 space-y-3">
@@ -283,17 +342,24 @@ export default function DprSections({ initialId }: { initialId?: number } = {}) 
         </Button>)}
       </section>}
       {resolved && <>
-        <p className="rounded border p-4">{context.site} · {context.date} · {context.workType} · Project {context.boqProjectId ?? "none"}{snapshot ? ` · DPR #${snapshot.dpr.id}` : " · No draft created yet"}</p>
-        {!snapshot && <div><Label>Engineer (required for first save)</Label><Input value={engineer} onChange={e => setEngineer(e.target.value)} /></div>}
+       <p className="rounded border p-4">{contextLine(context)}{snapshot ? ` · DPR #${snapshot.dpr.id}` : " · No draft created yet"}</p>
+       {!snapshot && <div><Label htmlFor="dpr-engineer">Engineer (required for first save)</Label>{engineerPicker}</div>}
         {final ? <p role="status">This DPR is {snapshot?.dpr.dprStatus}. Section editing is closed.</p> : <>
-          <div className="grid sm:grid-cols-2 gap-4">{DPR_SECTIONS.map(name => <button key={name} className="text-left border rounded-lg p-5 space-y-2 hover:bg-muted disabled:opacity-50" disabled={busy || (!snapshot && !engineer.trim())} onClick={() => { setReview(false); setSection(name); }}>
-            <h2 className="font-semibold">{name === "activity" ? "Activity / progress"
+           <div className="grid sm:grid-cols-2 gap-4">{DPR_SECTIONS.map(name => <button key={name} className="text-left border rounded-lg p-5 space-y-2 hover:bg-muted disabled:opacity-50" disabled={busy || (!snapshot && !engineerReady)} onClick={() => { setReview(false); setSection(name); }}>
+             <h2 className="font-semibold">{name === "activity" ? "Work done"
               : name === "siteActivities" ? "Site activities"
-              : name === "materials" ? "Materials consumed / issued & site purchases"
-              : name}</h2>
-            {name === "materials" && <p className="text-sm text-muted-foreground">Bulk vehicle deliveries are tracked separately in Materials Received.</p>}
-            <p>{snapshot?.sections[name].state ?? "empty"} — {name === "equipment" && snapshot?.sections[name].issues?.some(issue => /closing|end time/i.test(issue.message))
-              ? "Equipment saved — closing needed" : snapshot?.sections[name].label ?? "Not yet entered"}</p>
+               : name === "materials" ? "Materials"
+               : name === "equipment" ? "Equipment"
+               : name === "labour" ? "Labour" : name}</h2>
+              {name === "materials" && <>
+                <p className="text-sm text-muted-foreground">Issued, consumed and site purchases</p>
+                <p className="text-xs text-muted-foreground">Bulk vehicle deliveries are tracked separately in Materials received.</p>
+              </>}
+             <p>{name === "equipment" && snapshot?.sections[name].issues?.some(issue => /closing|end time/i.test(issue.message))
+               ? "Equipment saved — closing needed" : snapshot?.sections[name].label === "Ready" ? "Ready"
+                 : snapshot?.sections[name].label === "Needs completion" ? "Incomplete"
+                 : snapshot?.sections[name].label === "Not yet entered" ? "Not entered yet"
+                 : snapshot?.sections[name].label ?? "Not entered yet"}</p>
             {snapshot?.sections[name].issues?.map((issue, index) => <p className="text-sm text-muted-foreground" key={index}>{issue.message}</p>)}
           </button>)}</div>
           <Button disabled={busy || !snapshot} onClick={() => setReview(true)}>Review &amp; Submit</Button>

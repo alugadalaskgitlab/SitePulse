@@ -101,7 +101,7 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-primary">{data.progress.filter(p => p.activity).length}</p>
-            <p className="text-sm text-muted-foreground">Activities</p>
+            <p className="text-sm text-muted-foreground">Work done</p>
           </CardContent>
         </Card>
         <Card>
@@ -127,17 +127,17 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
         </Card>
       </div>
 
-      {/* Activity Progress */}
+      {/* Work done */}
       {data.progress.some(p => p.activity) && (
         <Card>
           <CardHeader>
-            <CardTitle>Activity Progress</CardTitle>
+            <CardTitle>Work done</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Activity</TableHead>
+                  <TableHead>Work done</TableHead>
                   <TableHead>Side</TableHead>
                   <TableHead>From</TableHead>
                   <TableHead>To</TableHead>

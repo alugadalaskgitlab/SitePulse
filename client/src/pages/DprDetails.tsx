@@ -306,10 +306,10 @@ export default function DprDetails() {
         workType={(dpr as any).workType}
       />
 
-      {/* Activity Progress */}
+      {/* Work done */}
       <Card>
         <CardHeader>
-          <CardTitle>Activity Progress</CardTitle>
+          <CardTitle>Work done</CardTitle>
         </CardHeader>
         <CardContent>
           {dpr.progress.length === 0 ? (

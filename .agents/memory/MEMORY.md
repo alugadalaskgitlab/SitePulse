@@ -53,7 +53,7 @@
 - [Progress Report seam](progress-report-batch06.md) — shared/progressReport.ts is the only report-math seam; canonical valid-DPR filter incl. isDeleted; cumulative is chronological, sort-independent; endpoints need assertView + project-site authz.
 - [Guided DPR Batch 05](guided-dpr-batch05.md) — draft CTA routing, autosave debounce-race defenses, explicit-only entry-mode default, site-scoped plant-usage discovery/closure.
 - [Chainage Overlap Guard](chainage-overlap-guard.md) — shared/chainageOverlap.ts is the only overlap seam; reason field dual-purpose; version route is the submit bypass; unawaited seedDatabase() flakes route tests.
-- [Guided DPR Wizard](guided-dpr-wizard.md) — 5-step wizard model; No Work in Guided; entryKey photo-link pattern (never link photos to progress serial ids; cloneDpr must copy entryKey manually).
+- [Guided DPR Wizard](guided-dpr-wizard.md) — 8-step flow; legacy autosaves remap safely; optional site activities preserve shared saved rows and staff.
 - [Material Receipt Linkage](material-receipt-linkage.md) — shared/materialReceiptSummary.ts is the only receipt/arrangement/comparison seam; no-FK linkage columns, never prorate bar plannedQty, conservative matching.
 - [Requirement Fulfilment 06F](requirement-fulfilment-06f.md) — lineKey-first allocation identity in site_requirements JSONB; server re-validates lineKey + arrangement compatibility; no schema change.
 - [Plan Outcome & Carry Forward](plan-outcome-carry-forward.md) — JSONB-only outcome; carry via FOR UPDATE tx (no double-clone, link preserved on edits); allocation PATCH whitelisted.

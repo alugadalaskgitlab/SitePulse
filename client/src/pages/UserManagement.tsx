@@ -8,6 +8,7 @@ import { hasObservedConflict, legacySaveBody, previewChanges, changedCells, type
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
+import type { Personnel } from "@shared/schema";
 import permissionActions from "@shared/permission-actions.generated.json";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -73,6 +74,7 @@ import {
 
 type SafeUser = {
   id: number;
+  personnelId?: number | null;
   email: string | null;
   phone: string | null;
   fullName: string;
@@ -97,10 +99,10 @@ type SafeUser = {
 // persisted fields intact: older matrices can contain grants in inactive cells.
 const HUB_ACTIONS: Action[] = ["view"];
 const SECTION_ACTIONS = Object.fromEntries(
-  SECTION_KEYS.map(section => [section, permissionActions[section].actions]),
+  SECTION_KEYS.map(section => [section, permissionActions[section]?.actions ?? []]),
 ) as unknown as Record<SectionKey, readonly Action[]>;
 const permissionTooltip = (section: SectionKey, action: Action) =>
-  (permissionActions[section].tooltips as Partial<Record<Action, string>>)[action] ?? "Not used for this section";
+  (permissionActions[section]?.tooltips as Partial<Record<Action, string>> | undefined)?.[action] ?? "Not used for this section";
 const HUB_SECTIONS = new Set<SectionKey>([
   "hmp_hub", "site_hub", "equipment_hub", "reports_hub", "stores_hub",
   "finance_hub", "masters_hub", "admin_hub", "rmc_hub",
@@ -121,6 +123,8 @@ const LEGACY_NOTES: Partial<Record<SectionKey, string>> = {
 function friendlyUserError(raw: string): string {
   if (/email_in_use|email_exists/i.test(raw)) return "That email is already used by another user.";
   if (/phone_exists/i.test(raw)) return "That phone number is already used by another user.";
+  if (/personnel_already_linked/i.test(raw)) return "That staff member is already linked to another user.";
+  if (/personnel_not_found|personnel_inactive/i.test(raw)) return "Choose an active staff member.";
   if (/at_least_one_contact_required/i.test(raw)) return "At least one of email or phone must be set for this user.";
   if (/cannot_demote_last_admin/i.test(raw)) return "There must always be at least one active admin. Promote another user to admin first.";
   if (/cannot_grant_all_sites_beyond_own_scope/i.test(raw)) return "You cannot assign all sites because your own access is limited. Select sites within your access, or ask an administrator.";
@@ -142,6 +146,15 @@ export default function UserManagement() {
   const canEdit = featureCan("users_permissions", "edit");
 
   const usersQ = useQuery<SafeUser[]>({ queryKey: ["/api/auth/users"] });
+  const personnelQ = useQuery<Personnel[]>({
+    queryKey: ["/api/personnel", "includeInactive"],
+    queryFn: async () => {
+      const response = await fetch("/api/personnel?includeInactive=true", { credentials: "include" });
+      if (!response.ok) throw new Error("Staff list could not be loaded.");
+      return response.json();
+    },
+    enabled: isOwner,
+  });
 
   const subsQ = useQuery<{ userId: number; count: number }[]>({
     queryKey: ["/api/push/subscriptions"],
@@ -228,6 +241,7 @@ export default function UserManagement() {
                 <thead className="border-b">
                   <tr className="text-left">
                     <th className="py-2 pr-4">Name</th>
+                    {isOwner && <th className="py-2 pr-4">Staff name</th>}
                     <th className="py-2 pr-4">Email / Phone</th>
                     <th className="py-2 pr-4">Account</th>
                     <th className="py-2 pr-4">Session</th>
@@ -241,6 +255,9 @@ export default function UserManagement() {
                     <UserRow
                       key={u.id}
                       user={u}
+                      isOwner={isOwner}
+                      personnel={personnelQ.data ?? []}
+                      linkedPersonnelIds={(usersQ.data ?? []).filter(other => other.id !== u.id && other.personnelId != null).map(other => other.personnelId!)}
                       canEdit={canEdit}
                       canManagePerms={canEdit && (isOwner || (u.id !== user?.id && !u.isOwner))}
                       currentUserId={user?.id ?? 0}
@@ -281,6 +298,9 @@ export default function UserManagement() {
 
 function UserRow({
   user,
+  isOwner,
+  personnel,
+  linkedPersonnelIds,
   canEdit,
   canManagePerms,
   currentUserId,
@@ -290,6 +310,9 @@ function UserRow({
   onResetPw,
 }: {
   user: SafeUser;
+  isOwner: boolean;
+  personnel: Personnel[];
+  linkedPersonnelIds: number[];
   canEdit: boolean;
   canManagePerms: boolean;
   currentUserId: number;
@@ -315,6 +338,26 @@ function UserRow({
   return (
     <tr className="border-b last:border-0" data-testid={`row-user-${user.id}`}>
       <td className="py-2 pr-4 font-medium">{user.fullName}</td>
+      {isOwner && <td className="py-2 pr-4">
+        <Select
+          value={user.personnelId == null ? "__not_linked" : String(user.personnelId)}
+          onValueChange={(value) => patch.mutate({ personnelId: value === "__not_linked" ? null : Number(value) })}
+          disabled={!canEdit || patch.isPending}
+        >
+          <SelectTrigger className="min-w-40 h-8" data-testid={`select-staff-link-${user.id}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__not_linked">Not linked</SelectItem>
+            {personnel.filter(person => (person.isActive === 1 || person.id === user.personnelId)
+              && (!linkedPersonnelIds.includes(person.id) || person.id === user.personnelId)).map(person => (
+              <SelectItem key={person.id} value={String(person.id)}>
+                {person.name.toUpperCase()}{person.isActive !== 1 ? " (inactive)" : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </td>}
       <td className="py-2 pr-4 text-muted-foreground text-sm">
         {user.email ?? <span className="italic">{user.phone ?? "—"}</span>}
       </td>

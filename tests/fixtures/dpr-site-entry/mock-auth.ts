@@ -5,6 +5,7 @@ export function useAuth() {
   const role = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("role")
     : null;
+  const sr01 = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("sr01");
   const b2 = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("dpr20b2");
   const viewer = typeof window !== "undefined"
     && (new URLSearchParams(window.location.search).has("dpr20b1") || b2) && role === "viewer";
@@ -24,6 +25,7 @@ export function useAuth() {
     isFieldEngineer: !viewer,
     canManagePermissions: !viewer,
     permissionManagerScope: "full" as const,
+    featureAccess: { rolesConfigured: false },
     user: {
       id: 606,
       email: "dpr-fixture@example.invalid",
@@ -31,6 +33,7 @@ export function useAuth() {
       isAdmin,
       isOwner: isAdmin,
       isActive: true,
+      ...(sr01 ? { personnelId: 6101 } : {}),
       ...(b2 ? { setupComplete: true, allSitesAccess: new URLSearchParams(window.location.search).get("scenario") !== "restricted" } : {}),
        isFieldEngineer: !isAdmin && !viewer,
       sessionPolicy: "sticky" as const,

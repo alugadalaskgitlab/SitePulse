@@ -18,6 +18,7 @@ export interface DprSectionEditorProps {
   context: DprSectionContext;
   snapshot?: DprSectionSnapshot;
   engineer: string;
+  engineerPersonnelId?: number | null;
   onSave: (data: any, engineer: string, recoveredProjectId?: number | null) => Promise<DprSectionSnapshot>;
   onReturn: () => void;
   target?: { issue: DprReadinessIssue; token: number; action?: "chainage" | "reason" };
@@ -297,7 +298,7 @@ const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
 type SiteBoqItem = { id: number; description: string; displayName?: string | null; itemCode: string | null; itemName: string | null; unit: string; canonicalUnit?: string | null; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; planningWorkType?: string | null; dprMeasurementMethod?: string | null; layerConfig?: Record<string, unknown> | null };
 
 interface SiteEntryFormData {
-  header: { date: string; site: string; engineer: string; boqProjectId?: number | null };
+  header: { date: string; site: string; engineer: string; engineerPersonnelId?: number | null; boqProjectId?: number | null };
   workType: string;
   progress: ProgressEntry[];
   structureItems: StructureItem[];
@@ -493,9 +494,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   const activeEquipment = equipmentMaster?.filter(e => e.isActive) || [];
 
   const [header, setHeader] = useState({
-    date: _urlParams.get("date") || format(new Date(), "yyyy-MM-dd"),
-    site: _urlParams.get("site") || "",
-    engineer: _urlParams.get("engineer") || "",
+    date: sectionEditor?.context.date || _urlParams.get("date") || format(new Date(), "yyyy-MM-dd"),
+    site: sectionEditor?.context.site || _urlParams.get("site") || "",
+    engineer: sectionEditor?.engineer || _urlParams.get("engineer") || "",
+    engineerPersonnelId: sectionEditor?.engineerPersonnelId ?? (Number(_urlParams.get("engineerPersonnelId")) || null),
     boqProjectId: Number(_urlParams.get("boqProjectId")) || null as number | null,
   });
   // A fresh DPR has no project preference until the BOQ query resolves.  A
@@ -821,9 +823,19 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     return result;
   };
 
-  const { data: personnelList } = useQuery<Personnel[]>({
+  const personnelQ = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
   });
+  const personnelList = personnelQ.data;
+  useEffect(() => {
+    if (sectionEditor || header.engineer || header.engineerPersonnelId != null || !personnelList) return;
+    const linked = personnelList.find(person => person.id === authUser?.personnelId && person.isActive === 1);
+    if (linked) setHeader(current => ({
+      ...current,
+      engineer: `${linked.name} - ${linked.role}`,
+      engineerPersonnelId: linked.id,
+    }));
+  }, [sectionEditor, header.engineer, header.engineerPersonnelId, personnelList, authUser?.personnelId]);
   const { data: personnelIncludingInactive } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel", "includeInactive"],
     queryFn: async () => {
@@ -832,6 +844,13 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
       return response.json();
     },
   });
+  const activeEngineerChoices = (personnelList ?? []).filter(person => person.isActive === 1);
+  const existingEngineer = sectionEditor?.snapshot?.dpr.engineerPersonnelId == null ? undefined
+    : personnelIncludingInactive?.find(person => person.id === Number(sectionEditor.snapshot.dpr.engineerPersonnelId));
+  const engineerChoices = [
+    ...activeEngineerChoices,
+    ...(existingEngineer && existingEngineer.isActive !== 1 ? [existingEngineer] : []),
+  ];
   const siteActivityLayers = useMemo(() => {
     const found = new Set<string>();
     const add = (value: unknown) => {
@@ -897,7 +916,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     const target = personnelAddTarget;
     setPersonnelAddTarget(null);
     if (target?.kind === "header") {
-      setHeader((h) => ({ ...h, engineer: `${person.name} - ${person.role}` }));
+      setHeader((h) => ({ ...h, engineer: `${person.name} - ${person.role}`, engineerPersonnelId: person.id }));
     } else if (target?.kind === "progressRow") {
       setProgress((prev) => {
         const updated = [...prev];
@@ -1198,6 +1217,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
           date: header.date,
           site: header.site,
           engineer: header.engineer,
+          engineerPersonnelId: header.engineerPersonnelId,
         },
     workType,
     progress,
@@ -1248,7 +1268,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     } else {
       setBoqProjectPreference({ resolved: false, projectId: null });
     }
-    setHeader({ ...data.header, boqProjectId: restoredProjectId ?? null });
+    setHeader({ ...data.header, engineerPersonnelId: data.header.engineerPersonnelId ?? null, boqProjectId: restoredProjectId ?? null });
     if (data.workType) setWorkType(data.workType);
     setProgress(data.progress.map((row) => ({
       ...row,
@@ -1283,7 +1303,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
       } as SiteEntryFormData);
       setRemarksNote(snapshot.dpr.remarks ?? "");
     } else {
-      setHeader({ ...context, engineer });
+      setHeader({ ...context, engineer, engineerPersonnelId: sectionEditor.engineerPersonnelId ?? null });
       setWorkType(context.workType);
       setBoqProjectPreference({ resolved: true, projectId: context.boqProjectId });
       setBoqCataloguePreviewReady(true);
@@ -1641,6 +1661,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         date: header.date,
         site: header.site,
         engineer: header.engineer,
+        engineerPersonnelId: header.engineerPersonnelId,
         role: "engineer",
         workType,
         boqProjectId: siteEntryPayloadBoqProjectId,
@@ -1820,6 +1841,12 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   const draftMutation = useMutation({
     mutationFn: async () => {
       if (isUploading) throw new Error("Wait for the site activity attachment to finish uploading before saving.");
+      if (!sectionEditor?.snapshot && !personnelQ.isSuccess) {
+        throw new Error(personnelQ.isError ? "Staff list could not be loaded." : "Wait for the staff list to load before saving.");
+      }
+      if (!sectionEditor?.snapshot && (personnelList ?? []).some(person => person.isActive === 1) && header.engineerPersonnelId == null) {
+        throw new Error("Choose an active staff member as Engineer.");
+      }
       const progressWithCalc = progress.map(p => {
         const effectiveLength = getEffectiveLength(p);
         const effectiveQuantity = p.quantity ?? calculateQuantity(p);
@@ -1862,6 +1889,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         date: header.date,
         site: header.site,
         engineer: header.engineer,
+        engineerPersonnelId: header.engineerPersonnelId,
         role: "engineer",
         workType,
         boqProjectId: siteEntryPayloadBoqProjectId,
@@ -1897,7 +1925,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         if (siteEntryHasBoqReferences && siteEntryPayloadBoqProjectId == null) {
           throw new Error("BOQ ownership is still resolving or is ambiguous. Wait for the linked item's project to resolve before saving.");
         }
-        const snapshot = await sectionEditor.onSave(pickDprSectionPayload(sectionEditor.section, draftPayload), header.engineer, siteEntryPayloadBoqProjectId);
+        const snapshot = await sectionEditor.onSave({
+          ...pickDprSectionPayload(sectionEditor.section, draftPayload),
+          engineerPersonnelId: header.engineerPersonnelId,
+        }, header.engineer, siteEntryPayloadBoqProjectId);
         // The section is already durable even if a subsequent photo upload
         // fails. Rebase row IDs now so retry never recreates those child rows.
         const mapped = mapDprToFormState(snapshot.dpr);
@@ -2301,11 +2332,13 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     <div className="max-w-5xl mx-auto space-y-6 pb-20">
       <InsufficientDieselDialog payload={dieselShortage} onClose={() => setDieselShortage(null)} />
       {sectionEditor && <div className="rounded-lg border p-4 space-y-2">
-        <h1 className="text-2xl font-bold">{sectionEditor.section === "materials" ? "Materials / Site purchases"
+        <h1 className="text-2xl font-bold">{sectionEditor.section === "materials" ? "Materials"
           : sectionEditor.section === "siteActivities" ? "Site activities"
-          : sectionEditor.section === "activity" ? "Activity / progress"
+          : sectionEditor.section === "activity" ? "Work done"
           : sectionEditor.section}</h1>
-        <p>{sectionEditor.context.site} · {sectionEditor.context.date} · {sectionEditor.context.workType} · Project {sectionEditor.context.boqProjectId ?? "none"}</p>
+        <p>{sectionEditor.context.site.toUpperCase()} · {format(new Date(`${sectionEditor.context.date}T00:00:00`), "dd MMM yyyy")} · {sectionEditor.context.workType === "structure" ? "Structure works" : "Road works"} · {sectionEditor.context.boqProjectId == null
+          ? "No project"
+          : siteBoqProjects.find(project => Number(project.id) === Number(sectionEditor.context.boqProjectId))?.name?.toUpperCase() ?? "Project name unavailable"}</p>
         <Button variant="outline" disabled={draftMutation.isPending || isUploading} onClick={() => confirmLeave(sectionEditor.onReturn)}>Return to sections</Button>
         {sectionDirty && <span className="ml-3 text-sm">Unsaved changes</span>}
       </div>}
@@ -2420,23 +2453,40 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
             </Select>
           </div>
           <div>
-            <Label>Engineer / submitted by</Label>
+            <Label>Engineer</Label>
             <div className="flex gap-2">
-              <Select
-                value={header.engineer}
-                onValueChange={(val) => setHeader({ ...header, engineer: val })}
+              {!personnelQ.isSuccess ? <p role={personnelQ.isError ? "alert" : "status"} className="py-2 text-sm text-muted-foreground">
+                {personnelQ.isError ? "Staff list could not be loaded." : "Loading staff…"}
+              </p> : activeEngineerChoices.length > 0 || existingEngineer ? <Select
+                value={header.engineerPersonnelId != null
+                  ? `staff:${header.engineerPersonnelId}`
+                  : header.engineer ? `legacy:${header.engineer}` : ""}
+                onValueChange={(value) => {
+                  if (value.startsWith("staff:")) {
+                    const person = engineerChoices.find(candidate => candidate.id === Number(value.slice(6)));
+                    setHeader(current => ({ ...current, engineer: person ? `${person.name} - ${person.role}` : current.engineer, engineerPersonnelId: person?.id ?? null }));
+                  } else if (value.startsWith("legacy:")) {
+                    setHeader(current => ({ ...current, engineer: value.slice(7), engineerPersonnelId: null }));
+                  }
+                }}
               >
                 <SelectTrigger className="uppercase" data-testid="select-engineer">
-                  <SelectValue placeholder="Select Engineer" />
+                  <SelectValue placeholder="Choose staff member" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(personnelList || []).filter(p => p.isActive).map((p) => (
-                    <SelectItem key={p.id} value={`${p.name} - ${p.role}`}>
-                      {p.name} - {p.role}
+                  {sectionEditor?.snapshot && header.engineer && header.engineerPersonnelId == null && <SelectItem value={`legacy:${header.engineer}`}>Existing text — {header.engineer}</SelectItem>}
+                  {engineerChoices.map((p) => (
+                    <SelectItem key={p.id} value={`staff:${p.id}`}>
+                      {p.name.toUpperCase()} - {p.role}{p.isActive !== 1 ? " (inactive, existing link)" : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
-              </Select>
+              </Select> : <Input
+                value={header.engineer}
+                onChange={event => setHeader(current => ({ ...current, engineer: event.target.value, engineerPersonnelId: null }))}
+                placeholder="Engineer name"
+                data-testid="input-engineer-fallback"
+              />}
               <Button
                 type="button"
                 size="icon"
@@ -2453,12 +2503,12 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
       </Card>
       )}
 
-      {/* Activity Progress */}
+      {/* Work done */}
       {(!sectionEditor || sectionEditor.section === "activity") && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
-            <CardTitle>{workType === "structure" ? "Structure Progress" : "Road Works Progress"}</CardTitle>
+            <CardTitle>{workType === "structure" ? "Structure work done" : "Road work done"}</CardTitle>
             {!effectiveLockedWorkType ? (
               <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
                 <Button
@@ -2783,7 +2833,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
               {entry.noSiteWork ? (
                 <div className="space-y-3">
                   <div>
-                    <Label className="text-sm">Activity</Label>
+                    <Label className="text-sm">Work done</Label>
                     <Input
                       placeholder="e.g., MACHINERY SHIFTING, OFFICE WORK"
                       value={entry.activity}
@@ -2852,7 +2902,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                   <div className="col-span-2">
                     {/* When site has a BOQ project, Activity becomes a BOQ item selector.
                         boqItemId is stored on the progress entry and sent with the DPR payload. */}
-                    <Label className="text-sm">{siteEntryBoqItemsForPicker.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
+                    <Label className="text-sm">{siteEntryBoqItemsForPicker.length > 0 ? "BOQ item / work done" : "Work done"}</Label>
                     {siteEntryBoqItemsForPicker.length > 0 ? (
                       <BillItemPicker
                         items={siteEntryBoqItemsForPicker}

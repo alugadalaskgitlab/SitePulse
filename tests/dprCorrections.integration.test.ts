@@ -119,6 +119,29 @@ it("lets only an Owner apply a reviewed, reasoned derived-quantity correction di
     expect.objectContaining({ field: "quantity", oldValue: 180, newValue: 168.75 }),
   ]));
 });
+
+it("lets an Owner save a submitted DPR's active personnel link with its staff display name", async () => {
+  const owner = { id: 303, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
+  const f = await fixture();
+  const [staff] = await db.insert(schema.personnel).values({
+    name: "LINKED DPR ENGINEER", role: "Engineer", isActive: 1,
+  }).returning();
+  f.form.header.engineerPersonnelId = staff.id;
+  f.form.header.engineer = `${staff.name} - ${staff.role}`;
+  const review = await service.preview(f.id, f.form, owner);
+  expect(review.blocked).toEqual([]);
+  expect(review.ownerDirectAllowed).toBe(true);
+  expect(review.changes).toContainEqual(expect.objectContaining({
+    section: "header", field: "engineerPersonnelId", oldValue: null, newValue: staff.id,
+  }));
+  const saved: any = await service.submit(f.id, {
+    form: f.form, baseHash: review.baseHash, reason: "Link to the personnel register", confirmImpact: true,
+  }, owner);
+  expect(saved).toMatchObject({ engineer: `${staff.name} - ${staff.role}`, engineerPersonnelId: staff.id });
+  expect(await db.select({ engineer: schema.dprs.engineer, engineerPersonnelId: schema.dprs.engineerPersonnelId })
+    .from(schema.dprs).where(eq(schema.dprs.id, f.id)))
+    .toEqual([{ engineer: `${staff.name} - ${staff.role}`, engineerPersonnelId: staff.id }]);
+});
 it("lets an Owner assign a blank DPR project and item together as a reviewed Owner correction", async () => {
   const owner = { id: 31, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
   const f = await fixture();

@@ -18,6 +18,7 @@ import DprDetails from "../../../client/src/pages/DprDetails";
 import SiteReport from "../../../client/src/pages/SiteReport";
 import SiteDashboard from "../../../client/src/pages/SiteDashboard";
 import DprWorkHub from "../../../client/src/pages/DprWorkHub";
+import UserManagement from "../../../client/src/pages/UserManagement";
 import FieldHome from "../../../client/src/pages/FieldHome";
 import { DprActivityReadOnly } from "../../../client/src/components/DprActivityReadOnly";
 import { DprSiteActivitiesEditor } from "../../../client/src/components/DprSiteActivitiesEditor";
@@ -111,6 +112,18 @@ const receivedVehicleSupplierTrip = {
 const personnel = [
   { id: 6101, name: "SURESH KUMAR", role: "Engineer", phone: "9000000001", isActive: 1 },
   { id: 6102, name: "PRIYA MENON", role: "Manager", phone: "9000000002", isActive: 1 },
+];
+const sr01Users = [
+  {
+    id: 6601, personnelId: 6101, fullName: "DPR Fixture Owner", email: "owner@example.invalid", phone: null,
+    isAdmin: true, isOwner: true, isActive: true, businessRole: "Owner", permissionManagerScope: "full",
+    sessionPolicy: "sticky", allSitesAccess: true, createdAt: "2026-08-05T12:00:00.000Z",
+  },
+  {
+    id: 6602, personnelId: null, fullName: "DPR Fixture Engineer", email: "engineer@example.invalid", phone: null,
+    isAdmin: false, isOwner: false, isActive: true, businessRole: "Site Engineer", permissionManagerScope: null,
+    sessionPolicy: "sticky", allSitesAccess: false, createdAt: "2026-08-05T12:00:00.000Z",
+  },
 ];
 
 const equipment = [
@@ -1874,6 +1887,19 @@ window.fetch = async (input, init) => {
   const pathname = url.pathname;
   fixtureState.requests.push({ method, path: `${pathname}${url.search}`, body });
 
+  if (new URLSearchParams(window.location.search).has("sr01")) {
+    if (method !== "GET") return json({ message: "SR-01 fixture blocks all writes" }, 405);
+    if (pathname === "/api/auth/users") return json(sr01Users);
+    if (pathname === "/api/auth/users/site-access-audit") return json({ ambiguousUsers: [], count: 0, activeCount: 2 });
+    if (pathname === "/api/push/subscriptions") return json([]);
+    if (pathname === "/api/personnel") return json(personnel);
+    if (pathname === "/api/sites") return json([site]);
+    if (pathname === "/api/boq/projects") return json([activity01BoqProject]);
+    if (pathname === "/api/boq/projects/5501") return json(activity01BoqProject);
+    if (pathname === "/api/boq/projects/5501/items") return json(boqItems);
+    if (pathname.startsWith("/api/")) return json([]);
+  }
+
   if (new URLSearchParams(window.location.search).has("dprActivity02")) {
     if (!fixtureState.dprActivity02Draft) {
       const saved = sessionStorage.getItem("fixture-dpr-activity02-draft");
@@ -2776,6 +2802,7 @@ const mount = () => {
   const isEdit = window.location.pathname.startsWith("/site/edit/");
   const isDprActivity01 = new URLSearchParams(window.location.search).has("dprActivity01");
   const isDprActivity02 = new URLSearchParams(window.location.search).has("dprActivity02");
+  const isSr01UserManagement = window.location.pathname === "/fixture/sr01-users";
   const isDprActivity01Hub = window.location.pathname === "/fixture/dpr-activity-hub";
   const isDprActivity01Editor = window.location.pathname === "/fixture/dpr-activity-editor";
   const isDprActivity01Report = window.location.pathname === "/dpr/24602";
@@ -2812,12 +2839,14 @@ const mount = () => {
       {isDpr19B1Dashboard && <header data-testid="dpr19-b1-fixture-banner" className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR19 B1 · isolated synthetic GET responses · actual SiteDashboard · no customer database</header>}
       {isDprActivity01 && <header data-testid="dpr-activity01-fixture-banner" className="border border-amber-500 p-4 text-sm font-semibold">DPR-ACTIVITY-01 · synthetic fixture only · no customer DPRs or writes</header>}
       {isDprActivity02 && <header data-testid="dpr-activity02-fixture-banner" className="border border-amber-500 p-2 text-xs font-semibold">DPR-ACTIVITY-02 · synthetic fixture only · intercepted API; no customer DPRs or writes</header>}
+      {new URLSearchParams(window.location.search).has("sr01") && <header className="border border-amber-500 bg-amber-50 p-2 text-xs font-semibold">SR-01 · isolated synthetic fixture · no customer users or DPRs</header>}
       <Dpr07EvidenceBanner />
         <Dpr10EvidenceBanner />
         <Dpr08EvidenceBanner />
         <Dpr09EvidenceBanner />
         <DprNullEvidenceBanner />
-      {isDprActivity02 && window.location.pathname === "/fixture/dpr-activity-home" ? <FieldHome />
+      {isSr01UserManagement ? <UserManagement />
+        : isDprActivity02 && window.location.pathname === "/fixture/dpr-activity-home" ? <FieldHome />
         : isDprActivity02 && window.location.pathname.startsWith("/site/work/") ? <DprWorkHub />
         : isDprActivity02 && window.location.pathname === "/site/guided" ? <GuidedDpr />
         : isDprActivity01Hub ? <DprSections initialId={24602} />

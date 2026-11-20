@@ -34,6 +34,7 @@ import {
   roleTicks,
   userPermissions,
   userSiteAccess,
+  personnel,
   type User,
   type UserDevice,
 } from "@shared/schema";
@@ -91,7 +92,7 @@ import {
   seedDefaultRoles,
 } from "./featureAccess";
 import { FEATURES, FEATURE_ACTIONS, ROLE_NAMES, SUGGESTED_NEW_ROW_ROLE_TICKS, can as canFeature, type EntryScope, type FeatureAction, type FeatureId, type FeatureTicks, type PersonalTickChanges } from "@shared/featureAccess";
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, and, isNull, desc, ne } from "drizzle-orm";
 
 // Task #280 — identifier accepts either an email address or a phone number.
 const loginSchema = z.object({
@@ -169,6 +170,7 @@ const patchUserSchema = z.object({
   permissionManagerScope: z.enum(["full", "partial"]).optional(),
   reportsToUserId: z.number().int().positive().nullable().optional(),
   entryScope: z.enum(["own", "team", "all"]).optional(),
+  personnelId: z.number().int().positive().nullable().optional(),
 });
 
 const passwordResetSchema = z.object({
@@ -1052,6 +1054,9 @@ export function registerAuthRoutes(app: Express) {
       // non-admin actors — including permission managers — can never modify
       // admin/owner accounts, nor grant/change privileged flags.
       const actor = req.authUser!;
+      if (input.personnelId !== undefined && !actor.isOwner) {
+        return res.status(403).json({ error: "owner_required" });
+      }
       const rolesConfigured = await (await import("./featureAccess")).rolesHaveBeenConfigured();
       if (!actor.isOwner) {
         if (current.isOwner || (!rolesConfigured && current.isAdmin)) {
@@ -1099,6 +1104,15 @@ export function registerAuthRoutes(app: Express) {
         const conflict = await getUserByPhone(input.phone);
         if (conflict && conflict.id !== id) return res.status(409).json({ error: "phone_exists" });
       }
+      if (input.personnelId != null) {
+        const [staff] = await db.select({ id: personnel.id, isActive: personnel.isActive })
+          .from(personnel).where(eq(personnel.id, input.personnelId)).limit(1);
+        if (!staff) return res.status(400).json({ error: "personnel_not_found" });
+        if (!staff.isActive) return res.status(400).json({ error: "personnel_inactive" });
+        const [linked] = await db.select({ id: users.id }).from(users)
+          .where(and(eq(users.personnelId, input.personnelId), ne(users.id, id))).limit(1);
+        if (linked) return res.status(409).json({ error: "personnel_already_linked" });
+      }
 
       // Don't let an admin demote / disable the last remaining admin.
       if (input.isAdmin === false || input.isActive === false) {
@@ -1136,6 +1150,9 @@ export function registerAuthRoutes(app: Express) {
       res.json(toSafeUser(updated));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
+      if ((err as any)?.code === "23505" && (err as any)?.constraint === "users_personnel_id_uq") {
+        return res.status(409).json({ error: "personnel_already_linked" });
+      }
       console.error("[PATCH /api/auth/users/:id]", err);
       res.status(500).json({ error: "server_error" });
     }

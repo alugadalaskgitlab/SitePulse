@@ -263,6 +263,7 @@ export function mapDprToFormState(dpr: any) {
     date: dpr.date,
     site: baseSite,
     engineer: dpr.engineer,
+    engineerPersonnelId: dpr.engineerPersonnelId == null ? null : Number(dpr.engineerPersonnelId),
     remarks: dpr.remarks || "",
     ...(Object.prototype.hasOwnProperty.call(dpr, "boqProjectId")
       ? { boqProjectId: dpr.boqProjectId ?? null }
@@ -582,6 +583,7 @@ export default function SiteEdit() {
     date: format(new Date(), "yyyy-MM-dd"),
     site: "",
     engineer: "",
+    engineerPersonnelId: null as number | null,
     remarks: "",
   });
   // Legacy DPRs may not have a saved project field. Once their existing rows
@@ -708,6 +710,13 @@ export default function SiteEdit() {
       return response.json();
     },
   });
+  const activeEngineerChoices = (personnelList ?? []).filter(person => person.isActive === 1);
+  const existingEngineer = header.engineerPersonnelId == null ? undefined
+    : personnelIncludingInactive?.find(person => person.id === Number(header.engineerPersonnelId));
+  const engineerChoices = [
+    ...activeEngineerChoices,
+    ...(existingEngineer && existingEngineer.isActive !== 1 ? [existingEngineer] : []),
+  ];
   const siteActivityLayers = useMemo(() => {
     const found = new Set<string>();
     const add = (value: unknown) => {
@@ -2264,28 +2273,44 @@ export default function SiteEdit() {
             </Select>
           </div>
           <div>
-            <Label>Engineer / submitted by</Label>
+            <Label>Engineer</Label>
             <div className="flex gap-2">
-              <Select
-                value={header.engineer}
-                onValueChange={(val) => setHeader({ ...header, engineer: val })}
+              {activeEngineerChoices.length > 0 || existingEngineer ? <Select
+                value={header.engineerPersonnelId != null
+                  ? `staff:${header.engineerPersonnelId}`
+                  : header.engineer ? `legacy:${header.engineer}` : ""}
+                onValueChange={value => {
+                  if (value.startsWith("staff:")) {
+                    const person = engineerChoices.find(candidate => candidate.id === Number(value.slice(6)));
+                    setHeader(current => ({
+                      ...current,
+                      engineer: person ? `${person.name} - ${person.role}` : current.engineer,
+                      engineerPersonnelId: person?.id ?? null,
+                    }));
+                  } else if (value.startsWith("legacy:")) {
+                    setHeader(current => ({ ...current, engineer: value.slice(7), engineerPersonnelId: null }));
+                  }
+                }}
               >
                 <SelectTrigger className="uppercase" data-testid="select-engineer">
-                  <SelectValue placeholder="Select Engineer" />
+                  <SelectValue placeholder="Choose staff member" />
                 </SelectTrigger>
                 <SelectContent>
-                  {header.engineer && !(personnelList || []).some(p => 
-                    `${p.name.toUpperCase()} - ${p.role.toUpperCase()}` === header.engineer
-                  ) && (
-                    <SelectItem value={header.engineer}>{header.engineer} (LEGACY)</SelectItem>
+                  {header.engineer && header.engineerPersonnelId == null && (
+                    <SelectItem value={`legacy:${header.engineer}`}>Existing text — {header.engineer}</SelectItem>
                   )}
-                  {(personnelList || []).filter(p => p.isActive).map((p) => (
-                    <SelectItem key={p.id} value={`${p.name} - ${p.role}`}>
-                      {p.name} - {p.role}
+                  {engineerChoices.map(p => (
+                    <SelectItem key={p.id} value={`staff:${p.id}`}>
+                       {p.name.toUpperCase()} — {p.role}{p.isActive !== 1 ? " (inactive, existing link)" : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
-              </Select>
+              </Select> : personnelList ? <Input
+                value={header.engineer}
+                onChange={event => setHeader(current => ({ ...current, engineer: event.target.value, engineerPersonnelId: null }))}
+                placeholder="Engineer name"
+                data-testid="input-engineer-fallback"
+              /> : <p role="status" className="py-2 text-sm text-muted-foreground">Loading staff…</p>}
               <Button
                 type="button"
                 size="icon"
@@ -2313,7 +2338,7 @@ export default function SiteEdit() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
-          <CardTitle>{workType === "structure" ? "Structure Works Progress" : "Activity Progress"}</CardTitle>
+          <CardTitle>{workType === "structure" ? "Structure Works Progress" : "Work done"}</CardTitle>
           <div className="flex items-center gap-2">
             <div className="flex items-center border rounded-lg overflow-hidden">
               <button

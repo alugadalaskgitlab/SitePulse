@@ -27,6 +27,7 @@ import { chooseResourceItem, newResourceRow, todaysResourceActivities, resourceS
 import { readDprWriteTokens, requireDprWriteTokens, type DprWriteTokens } from "@/lib/dprSectionTokens";
 import { useLocation, useSearch } from "wouter";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { useAuth } from "@/lib/auth-context";
 import { Link } from "wouter";
 import {
   ChevronDown, ChevronUp, Plus, Trash2, Loader2, Check, Camera, X,
@@ -299,6 +300,8 @@ export default function GuidedDpr() {
   const [dieselShortage, setDieselShortage] = useState<InsufficientPlantStockPayload | null>(null);
   const [siteName, setSiteName] = useState(entryParams.get("site") || "");
   const [engineer, setEngineer] = useState(entryParams.get("engineer") || "");
+  const [engineerPersonnelId, setEngineerPersonnelId] = useState<number | null>(Number(entryParams.get("engineerPersonnelId")) || null);
+  const { user: authUser } = useAuth();
   const [entries, setEntries] = useState<GuidedEntry[]>([]);
   const [siteActivities, setSiteActivities] = useState<DprSiteActivity[]>([]);
   const [siteActivitiesLoaded, setSiteActivitiesLoaded] = useState(urlDraftId == null);
@@ -373,6 +376,7 @@ export default function GuidedDpr() {
   // (same mechanism as the Detailed DPR, guided-specific key).
   type GuidedFormState = {
     date: string; siteName: string; engineer: string;
+    engineerPersonnelId?: number | null;
     entries: GuidedEntry[]; equipment: SimpleEquipmentRow[]; labour: SimpleLabourRow[];
     remarks: string; draftId: number | null;
     writeTokens?: DprWriteTokens | null;
@@ -438,6 +442,7 @@ export default function GuidedDpr() {
     setDate(urlDraftDpr.date ?? today);
     setSiteName(String(urlDraftDpr.site ?? "").replace(/ – (Edited by|Copy by) .+$/, "").trim());
     setEngineer(urlDraftDpr.engineer ?? "");
+    setEngineerPersonnelId(urlDraftDpr.engineerPersonnelId == null ? null : Number(urlDraftDpr.engineerPersonnelId));
     setRemarks(urlDraftDpr.remarks ?? "");
     // Task #1409: no-work rows are first-class in Guided now — hydrate them
     // instead of silently dropping them from the draft.
@@ -685,7 +690,17 @@ export default function GuidedDpr() {
     }
     setSiteName(nextSite);
   };
-  const { data: personnelList = [] } = useQuery<Personnel[]>({ queryKey: ["/api/personnel"] });
+  const personnelQ = useQuery<Personnel[]>({ queryKey: ["/api/personnel"] });
+  const personnelList = personnelQ.data ?? [];
+  const activePersonnel = personnelList.filter(person => person.isActive === 1);
+  useEffect(() => {
+    if (urlDraftDpr || engineer || engineerPersonnelId != null) return;
+    const linked = activePersonnel.find(person => person.id === authUser?.personnelId);
+    if (linked) {
+      setEngineerPersonnelId(linked.id);
+      setEngineer(`${linked.name} - ${linked.role}`);
+    }
+  }, [urlDraftDpr?.id, engineer, engineerPersonnelId, personnelList, authUser?.personnelId]);
   const { data: personnelIncludingInactive = [] } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel", "includeInactive"],
     queryFn: async () => {
@@ -694,6 +709,12 @@ export default function GuidedDpr() {
       return response.json();
     },
   });
+  const existingEngineer = urlDraftDpr?.engineerPersonnelId == null ? undefined
+    : personnelIncludingInactive.find(person => person.id === Number(urlDraftDpr.engineerPersonnelId));
+  const engineerChoices = [
+    ...activePersonnel,
+    ...(existingEngineer && existingEngineer.isActive !== 1 ? [existingEngineer] : []),
+  ];
 
   const {
     siteId: selectedSiteId,
@@ -917,7 +938,7 @@ export default function GuidedDpr() {
       ? boqProjectId
       : autosaveBoqProjectId;
   const autosaveData: GuidedFormState = {
-    date, siteName, engineer, entries,
+    date, siteName, engineer, engineerPersonnelId, entries,
     equipment: equipment.map(({ newlyCreatedInGuided, workingDefaultedInGuided, ...row }) => row),
     labour, remarks, draftId,
     writeTokens: draftWriteTokensRef.current,
@@ -946,6 +967,7 @@ export default function GuidedDpr() {
         hydratedRef.current = true;
       }
       setDate(d.date); setSiteName(d.siteName); setEngineer(d.engineer);
+      setEngineerPersonnelId(d.engineerPersonnelId ?? null);
       // Do not turn a missing field in a legacy blob into an explicit null.
       // New DPRs retain the normal project fallback, while an explicitly
       // saved null remains meaningful until live BOQ evidence recovers it.
@@ -1553,7 +1575,7 @@ export default function GuidedDpr() {
     const recoveryRevokedBeforeEffect = !guidedHasBoqReferences
       && evidenceRecoveredProjectRef.current != null;
     return {
-      date, site: siteName, engineer, role: "engineer", workType: "road",
+      date, site: siteName, engineer, engineerPersonnelId, role: "engineer", workType: "road",
       // An explicitly saved null remains meaningful for a genuinely
       // reference-free DPR; only live evidence may replace that stale null.
       // Positive server pins remain canonical, and an unresolved fresh flow
@@ -1616,6 +1638,12 @@ export default function GuidedDpr() {
     mutationFn: async (asDraft: boolean) => {
       if (urlDraftDpr?.workType === "structure") {
         throw new Error("Structure drafts must be edited in the Detailed editor. No changes have been sent.");
+      }
+      if (draftId == null && !personnelQ.isSuccess) {
+        throw new Error(personnelQ.isError ? "Staff list could not be loaded." : "Wait for the staff list to load before saving.");
+      }
+      if (draftId == null && activePersonnel.length > 0 && engineerPersonnelId == null) {
+        throw new Error("Choose an active staff member as Engineer.");
       }
       const missingFuelSource = equipment.some((row) =>
         Number(row.passthrough?.diesel ?? 0) > 0 && !row.passthrough?.dieselSource
@@ -1965,16 +1993,36 @@ export default function GuidedDpr() {
           </div>
           <div>
             <Label>Engineer</Label>
-            <Select value={engineer} onValueChange={setEngineer}>
-              <SelectTrigger data-testid="select-engineer"><SelectValue placeholder="Select engineer" /></SelectTrigger>
+            {!personnelQ.isSuccess ? <p role={personnelQ.isError ? "alert" : "status"} className="py-2 text-sm text-muted-foreground">
+              {personnelQ.isError ? "Staff list could not be loaded." : "Loading staff…"}
+            </p> : activePersonnel.length > 0 || existingEngineer ? <Select
+              value={engineerPersonnelId != null ? `staff:${engineerPersonnelId}` : engineer ? `legacy:${engineer}` : ""}
+              onValueChange={value => {
+                if (value.startsWith("staff:")) {
+                  const person = engineerChoices.find(candidate => candidate.id === Number(value.slice(6)));
+                  setEngineerPersonnelId(person?.id ?? null);
+                  setEngineer(person ? `${person.name} - ${person.role}` : "");
+                } else if (value.startsWith("legacy:")) {
+                  setEngineerPersonnelId(null);
+                  setEngineer(value.slice(7));
+                }
+              }}
+            >
+              <SelectTrigger className="uppercase" data-testid="select-engineer"><SelectValue placeholder="Choose staff member" /></SelectTrigger>
               <SelectContent>
-                {personnelList.map((p) => (
-                  <SelectItem key={p.id} value={`${p.name} - ${p.role}`}>
-                    {p.name} ({p.role})
+                {urlDraftDpr && engineer && engineerPersonnelId == null && <SelectItem value={`legacy:${engineer}`}>Existing text — {engineer}</SelectItem>}
+                {engineerChoices.map((p) => (
+                  <SelectItem key={p.id} value={`staff:${p.id}`}>
+                    {p.name.toUpperCase()} — {p.role}{p.isActive !== 1 ? " (inactive, existing link)" : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
-            </Select>
+            </Select> : <Input
+              value={engineer}
+              onChange={event => { setEngineer(event.target.value); setEngineerPersonnelId(null); }}
+              placeholder="Engineer name"
+              data-testid="input-engineer-fallback"
+            />}
           </div>
         </CardContent>
       </Card>
@@ -2145,7 +2193,7 @@ export default function GuidedDpr() {
             {e.noSiteWork && (
               <div className="space-y-2" data-testid={`no-work-block-${idx}`}>
                 <div>
-                  <Label className="text-sm">Activity</Label>
+                  <Label className="text-sm">Work done</Label>
                   <Input
                     placeholder="e.g., RE-CLEARING VEGETATION, MACHINERY SHIFTING"
                     value={e.activity}
@@ -3062,7 +3110,7 @@ export default function GuidedDpr() {
             <p className="text-muted-foreground">{date} · {siteName || "No site"} · {engineer || "No engineer"}</p>
           </div>
           <div>
-            <p className="font-semibold mb-1">Activities ({entries.length})</p>
+            <p className="font-semibold mb-1">Work done ({entries.length})</p>
             {entries.length === 0 && <p className="text-muted-foreground">None — go back to add today's work.</p>}
             <div className="space-y-1.5">
               {entries.map((e, idx) => {

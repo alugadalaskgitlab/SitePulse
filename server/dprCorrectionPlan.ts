@@ -8,7 +8,7 @@ import { calculateLengthFromChainage } from "../shared/dprGeometry";
 import { calculateSiteActivityResult } from "../shared/dprSiteActivities";
 
 export const correctionFields: Record<string, string[]> = Object.fromEntries(Object.entries({
-  header: "date site engineer remarks boqProjectId",
+  header: "date site engineer engineerPersonnelId remarks boqProjectId",
   progress: "activity side chainageFrom chainageTo length width thickness quantity uom noSiteWork noSiteWorkDescription personnelIds boqItemId programmeBarId earthworkArrangementId quantitySource quantitySourceNote chainageOverrideReason lengthOverrideReason uomOverrideReason executedBy layerNo isIncidental incidentalDescription reworkNoNewMaterial materialOutcome reusableQty",
   equipment: "machine vehicleNo operator task entryType startTime endTime openingReading closingReading diesel openingDiesel dieselBalanceInTank dieselBalanceConfirmed dieselNorm expectedDiesel hoursWorked equipmentId plantUsageId usageStatus usageStatusReason dieselSource fuelStation billNumber amountPaid numberOfTrips tripDistance totalKm waterQuantity boqItemId resourceScope structureId",
   labour: "category gender count hours task contractor boqItemId resourceScope structureId workerNames",
@@ -19,7 +19,7 @@ export const correctionFields: Record<string, string[]> = Object.fromEntries(Obj
 }).map(([section, fields]) => [section, fields.split(" ")]));
 
 export const correctionSections = Object.keys(correctionFields).filter(s => s !== "header");
-const numeric = new Set("boqProjectId length width thickness quantity layerNo reusableQty openingReading closingReading diesel openingDiesel dieselBalanceInTank dieselNorm expectedDiesel hoursWorked amountPaid numberOfTrips tripDistance totalKm waterQuantity count hours amount dprConversionFactor".split(" "));
+const numeric = new Set("boqProjectId engineerPersonnelId length width thickness quantity layerNo reusableQty openingReading closingReading diesel openingDiesel dieselBalanceInTank dieselNorm expectedDiesel hoursWorked amountPaid numberOfTrips tripDistance totalKm waterQuantity count hours amount dprConversionFactor".split(" "));
 const booleans = new Set(["noSiteWork", "isIncidental", "reworkNoNewMaterial"]);
 const defaults: Record<string, any> = {
   "equipment.entryType": "time_meter", "labour.category": "Skilled", "labour.gender": "Male",
@@ -50,6 +50,7 @@ function equivalent(section: string, key: string, input: any, old: any) {
 
 export function needsApproval(section: string, field: string) {
   if (section === "header" && field === "boqProjectId") return true;
+  if (section === "header" && field === "engineerPersonnelId") return true;
   if (section === "equipment") return !["operator", "task", "usageStatusReason"].includes(field);
   if (["materials", "sitePurchases", "siteActivities", "structureItems"].includes(section)) return true;
   if (section === "labour") return !["task", "workerNames"].includes(field);
@@ -243,6 +244,9 @@ export function planDprCorrection(saved: any, form: any, actor?: { isOwner?: boo
             block(section, old.id, field, "Only the Owner may link a submitted DPR whose BOQ project is blank; existing project links cannot be changed here.");
             continue;
           }
+        } else if (section === "header" && field === "engineerPersonnelId" && actor?.isOwner !== true) {
+          block(section, old.id, field, "Only the Owner may link a submitted DPR to a staff member.");
+          continue;
         } else if (["date", "site"].includes(field) && section === "header"
             || section === "equipment" && ["equipmentId", "plantUsageId", "machine", "vehicleNo"].includes(field)) {
           block(section, old.id, field, "Operational identity is linked to historical records. Retain the original site/date/project/machine/usage reference.");

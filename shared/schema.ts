@@ -67,6 +67,7 @@ export const dprs = pgTable("dprs", {
   date: date("date").notNull(),
   site: text("site").notNull(),
   engineer: text("engineer").notNull(),
+  engineerPersonnelId: integer("engineer_personnel_id").references(() => personnel.id),
   role: text("role").default("engineer"), // "engineer", "manager", or "admin"
   submittedAt: text("submitted_at"), // Timestamp when report was submitted (local time format)
   createdAt: timestamp("created_at").defaultNow(),
@@ -94,6 +95,7 @@ export const dprs = pgTable("dprs", {
   ...cancellationFields,
 }, (table) => ({
   dateIdx: index("dprs_date_idx").on(table.date),
+  engineerPersonnelIdx: index("dprs_engineer_personnel_id_idx").on(table.engineerPersonnelId),
 }));
 
 // Activity Progress
@@ -1376,7 +1378,12 @@ export const MIX_TYPES = ["BC", "DBM"] as const;
 // Default LDO norm (liters per ton)
 export const DEFAULT_LDO_NORM = 6;
 
-export const PERSONNEL_ROLES = ["Engineer", "Supervisor", "Assistant", "Foreman", "Other"] as const;
+export const PERSONNEL_ROLES = [
+  "Engineer", "Supervisor", "Assistant", "Foreman", "Other",
+  "Technician", "Surveyor", "Lab technician", "Storekeeper", "Driver",
+  "Operator", "Mason", "Carpenter", "Helper", "Office admin",
+  "Plant in-charge", "Accountant",
+] as const;
 
 // Personnel Master
 export const personnel = pgTable("personnel", {
@@ -2933,6 +2940,7 @@ export type InsertVendorRateCard = z.infer<typeof insertVendorRateCardSchema>;
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
+  personnelId: integer("personnel_id").references(() => personnel.id),
   // Explicit business designation only; never used for authorization.
   businessRole: text("business_role"),
   // Task #280 — email is now nullable so phone-only accounts can be created.
@@ -2982,7 +2990,10 @@ export const users = pgTable("users", {
   entryScope: text("entry_scope"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastLoginAt: timestamp("last_login_at"),
-});
+}, (table) => ({
+  personnelUnique: uniqueIndex("users_personnel_id_uq").on(table.personnelId)
+    .where(sql`${table.personnelId} IS NOT NULL`),
+}));
 
 export const userPermissions = pgTable("user_permissions", {
   id: serial("id").primaryKey(),

@@ -1043,7 +1043,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
     const lab = (myDpr?.labour    ?? []).length;
     const mat = (myDpr?.materials ?? []).length;
     const prg = (myDpr?.progress  ?? []).length;
-    if (prg === 0) focusItems.push({ level: "warn",  text: "Activity quantities not yet entered — log work done today." });
+    if (prg === 0) focusItems.push({ level: "warn",  text: "Work done quantities not yet entered — log work done today." });
     if (eq  === 0) focusItems.push({ level: "alert", text: "Equipment logs pending — record closing meters for all equipment." });
     if (lab === 0) focusItems.push({ level: "alert", text: "Labour count not yet entered — add today's workforce details." });
     if (mat === 0) focusItems.push({ level: "info",  text: "No material trips recorded — add material received today." });
@@ -1517,7 +1517,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
 
             {/* Flow steps */}
             <div className="flex items-center gap-1 flex-wrap">
-              {["Start of Day", "Progress", "Labour", "Equipment", "Materials", "Photos", "Submit"].map((step, i, arr) => (
+              {["Start of Day", "Work done", "Labour", "Equipment", "Materials", "Photos", "Submit"].map((step, i, arr) => (
                 <span key={step} className="flex items-center gap-1">
                   <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                     dprPhase === "submitted-own" || dprPhase === "submitted-other"

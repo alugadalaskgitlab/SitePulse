@@ -117,9 +117,9 @@ export function deriveDprChecklist(dpr: DprLike, submitted: boolean): DprCheckli
     },
     {
       id: "c4",
-      label: "Activity quantities entered",
+      label: "Work done quantities entered",
       state: actCount > 0 && actIssues.length === 0 ? "done" : "pending",
-      sub: sub(actCount, "activity", actIssues, "No activities recorded yet", `${actCount} activit${actCount === 1 ? "y" : "ies"} complete`),
+      sub: sub(actCount, "activity", actIssues, "No work done recorded yet", `${actCount} work done entr${actCount === 1 ? "y" : "ies"} complete`),
       details: actIssues,
     },
     {

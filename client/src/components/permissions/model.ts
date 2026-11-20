@@ -24,7 +24,7 @@ const missingSections = SECTION_KEYS.filter(section =>
   !projection.functions.some(node => node.id === `legacy:${section}`));
 const missingCells = missingSections.flatMap(section => ACTIONS.map(action => [
   section, action,
-  (permissionActions[section].actions as readonly Action[]).includes(action) ? "Available in current map" : "Unavailable",
+  ((permissionActions[section]?.actions ?? []) as readonly Action[]).includes(action) ? "Available in current map" : "Unavailable",
   [], projection.cells.length + missingSections.indexOf(section) * ACTIONS.length + ACTIONS.indexOf(action) + 1,
 ]));
 export const inventory = {
@@ -41,7 +41,7 @@ export const inventory = {
 export const functionById = new Map(inventory.functions.map(node => [node.id, node]));
 export const operationByName = new Map(inventory.operations.map(operation => [operation[0], operation]));
 export const availableActions = (section: SectionKey) =>
-  permissionActions[section].actions as readonly Action[];
+  (permissionActions[section]?.actions ?? []) as readonly Action[];
 export const isSection = (key: string): key is SectionKey => (SECTION_KEYS as readonly string[]).includes(key);
 export const tooltipFor = (section: SectionKey, action: Action) =>
   (permissionActions[section].tooltips as Partial<Record<Action, string>>)[action] ?? "Not implemented / not applicable";

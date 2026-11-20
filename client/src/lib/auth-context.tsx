@@ -37,6 +37,7 @@ export type AuthUser = {
   // many existing call sites). Drives FieldHome/guided-DPR defaults and
   // role labels.
   isFieldEngineer: boolean;
+  personnelId?: number | null;
   sessionPolicy: "strict" | "sticky";
   canManagePermissions: boolean;
   permissionManagerScope: "full" | "partial" | null;

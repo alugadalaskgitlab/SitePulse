@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readWorkerNames, replaceLabourWorkers } from "./labourWorkers";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { dprs, sites, sitePurchases, progressEntries, equipmentLogs, equipmentMaintenanceLogs, labourLogs, materialLogs, dprStructureItems, auditLogs,
+import { dprs, sites, personnel, sitePurchases, progressEntries, equipmentLogs, equipmentMaintenanceLogs, labourLogs, materialLogs, dprStructureItems, auditLogs,
   activityPersonnel, cutFillConsumptions, equipmentActivityAllocations, equipmentActivitySegments, dprDraftStoppages,
   equipmentActivitySegmentBoqItems, createDprRequestSchema } from "../shared/schema";
 import { DPR_SECTIONS, normalizeDprSectionContext, pickDprSectionPayload,
@@ -150,6 +150,7 @@ export function sectionSnapshot(dpr: any): DprSectionSnapshot {
   return {
     dpr, context: normalizeDprSectionContext(dpr),
     headerToken: contentToken({ context: normalizeDprSectionContext(dpr), engineer: dpr.engineer,
+      engineerPersonnelId: dpr.engineerPersonnelId ?? null,
       status: dpr.dprStatus, deleted: dpr.isDeleted, cancelled: dpr.isCancelled, superseded: dpr.isSuperseded }),
     sectionTokens: Object.fromEntries(DPR_SECTIONS.map(section => [section, contentToken(pickDprSectionPayload(section, dpr))])) as Record<DprSection, string>,
     sections: dprSectionStates(dpr),
@@ -285,8 +286,17 @@ export async function saveDprSection(database: any, storage: any, request: any, 
       if (candidates.length > 1) throw new DprSectionConflict("Multiple drafts exist. Choose the draft explicitly.");
       id = candidates[0]?.id;
       if (!id) {
+        if (request.data.engineerPersonnelId != null) {
+          const [engineer] = await tx.select({ id: personnel.id, isActive: personnel.isActive })
+            .from(personnel).where(eq(personnel.id, request.data.engineerPersonnelId)).limit(1);
+          if (!engineer || !engineer.isActive) throw Object.assign(new Error("Choose an active staff member as Engineer."), { status: 400 });
+        } else {
+          const activeStaff = await tx.select({ id: personnel.id }).from(personnel).where(eq(personnel.isActive, 1)).limit(1);
+          if (activeStaff.length) throw Object.assign(new Error("Choose an active staff member as Engineer."), { status: 400 });
+        }
         const [header] = await tx.insert(dprs).values({ ...context, site: context.site.toUpperCase(),
-          engineer: request.data.engineer.toUpperCase(), dprStatus: "draft", authorUserId: actorId,
+          engineer: request.data.engineer.toUpperCase(), engineerPersonnelId: request.data.engineerPersonnelId ?? null,
+          dprStatus: "draft", authorUserId: actorId,
           submittedAt: null, lastEditedAt: new Date(), lastEditedByUserId: actorId }).returning();
         id = header.id; created = true;
       }
@@ -294,6 +304,12 @@ export async function saveDprSection(database: any, storage: any, request: any, 
     await tx.select().from(dprs).where(eq(dprs.id, id)).for("update");
     const old = await readSectionAggregate(tx, id);
     if (!old || !activeDraft(old)) throw new DprSectionConflict("The selected DPR is no longer an active draft in this context.");
+    if (!created && request.data.engineerPersonnelId != null
+        && Number(request.data.engineerPersonnelId) !== Number(old.engineerPersonnelId)) {
+      const [engineer] = await tx.select({ id: personnel.id, isActive: personnel.isActive })
+        .from(personnel).where(eq(personnel.id, request.data.engineerPersonnelId)).limit(1);
+      if (!engineer || !engineer.isActive) throw Object.assign(new Error("Choose an active staff member as Engineer."), { status: 400 });
+    }
     const snapshot = sectionSnapshot(old);
     if (receipt) {
       if (!sameContext(old, context)) throw new DprSectionConflict("The saved DPR context changed. Reload it before continuing.");
@@ -376,6 +392,8 @@ export async function saveDprSection(database: any, storage: any, request: any, 
       }
     }
     await tx.update(dprs).set({ lastEditedAt: new Date(), lastEditedByUserId: actorId,
+      ...(request.data.engineer !== undefined ? { engineer: String(request.data.engineer).toUpperCase() } : {}),
+      ...(request.data.engineerPersonnelId !== undefined ? { engineerPersonnelId: request.data.engineerPersonnelId } : {}),
       ...(recoveringProject ? { boqProjectId: context.boqProjectId } : {}),
       ...(section === "activity" ? { remarks: input.remarks ?? null } : {}) }).where(eq(dprs.id, id));
     if (request.clientKey) await tx.insert(auditLogs).values({

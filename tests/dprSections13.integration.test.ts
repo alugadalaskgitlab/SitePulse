@@ -5,18 +5,19 @@ import { getTableConfig, PgDialect, PgTable } from "drizzle-orm/pg-core";
 import { is, SQL, eq } from "drizzle-orm";
 import * as schema from "../shared/schema";
 import { saveDprSection, readSectionAggregate, sectionSnapshot, findSectionDrafts, DprSectionConflict, assertSectionTokens } from "../server/dprSections";
-import { normalizeDprSectionContext, pickDprSectionPayload } from "../shared/dprSections";
+import { DPR_SECTIONS, normalizeDprSectionContext, pickDprSectionPayload } from "../shared/dprSections";
+import { planDprCorrection } from "../server/dprCorrectionPlan";
 import express from "express";
 import request from "supertest";
 import { createServer } from "node:http";
 
-const state = vi.hoisted(() => ({ db: null as any, admin: true, permissions: {} as any }));
+const state = vi.hoisted(() => ({ db: null as any, admin: true, owner: false, permissions: {} as any }));
 vi.mock("../server/db", () => ({ get db() { return state.db; }, pool: {} }));
 vi.mock("../server/push", () => ({ sendPushToAll: vi.fn(), sendPushToSection: vi.fn().mockResolvedValue(undefined), sendPushToAudience: vi.fn(), sendTestPush: vi.fn() }));
 vi.mock("../server/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../server/auth")>();
   const inject = (req: any, _res: any, next: any) => {
-    req.authUser = { id: 7, fullName: "SYNTHETIC ENGINEER", isAdmin: state.admin, isOwner: false };
+    req.authUser = { id: 7, fullName: "SYNTHETIC ENGINEER", isAdmin: state.admin, isOwner: state.owner };
     req.authPermissions = state.permissions;
     next();
   };
@@ -25,10 +26,11 @@ vi.mock("../server/auth", async (importOriginal) => {
 let pg: PGlite;
 let storage: any;
 let app: express.Express;
+let activeEngineerId: number;
 const context = normalizeDprSectionContext({ site: " SYNTHETIC  DPR13 SITE ", date: "2026-09-18", workType: "road", boqProjectId: null });
 const validate = vi.fn(async () => {});
 const save = (section: string, data: any, snapshot?: any, ctx = context) => saveDprSection(state.db, storage, {
-  section, context: ctx, data: { engineer: "SYNTHETIC ENGINEER", ...data }, dprId: snapshot?.dpr.id,
+  section, context: ctx, data: { engineer: "SYNTHETIC ENGINEER", engineerPersonnelId: activeEngineerId, ...data }, dprId: snapshot?.dpr.id,
   sectionToken: snapshot?.sectionTokens[section], headerToken: snapshot?.headerToken,
 }, 7, validate);
 const fresh = async (id: number) => sectionSnapshot(await readSectionAggregate(state.db, id));
@@ -65,7 +67,17 @@ beforeAll(async () => {
         REFERENCES "${getTableConfig(reference.foreignTable).name}" (${reference.foreignColumns.map(c => `"${c.name}"`).join(",")}) ON DELETE ${fk.onDelete ?? "NO ACTION"}`);
     }
   }
+  await pg.exec(`
+    ALTER TABLE users ADD CONSTRAINT users_personnel_id_fk FOREIGN KEY (personnel_id) REFERENCES personnel(id);
+    ALTER TABLE dprs ADD CONSTRAINT dprs_engineer_personnel_id_fk FOREIGN KEY (engineer_personnel_id) REFERENCES personnel(id);
+    CREATE UNIQUE INDEX users_personnel_id_uq ON users(personnel_id) WHERE personnel_id IS NOT NULL;
+    CREATE INDEX dprs_engineer_personnel_id_idx ON dprs(engineer_personnel_id);
+  `);
   state.db = drizzle(pg, { schema });
+  const [engineer] = await state.db.insert(schema.personnel).values({
+    name: "SYNTHETIC ENGINEER", role: "Engineer", isActive: 1,
+  }).returning();
+  activeEngineerId = engineer.id;
   await state.db.insert(schema.appSettings).values({ key: "company_short_name", value: "HLC" });
   await state.db.insert(schema.parties).values({ name: "HIGH LANE CONSTRUCTIONS", notes: "PLANT STOCK", isActive: 1 });
   ({ storage } = await import("../server/storage"));
@@ -77,6 +89,140 @@ beforeAll(async () => {
 afterAll(async () => { await pg?.close(); });
 
 describe("DPR-13 normalized SQL section transactions", () => {
+  it("keeps legacy personnel roles and defines nullable staff links on users and DPRs", () => {
+    expect(schema.PERSONNEL_ROLES).toEqual(expect.arrayContaining([
+      "Assistant", "Technician", "Surveyor", "Lab technician", "Storekeeper",
+      "Driver", "Operator", "Mason", "Carpenter", "Helper", "Office admin",
+      "Plant in-charge", "Accountant",
+    ]));
+    const dprConfig = getTableConfig(schema.dprs);
+    const userConfig = getTableConfig(schema.users);
+    expect(dprConfig.columns.find(column => column.name === "engineer_personnel_id")?.notNull).toBe(false);
+    expect(userConfig.columns.find(column => column.name === "personnel_id")?.notNull).toBe(false);
+    expect(userConfig.indexes.some(index => index.config.name === "users_personnel_id_uq" && index.config.unique)).toBe(true);
+    expect(DPR_SECTIONS).toEqual(["activity", "siteActivities", "equipment", "labour", "materials"]);
+  });
+
+  it("requires an active staff link for a new section-first DPR and saves the selected staff identity and name", async () => {
+    const ctx = { ...context, date: "2026-09-17" };
+    await expect(save("equipment", { equipment: [], engineerPersonnelId: null }, undefined, ctx))
+      .rejects.toThrow("Choose an active staff member as Engineer.");
+    const first = await save("equipment", { equipment: [{ machine: "SYNTHETIC ROLLER" }] }, undefined, ctx);
+    expect(first.dpr).toMatchObject({
+      engineer: "SYNTHETIC ENGINEER",
+      engineerPersonnelId: activeEngineerId,
+    });
+    const [replacement] = await state.db.insert(schema.personnel).values({
+      name: "SYNTHETIC SURVEYOR", role: "Surveyor", isActive: 1,
+    }).returning();
+    const updated = await save("labour", {
+      labour: [],
+      engineer: "SYNTHETIC SURVEYOR - SURVEYOR",
+      engineerPersonnelId: replacement.id,
+    }, first, ctx);
+    expect(updated.dpr).toMatchObject({
+      engineer: "SYNTHETIC SURVEYOR - SURVEYOR",
+      engineerPersonnelId: replacement.id,
+    });
+    await state.db.update(schema.personnel).set({ isActive: 0 }).where(eq(schema.personnel.id, replacement.id));
+    const retainedInactiveLink = await save("labour", {
+      labour: [],
+      engineer: "SYNTHETIC SURVEYOR - SURVEYOR",
+      engineerPersonnelId: replacement.id,
+    }, updated, ctx);
+    expect(retainedInactiveLink.dpr.engineerPersonnelId).toBe(replacement.id);
+  });
+
+  it("does not backfill an existing DPR whose engineer is still legacy text", async () => {
+    const ctx = { ...context, date: "2026-09-16" };
+    const [legacy] = await state.db.insert(schema.dprs).values({
+      ...ctx, engineer: "LEGACY ENGINEER TEXT", engineerPersonnelId: null, dprStatus: "draft",
+    }).returning();
+    const snapshot = await fresh(legacy.id);
+    const saved = await save("labour", {
+      engineer: "LEGACY ENGINEER TEXT",
+      engineerPersonnelId: undefined,
+      labour: [{ category: "Unskilled", count: 1 }],
+    }, snapshot, ctx);
+    expect(saved.dpr).toMatchObject({
+      engineer: "LEGACY ENGINEER TEXT",
+      engineerPersonnelId: null,
+    });
+  });
+
+  it("saves an Owner-only user-to-staff link and rejects a second user for the same staff record", async () => {
+    const [staff] = await state.db.insert(schema.personnel).values({
+      name: "SYNTHETIC USER STAFF", role: "Office admin", isActive: 1,
+    }).returning();
+    const [firstUser, secondUser] = await state.db.insert(schema.users).values([
+      { email: "sr01-first@example.invalid", passwordHash: "fixture", fullName: "SR01 FIRST USER" },
+      { email: "sr01-second@example.invalid", passwordHash: "fixture", fullName: "SR01 SECOND USER" },
+    ]).returning();
+    try {
+      await request(app).patch(`/api/auth/users/${firstUser.id}`).send({ personnelId: staff.id }).expect(403);
+      state.owner = true;
+      const linked = await request(app).patch(`/api/auth/users/${firstUser.id}`)
+        .send({ personnelId: staff.id }).expect(200);
+      expect(linked.body).toMatchObject({ id: firstUser.id, personnelId: staff.id });
+      await request(app).patch(`/api/auth/users/${secondUser.id}`)
+        .send({ personnelId: staff.id }).expect(409, { error: "personnel_already_linked" });
+      const saved = await state.db.select({ personnelId: schema.users.personnelId })
+        .from(schema.users).where(eq(schema.users.id, firstUser.id));
+      expect(saved).toEqual([{ personnelId: staff.id }]);
+    } finally {
+      state.owner = false;
+    }
+  });
+
+  it("allows only an Owner to add a staff identity link to a submitted DPR correction", () => {
+    const saved: any = {
+      id: 901, dprStatus: "submitted", isSuperseded: false, isDeleted: false, isCancelled: false,
+      workType: "road", date: "2026-09-18", site: "SYNTHETIC DPR13 SITE", engineer: "Legacy typed name",
+      engineerPersonnelId: null, remarks: "", boqProjectId: null, progress: [], equipment: [],
+      labour: [], materials: [], sitePurchases: [], siteActivities: [], structureItems: [],
+      correctionCutFillLinks: [], correctionCutFillSourceLinks: [],
+    };
+    const form = {
+      workType: "road",
+      header: { date: saved.date, site: saved.site, engineer: "SYNTHETIC ENGINEER - Engineer",
+        engineerPersonnelId: activeEngineerId, remarks: "", boqProjectId: null },
+      progress: [], equipment: [], labour: [], materials: [], sitePurchases: [], siteActivities: [], structureItems: [],
+    };
+    const ownerPlan = planDprCorrection(saved, form, { isOwner: true });
+    expect(ownerPlan.blocked).toEqual([]);
+    expect(ownerPlan.changes).toContainEqual(expect.objectContaining({
+      section: "header", field: "engineerPersonnelId", oldValue: null, newValue: activeEngineerId, requiresApproval: true,
+    }));
+    const nonOwnerPlan = planDprCorrection(saved, form, { isOwner: false });
+    expect(nonOwnerPlan.blocked).toContainEqual(expect.objectContaining({
+      section: "header", field: "engineerPersonnelId",
+    }));
+  });
+
+  it("checks active staff and matching display text in the submitted-DPR correction preview", async () => {
+    const [dpr] = await state.db.insert(schema.dprs).values({
+      date: "2026-09-18", site: context.site, engineer: "Legacy typed name", workType: "road", dprStatus: "submitted",
+    }).returning();
+    try {
+      state.owner = true;
+      const validForm = {
+        workType: "road",
+        header: { date: "2026-09-18", site: context.site,
+          engineer: "SYNTHETIC ENGINEER - Engineer", engineerPersonnelId: activeEngineerId,
+          remarks: null, boqProjectId: null },
+        progress: [], equipment: [], labour: [], materials: [], sitePurchases: [], siteActivities: [], structureItems: [],
+      };
+      const valid = await request(app).post(`/api/dprs/${dpr.id}/correction-review`).send({ form: validForm }).expect(200);
+      expect(valid.body.blocked).toEqual([]);
+      expect(valid.body.ownerDirectAllowed).toBe(true);
+      const mismatch = await request(app).post(`/api/dprs/${dpr.id}/correction-review`)
+        .send({ form: { ...validForm, header: { ...validForm.header, engineer: "Unmatched display name" } } }).expect(200);
+      expect(mismatch.body.blocked).toContainEqual(expect.objectContaining({ field: "engineer" }));
+    } finally {
+      state.owner = false;
+    }
+  });
+
   it("persists optional names on a labour section row, preserves omission and cascades row deletion", async () => {
     const ctx = { ...context, date: "2026-10-13" };
     const first = await save("labour", { labour: [{ category: "Unskilled", count: 1, workerNames: [" Alice ", "Alice"] }] }, undefined, ctx);
@@ -212,7 +358,7 @@ describe("DPR-13 normalized SQL section transactions", () => {
       context: ctx, data: { engineer: "SYNTHETIC", equipment: [] },
     })).status).toBe(400);
     const saved = await request(app).put("/api/dpr-sections/equipment").send({
-      context: ctx, data: { engineer: "SYNTHETIC", equipment: [{ machine: "SYNTHETIC ROLLER", openingReading: 10 }] },
+      context: ctx, data: { engineer: "SYNTHETIC", engineerPersonnelId: activeEngineerId, equipment: [{ machine: "SYNTHETIC ROLLER", openingReading: 10 }] },
     });
     expect(saved.status).toBe(200);
     const snapshot = saved.body;
@@ -325,7 +471,7 @@ describe("DPR-13 normalized SQL section transactions", () => {
     const [master] = await state.db.insert(schema.equipmentMaster).values({ name: "SYNTHETIC DIESEL ROLLER", meterType: "hour_meter" }).returning();
     const ctx = { ...context, date: "2026-09-24" };
     const first = await request(app).put("/api/dpr-sections/equipment").send({
-      context: ctx, data: { engineer: "SYNTHETIC", equipment: [{
+      context: ctx, data: { engineer: "SYNTHETIC", engineerPersonnelId: activeEngineerId, equipment: [{
         machine: master.name, equipmentId: master.id, openingReading: 100, closingReading: 102,
         diesel: 12, dieselSource: "direct_purchase", fuelStation: "SYNTHETIC STATION",
       }] },
@@ -401,7 +547,7 @@ describe("DPR-13 normalized SQL section transactions", () => {
 
   it("returns create tokens and accepts a token-bearing legacy PATCH without allowing stale overwrite", async () => {
     const ctx = { ...context, date: "2026-09-28" };
-    const created = await request(app).post("/api/dprs").send({ ...ctx, engineer: "SYNTHETIC", dprStatus: "draft",
+    const created = await request(app).post("/api/dprs").send({ ...ctx, engineer: "SYNTHETIC", engineerPersonnelId: activeEngineerId, dprStatus: "draft",
       labour: [{ category: "Unskilled", count: 1, gender: "Male", workerNames: ["Asha", " Beena "] }] });
     expect(created.status).toBe(201);
     expect(created.body.headerToken).toBeTruthy();
@@ -429,7 +575,7 @@ describe("DPR-13 normalized SQL section transactions", () => {
     const ctx = { ...context, date: "2026-09-29" };
     const attachment = { fileName: "synthetic.pdf", objectPath: "/objects/synthetic-stoppage.pdf", mimeType: "application/pdf", fileSize: 123 };
     const response = await request(app).put("/api/dpr-sections/equipment").send({
-      context: ctx, data: { engineer: "SYNTHETIC", equipment: [{
+      context: ctx, data: { engineer: "SYNTHETIC", engineerPersonnelId: activeEngineerId, equipment: [{
         machine: "SYNTHETIC", equipmentId: 1, openingReading: 1, closingReading: 3,
         breakdowns: [{ clientKey: "SYNTHETIC-STOPPAGE", description: "SYNTHETIC STAGED STOPPAGE", fromTime: "08:00", toTime: "09:00",
           responsibility: "vendor", repairScope: "hlc", debitableToVendor: true, remarks: "SYNTHETIC REMARK", attachment }],
@@ -475,7 +621,7 @@ describe("DPR-13 normalized SQL section transactions", () => {
 
   it("preserves staging through legacy omitted nested PATCH, removes explicitly and cascades equipment deletion", async () => {
     const ctx = { ...context, date: "2026-09-30" };
-    const created = await request(app).post("/api/dprs").send({ ...ctx, engineer: "SYNTHETIC", dprStatus: "draft",
+    const created = await request(app).post("/api/dprs").send({ ...ctx, engineer: "SYNTHETIC", engineerPersonnelId: activeEngineerId, dprStatus: "draft",
       equipment: [{ machine: "SYNTHETIC", equipmentId: 1, openingReading: 5, closingReading: 6,
         breakdowns: [{ clientKey: "legacy-stage", description: "SYNTHETIC", fromTime: "10:00", toTime: "11:00" }] }] });
     expect(created.status).toBe(201);
@@ -635,7 +781,7 @@ describe("DPR-13 normalized SQL section transactions", () => {
     const ctx = { ...context, date: "2026-10-06" };
     const body = {
       context: ctx, clientKey: "synthetic-network-attempt-1",
-      data: { engineer: "SYNTHETIC", equipment: [{ machine: "SYNTHETIC RETRY", openingReading: 1 }] },
+      data: { engineer: "SYNTHETIC", engineerPersonnelId: activeEngineerId, equipment: [{ machine: "SYNTHETIC RETRY", openingReading: 1 }] },
     };
     const responses = await Promise.all([
       request(app).put("/api/dpr-sections/equipment").send(body),

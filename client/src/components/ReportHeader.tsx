@@ -104,8 +104,8 @@ export function ReportHeader({
             <MapPin className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-sm text-muted-foreground print:text-gray-500">Site Name</p>
-            <p className="font-semibold print:text-black" data-testid="text-report-site">{site}</p>
+            <p className="text-sm text-muted-foreground print:text-gray-500">Site name</p>
+            <p className="font-semibold print:text-black uppercase" data-testid="text-report-site">{site}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -114,7 +114,7 @@ export function ReportHeader({
           </div>
           <div>
             <p className="text-sm text-muted-foreground print:text-gray-500">Engineer</p>
-            <p className="font-semibold print:text-black" data-testid="text-report-engineer">{engineer}</p>
+            <p className="font-semibold print:text-black uppercase" data-testid="text-report-engineer">{engineer}</p>
           </div>
         </div>
         {createdAt && (
@@ -124,7 +124,7 @@ export function ReportHeader({
             </div>
             <div>
               <p className="font-semibold text-sm print:text-black" data-testid="text-report-created">
-                Draft created by {authorName || "User unavailable"} — {formatAuditTimestamp(createdAt)}
+                Draft created by <span className="uppercase">{authorName || "User unavailable"}</span> — {formatAuditTimestamp(createdAt)}
               </p>
             </div>
           </div>
@@ -136,7 +136,7 @@ export function ReportHeader({
             </div>
             <div>
               <p className="font-semibold text-sm print:text-black" data-testid="text-report-last-edited">
-                Last edited by {lastEditedByName || "User unavailable"} — {formatAuditTimestamp(lastEditedAt)}
+                Last edited by <span className="uppercase">{lastEditedByName || "User unavailable"}</span> — {formatAuditTimestamp(lastEditedAt)}
               </p>
             </div>
           </div>
