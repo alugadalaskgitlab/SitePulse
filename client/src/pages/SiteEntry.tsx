@@ -10,6 +10,8 @@ import { evaluateSectionReadiness, sectionIssueFieldTestId } from "@/lib/dprSect
 import { DprSectionGeometryGrid } from "@/components/DprSectionGeometryGrid";
 import { mapDprToFormState } from "./SiteEdit";
 import { LabourWorkerNames, prepareLabourWorkerRow, adoptLabourRowIds, newLabourRowKey } from "@/components/LabourWorkerNames";
+import { DprSiteActivitiesEditor, type DprSiteActivity } from "@/components/DprSiteActivitiesEditor";
+import { DPR_SITE_ACTIVITY_DEFAULT_LAYERS } from "@shared/dprSiteActivities";
 
 export interface DprSectionEditorProps {
   section: DprSection;
@@ -292,7 +294,7 @@ const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
 const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
 
-type SiteBoqItem = { id: number; description: string; displayName?: string | null; itemCode: string | null; itemName: string | null; unit: string; canonicalUnit?: string | null; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; planningWorkType?: string | null; dprMeasurementMethod?: string | null };
+type SiteBoqItem = { id: number; description: string; displayName?: string | null; itemCode: string | null; itemName: string | null; unit: string; canonicalUnit?: string | null; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; planningWorkType?: string | null; dprMeasurementMethod?: string | null; layerConfig?: Record<string, unknown> | null };
 
 interface SiteEntryFormData {
   header: { date: string; site: string; engineer: string; boqProjectId?: number | null };
@@ -303,6 +305,7 @@ interface SiteEntryFormData {
   labour: LabourEntry[];
   materials: MaterialEntry[];
   sitePurchases: SitePurchaseEntry[];
+  siteActivities?: DprSiteActivity[];
 }
 
 // parseChainageToMeters and calculateLengthFromChainage are imported from @/lib/dprCalculations.
@@ -359,7 +362,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   // Photos are staged locally until the DPR is saved (it needs a DB id
   // before an attachment can be linked to it), then uploaded in one batch.
   const [stagedPhotos, setStagedPhotos] = useState<File[]>([]);
-  const { uploadFile } = useUpload();
+  const { uploadFile, isUploading } = useUpload();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const addStagedPhotos = (files: FileList | null) => {
@@ -821,6 +824,51 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   const { data: personnelList } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
   });
+  const siteActivityLayers = useMemo(() => {
+    const found = new Set<string>();
+    const add = (value: unknown) => {
+      if (typeof value === "string" && value.trim()) found.add(value.trim());
+      if (Array.isArray(value)) value.forEach(add);
+    };
+    for (const item of siteBoqItems) {
+      const config = item.layerConfig;
+      if (!config) continue;
+      for (const key of ["layers", "layerNames", "layerName", "layerType", "layerLabel", "mixType"]) add(config[key]);
+    }
+    return found.size ? Array.from(found) : [...DPR_SITE_ACTIVITY_DEFAULT_LAYERS];
+  }, [siteBoqItems]);
+  const uploadSiteActivityAttachment = async (index: number, file: File) => {
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (file.size > 15 * 1024 * 1024) {
+      toast({ title: "File too large", description: `${file.name} exceeds 15 MB.`, variant: "destructive" });
+      return;
+    }
+    if (!file.type.startsWith("image/") && !isPdf) {
+      toast({ title: "Unsupported file", description: "Choose an image or PDF file.", variant: "destructive" });
+      return;
+    }
+    setSiteActivities(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, file } : row));
+    const uploaded = await uploadFile(file);
+    if (!uploaded) {
+      setSiteActivities(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, file: undefined } : row));
+      toast({ title: "Upload failed", description: "The activity was not saved. Try the attachment again.", variant: "destructive" });
+      return;
+    }
+    setSiteActivities(current => current.map((row, rowIndex) => rowIndex === index ? {
+      ...row,
+      file: undefined,
+      attachment: {
+        fileName: file.name,
+        objectPath: uploaded.objectPath,
+        mimeType: file.type || (isPdf ? "application/pdf" : undefined),
+        fileSize: file.size,
+      },
+      fileName: file.name,
+      objectPath: uploaded.objectPath,
+      mimeType: file.type || (isPdf ? "application/pdf" : undefined),
+      fileSize: file.size,
+    } : row));
+  };
 
   const [addPersonnelOpen, setAddPersonnelOpen] = useState(false);
   const [newPersonnelName, setNewPersonnelName] = useState("");
@@ -972,6 +1020,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   useResourceSuggestions(progress, materials, setMaterials, true);
 
   const [sitePurchases, setSitePurchases] = useState<SitePurchaseEntry[]>([]);
+  const [siteActivities, setSiteActivities] = useState<DprSiteActivity[]>([]);
 
   const lockedWorkType = useMemo(() => {
     if (sectionEditor) return sectionEditor.context.workType;
@@ -1149,6 +1198,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     labour: labour.map(prepareLabourWorkerRow),
     materials,
     sitePurchases,
+    siteActivities,
   }), [
     header,
     boqProjectPreference.projectId,
@@ -1162,6 +1212,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     labour,
     materials,
     sitePurchases,
+    siteActivities,
     siteEntryRecoveryRevokedBeforeEffect,
   ]);
   const siteEntryPayloadBoqProjectId = siteEntryRecoveryRevokedBeforeEffect
@@ -1203,6 +1254,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     })));
     if (data.materials) setMaterials(data.materials);
     if (data.sitePurchases) setSitePurchases(data.sitePurchases);
+    setSiteActivities(data.siteActivities ?? []);
     setBoqCataloguePreviewReady(true);
   }, []);
 
@@ -1812,6 +1864,20 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         labour: labour.filter(row => row.persistedId != null || isFilledLabourRow(row)).map(prepareLabourWorkerRow),
         materials: materials.filter(m => m.material),
         sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
+        siteActivities: siteActivities.map((activity, index) => {
+          const { file: _file, staffNames: _staffNames, staff: _staff, ...row } = activity as any;
+          const finiteKm = (value: any) => value == null || value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
+          return {
+            ...row,
+            persistedId: activity.persistedId ?? (typeof activity.id === "number" ? activity.id : undefined),
+            sortOrder: index,
+            chainageFrom: finiteKm(activity.chainageFrom),
+            chainageTo: finiteKm(activity.chainageTo),
+            resultValue: activity.resultValue == null || activity.resultValue === "" ? null : String(activity.resultValue),
+            requiredValue: activity.requiredValue == null || activity.requiredValue === "" ? null : String(activity.requiredValue),
+            personnelIds: activity.personnelIds ?? [],
+          };
+        }),
         remarks: sectionEditor ? remarksNote.trim() : remarksNote.trim() || undefined,
         clientTimestamp,
       };
@@ -2223,7 +2289,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
     <div className="max-w-5xl mx-auto space-y-6 pb-20">
       <InsufficientDieselDialog payload={dieselShortage} onClose={() => setDieselShortage(null)} />
       {sectionEditor && <div className="rounded-lg border p-4 space-y-2">
-        <h1 className="text-2xl font-bold capitalize">{sectionEditor.section === "materials" ? "Materials / Site Purchases" : sectionEditor.section}</h1>
+        <h1 className="text-2xl font-bold">{sectionEditor.section === "materials" ? "Materials / Site purchases"
+          : sectionEditor.section === "siteActivities" ? "Site activities"
+          : sectionEditor.section === "activity" ? "Activity / progress"
+          : sectionEditor.section}</h1>
         <p>{sectionEditor.context.site} · {sectionEditor.context.date} · {sectionEditor.context.workType} · Project {sectionEditor.context.boqProjectId ?? "none"}</p>
         <Button variant="outline" disabled={draftMutation.isPending} onClick={() => confirmLeave(sectionEditor.onReturn)}>Return to sections</Button>
         {sectionDirty && <span className="ml-3 text-sm">Unsaved changes</span>}
@@ -3316,6 +3385,26 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
           )}
         </CardContent>
       </Card>
+      )}
+
+      {(!sectionEditor || sectionEditor.section === "siteActivities") && (
+        <DprSiteActivitiesEditor
+          activities={siteActivities}
+          personnel={(personnelList ?? []).map(person => ({
+            id: person.id,
+            name: person.name,
+            isActive: Number(person.isActive ?? 1) !== 0,
+          }))}
+          layers={siteActivityLayers}
+          disabled={draftMutation.isPending}
+          uploading={isUploading}
+          onChange={setSiteActivities}
+          onRemove={index => setSiteActivities(current => current.filter((_row, rowIndex) => rowIndex !== index))}
+          onFileSelected={uploadSiteActivityAttachment}
+          onRemoveAttachment={index => setSiteActivities(current => current.map((row, rowIndex) => rowIndex === index
+            ? { ...row, attachment: null, fileName: null, objectPath: null, mimeType: null, fileSize: null }
+            : row))}
+        />
       )}
 
       {/* Equipment Log */}

@@ -198,6 +198,46 @@ export const dprStructureItems = pgTable("dpr_structure_items", {
   structureId: text("structure_id"),
 });
 
+// Optional survey, test, office, visit and other site work recorded with a DPR.
+export const dprSiteActivities = pgTable("dpr_site_activities", {
+  id: serial("id").primaryKey(),
+  dprId: integer("dpr_id").notNull().references(() => dprs.id, { onDelete: "cascade" }),
+  activityType: text("activity_type", { enum: ["levels", "test", "office", "visit", "other"] }).notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  chainageFrom: real("chainage_from"),
+  chainageTo: real("chainage_to"),
+  side: text("side", { enum: ["Centre", "LHS", "RHS"] }),
+  layer: text("layer"),
+  levelsKind: text("levels_kind", { enum: ["Own check", "Joint levels with department", "Initial ground levels (OGL)", "Setting out / centre line"] }),
+  deptPerson: text("dept_person"),
+  testName: text("test_name"),
+  testPlace: text("test_place", { enum: ["On site (field test)", "Site lab", "Outside lab"] }),
+  resultValue: text("result_value"),
+  requiredValue: text("required_value"),
+  resultPass: boolean("result_pass"),
+  officeWork: text("office_work", { enum: ["MB entry", "RA bill preparation", "Drawings / cross sections", "Reports", "Letters / correspondence", "Stores / records"] }),
+  visitorName: text("visitor_name"),
+  visitorDesignation: text("visitor_designation"),
+  note: text("note"),
+  fileName: text("file_name"),
+  objectPath: text("object_path"),
+  mimeType: text("mime_type"),
+  fileSize: integer("file_size"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => ({
+  dprSortIdx: index("dpr_site_activities_dpr_sort_idx").on(table.dprId, table.sortOrder, table.id),
+}));
+
+export const dprSiteActivityStaff = pgTable("dpr_site_activity_staff", {
+  id: serial("id").primaryKey(),
+  siteActivityId: integer("site_activity_id").notNull().references(() => dprSiteActivities.id, { onDelete: "cascade" }),
+  personnelId: integer("personnel_id").notNull().references(() => personnel.id),
+}, table => ({
+  activityIdx: index("dpr_site_activity_staff_activity_idx").on(table.siteActivityId),
+  personnelIdx: index("dpr_site_activity_staff_personnel_idx").on(table.personnelId),
+}));
+
 // Equipment Log
 export const equipmentLogs = pgTable("equipment_logs", {
   resourceScope: text("resource_scope"),
@@ -979,6 +1019,7 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
 
 export const dprsRelations = relations(dprs, ({ many }) => ({
   progress: many(progressEntries),
+  siteActivities: many(dprSiteActivities),
   equipment: many(equipmentLogs),
   labour: many(labourLogs),
   materials: many(materialLogs),
@@ -989,6 +1030,11 @@ export const dprsRelations = relations(dprs, ({ many }) => ({
 
 export const dprStructureItemsRelations = relations(dprStructureItems, ({ one }) => ({
   dpr: one(dprs, { fields: [dprStructureItems.dprId], references: [dprs.id] }),
+}));
+
+export const dprSiteActivitiesRelations = relations(dprSiteActivities, ({ one, many }) => ({
+  dpr: one(dprs, { fields: [dprSiteActivities.dprId], references: [dprs.id] }),
+  staff: many(dprSiteActivityStaff),
 }));
 
 export const dprVersionsRelations = relations(dprVersions, ({ one }) => ({
@@ -1057,6 +1103,17 @@ export const sitePurchaseRelations = relations(sitePurchases, ({ one }) => ({
 export const insertDprSchema = createInsertSchema(dprs).omit({ id: true, createdAt: true });
 export const insertProgressSchema = createInsertSchema(progressEntries).omit({ id: true, dprId: true });
 export const insertDprStructureItemSchema = createInsertSchema(dprStructureItems).omit({ id: true, dprId: true });
+export const insertDprSiteActivitySchema = createInsertSchema(dprSiteActivities)
+  .omit({ id: true, dprId: true, createdAt: true, updatedAt: true })
+  .extend({
+    activityType: z.enum(["levels", "test", "office", "visit", "other"]),
+    side: z.enum(["Centre", "LHS", "RHS"]).nullable().optional(),
+    levelsKind: z.enum(["Own check", "Joint levels with department", "Initial ground levels (OGL)", "Setting out / centre line"]).nullable().optional(),
+    testPlace: z.enum(["On site (field test)", "Site lab", "Outside lab"]).nullable().optional(),
+    officeWork: z.enum(["MB entry", "RA bill preparation", "Drawings / cross sections", "Reports", "Letters / correspondence", "Stores / records"]).nullable().optional(),
+    fileSize: z.number().int().nonnegative().nullable().optional(),
+    resultPass: z.boolean().nullable().optional(),
+  });
 export const insertEquipmentSchema = createInsertSchema(equipmentLogs).omit({ id: true, dprId: true });
 export const insertEquipmentActivityAllocationSchema = createInsertSchema(equipmentActivityAllocations).omit({ id: true, equipmentLogId: true, createdAt: true });
 export const insertEquipmentActivitySegmentSchema = createInsertSchema(equipmentActivitySegments).omit({ id: true, equipmentLogId: true, createdAt: true });
@@ -1073,6 +1130,8 @@ export const insertPlantProductionSchema = createInsertSchema(plantProduction).o
 export type Dpr = typeof dprs.$inferSelect;
 export type ProgressEntry = typeof progressEntries.$inferSelect;
 export type DprStructureItem = typeof dprStructureItems.$inferSelect;
+export type DprSiteActivity = typeof dprSiteActivities.$inferSelect;
+export type DprSiteActivityStaff = typeof dprSiteActivityStaff.$inferSelect;
 export type EquipmentLog = typeof equipmentLogs.$inferSelect;
 export type EquipmentActivityAllocation = typeof equipmentActivityAllocations.$inferSelect;
 export type EquipmentActivitySegment = typeof equipmentActivitySegments.$inferSelect;
@@ -1167,6 +1226,16 @@ export const createDprRequestSchema = insertDprSchema.extend({
     // Transient row identity for independent Materials draft reconciliation.
     persistedId: z.number().int().positive().optional(),
   })).optional(),
+  siteActivities: z.array(insertDprSiteActivitySchema.extend({
+    persistedId: z.number().int().positive().optional(),
+    personnelIds: z.array(z.number().int().positive()).optional(),
+    attachment: z.object({
+      fileName: z.string().min(1),
+      objectPath: z.string().min(1),
+      mimeType: z.string().min(1).optional(),
+      fileSize: z.number().int().nonnegative().optional(),
+    }).nullable().optional(),
+  })).optional(),
   structureItems: z.array(insertDprStructureItemSchema.extend({
     persistedId: z.number().int().positive().optional(),
   })).optional(),
@@ -1200,6 +1269,7 @@ export type DprWithDetails = Dpr & {
   lastEditedByName?: string;
   submittedByName?: string;
   progress: ProgressEntry[];
+  siteActivities: Array<DprSiteActivity & { personnelIds: number[]; staffNames: string[] }>;
   equipment: Array<EquipmentLog & {
     activitySegments?: Array<EquipmentActivitySegment & { boqItems: EquipmentActivitySegmentBoqItem[] }>;
     activityAllocations?: EquipmentActivityAllocation[];
@@ -1317,6 +1387,11 @@ export const personnel = pgTable("personnel", {
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const dprSiteActivityStaffRelations = relations(dprSiteActivityStaff, ({ one }) => ({
+  siteActivity: one(dprSiteActivities, { fields: [dprSiteActivityStaff.siteActivityId], references: [dprSiteActivities.id] }),
+  personnel: one(personnel, { fields: [dprSiteActivityStaff.personnelId], references: [personnel.id] }),
+}));
 
 // Activity-Personnel junction (tracks who was present per activity row)
 export const activityPersonnel = pgTable("activity_personnel", {

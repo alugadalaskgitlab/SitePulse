@@ -5,7 +5,7 @@ import { isMeaningfulEquipmentRow } from "./equipmentUsage";
 import type { DprReadinessIssue } from "./dprSubmitReadiness";
 import type { DraftReadiness } from "./dprDraftReadiness";
 
-export const DPR_SECTIONS = ["activity", "equipment", "labour", "materials"] as const;
+export const DPR_SECTIONS = ["activity", "siteActivities", "equipment", "labour", "materials"] as const;
 export type DprSection = typeof DPR_SECTIONS[number];
 export type DprSectionContext = { site: string; date: string; workType: string; boqProjectId: number | null };
 export type DprSectionSaveRequest = {
@@ -36,6 +36,7 @@ export type DprSectionResolution = {
 };
 export const DPR_SECTION_FIELDS: Record<DprSection, readonly string[]> = {
   activity: ["progress", "structureItems", "cutFillConsumptions", "remarks"],
+  siteActivities: ["siteActivities"],
   equipment: ["equipment"],
   labour: ["labour"],
   materials: ["materials", "sitePurchases"],
@@ -61,6 +62,13 @@ export function dprSectionStates(dpr: any): Record<DprSection, DprSectionState> 
   const present: Record<DprSection, boolean> = {
     activity: (dpr.progress ?? []).some((r: any) => meaningful(r, ["activity", "boqItemId", "noSiteWork", "isIncidental"]))
       || (dpr.structureItems ?? []).some((r: any) => meaningful(r, ["structureName", "itemOfWork", "boqItemId"])),
+    siteActivities: (dpr.siteActivities ?? []).some((row: any) =>
+      meaningful(row, [
+        "chainageFrom", "chainageTo", "side", "layer", "levelsKind", "deptPerson",
+        "testName", "testPlace", "resultValue", "requiredValue", "officeWork",
+        "visitorName", "visitorDesignation", "note", "fileName", "objectPath",
+      ]) || (row.personnelIds ?? []).length > 0,
+    ),
     equipment: (dpr.equipment ?? []).some(isMeaningfulEquipmentRow),
     labour: (dpr.labour ?? []).some((r: any) => meaningful(r, ["category", "count"])),
     materials: (dpr.materials ?? []).some((r: any) => meaningful(r, ["material", "quantity"]))

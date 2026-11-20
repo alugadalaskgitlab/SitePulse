@@ -6,8 +6,10 @@ import {
   dprStructureItems, auditLogs, editPermissionRequests, equipmentMaintenanceLogs,
   cutFillConsumptions, vendorBillItems, vendorBills, equipmentMaster, equipmentActivitySegments,
   equipmentActivitySegmentBoqItems, equipmentActivityAllocations, boqItems, workProgramBars,
+  dprSiteActivities, dprSiteActivityStaff,
 } from "../shared/schema";
 import { readWorkerNames, replaceLabourWorkers } from "./labourWorkers";
+import { readDprSiteActivities, reconcileDprSiteActivities } from "./dprSiteActivities";
 import { correctionError, correctionFields, needsApproval, planDprCorrection } from "./dprCorrectionPlan";
 import { calculateLengthFromChainage, geometryQtyForRow } from "../shared/dprGeometry";
 import { parseChainageKm } from "../shared/barSide";
@@ -30,6 +32,7 @@ const ownerCanApplyDirectly = (actor: Actor, review: any) => actor.isOwner === t
   && review.requiresApproval
   && review.changes.filter((change: any) => change.requiresApproval).every((change: any) =>
     change.section === "header" && change.field === "boqProjectId" && change.oldValue == null && Number(change.newValue) > 0
+      || change.section === "siteActivities"
       || change.section === "progress" && (
         ownerDirectProgressFields.has(change.field)
         || change.derived === true && ["chainageToKm", "length", "quantity", "quantitySource"].includes(change.field)
@@ -45,6 +48,12 @@ export function dprCorrectionService(database: any, validate: Validate) {
       for (const table of Object.values(tables).filter(t => t !== dprs)) {
         await tx.select({ id: table.id }).from(table).where(eq(table.dprId, id)).orderBy(table.id).for("update");
       }
+      const activityRows = await tx.select({ id: dprSiteActivities.id }).from(dprSiteActivities)
+        .where(eq(dprSiteActivities.dprId, id)).orderBy(dprSiteActivities.id).for("update");
+      if (activityRows.length) {
+        await tx.select({ id: dprSiteActivityStaff.id }).from(dprSiteActivityStaff)
+          .where(inArray(dprSiteActivityStaff.siteActivityId, activityRows.map((row: any) => row.id))).for("update");
+      }
     }
     const saved = await tx.query.dprs.findFirst({
       where: eq(dprs.id, id),
@@ -56,6 +65,7 @@ export function dprCorrectionService(database: any, validate: Validate) {
       },
     });
     if (!saved) correctionError("DPR not found.", 404);
+    saved.siteActivities = await readDprSiteActivities(tx, id);
     saved.labour = await readWorkerNames(tx, saved.labour);
     const masterIds = saved.equipment.map((e: any) => e.equipmentId).filter((id: any) => id != null);
     saved.correctionEquipmentMasters = masterIds.length ? await tx.select().from(equipmentMaster).where(inArray(equipmentMaster.id, masterIds)).orderBy(equipmentMaster.id) : [];
@@ -258,6 +268,25 @@ export function dprCorrectionService(database: any, validate: Validate) {
     }
     for (const [section, patches] of Object.entries(plan.patches)) {
       for (const patch of patches) {
+        if (section === "siteActivities") {
+          const rows = patch.values.rows;
+          if (!Array.isArray(rows)) {
+            plan.blocked.push({ section, rowId: null, field: "rows", message: "Site activities must be a list." });
+            continue;
+          }
+          for (const row of rows) {
+            const { persistedId: _persistedId, personnelIds, attachment: _attachment, staff: _staff, staffNames: _staffNames, ...values } = row;
+            const parsed = createInsertSchema(dprSiteActivities).partial().safeParse(values);
+            if (!parsed.success) for (const issue of parsed.error.issues) plan.blocked.push({
+              section, rowId: row.persistedId ?? null, field: issue.path.join("."), message: issue.message,
+            });
+            if (personnelIds !== undefined && (!Array.isArray(personnelIds)
+                || personnelIds.some((personnelId: any) => !Number.isSafeInteger(Number(personnelId)) || Number(personnelId) <= 0))) {
+              plan.blocked.push({ section, rowId: row.persistedId ?? null, field: "personnelIds", message: "Choose valid site staff." });
+            }
+          }
+          continue;
+        }
         const { workerNames, activitySegments, ...values } = patch.values;
         const parsed = createInsertSchema(tables[section]).partial().safeParse(values);
         if (!parsed.success) for (const issue of parsed.error.issues) plan.blocked.push({
@@ -275,7 +304,7 @@ export function dprCorrectionService(database: any, validate: Validate) {
         // Persist and display the same canonical values as normal validators,
         // including physical UOM/quantity normalization. Never approve one
         // quantity in the dialog and silently save a different one.
-        for (const section of Object.keys(correctionFields).filter(s => s !== "header")) {
+        for (const section of Object.keys(correctionFields).filter(s => s !== "header" && s !== "siteActivities")) {
           for (const row of plan.candidate[section] ?? []) {
             const before = beforeValidation[section].find((r: any) => r.id === row.id);
             for (const field of correctionFields[section]) {
@@ -299,7 +328,8 @@ export function dprCorrectionService(database: any, validate: Validate) {
     plan.requiresApproval = plan.changes.some(c => c.requiresApproval);
     for (const change of plan.changes) {
       const row = change.section === "header" ? saved : saved[change.section]?.find((r: any) => r.id === change.rowId);
-      change.rowLabel = row?.machine || row?.activity || row?.itemOfWork || `${change.section} #${change.rowId}`;
+      change.rowLabel = row?.machine || row?.activity || row?.itemOfWork
+        || (change.section === "siteActivities" ? `Site activity${row?.activityType ? ` (${row.activityType})` : ""}` : `${change.section} #${change.rowId}`);
     }
     const impact: string[] = [];
     if (plan.requiresApproval) {
@@ -339,6 +369,11 @@ export function dprCorrectionService(database: any, validate: Validate) {
     }
     for (const [section, patches] of Object.entries(review.patches) as [string, any[]][]) {
       for (const patch of patches) {
+        if (section === "siteActivities") {
+          await reconcileDprSiteActivities(tx, saved.id, patch.values.rows, saved.siteActivities);
+          review.candidate.siteActivities = await readDprSiteActivities(tx, saved.id);
+          continue;
+        }
         const { workerNames, activitySegments, ...values } = patch.values;
         if (section === "progress" && patch.id == null) {
           const [inserted] = await tx.insert(progressEntries).values({ ...values, dprId: saved.id }).returning();

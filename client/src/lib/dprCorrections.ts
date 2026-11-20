@@ -46,6 +46,7 @@ export type DprCorrectionForm = {
   labour: unknown[];
   materials: unknown[];
   sitePurchases: unknown[];
+  siteActivities?: unknown[];
   splitProgress?: {
     sourcePersistedId: number;
     splitAt: string;

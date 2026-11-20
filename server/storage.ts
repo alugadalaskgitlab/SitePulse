@@ -32,6 +32,7 @@ import { db } from "./db";
 import { getNormBookState, isSnlItemFromActiveSource } from "./normBook";
 import { canApplySnlSource } from "@shared/normBook";
 import { insertLabourWithWorkers, readWorkerNames } from "./labourWorkers";
+import { readDprSiteActivities, readDprSiteActivitiesByDprIds, reconcileDprSiteActivities } from "./dprSiteActivities";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, lockDprIdentity, readSectionAggregate, readDraftStoppages, stageDraftStoppages, reconcileRows, reconcileDraftEquipmentAssignments, sameContext, sectionSnapshot } from "./dprSections";
 import { normalizeDprSectionContext } from "../shared/dprSections";
 import { formatPurchaseIndentNumber, reconcileDeliveryEvidence, validateDeliveryDestination, isBulkPiDeliveryItem, type DeliveryEvidence } from "../shared/purchaseIndentDelivery";
@@ -3190,8 +3191,10 @@ export class DatabaseStorage implements IStorage {
     }
     const namedLabour = await readWorkerNames(db, rows.flatMap(dpr => dpr.labour));
     const labourById = new Map(namedLabour.map(row => [row.id, row]));
+    const activitiesByDpr = await readDprSiteActivitiesByDprIds(db, rows.map(dpr => dpr.id));
     return rows.map((dpr: any) => ({
       ...dpr,
+      siteActivities: activitiesByDpr.get(dpr.id) ?? [],
       labour: dpr.labour.map((row: any) => labourById.get(row.id)),
       equipment: dpr.equipment.map((row: any) => {
         const breakdowns = breakdownsByEquipmentLog.get(row.id) ?? [];
@@ -3271,6 +3274,7 @@ export class DatabaseStorage implements IStorage {
     return {
       ...dpr,
       labour: labourWithNames,
+      siteActivities: await readDprSiteActivities(db, id),
       authorName: actorName(dpr.authorUserId),
       lastEditedByName: actorName(dpr.lastEditedByUserId),
       submittedByName: actorName(dpr.submittedByUserId),
@@ -3668,6 +3672,7 @@ export class DatabaseStorage implements IStorage {
       const dprId = newDpr.id;
       let insertedEquipLogs: any[] = [];
       let insertedProgress: any[] = [];
+      await reconcileDprSiteActivities(tx, dprId, dprData.siteActivities ?? []);
 
       // 2. Insert Progress Entries with uppercase text fields
       if (dprData.progress?.length) {
@@ -3752,6 +3757,7 @@ export class DatabaseStorage implements IStorage {
           dprData.structureItems.map(({ persistedId: _persistedId, ...s }: any) => ({ ...s, dprId }))
         );
       }
+      await reconcileDprSiteActivities(tx, dprId, dprData.siteActivities ?? []);
 
       if (dprStatusVal !== "draft") {
         await this.finalizeDprEquipmentUsageTx(tx, newDpr, insertedEquipLogs, audit);
@@ -4712,6 +4718,7 @@ export class DatabaseStorage implements IStorage {
       if (dprData.structureItems?.length) {
         await tx.insert(dprStructureItems).values(dprData.structureItems.map(s => ({ ...s, dprId: id })));
       }
+      await reconcileDprSiteActivities(tx, id, dprData.siteActivities, await readDprSiteActivities(tx, id));
       if (isSubmitting) {
         await this.finalizeDprEquipmentUsageTx(tx, updated, insertedEquipLogs, audit);
       }
@@ -4829,6 +4836,7 @@ export class DatabaseStorage implements IStorage {
           dprData.structureItems.map(s => ({ ...s, dprId: id }))
         );
       }
+      await reconcileDprSiteActivities(tx, id, dprData.siteActivities, await readDprSiteActivities(tx, id));
 
       return updated;
     });
@@ -4898,6 +4906,10 @@ export class DatabaseStorage implements IStorage {
       }).returning();
 
       const dprId = newDpr.id;
+      await reconcileDprSiteActivities(tx, dprId, (original.siteActivities ?? []).map((activity: any) => {
+        const { id: _id, persistedId: _persistedId, staffNames: _staffNames, staff: _staff, ...copy } = activity;
+        return copy;
+      }));
 
       // Copy structure items (for workType = "structure")
       if ((original as any).structureItems?.length) {
@@ -5209,6 +5221,14 @@ export class DatabaseStorage implements IStorage {
       if (lockedSourceProjectId !== optimisticSourceProjectId) {
         throw new DprProjectMismatchError(originalId, optimisticSourceProjectId, lockedSourceProjectId);
       }
+      const originalSiteActivities = await readDprSiteActivities(tx, originalId);
+      dprData = {
+        ...dprData,
+        siteActivities: (dprData.siteActivities ?? originalSiteActivities).map((activity: any) => {
+          const { id: _id, persistedId: _persistedId, staffNames: _staffNames, staff: _staff, ...copy } = activity;
+          return copy;
+        }),
+      };
       // Version replacement also wholesale-replaces ordinary child arrays.
       // Resolve the exact retained equipment shape before deciding whether a
       // saved-null source has evidence that can survive into the new version.
@@ -5290,6 +5310,7 @@ export class DatabaseStorage implements IStorage {
       const dprId = newDpr.id;
       let insertedEquipLogs: any[] = [];
       let insertedProgress: any[] = [];
+      await reconcileDprSiteActivities(tx, dprId, dprData.siteActivities ?? []);
       // Validate every newly supplied (or preservation-retained) link before
       // any version child is inserted. Recovery may introduce target-project
       // rows, but none may point to another project's BOQ item.

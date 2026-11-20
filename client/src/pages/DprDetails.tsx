@@ -24,6 +24,7 @@ import { useDprEquipmentPerformance } from "@/hooks/use-dpr-equipment-performanc
 import { hasCompleteDprPerformanceContext, resolveDprActualEfficiency } from "@/lib/dprEquipmentEfficiency";
 import { DprActivityReadOnly } from "@/components/DprActivityReadOnly";
 import { DprMaterialsReceived } from "@/components/DprMaterialsReceived";
+import { DprSiteActivitiesReadOnly } from "@/components/DprSiteActivitiesReadOnly";
 import { LabourWorkerNamesReadOnly } from "@/components/LabourWorkerNames";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
 import { formatDprReference } from "@/lib/dprReference";
@@ -348,6 +349,8 @@ export default function DprDetails() {
           )}
         </CardContent>
       </Card>
+
+      <DprSiteActivitiesReadOnly activities={(dpr as any).siteActivities ?? []} />
 
       {/* Two Column Layout for Resources */}
       <div className="grid grid-cols-1 gap-8">

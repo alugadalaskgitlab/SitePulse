@@ -5,6 +5,7 @@ import { isFilledLabourRow } from "../shared/labourEntry";
 import { validateEquipmentActivityAllocations, validateEquipmentActivitySegments, resolveEquipmentAllocationParentHours, groupLegacyEquipmentActivityAllocations } from "../shared/equipmentActivityAllocations";
 import { normalizeExcavationMaterialOutcome } from "../shared/cutFillReconciliation";
 import { calculateLengthFromChainage } from "../shared/dprGeometry";
+import { calculateSiteActivityResult } from "../shared/dprSiteActivities";
 
 export const correctionFields: Record<string, string[]> = Object.fromEntries(Object.entries({
   header: "date site engineer remarks boqProjectId",
@@ -13,6 +14,7 @@ export const correctionFields: Record<string, string[]> = Object.fromEntries(Obj
   labour: "category gender count hours task contractor boqItemId resourceScope structureId workerNames",
   materials: "type material quantity uom vehicleNumber supplier location receiptNumber boqItemId resourceScope structureId",
   sitePurchases: "itemDescription vendor quantity uom amount billNo",
+  siteActivities: "activityType sortOrder chainageFrom chainageTo side layer levelsKind deptPerson testName testPlace resultValue requiredValue officeWork visitorName visitorDesignation note fileName objectPath mimeType fileSize personnelIds",
   structureItems: "structureType structureSubType structureName stage itemOfWork quantity uom remarks boqItemId dprConversionFactor structureId",
 }).map(([section, fields]) => [section, fields.split(" ")]));
 
@@ -25,8 +27,8 @@ const defaults: Record<string, any> = {
 };
 const nullable = (v: any): any => v === "" || v == null ? null : Array.isArray(v) ? v.map(nullable) : v;
 const same = (a: any, b: any) => isDeepStrictEqual(nullable(a), nullable(b));
-export type CorrectionChange = { section: string; rowId: number; field: string; oldValue: any; newValue: any; requiresApproval: boolean; derived?: boolean; rowLabel?: string };
-export type CorrectionBlock = { section: string; rowId: number; field: string; message: string };
+export type CorrectionChange = { section: string; rowId: number | null; field: string; oldValue: any; newValue: any; requiresApproval: boolean; derived?: boolean; rowLabel?: string };
+export type CorrectionBlock = { section: string; rowId: number | null; field: string; message: string };
 export function correctionError(message: string, status = 409): never {
   throw Object.assign(new Error(message), { code: "DPR_CORRECTION_CONFLICT", status });
 }
@@ -49,7 +51,7 @@ function equivalent(section: string, key: string, input: any, old: any) {
 export function needsApproval(section: string, field: string) {
   if (section === "header" && field === "boqProjectId") return true;
   if (section === "equipment") return !["operator", "task", "usageStatusReason"].includes(field);
-  if (["materials", "sitePurchases", "structureItems"].includes(section)) return true;
+  if (["materials", "sitePurchases", "siteActivities", "structureItems"].includes(section)) return true;
   if (section === "labour") return !["task", "workerNames"].includes(field);
   if (section === "progress") return ["chainageFrom", "chainageTo", "length", "width", "thickness", "quantity", "uom", "boqItemId", "programmeBarId", "materialOutcome", "reusableQty", "earthworkArrangementId", "lengthOverrideReason", "uomOverrideReason", "noSiteWork", "isIncidental", "reworkNoNewMaterial", "executedBy", "side", "layerNo", "split"].includes(field);
   return false;
@@ -60,8 +62,8 @@ export function planDprCorrection(saved: any, form: any, actor?: { isOwner?: boo
   const changes: CorrectionChange[] = [];
   const blocked: CorrectionBlock[] = [];
   const candidate = structuredClone(saved);
-  const patches: Record<string, { id: number; values: any }[]> = {};
-  const block = (section: string, rowId: number, field: string, message: string) => blocked.push({ section, rowId, field, message });
+  const patches: Record<string, { id: number | null; values: any }[]> = {};
+  const block = (section: string, rowId: number | null, field: string, message: string) => blocked.push({ section, rowId, field, message });
   if (!saved || saved.dprStatus !== "submitted" || saved.isSuperseded || saved.isDeleted || saved.isCancelled) {
     correctionError("Only the current, active submitted DPR can be corrected. Open its latest version.");
   }
@@ -82,6 +84,95 @@ export function planDprCorrection(saved: any, form: any, actor?: { isOwner?: boo
           : true));
     }
     patches[section] = [];
+    if (section === "siteActivities") {
+      if (!Array.isArray(rows)) {
+        block(section, saved.id, "rows", "Site activities must be a list.");
+        continue;
+      }
+      const existingById = new Map<number, any>(olds.map((row: any) => [Number(row.id), row]));
+      const used = new Set<number>();
+      const desired: any[] = [];
+      for (let index = 0; index < rows.length; index++) {
+        const row = rows[index];
+        if (!row || typeof row !== "object" || Array.isArray(row)) {
+          block(section, null, "row", "A site activity row is invalid.");
+          continue;
+        }
+        const persistedId = row.persistedId == null ? null : Number(row.persistedId);
+        const old = persistedId == null ? undefined : existingById.get(persistedId);
+        if (persistedId != null && (!old || used.has(persistedId))) {
+          block(section, persistedId, "persistedId", "Saved activity identity is missing, duplicated or stale. Reopen the same DPR.");
+          continue;
+        }
+        if (persistedId != null) used.add(persistedId);
+        const values: Record<string, any> = {};
+        for (const field of correctionFields.siteActivities) {
+          if (field === "sortOrder") values[field] = index;
+          else if (Object.hasOwn(row, field)) values[field] = nullable(row[field]);
+          else if (old) values[field] = old[field] ?? null;
+        }
+        if (!old && ![
+          values.chainageFrom, values.chainageTo, values.layer, values.levelsKind, values.deptPerson,
+          values.testName, values.testPlace, values.resultValue, values.requiredValue, values.officeWork,
+          values.visitorName, values.visitorDesignation, values.note, values.objectPath,
+        ].some(value => value != null && value !== "") && !(values.personnelIds?.length)) {
+          // A newly opened but untouched type chooser is not saved evidence.
+          continue;
+        }
+        if (!old && !values.activityType) {
+          block(section, null, "activityType", "Choose a site activity type.");
+          continue;
+        }
+        if (values.personnelIds != null && !Array.isArray(values.personnelIds)) {
+          block(section, persistedId, "personnelIds", "Choose a valid list of staff.");
+          continue;
+        }
+        const extra = new Set(["id", "persistedId", "staff", "staffNames", "attachment", "file", "resultPass"]);
+        for (const key of Object.keys(row)) {
+          if (!correctionFields.siteActivities.includes(key) && !extra.has(key)) {
+            block(section, persistedId, key, "Unknown site activity field; reload the current editor.");
+          }
+        }
+        const candidateRow = {
+          ...(old ?? {}), ...values,
+          resultPass: calculateSiteActivityResult(values.resultValue, values.requiredValue),
+          id: old?.id ?? null, persistedId: old?.id ?? undefined,
+        };
+        desired.push(candidateRow);
+        if (!old) {
+          changes.push({
+            section, rowId: null, field: "activity",
+            oldValue: null, newValue: values, requiresApproval: true,
+          });
+          continue;
+        }
+        for (const field of correctionFields.siteActivities) {
+          const oldValue = field === "personnelIds"
+            ? (old.personnelIds ?? []).map(Number).sort((a: number, b: number) => a - b)
+            : nullable(old[field]);
+          const newValue = field === "personnelIds"
+            ? (values[field] ?? []).map(Number).sort((a: number, b: number) => a - b)
+            : nullable(values[field]);
+          if (!same(oldValue, newValue)) {
+            changes.push({ section, rowId: old.id, field, oldValue, newValue, requiresApproval: true });
+          }
+        }
+      }
+      for (const old of olds) {
+        if (!used.has(Number(old.id))) {
+          changes.push({
+            section, rowId: old.id, field: "activity",
+            oldValue: Object.fromEntries(correctionFields.siteActivities.map(field => [field, old[field] ?? null])),
+            newValue: null, requiresApproval: true,
+          });
+        }
+      }
+      candidate.siteActivities = desired;
+      if (changes.some(change => change.section === section)) {
+        patches[section].push({ id: null, values: { rows: desired.map(({ id: _id, ...row }) => row) } });
+      }
+      continue;
+    }
     if (!Array.isArray(rows) || rows.length !== olds.length) {
       block(section, saved.id, "rows", "Submitted evidence cannot be added or removed through correction. Retain its rows; use the original entry or cancellation workflow for structural changes.");
       continue;

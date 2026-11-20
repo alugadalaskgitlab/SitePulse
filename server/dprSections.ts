@@ -10,6 +10,7 @@ import { meaningfulEquipmentRows } from "../shared/equipmentUsage";
 import { resolveEquipmentAllocationParentHours, validateEquipmentActivityAllocations, validateEquipmentActivitySegments } from "../shared/equipmentActivityAllocations";
 import { hasDprBoqReferences } from "../shared/dprBoqReferences";
 import { isEvidenceBasedDprNullProjectRecovery } from "../shared/dprBoqSelection";
+import { readDprSiteActivities, reconcileDprSiteActivities } from "./dprSiteActivities";
 
 export class DprSectionConflict extends Error {
   code = "DPR_SECTION_CONFLICT";
@@ -101,6 +102,7 @@ export async function readSectionAggregate(tx: any, id: number) {
     dpr[key].sort((a: any, b: any) => a.id - b.id);
     dpr[key] = dpr[key].map((row: any) => ({ ...row, persistedId: row.id }));
   }
+  dpr.siteActivities = await readDprSiteActivities(tx, id);
   dpr.labour = await readWorkerNames(tx, dpr.labour);
   for (const row of dpr.equipment) {
     if (row.activitySegments.length) {
@@ -342,11 +344,13 @@ export async function saveDprSection(database: any, storage: any, request: any, 
         const oldPersonnel = await tx.select().from(activityPersonnel).where(eq(activityPersonnel.progressEntryId, progress[i].id));
         const removed = oldPersonnel.filter((row: any) => !ids.includes(row.personnelId)).map((row: any) => row.id);
         if (removed.length) await tx.delete(activityPersonnel).where(inArray(activityPersonnel.id, removed));
-        const added = [...new Set(ids)].filter(personnelId => !oldPersonnel.some((row: any) => row.personnelId === personnelId));
+        const added = Array.from(new Set(ids)).filter(personnelId => !oldPersonnel.some((row: any) => row.personnelId === personnelId));
         if (added.length) await tx.insert(activityPersonnel).values(added.map(personnelId => ({ progressEntryId: progress[i].id, personnelId })));
       }
       await storage.persistCutFillConsumptionsTx(tx, { ...old, boqProjectId: context.boqProjectId }, progress, input, [id]);
       await reconcileRows(tx, dprStructureItems, id, old.structureItems, input.structureItems ?? []);
+    } else if (section === "siteActivities") {
+      await reconcileDprSiteActivities(tx, id, input.siteActivities ?? [], old.siteActivities);
     } else if (section === "equipment") {
       const incoming = meaningfulEquipmentRows(input.equipment as any[]);
       storage.assertValidDprEquipmentDieselSources(incoming);

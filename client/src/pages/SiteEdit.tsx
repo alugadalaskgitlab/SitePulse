@@ -91,6 +91,8 @@ import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliatio
 import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { EquipmentRowRemove, resolveEquipmentRemovalIndex } from "@/components/EquipmentRowRemove";
+import { DprSiteActivitiesEditor, type DprSiteActivity } from "@/components/DprSiteActivitiesEditor";
+import { DPR_SITE_ACTIVITY_DEFAULT_LAYERS } from "@shared/dprSiteActivities";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { equipmentStatusRequiresReason } from "@shared/equipmentStatus";
 import { withNewEquipmentWorkingDefault, meaningfulEquipmentRows, isMeaningfulEquipmentRow, isVisibleEquipmentRow } from "@shared/equipmentUsage";
@@ -422,7 +424,23 @@ export function mapDprToFormState(dpr: any) {
       }))
     : [];
 
-  return { header, workType, structureItems, progress: hydrateCutFillConsumptions(progress, dpr.cutFillConsumptions), equipment, labour, materials, sitePurchases };
+  const siteActivities: DprSiteActivity[] = (dpr.siteActivities ?? []).map((activity: any) => ({
+    ...activity,
+    id: activity.id,
+    persistedId: activity.id != null ? Number(activity.id) : undefined,
+    activityType: activity.activityType,
+    chainageFrom: activity.chainageFrom == null ? null : String(activity.chainageFrom),
+    chainageTo: activity.chainageTo == null ? null : String(activity.chainageTo),
+    personnelIds: activity.personnelIds ?? activity.staff?.map((person: any) => person.id) ?? [],
+    attachment: activity.objectPath ? activity.attachment ?? {
+      fileName: activity.fileName ?? "Attachment",
+      objectPath: activity.objectPath,
+      mimeType: activity.mimeType ?? undefined,
+      fileSize: activity.fileSize ?? undefined,
+    } : null,
+  }));
+
+  return { header, workType, structureItems, progress: hydrateCutFillConsumptions(progress, dpr.cutFillConsumptions), equipment, labour, materials, sitePurchases, siteActivities };
 }
 
 export default function SiteEdit() {
@@ -582,6 +600,7 @@ export default function SiteEdit() {
 
   type SiteEditBoqItem = BillItem & {
     dprMeasurementMethod?: string | null;
+    layerConfig?: Record<string, unknown> | null;
   };
   const {
     projectId: siteBoqProjectId,
@@ -681,6 +700,19 @@ export default function SiteEdit() {
   const { data: personnelList } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
   });
+  const siteActivityLayers = useMemo(() => {
+    const found = new Set<string>();
+    const add = (value: unknown) => {
+      if (typeof value === "string" && value.trim()) found.add(value.trim());
+      if (Array.isArray(value)) value.forEach(add);
+    };
+    for (const item of siteBoqItems) {
+      const config = item.layerConfig;
+      if (!config) continue;
+      for (const key of ["layers", "layerNames", "layerName", "layerType", "layerLabel", "mixType"]) add(config[key]);
+    }
+    return found.size ? Array.from(found) : [...DPR_SITE_ACTIVITY_DEFAULT_LAYERS];
+  }, [siteBoqItems]);
 
   const [addPersonnelOpen, setAddPersonnelOpen] = useState(false);
   const [newPersonnelName, setNewPersonnelName] = useState("");
@@ -847,6 +879,7 @@ export default function SiteEdit() {
   const [readiness, setReadiness] = useState<DprReadinessResult | null>(null);
 
   const [sitePurchases, setSitePurchases] = useState<SitePurchaseEntry[]>([]);
+  const [siteActivities, setSiteActivities] = useState<DprSiteActivity[]>([]);
 
   const [workType, setWorkType] = useState<"road" | "structure">("road");
   const [structureItems, setStructureItems] = useState<StructureItem[]>([
@@ -1004,6 +1037,7 @@ export default function SiteEdit() {
           if (draft.labour?.length) setLabour(draft.labour);
           setMaterials(draft.materials || []);
           setSitePurchases(draft.sitePurchases || []);
+          setSiteActivities(draft.siteActivities || []);
           if (draft.workType) setWorkType(draft.workType);
           if (draft.structureItems?.length) setStructureItems(draft.structureItems);
           setDraftRestored(true);
@@ -1030,6 +1064,7 @@ export default function SiteEdit() {
     setLabour(lab);
     setMaterials(mat);
     setSitePurchases(sp);
+    setSiteActivities(serverState.siteActivities);
     formInitializedRef.current = true;
     formInitializedForIdRef.current = id;
     setBoqCataloguePreviewReady(true);
@@ -1075,6 +1110,7 @@ export default function SiteEdit() {
       labour,
       materials,
       sitePurchases,
+      siteActivities,
       ...(draftProjectId !== undefined ? { boqProjectId: draftProjectId } : {}),
     };
     const draftJson = JSON.stringify(draft);
@@ -1097,6 +1133,7 @@ export default function SiteEdit() {
     labour,
     materials,
     sitePurchases,
+    siteActivities,
     boqProjectPreference.resolved,
     boqProjectPreference.projectId,
   ]);
@@ -1161,7 +1198,39 @@ export default function SiteEdit() {
   // photos count toward the 3-per-activity cap; newly staged files are
   // uploaded (with progressEntryKey) against whichever DPR id the save
   // produces (new version id, or the draft id itself).
-  const { uploadFile } = useUpload();
+  const { uploadFile, isUploading: isUploadingActivity } = useUpload();
+  const uploadSiteActivityAttachment = async (index: number, file: File) => {
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (file.size > 15 * 1024 * 1024) {
+      toast({ title: "File too large", description: `${file.name} exceeds 15 MB.`, variant: "destructive" });
+      return;
+    }
+    if (!file.type.startsWith("image/") && !isPdf) {
+      toast({ title: "Unsupported file", description: "Choose an image or PDF file.", variant: "destructive" });
+      return;
+    }
+    setSiteActivities(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, file } : row));
+    const uploaded = await uploadFile(file);
+    if (!uploaded) {
+      setSiteActivities(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, file: undefined } : row));
+      toast({ title: "Upload failed", description: "The activity was not saved. Try the attachment again.", variant: "destructive" });
+      return;
+    }
+    setSiteActivities(current => current.map((row, rowIndex) => rowIndex === index ? {
+      ...row,
+      file: undefined,
+      attachment: {
+        fileName: file.name,
+        objectPath: uploaded.objectPath,
+        mimeType: file.type || (isPdf ? "application/pdf" : undefined),
+        fileSize: file.size,
+      },
+      fileName: file.name,
+      objectPath: uploaded.objectPath,
+      mimeType: file.type || (isPdf ? "application/pdf" : undefined),
+      fileSize: file.size,
+    } : row));
+  };
   const prepareBreakdownAttachments = async (rows: EquipmentEntry[]) => Promise.all(rows.map(async (row) => ({
     ...row,
     breakdowns: await Promise.all((row.breakdowns ?? []).map(async (breakdown) => {
@@ -1572,6 +1641,20 @@ export default function SiteEdit() {
       boqItemId: m.boqItemId ?? null, resourceScope: m.resourceScope ?? null, structureId: m.structureId ?? null,
     })),
     sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
+    siteActivities: siteActivities.map((activity, index) => {
+      const { id: _id, staffNames: _staffNames, staff: _staff, file: _file, ...row } = activity as any;
+      const finiteKm = (value: any) => value == null || value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
+      return {
+        ...row,
+        persistedId: activity.persistedId ?? (typeof activity.id === "number" ? activity.id : undefined),
+        sortOrder: index,
+        chainageFrom: finiteKm(activity.chainageFrom),
+        chainageTo: finiteKm(activity.chainageTo),
+        resultValue: activity.resultValue == null || activity.resultValue === "" ? null : String(activity.resultValue),
+        requiredValue: activity.requiredValue == null || activity.requiredValue === "" ? null : String(activity.requiredValue),
+        personnelIds: activity.personnelIds ?? [],
+      };
+    }),
     });
     labourSubmissionRef.current.set(payload, labour.filter(row => row.persistedId != null || isFilledLabourRow(row)));
     return payload;
@@ -1589,6 +1672,7 @@ export default function SiteEdit() {
     else setLabour(state.labour);
     setMaterials(state.materials);
     setSitePurchases(state.sitePurchases);
+    setSiteActivities(state.siteActivities);
     setBoqProjectPreference({ resolved: true, projectId: data.boqProjectId ?? null });
     serverSnapshotRef.current = JSON.stringify({ ...state, boqProjectId: data.boqProjectId ?? null });
     setDraftRestored(false);
@@ -1752,6 +1836,10 @@ export default function SiteEdit() {
   };
 
   const handleSave = () => {
+    if (isUploadingActivity) {
+      toast({ title: "Wait for the activity attachment to finish uploading", variant: "destructive" });
+      return;
+    }
     if (isSubmittedCorrection) {
       // Legacy facts must be reviewed as entered, not recomputed, filtered or
       // forced through new-DPR readiness checks.
@@ -1761,6 +1849,7 @@ export default function SiteEdit() {
       correctionFormRef.current = snapshotCorrectionForm({
         header: { ...header, boqProjectId: ownerCorrectionTargetProjectId ?? (dpr?.boqProjectId ?? null) },
         workType, progress, equipment, labour, materials, sitePurchases,
+        siteActivities,
         splitProgress,
         structureItems: workType === "structure" || dpr?.structureItems?.length ? structureItems : [],
       });
@@ -3166,6 +3255,24 @@ export default function SiteEdit() {
           )}
         </CardContent>
       </Card>
+
+      <DprSiteActivitiesEditor
+        activities={siteActivities}
+        personnel={(personnelList ?? []).map(person => ({
+          id: person.id,
+          name: person.name,
+          isActive: Number(person.isActive ?? 1) !== 0,
+        }))}
+        layers={siteActivityLayers}
+        disabled={isUploadingActivity}
+        uploading={isUploadingActivity}
+        onChange={setSiteActivities}
+        onRemove={index => setSiteActivities(current => current.filter((_row, rowIndex) => rowIndex !== index))}
+        onFileSelected={uploadSiteActivityAttachment}
+        onRemoveAttachment={index => setSiteActivities(current => current.map((row, rowIndex) => rowIndex === index
+          ? { ...row, attachment: null, fileName: null, objectPath: null, mimeType: null, fileSize: null }
+          : row))}
+      />
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
