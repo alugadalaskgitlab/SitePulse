@@ -20,7 +20,7 @@ import { visibleEquipmentRows } from "./equipmentUsage";
 export type DprChecklistItem = {
   id: string;
   label: string;
-  state: "done" | "pending";
+  state: "done" | "pending" | "info";
   sub: string;
   /** per-row pending lines, e.g. "JCB — closing meter reading required" */
   details: string[];
@@ -31,6 +31,7 @@ export type DprChecklistResult = {
   /** rows still needing closure, per section (for badges/CTAs) */
   openActivities: number;
   openEquipment: number;
+  siteActivities: number;
 };
 
 type DprLike = {
@@ -39,6 +40,7 @@ type DprLike = {
   equipment?: any[] | null;
   labour?: any[] | null;
   materials?: any[] | null;
+  siteActivities?: any[] | null;
 } | null | undefined;
 
 const hasText = (v: unknown): boolean => typeof v === "string" && v.trim() !== "";
@@ -79,6 +81,7 @@ export function deriveDprChecklist(dpr: DprLike, submitted: boolean): DprCheckli
   const eqCount = equipment.length;
   const labCount = labour.filter((l: any) => hasText(l?.category) || l?.count != null || hasText(l?.task) || hasText(l?.contractor)).length;
   const matCount = materials.filter((m: any) => hasText(m?.material)).length;
+  const siteActivityCount = dpr?.siteActivities?.length ?? 0;
 
   const actIssues = issueLines(readiness.mandatory, "activities");
   const eqIssues = issueLines(readiness.mandatory, "equipment");
@@ -120,6 +123,13 @@ export function deriveDprChecklist(dpr: DprLike, submitted: boolean): DprCheckli
       details: actIssues,
     },
     {
+      id: "cSiteActivities",
+      label: "Site activities",
+      state: "info",
+      sub: `${siteActivityCount} recorded`,
+      details: [],
+    },
+    {
       id: "c5",
       label: "DPR submitted",
       state: submitted ? "done" : "pending",
@@ -128,5 +138,5 @@ export function deriveDprChecklist(dpr: DprLike, submitted: boolean): DprCheckli
     },
   ];
 
-  return { items, openActivities, openEquipment };
+  return { items, openActivities, openEquipment, siteActivities: siteActivityCount };
 }

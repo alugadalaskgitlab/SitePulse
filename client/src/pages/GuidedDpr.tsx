@@ -66,7 +66,7 @@ import { ActivityReceiptStrip } from "@/components/ActivityReceiptStrip";
 import { DprReadinessDialog } from "@/components/DprReadinessDialog";
 import { useChainageOverlapContext, useChainageOverlapHits, ChainageOverlapWarning } from "@/components/ChainageOverlapGuard";
 import { type CandidateChainageRow } from "@shared/chainageOverlap";
-import { GUIDED_STEPS, READINESS_SECTION_TO_GUIDED_STEP, clampGuidedStep, guidedStepBlocker, guidedEntryComplete, firstIncompleteGuidedStep, type GuidedStepId } from "@/lib/guidedWizard";
+import { GUIDED_STEPS, READINESS_SECTION_TO_GUIDED_STEP, restoreGuidedStep, guidedStepBlocker, guidedEntryComplete, firstIncompleteGuidedStep, type GuidedStepId } from "@/lib/guidedWizard";
 import { fetchLatestPriorClosing } from "@/lib/equipmentContinuity";
 import { MAX_ACTIVITY_PHOTOS, activityPhotoCapacity, countEntryAttachments } from "@shared/dprPhotos";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -93,6 +93,10 @@ import {
 import { normalizeExcavationMaterialOutcome } from "@shared/cutFillReconciliation";
 import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } from "@shared/materialReceiptSummary";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
+import { DprSiteActivitiesEditor, type DprSiteActivity } from "@/components/DprSiteActivitiesEditor";
+import { DprSiteActivitiesReadOnly } from "@/components/DprSiteActivitiesReadOnly";
+import { DPR_SITE_ACTIVITY_DEFAULT_LAYERS } from "@shared/dprSiteActivities";
+import { guidedSiteActivitiesPayload } from "@/lib/guidedSiteActivities";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { isMeaningfulEquipmentRow, isVisibleEquipmentRow, withNewEquipmentWorkingDefault } from "@shared/equipmentUsage";
 import { DPR_REGISTER_PATH, resolveDprCompletionReturnTo, resolveReturnTo, withDprFocus } from "@/lib/progressReportNav";
@@ -235,7 +239,7 @@ export default function GuidedDpr() {
   const searchStr = useSearch();
   const entryParams = new URLSearchParams(searchStr);
   const { toast } = useToast();
-  const { uploadFile } = useUpload();
+  const { uploadFile, isUploading } = useUpload();
   const prepareBreakdownAttachments = async (rows: SimpleEquipmentRow[]) => Promise.all(rows.map(async (row) => {
     const breakdowns = (row.passthrough?.breakdowns ?? []) as StagedBreakdown[];
     return {
@@ -278,9 +282,10 @@ export default function GuidedDpr() {
   // owns the actual editing controls. Keep the route small and deterministic.
   const hubSection = new URLSearchParams(searchStr).get("section");
   const hubStep: GuidedStepId | null = hubSection === "activities" ? 3
-    : hubSection === "labour" ? 4
-    : hubSection === "equipment" ? 5
-    : hubSection === "review" ? 7
+    : hubSection === "siteActivities" ? 4
+    : hubSection === "labour" ? 5
+    : hubSection === "equipment" ? 6
+    : hubSection === "review" ? 8
     : null;
 
   // Batch 05 (spec §4): merely VIEWING a screen must never change the user's
@@ -295,6 +300,8 @@ export default function GuidedDpr() {
   const [siteName, setSiteName] = useState(entryParams.get("site") || "");
   const [engineer, setEngineer] = useState(entryParams.get("engineer") || "");
   const [entries, setEntries] = useState<GuidedEntry[]>([]);
+  const [siteActivities, setSiteActivities] = useState<DprSiteActivity[]>([]);
+  const [siteActivitiesLoaded, setSiteActivitiesLoaded] = useState(urlDraftId == null);
   const [equipment, setEquipment] = useState<SimpleEquipmentRow[]>([]);
   const changeEquipmentAssignment = (index: number, activitySegments: EquipmentActivitySegment[], source?: "suggestion" | "manual") =>
     setEquipment(rows => rows.map((row, rowIndex) => rowIndex === index ? {
@@ -374,6 +381,8 @@ export default function GuidedDpr() {
     // the old blob never resolved a BOQ project.
     boqProjectId?: number | null;
     step?: number;
+    stepVersion?: number;
+    siteActivities?: DprSiteActivity[];
   };
   // Set true by every restore/hydration generation; consumed by the
   // override-derivation effect once BOQ items are available.
@@ -490,6 +499,10 @@ export default function GuidedDpr() {
       boqItemId: l.boqItemId ?? null, structureId: l.structureId ?? null,
       resourceScope: l.resourceScope ?? null,
     })));
+    if (Object.prototype.hasOwnProperty.call(urlDraftDpr, "siteActivities") && Array.isArray(urlDraftDpr.siteActivities)) {
+      setSiteActivities(urlDraftDpr.siteActivities);
+      setSiteActivitiesLoaded(true);
+    }
     setBoqCataloguePreviewReady(true);
     // Batch 05 (spec §10): this server draft is authoritative — silence any
     // stale "new DPR" autosave blob that belongs to the same draft/context.
@@ -514,6 +527,17 @@ export default function GuidedDpr() {
       setStep(hubStep);
     }
   }, [urlDraftDpr, completeIntent, hubStep]);
+
+  // An older local autosave may not include site activities. For existing
+  // server drafts, load this section independently so a restored local draft
+  // can never replace unseen saved rows with an empty array.
+  useEffect(() => {
+    if (!urlDraftDpr || siteActivitiesLoaded) return;
+    if (!Object.prototype.hasOwnProperty.call(urlDraftDpr, "siteActivities")
+        || !Array.isArray(urlDraftDpr.siteActivities)) return;
+    setSiteActivities(urlDraftDpr.siteActivities);
+    setSiteActivitiesLoaded(true);
+  }, [urlDraftDpr, siteActivitiesLoaded]);
 
   // ── Batch 05: Equipment & Fleet linkage (same mechanism as Detailed DPR) ──
   // Open usage records for the DPR date are discoverable and linkable via
@@ -662,6 +686,14 @@ export default function GuidedDpr() {
     setSiteName(nextSite);
   };
   const { data: personnelList = [] } = useQuery<Personnel[]>({ queryKey: ["/api/personnel"] });
+  const { data: personnelIncludingInactive = [] } = useQuery<Personnel[]>({
+    queryKey: ["/api/personnel", "includeInactive"],
+    queryFn: async () => {
+      const response = await fetch("/api/personnel?includeInactive=true", { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load site staff.");
+      return response.json();
+    },
+  });
 
   const {
     siteId: selectedSiteId,
@@ -683,6 +715,55 @@ export default function GuidedDpr() {
     recoveryEvidence: urlDraftDpr,
     cataloguePreviewEligible: boqCataloguePreviewEligible,
   });
+  const siteActivityLayers = useMemo(() => {
+    const found = new Set<string>();
+    const add = (value: unknown) => {
+      if (typeof value === "string" && value.trim()) found.add(value.trim());
+      if (Array.isArray(value)) value.forEach(add);
+    };
+    for (const item of boqItems as Array<SiteBoqItem & { layerConfig?: Record<string, unknown> | null }>) {
+      const config = item.layerConfig;
+      if (!config) continue;
+      for (const key of ["layers", "layerNames", "layerName", "layerType", "layerLabel", "mixType"]) add(config[key]);
+    }
+    return found.size ? Array.from(found) : [...DPR_SITE_ACTIVITY_DEFAULT_LAYERS];
+  }, [boqItems]);
+  const changeSiteActivities = (next: DprSiteActivity[]) => {
+    setSiteActivities(next);
+    setSiteActivitiesLoaded(true);
+  };
+  const uploadSiteActivityAttachment = async (index: number, file: File) => {
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (file.size > 15 * 1024 * 1024) {
+      toast({ title: "File too large", description: `${file.name} exceeds 15 MB.`, variant: "destructive" });
+      return;
+    }
+    if (!file.type.startsWith("image/") && !isPdf) {
+      toast({ title: "Unsupported file", description: "Choose an image or PDF file.", variant: "destructive" });
+      return;
+    }
+    changeSiteActivities(siteActivities.map((row, rowIndex) => rowIndex === index ? { ...row, file } : row));
+    const uploaded = await uploadFile(file);
+    if (!uploaded) {
+      setSiteActivities(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, file: undefined } : row));
+      toast({ title: "Upload failed", description: "The activity was not saved. Try the attachment again.", variant: "destructive" });
+      return;
+    }
+    setSiteActivities(current => current.map((row, rowIndex) => rowIndex === index ? {
+      ...row,
+      file: undefined,
+      attachment: {
+        fileName: file.name,
+        objectPath: uploaded.objectPath,
+        mimeType: file.type || (isPdf ? "application/pdf" : undefined),
+        fileSize: file.size,
+      },
+      fileName: file.name,
+      objectPath: uploaded.objectPath,
+      mimeType: file.type || (isPdf ? "application/pdf" : undefined),
+      fileSize: file.size,
+    } : row));
+  };
   const guidedBoqEvidenceIds = useMemo(
     () => collectDprBoqItemIds([
       entries,
@@ -844,6 +925,10 @@ export default function GuidedDpr() {
       ? { boqProjectId: autosaveProjectId }
       : {}),
     step,
+    stepVersion: 2,
+    ...(siteActivitiesLoaded
+      ? { siteActivities: siteActivities.map(({ file: _file, ...activity }) => activity) }
+      : {}),
   };
   const autosave = useAutosave<GuidedFormState>({
     // A draft with a server id autosaves under its own key so it never
@@ -893,7 +978,18 @@ export default function GuidedDpr() {
         ...normalizeExcavationMaterialOutcome(e.quantity, e.materialOutcome, e.reusableQty),
         allocations: e.allocations ?? [],
       })));
-      if (!completeIntent) setStep(clampGuidedStep(d.step));
+      if (Object.prototype.hasOwnProperty.call(d, "siteActivities") && Array.isArray(d.siteActivities)) {
+        setSiteActivities(d.siteActivities);
+        setSiteActivitiesLoaded(true);
+      } else if (d.draftId != null) {
+        // The server query below will fill this from the current draft. Until
+        // then, the guided payload omits the field instead of clearing rows.
+        setSiteActivitiesLoaded(false);
+      } else {
+        setSiteActivities([]);
+        setSiteActivitiesLoaded(true);
+      }
+      if (!completeIntent && hubStep == null) setStep(restoreGuidedStep(d.step, d.stepVersion));
       setEquipment((d.equipment ?? []).map((e: any) => {
         const { newlyCreatedInGuided, workingDefaultedInGuided, ...restored } = e;
         return { ...newGuidedEquipmentRow(), ...restored, passthrough: e.passthrough ?? {} };
@@ -1174,7 +1270,7 @@ export default function GuidedDpr() {
       ?? (typeof issue.rowKey === "number" && Number.isFinite(issue.rowKey) ? issue.rowKey : null);
     if (rowIndex == null) return;
     const target = { section: issue.section, rowIndex, rowKey: issue.rowKey ?? null };
-    const targetStep = READINESS_SECTION_TO_GUIDED_STEP[issue.section] ?? 7;
+    const targetStep = READINESS_SECTION_TO_GUIDED_STEP[issue.section] ?? 8;
     setReadiness(null);
     if (targetStep !== step) {
       pendingHighlightRef.current = target;
@@ -1510,6 +1606,7 @@ export default function GuidedDpr() {
       })),
       materials: unmanagedSectionsRef.current.materials,
       sitePurchases: unmanagedSectionsRef.current.sitePurchases,
+      ...guidedSiteActivitiesPayload(siteActivitiesLoaded, siteActivities),
       remarks: allRemarks || undefined,
       clientTimestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
     };
@@ -1552,6 +1649,10 @@ export default function GuidedDpr() {
         const saved = await savedResponse.json();
         draftWriteTokensRef.current = readDprWriteTokens(saved);
         setLabour(current => adoptLabourRowIds(current, sentLabour, saved.labour ?? []));
+        if (Object.prototype.hasOwnProperty.call(saved, "siteActivities") && Array.isArray(saved.siteActivities)) {
+          setSiteActivities(saved.siteActivities);
+          setSiteActivitiesLoaded(true);
+        }
         // Advance only on a successful persist, never from background refetch.
         setEquipment((saved.equipment ?? []).map((row: any) => splitGuidedEquipmentRow(row)));
         unmanagedSectionsRef.current = {
@@ -1572,6 +1673,10 @@ export default function GuidedDpr() {
         hydratedRef.current = true;
         setDraftId(data.id);
         if (sentLabour) setLabour(current => adoptLabourRowIds(current, sentLabour, data.labour ?? []));
+        if (Object.prototype.hasOwnProperty.call(data, "siteActivities") && Array.isArray(data.siteActivities)) {
+          setSiteActivities(data.siteActivities);
+          setSiteActivitiesLoaded(true);
+        }
       }
       // Pin the server's canonical project before photo work starts. A draft
       // save is still successful when one or more staged photos need retry;
@@ -1813,9 +1918,10 @@ export default function GuidedDpr() {
         Records today's road progress against the work programme — same official record as the Detailed DPR, faster entry.
       </p>
       {/* Task #1409: wizard step indicator */}
-      <div className="flex items-center gap-1 mb-4" data-testid="wizard-stepper">
+      <div className="mb-4 overflow-x-auto" data-testid="wizard-stepper">
+        <div className="flex min-w-[640px] items-center gap-1">
         {GUIDED_STEPS.map((s, i) => (
-          <div key={s.id} className="flex items-center gap-1 flex-1 min-w-0">
+          <div key={s.id} className="flex min-w-[70px] flex-1 items-center gap-1">
             <button
               type="button"
               className="flex flex-col items-center gap-0.5 flex-1 min-w-0"
@@ -1830,13 +1936,14 @@ export default function GuidedDpr() {
                 : "bg-muted text-muted-foreground"}`}>
                 {s.id < step ? <Check className="w-3.5 h-3.5" /> : s.id}
               </span>
-              <span className={`text-[10px] leading-tight truncate w-full text-center ${s.id === step ? "text-primary font-medium" : "text-muted-foreground"}`}>
+              <span data-testid={`wizard-step-label-${s.id}`} className={`text-[10px] leading-tight whitespace-normal w-full text-center ${s.id === step ? "text-primary font-medium" : "text-muted-foreground"}`}>
                 {s.label}
               </span>
             </button>
             {i < GUIDED_STEPS.length - 1 && <div className={`h-px flex-1 max-w-6 ${s.id < step ? "bg-primary/40" : "bg-border"}`} />}
           </div>
         ))}
+        </div>
       </div>
 
       {/* Step 1 — Report header */}
@@ -2405,9 +2512,46 @@ export default function GuidedDpr() {
         onChange={(ev) => { addEntryPhotos(ev.target.files); ev.target.value = ""; }} />
       </>)}
 
-      {/* Step 6 — general site photos & remarks (Batch 06C-P: Labour and
-          Equipment moved to their own dedicated steps 4 and 5) */}
-      {step === 6 && (<>
+      {/* Step 4 — optional site activities, shared with the detailed DPR. */}
+      {step === 4 && (
+        <Card className="mb-4" data-testid="card-site-activities-step">
+          <CardContent className="pt-4">
+            {!siteActivitiesLoaded ? (
+              <p className="text-sm text-muted-foreground" data-testid="text-site-activities-loading">
+                Site activities are loading. Saved entries will be preserved until they are available.
+              </p>
+            ) : (
+              <DprSiteActivitiesEditor
+                activities={siteActivities}
+                personnel={personnelIncludingInactive.map(person => ({
+                  id: person.id,
+                  name: person.name,
+                  isActive: Number(person.isActive ?? 1) !== 0,
+                }))}
+                layers={siteActivityLayers}
+                disabled={saveMutation.isPending}
+                uploading={isUploading}
+                onChange={changeSiteActivities}
+                onRemove={index => {
+                  setSiteActivities(current => current.filter((_row, rowIndex) => rowIndex !== index));
+                  setSiteActivitiesLoaded(true);
+                }}
+                onFileSelected={uploadSiteActivityAttachment}
+                onRemoveAttachment={index => {
+                  setSiteActivities(current => current.map((row, rowIndex) => rowIndex === index
+                    ? { ...row, attachment: null, fileName: null, objectPath: null, mimeType: null, fileSize: null }
+                    : row));
+                  setSiteActivitiesLoaded(true);
+                }}
+              />
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 7 — general site photos & remarks (Batch 06C-P: Labour and
+          Equipment moved to their own dedicated steps) */}
+      {step === 7 && (<>
       {/* Photos */}
       <Card className="mb-4">
         <CardContent className="pt-4">
@@ -2449,8 +2593,8 @@ export default function GuidedDpr() {
       </Card>
       </>)}
 
-      {/* Step 5 — Equipment (dedicated wizard page, Batch 06C-P §18) */}
-      {step === 5 && (
+      {/* Step 6 — Equipment (dedicated wizard page, Batch 06C-P §18) */}
+      {step === 6 && (
       <Card className="mb-4" data-testid="card-equipment-step">
         <CardContent className="pt-4">
           <div className="space-y-4">
@@ -2861,8 +3005,8 @@ export default function GuidedDpr() {
       </Card>
       )}
 
-      {/* Step 4 — Labour (dedicated wizard page, Batch 06C-P §16) */}
-      {step === 4 && (
+      {/* Step 5 — Labour (dedicated wizard page, Batch 06C-P §16) */}
+      {step === 5 && (
       <Card className="mb-4" data-testid="card-labour-step">
         <CardContent className="pt-4">
           <div className="space-y-4">
@@ -2909,8 +3053,8 @@ export default function GuidedDpr() {
       </Card>
       )}
 
-      {/* Step 7 — review & submit */}
-      {step === 7 && (
+      {/* Step 8 — review & submit */}
+      {step === 8 && (
       <Card className="mb-4" data-testid="card-review">
         <CardContent className="pt-4 space-y-3 text-sm">
           <div>
@@ -2973,6 +3117,9 @@ export default function GuidedDpr() {
               })}
             </div>
           </div>
+          {siteActivitiesLoaded
+            ? <DprSiteActivitiesReadOnly activities={siteActivities} />
+            : <p className="text-xs text-muted-foreground" data-testid="text-review-site-activities-loading">Saved site activities are still loading.</p>}
           {/* Batch 06C-P §24: Labour and Equipment summarised separately */}
           <div>
             <p className="font-semibold mb-0.5">Labour</p>
@@ -3058,13 +3205,13 @@ export default function GuidedDpr() {
           <Button
             variant="outline"
             className="flex-1"
-            disabled={saveMutation.isPending}
+            disabled={saveMutation.isPending || isUploading}
             onClick={() => { if (validateHeader()) saveMutation.mutate(true); }}
             data-testid="button-save-draft"
           >
             {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Draft"}
           </Button>
-          {step < 7 && (
+          {step < 8 && (
             <Button
               className="flex-1"
               onClick={() => {
@@ -3077,10 +3224,10 @@ export default function GuidedDpr() {
               Next
             </Button>
           )}
-          {step === 7 && (
+          {step === 8 && (
           <Button
             className="flex-1"
-            disabled={saveMutation.isPending || !entriesComplete}
+            disabled={saveMutation.isPending || isUploading || !entriesComplete}
             onClick={() => {
               if (!validateHeader() || !validateForSubmit({ skipCutFill: true })) return;
               // Batch 04: one consolidated readiness panel before Final Submit.
@@ -3108,7 +3255,7 @@ export default function GuidedDpr() {
           </Button>
           )}
         </div>
-        {step === 7 && !entriesComplete && entries.length > 0 && (
+        {step === 8 && !entriesComplete && entries.length > 0 && (
           <p className="max-w-3xl mx-auto text-xs text-muted-foreground mt-1.5" data-testid="text-submit-hint">
             Enter chainage from/to and quantity for every activity (or mark it No site work) to submit — or save a draft and finish later.
           </p>

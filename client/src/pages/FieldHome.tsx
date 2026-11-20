@@ -168,7 +168,7 @@ type DprPhase =
   | "submitted-own"     // submitted by current user
   | "submitted-other";  // submitted by a different user
 
-type CheckState = "done" | "pending";
+type CheckState = "done" | "pending" | "info";
 
 interface CheckItem {
   id: string;
@@ -268,7 +268,9 @@ function FocusRow({ item }: { item: FocusItem }) {
 function PendingRow({ item }: { item: CheckItem }) {
   const icon = item.state === "done"
     ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
-    : <Circle       className="w-5 h-5 text-gray-300 flex-shrink-0" />;
+    : item.state === "info"
+      ? <span aria-hidden="true" className="grid h-5 w-5 flex-shrink-0 place-items-center rounded-full border border-slate-300 text-[10px] font-semibold text-slate-500">i</span>
+      : <Circle       className="w-5 h-5 text-gray-300 flex-shrink-0" />;
   return (
     <div className="flex items-center gap-3 py-2.5 px-1">
       {icon}
@@ -1071,11 +1073,14 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   // validator used by every Final Submit path (no row-existence shortcuts,
   // no third validator).
   const checklist = deriveDprChecklist(myDpr, dprPhase === "submitted-own");
+  // Includes the optional Site activities count; its informational row never
+  // adds a submit warning or readiness blocker.
   const pendingChecks: CheckItem[] = checklist.items;
 
-  const doneCount    = pendingChecks.filter(c => c.state === "done").length;
+  const trackedChecks = pendingChecks.filter(c => c.state !== "info");
+  const doneCount    = trackedChecks.filter(c => c.state === "done").length;
   const pendingCount = pendingChecks.filter(c => c.state === "pending").length;
-  const donePct      = Math.round((doneCount / pendingChecks.length) * 100);
+  const donePct      = Math.round((doneCount / trackedChecks.length) * 100);
 
   // ── CTA config (user + site + date aware) ─────────────────────────────────
   // Batch 05: continuing an own road draft reopens the SAME Guided server
@@ -1950,7 +1955,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                   pendingCount > 0 ? "bg-amber-50 text-amber-600" : "bg-green-50 text-green-600"
                 }`}>
-                  {doneCount}/{pendingChecks.length} done
+                  {doneCount}/{trackedChecks.length} done
                 </span>
               </div>
 

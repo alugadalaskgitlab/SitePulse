@@ -10,9 +10,10 @@ import {
 describe("DPR work hub navigation", () => {
   it("keeps the same draft id through every section and returns materials to the hub", () => {
     const draftId = 418;
-    for (const section of ["activities", "equipment", "labour", "materials", "review"] as const) {
+    for (const section of ["activities", "siteActivities", "equipment", "labour", "materials", "review"] as const) {
       expect(dprWorkSectionHref(draftId, section)).toContain(section === "materials" ? `/site/edit/${draftId}` : `draftId=${draftId}`);
       expect(dprWorkSectionHref(draftId, section)).toContain(encodeURIComponent(`/site/work/${draftId}`));
+      if (section === "siteActivities") expect(dprWorkSectionHref(draftId, section)).toContain("section=siteActivities");
     }
   });
 
@@ -26,8 +27,8 @@ describe("DPR work hub navigation", () => {
   });
 
   it("derives summaries without introducing persisted workflow statuses", () => {
-    expect(dprSectionCounts({ progress: [{}, {}], equipment: [{ machine: "Excavator" }], labour: [], materials: [{}, {}, {}] }))
-      .toEqual({ activities: 2, equipment: 1, labour: 0, materials: 3 });
+    expect(dprSectionCounts({ progress: [{}, {}], siteActivities: [{}], equipment: [{ machine: "Excavator" }], labour: [], materials: [{}, {}, {}] }))
+      .toEqual({ activities: 2, siteActivities: 1, equipment: 1, labour: 0, materials: 3 });
   });
 
   it("keeps unmanaged detailed sections in the guided draft payload", () => {

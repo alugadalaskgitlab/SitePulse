@@ -1,6 +1,6 @@
 /**
  * Batch 06C-P — Guided DPR polish: derived Length display and the
- * 7-step wizard split (Labour / Equipment as separate pages).
+ * 8-step wizard split (Site activities, Labour and Equipment as separate pages).
  */
 import { describe, it, expect } from "vitest";
 import { calculateLengthFromChainage, getEffectiveLength } from "../shared/dprGeometry";
@@ -29,19 +29,19 @@ describe("derived Length (06C-P §13)", () => {
   });
 });
 
-describe("7-step wizard structure (06C-P §5)", () => {
+describe("8-step wizard structure (06C-P §5 + DPR-ACTIVITY-02)", () => {
   it("Labour and Equipment are separate, dedicated steps", () => {
     const keys = GUIDED_STEPS.map((s) => s.key);
     expect(keys.indexOf("labour")).toBeGreaterThan(-1);
     expect(keys.indexOf("equipment")).toBeGreaterThan(-1);
     expect(keys.indexOf("labour")).not.toBe(keys.indexOf("equipment"));
-    // order: details before labour, labour before equipment, equipment before photos, review last
-    expect(keys).toEqual(["report", "activities", "details", "labour", "equipment", "photos", "review"]);
+    // Site activities is optional and sits between Details and Labour.
+    expect(keys).toEqual(["report", "activities", "details", "siteActivities", "labour", "equipment", "photos", "review"]);
   });
 
   it("the new steps stay draft-lenient (Back/Save Draft/Next always possible)", () => {
     const s = { siteName: "NH-44", engineer: "A - PM", entryCount: 1 };
-    for (const step of [3, 4, 5, 6] as const) {
+    for (const step of [3, 4, 5, 6, 7] as const) {
       expect(guidedStepBlocker(step, s)).toBeNull();
     }
   });

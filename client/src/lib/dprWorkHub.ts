@@ -1,11 +1,11 @@
 import { withReturnTo } from "./progressReportNav";
 import { visibleEquipmentRows } from "@shared/equipmentUsage";
 
-export type WorkHubSection = "activities" | "equipment" | "labour" | "materials" | "review";
+export type WorkHubSection = "activities" | "siteActivities" | "equipment" | "labour" | "materials" | "review";
 export type FieldDprPhase = "not-started" | "draft-own" | "submitted-own" | "submitted-other";
 
 export const WORK_HUB_SECTIONS: WorkHubSection[] = [
-  "activities", "equipment", "labour", "materials", "review",
+  "activities", "siteActivities", "equipment", "labour", "materials", "review",
 ];
 
 export function dprWorkHubHref(draftId: number, returnTo?: string): string {
@@ -62,6 +62,7 @@ export function resolveFieldSitePriority(
 export function dprSectionCounts(dpr: any) {
   return {
     activities: Array.isArray(dpr?.progress) ? dpr.progress.length : 0,
+    siteActivities: Array.isArray(dpr?.siteActivities) ? dpr.siteActivities.length : 0,
     equipment: visibleEquipmentRows(dpr?.equipment).length,
     labour: Array.isArray(dpr?.labour) ? dpr.labour.length : 0,
     materials: Array.isArray(dpr?.materials) ? dpr.materials.length : 0,

@@ -24,7 +24,7 @@ import { evaluateDprSubmitReadiness } from "../shared/dprSubmitReadiness";
 describe("firstIncompleteGuidedStep (06D §10–§11)", () => {
   it("maps semantic sections, not checklist item ids", () => {
     expect(READINESS_SECTION_TO_GUIDED_STEP).toEqual({
-      activities: 3, labour: 4, equipment: 5, materials: 7,
+      activities: 3, labour: 5, equipment: 6, materials: 8,
     });
   });
 
@@ -32,26 +32,26 @@ describe("firstIncompleteGuidedStep (06D §10–§11)", () => {
     expect(firstIncompleteGuidedStep(["activities"])).toBe(3);
   });
 
-  it("labour → 4, equipment → 5, materials → Review (7)", () => {
-    expect(firstIncompleteGuidedStep(["labour"])).toBe(4);
-    expect(firstIncompleteGuidedStep(["equipment"])).toBe(5);
-    expect(firstIncompleteGuidedStep(["materials"])).toBe(7);
+  it("labour → 5, equipment → 6, materials → Review (8)", () => {
+    expect(firstIncompleteGuidedStep(["labour"])).toBe(5);
+    expect(firstIncompleteGuidedStep(["equipment"])).toBe(6);
+    expect(firstIncompleteGuidedStep(["materials"])).toBe(8);
   });
 
   it("picks the EARLIEST relevant step when several sections are incomplete", () => {
     expect(firstIncompleteGuidedStep(["equipment", "activities", "labour"])).toBe(3);
-    expect(firstIncompleteGuidedStep(["materials", "equipment"])).toBe(5);
+    expect(firstIncompleteGuidedStep(["materials", "equipment"])).toBe(6);
   });
 
-  it("no mandatory incomplete section → Review (7)", () => {
-    expect(firstIncompleteGuidedStep([])).toBe(7);
+  it("no mandatory incomplete section → Review (8)", () => {
+    expect(firstIncompleteGuidedStep([])).toBe(8);
   });
 
   it("unknown sections are ignored (defensive)", () => {
-    expect(firstIncompleteGuidedStep(["weather" as any])).toBe(7);
+    expect(firstIncompleteGuidedStep(["weather" as any])).toBe(8);
   });
 
-  it("mapped steps exist in the current 7-step wizard model", () => {
+  it("mapped steps exist in the current 8-step wizard model", () => {
     const ids = GUIDED_STEPS.map(s => s.id as number);
     for (const step of Object.values(READINESS_SECTION_TO_GUIDED_STEP)) {
       expect(ids).toContain(step);

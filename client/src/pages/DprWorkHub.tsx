@@ -1,11 +1,12 @@
 import { Link, useRoute, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, ClipboardCheck, HardHat, Package, Users, ChevronLeft, ArrowRight } from "lucide-react";
+import { Activity, ClipboardCheck, HardHat, Package, Users, ChevronLeft, ArrowRight, ClipboardList } from "lucide-react";
 import { dprSectionCounts, dprWorkSectionHref, type WorkHubSection } from "@/lib/dprWorkHub";
 import { DPR_REGISTER_PATH, resolveReturnTo } from "@/lib/progressReportNav";
 
 const cards: Array<{ section: WorkHubSection; title: string; detail: string; icon: typeof Activity; count: keyof ReturnType<typeof dprSectionCounts>; tone: string }> = [
   { section: "activities", title: "Activity Progress", detail: "Work done, chainage and quantities", icon: Activity, count: "activities", tone: "bg-amber-100 text-amber-900" },
+  { section: "siteActivities", title: "Site activities", detail: "Levels, tests, office work, visits", icon: ClipboardList, count: "siteActivities", tone: "bg-violet-100 text-violet-900" },
   { section: "equipment", title: "Equipment", detail: "Meters, hours and diesel", icon: HardHat, count: "equipment", tone: "bg-sky-100 text-sky-900" },
   { section: "labour", title: "Labour", detail: "Crew counts and tasks", icon: Users, count: "labour", tone: "bg-teal-100 text-teal-900" },
   { section: "materials", title: "Materials", detail: "Receipts, issues and challans", icon: Package, count: "materials", tone: "bg-rose-100 text-rose-900" },
