@@ -71,9 +71,23 @@ export function calculateSiteActivityResult(resultValue: unknown, requiredValue:
   return result == null || required == null ? null : result >= required;
 }
 
+export function parseDprChainageKm(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  const chainage = trimmed.match(/^(-?)(\d+)\+(\d{1,3})$/);
+  if (chainage) {
+    const sign = chainage[1] === "-" ? -1 : 1;
+    return sign * (Number(chainage[2]) + Number(chainage[3].padStart(3, "0")) / 1000);
+  }
+  const km = Number(trimmed);
+  return Number.isFinite(km) ? km : null;
+}
+
 export function formatDprChainage(value: unknown): string {
-  const km = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(km)) return "";
+  const km = parseDprChainageKm(value);
+  if (km == null) return "";
   const metres = Math.round(km * 1000);
   const sign = metres < 0 ? "-" : "";
   const absolute = Math.abs(metres);

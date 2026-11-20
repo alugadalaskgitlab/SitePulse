@@ -11,6 +11,9 @@ import { readFileSync } from "node:fs";
 import { calculateLengthFromChainage } from "../shared/dprGeometry";
 import { normalizeExcavationMaterialOutcome } from "../shared/cutFillReconciliation";
 import { hydrateCutFillConsumptions } from "../client/src/lib/cutFillLedger";
+import { readDprSiteActivities, reconcileDprSiteActivities } from "../server/dprSiteActivities";
+import { dprSectionStates } from "../shared/dprSections";
+import { readSectionAggregate, saveDprSection, sectionSnapshot } from "../server/dprSections";
 let pg: PGlite, db: any, service: ReturnType<typeof dprCorrectionService>;
 const author = { id: 1, fullName: "Fixture Author" };
 const admin = { id: 2, isAdmin: true, fullName: "Fixture Reviewer" };
@@ -33,6 +36,9 @@ beforeAll(async () => {
     });
     await pg.exec(`CREATE TABLE "${config.name}" (${columns.join(",")})`);
   }
+  await pg.exec("ALTER TABLE dpr_site_activities ADD CONSTRAINT dpr_site_activities_test_dpr_fk FOREIGN KEY (dpr_id) REFERENCES dprs(id) ON DELETE CASCADE");
+  await pg.exec("ALTER TABLE dpr_site_activity_staff ADD CONSTRAINT dpr_site_activity_staff_test_activity_fk FOREIGN KEY (site_activity_id) REFERENCES dpr_site_activities(id) ON DELETE CASCADE");
+  await pg.exec("ALTER TABLE dpr_site_activity_staff ADD CONSTRAINT dpr_site_activity_staff_test_person_fk FOREIGN KEY (personnel_id) REFERENCES personnel(id)");
   db = drizzle(pg, { schema });
   service = dprCorrectionService(db, async () => {});
 }, 60000);
@@ -52,7 +58,7 @@ async function fixture() {
   const { correctionFields } = await import("../server/dprCorrectionPlan");
   const mapped = (row: any, section: string) => Object.fromEntries(correctionFields[section].map(k => [k, row[k]]));
   const form: any = {
-    header: mapped(dpr, "header"), workType: "road", structureItems: [], labour: [], materials: [], sitePurchases: [],
+    header: mapped(dpr, "header"), workType: "road", structureItems: [], labour: [], materials: [], sitePurchases: [], siteActivities: [],
     progress: [{ ...mapped(p, "progress"), persistedId: p.id, chainageFrom: "1+100", chainageTo: "1+200", chainageOverrideReason: "Site register correction" }],
     equipment: [{ ...mapped(e, "equipment"), persistedId: e.id, workAssignmentEdited: true }],
   };
@@ -460,4 +466,74 @@ it("DPR314: approves cleared placeholder tanks, assignments, layer and derived q
   const duration = structuredClone(form);
   duration.equipment[0].activitySegments = [{ startTime: "08:00", endTime: "16:30", boqItems: [{ boqItemId: 710 }] }];
   expect((await service.preview(314, duration, author)).blocked.some(b => b.field === "activitySegments")).toBe(true);
+});
+
+it("saves and restores each optional site activity type, staff links, attachment and server Pass/Fail", async () => {
+  const f = await fixture();
+  await db.update(schema.dprs).set({ dprStatus: "draft" }).where(eq(schema.dprs.id, f.id));
+  const [person] = await db.insert(schema.personnel).values({ name: "Fixture Surveyor", role: "Surveyor", isActive: 1 }).returning();
+  const rows = [
+    { activityType: "levels", levelsKind: "Own check", chainageFrom: 2.6, chainageTo: 2.8, layer: "WMM", note: "Reference level checked", personnelIds: [person.id] },
+    { activityType: "test", testName: "CBR", testPlace: "Site lab", layer: "GSB", chainageFrom: 2.7, side: "LHS", resultValue: "97.8", requiredValue: "97", personnelIds: [person.id], attachment: { fileName: "cbr.pdf", objectPath: "/objects/site-activity-cbr.pdf", mimeType: "application/pdf", fileSize: 100 } },
+    { activityType: "office", officeWork: "MB entry", note: "Measurement book updated", personnelIds: [person.id] },
+    { activityType: "visit", visitorName: "Department engineer", visitorDesignation: "AE", note: "Reviewed levels", personnelIds: [person.id] },
+    { activityType: "other", note: "Site housekeeping", personnelIds: [person.id] },
+  ];
+  const before = sectionSnapshot(await readSectionAggregate(db, f.id));
+  const snapshot = await saveDprSection(db, { assertDprProjectLinksTx: async () => {} }, {
+    section: "siteActivities",
+    context: { site: "FIXTURE SITE", date: "2026-08-29", workType: "road", boqProjectId: null },
+    dprId: f.id,
+    data: { siteActivities: rows },
+    headerToken: before.headerToken,
+    sectionToken: before.sectionTokens.siteActivities,
+  }, author.id, async () => {});
+  const saved = snapshot.dpr.siteActivities;
+  expect(saved).toHaveLength(5);
+  const restored = await readDprSiteActivities(db, f.id);
+  expect(restored.map((row: any) => row.activityType)).toEqual(["levels", "test", "office", "visit", "other"]);
+  expect(restored[1]).toMatchObject({
+    testName: "CBR", resultPass: true, personnelIds: [person.id],
+    attachment: { fileName: "cbr.pdf", mimeType: "application/pdf" },
+  });
+  const state = dprSectionStates({ progress: [], equipment: [], labour: [], materials: [], sitePurchases: [], siteActivities: [] });
+  expect(state.siteActivities.state).toBe("empty");
+
+  await db.delete(schema.dprs).where(eq(schema.dprs.id, f.id));
+  expect(await db.select().from(schema.dprSiteActivities).where(eq(schema.dprSiteActivities.dprId, f.id))).toEqual([]);
+  expect(await db.select().from(schema.dprSiteActivityStaff).where(eq(schema.dprSiteActivityStaff.siteActivityId, restored[1].id))).toEqual([]);
+});
+
+it("lets the Owner add, edit and remove site activities through correction with version history", async () => {
+  const owner = { id: 73, isAdmin: true, isOwner: true, fullName: "Fixture Owner" };
+  const f = await fixture();
+  const [person] = await db.insert(schema.personnel).values({ name: "Fixture Inspector", role: "Engineer", isActive: 1 }).returning();
+  const existing = await reconcileDprSiteActivities(db, f.id, [
+    { activityType: "levels", levelsKind: "Own check", chainageFrom: 1.1, chainageTo: 1.2, personnelIds: [person.id] },
+    { activityType: "other", note: "Remove this entry", personnelIds: [] },
+  ]);
+  f.form.siteActivities = [
+    { ...existing[0], persistedId: existing[0].id, note: "Corrected survey note", personnelIds: [person.id] },
+    { activityType: "test", testName: "CBR", testPlace: "Outside lab", resultValue: "95.9", requiredValue: "97", layer: "GSB", personnelIds: [person.id] },
+  ];
+  const review = await service.preview(f.id, f.form, owner);
+  expect(review.blocked).toEqual([]);
+  expect(review.ownerDirectAllowed).toBe(true);
+  expect(review.changes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ section: "siteActivities", field: "note", newValue: "Corrected survey note" }),
+    expect.objectContaining({ section: "siteActivities", field: "activity", oldValue: null }),
+    expect.objectContaining({ section: "siteActivities", field: "activity", newValue: null }),
+  ]));
+  const result: any = await service.submit(f.id, {
+    form: f.form, baseHash: review.baseHash, reason: "Corrected using the signed activity sheet", confirmImpact: true,
+  }, owner);
+  expect(result.siteActivities).toHaveLength(2);
+  expect(result.siteActivities[0]).toMatchObject({ note: "Corrected survey note", personnelIds: [person.id] });
+  expect(result.siteActivities[1]).toMatchObject({ activityType: "test", resultPass: false, testName: "CBR" });
+  const history: any[] = await service.list(f.id);
+  expect(history[0]).toMatchObject({ status: "owner_corrected", requestReason: "Corrected using the signed activity sheet" });
+  expect(history[0].changes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ section: "siteActivities", field: "activity" }),
+    expect.objectContaining({ section: "siteActivities", field: "note" }),
+  ]));
 });

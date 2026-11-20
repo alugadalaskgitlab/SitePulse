@@ -15,6 +15,7 @@ export function useAuth() {
     sectionCan: (section?: string, action?: string) => siteOnly && (section === "equipment_performance_report" || section === "plant_equipment")
       ? false : !viewer || action === "view",
     sectionVisible: () => true,
+    featureCan: () => true,
     canApprove: () => !viewer,
     isAuthenticated: true,
     isLoading: false,

@@ -11,7 +11,7 @@ import { DprSectionGeometryGrid } from "@/components/DprSectionGeometryGrid";
 import { mapDprToFormState } from "./SiteEdit";
 import { LabourWorkerNames, prepareLabourWorkerRow, adoptLabourRowIds, newLabourRowKey } from "@/components/LabourWorkerNames";
 import { DprSiteActivitiesEditor, type DprSiteActivity } from "@/components/DprSiteActivitiesEditor";
-import { DPR_SITE_ACTIVITY_DEFAULT_LAYERS } from "@shared/dprSiteActivities";
+import { DPR_SITE_ACTIVITY_DEFAULT_LAYERS, parseDprChainageKm } from "@shared/dprSiteActivities";
 
 export interface DprSectionEditorProps {
   section: DprSection;
@@ -823,6 +823,14 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
 
   const { data: personnelList } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
+  });
+  const { data: personnelIncludingInactive } = useQuery<Personnel[]>({
+    queryKey: ["/api/personnel", "includeInactive"],
+    queryFn: async () => {
+      const response = await fetch("/api/personnel?includeInactive=true", { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load site staff.");
+      return response.json();
+    },
   });
   const siteActivityLayers = useMemo(() => {
     const found = new Set<string>();
@@ -1678,6 +1686,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
   });
 
   const handlePreview = () => {
+    if (isUploading) {
+      toast({ title: "Attachment still uploading", description: "Wait for the site activity attachment to finish uploading before continuing.", variant: "destructive" });
+      return;
+    }
     if (!header.site || !header.engineer) {
       toast({
         title: "Missing Information",
@@ -1807,6 +1819,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
 
   const draftMutation = useMutation({
     mutationFn: async () => {
+      if (isUploading) throw new Error("Wait for the site activity attachment to finish uploading before saving.");
       const progressWithCalc = progress.map(p => {
         const effectiveLength = getEffectiveLength(p);
         const effectiveQuantity = p.quantity ?? calculateQuantity(p);
@@ -1866,13 +1879,12 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
         siteActivities: siteActivities.map((activity, index) => {
           const { file: _file, staffNames: _staffNames, staff: _staff, ...row } = activity as any;
-          const finiteKm = (value: any) => value == null || value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
           return {
             ...row,
             persistedId: activity.persistedId ?? (typeof activity.id === "number" ? activity.id : undefined),
             sortOrder: index,
-            chainageFrom: finiteKm(activity.chainageFrom),
-            chainageTo: finiteKm(activity.chainageTo),
+            chainageFrom: parseDprChainageKm(activity.chainageFrom),
+            chainageTo: parseDprChainageKm(activity.chainageTo),
             resultValue: activity.resultValue == null || activity.resultValue === "" ? null : String(activity.resultValue),
             requiredValue: activity.requiredValue == null || activity.requiredValue === "" ? null : String(activity.requiredValue),
             personnelIds: activity.personnelIds ?? [],
@@ -2294,7 +2306,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
           : sectionEditor.section === "activity" ? "Activity / progress"
           : sectionEditor.section}</h1>
         <p>{sectionEditor.context.site} · {sectionEditor.context.date} · {sectionEditor.context.workType} · Project {sectionEditor.context.boqProjectId ?? "none"}</p>
-        <Button variant="outline" disabled={draftMutation.isPending} onClick={() => confirmLeave(sectionEditor.onReturn)}>Return to sections</Button>
+        <Button variant="outline" disabled={draftMutation.isPending || isUploading} onClick={() => confirmLeave(sectionEditor.onReturn)}>Return to sections</Button>
         {sectionDirty && <span className="ml-3 text-sm">Unsaved changes</span>}
       </div>}
       {sectionEditor?.snapshot && (sectionReadiness ? sectionReadiness.mandatory.length > 0
@@ -3390,7 +3402,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
       {(!sectionEditor || sectionEditor.section === "siteActivities") && (
         <DprSiteActivitiesEditor
           activities={siteActivities}
-          personnel={(personnelList ?? []).map(person => ({
+          personnel={(personnelIncludingInactive ?? personnelList ?? []).map(person => ({
             id: person.id,
             name: person.name,
             isActive: Number(person.isActive ?? 1) !== 0,
@@ -4113,10 +4125,10 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
       {/* Action Buttons - sticky on mobile so Save/Preview stay reachable while scrolling a long form */}
       </fieldset>
       {sectionEditor ? <div className="sticky bottom-0 z-10 flex gap-3 border-t bg-background p-4">
-        <Button variant="outline" disabled={draftMutation.isPending} onClick={() => {
+        <Button variant="outline" disabled={draftMutation.isPending || isUploading} onClick={() => {
           if (sectionBaseline.current === sectionFingerprint || window.confirm("Discard changes?")) sectionEditor.onReturn();
         }}>Cancel</Button>
-        <Button disabled={draftMutation.isPending} onClick={async () => {
+        <Button disabled={draftMutation.isPending || isUploading} onClick={async () => {
           try { await draftMutation.mutateAsync(); sectionEditor.onReturn(); }
           catch { /* Retain fields after failure. */ }
         }}>Save &amp; return</Button>
@@ -4125,18 +4137,18 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
         <AutoSaveIndicator lastSavedAt={lastSavedAt} isDirty={isDirty} className="mr-auto" />
         {(
           <>
-            <Button variant="outline" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-cancel">
+            <Button variant="outline" disabled={isUploading || draftMutation.isPending} onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-cancel">
               Cancel
             </Button>
             {isFormComplete() ? (
-              <Button onClick={handlePreview} className="gap-2" data-testid="button-preview">
+              <Button onClick={handlePreview} disabled={isUploading || draftMutation.isPending} className="gap-2" data-testid="button-preview">
                 <Eye className="w-4 h-4" />
                 Preview Report
               </Button>
             ) : (
               <Button
                 onClick={handleSaveDraft}
-                disabled={draftMutation.isPending}
+                disabled={draftMutation.isPending || isUploading}
                 className="gap-2 bg-amber-500 hover:bg-amber-600 text-white"
                 data-testid="button-save-draft"
               >

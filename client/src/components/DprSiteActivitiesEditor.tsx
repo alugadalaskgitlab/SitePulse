@@ -11,6 +11,7 @@ import {
   DPR_SITE_ACTIVITY_OFFICE_WORK,
   DPR_SITE_ACTIVITY_TESTS,
   DPR_SITE_ACTIVITY_TEST_PLACES,
+  formatDprChainage,
 } from "@shared/dprSiteActivities";
 
 export type DprSiteActivityType =
@@ -89,16 +90,12 @@ function activityLabel(type: string) {
 function displayValue(value: string | number | null | undefined) {
   return value == null || String(value).trim() === "" ? "" : String(value);
 }
+function displayChainageInput(value: string | number | null | undefined) {
+  return typeof value === "number" ? formatDprChainage(value) : displayValue(value);
+}
 
 function formatChainage(value: number | string | null | undefined) {
-  if (value == null || String(value).trim() === "") return "";
-  const raw = String(value).trim();
-  const numeric = Number(raw.replace(/\s/g, ""));
-  if (!Number.isFinite(numeric)) return raw;
-  const metres = Math.round(numeric * 1000);
-  const kmPart = Math.floor(metres / 1000);
-  const metrePart = String(Math.abs(metres % 1000)).padStart(3, "0");
-  return `${kmPart}+${metrePart}`;
+  return formatDprChainage(value);
 }
 
 function selectOptions(options: readonly string[]) {
@@ -116,7 +113,7 @@ function activityTitle(activity: DprSiteActivity) {
     case "visit":
       return activity.visitorName || "Visit";
     default:
-      return activity.note || "Other activity";
+      return "Other";
   }
 }
 
@@ -131,7 +128,7 @@ function activityDetails(activity: DprSiteActivity) {
   if (activity.resultValue !== "" && activity.resultValue != null) {
     details.push(`Result ${activity.resultValue}${activity.requiredValue !== "" && activity.requiredValue != null ? ` / ${activity.requiredValue}` : ""}`);
   }
-  if (activity.note && activity.activityType !== "other") details.push(activity.note);
+  if (activity.note) details.push(activity.note);
   return details;
 }
 
@@ -201,15 +198,15 @@ export function DprSiteActivitiesEditor({
               <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-medium text-muted-foreground">{activityLabel(activity.activityType)}</span>
+                    <span className="rounded-full border px-2 py-0.5 text-xs font-medium">{activityLabel(activity.activityType)}</span>
                     <h4 className="font-medium">{activityTitle(activity)}</h4>
                     {activity.resultPass != null && (
-                      <span className="text-xs font-bold text-black">{activity.resultPass ? "Pass" : "Fail"}</span>
+                      <span className="rounded-full border px-2 py-0.5 text-xs font-bold text-black">{activity.resultPass ? "Pass" : "Fail"}</span>
                     )}
                   </div>
                   {details.length > 0 && <p className="mt-1 text-sm text-muted-foreground">{details.join(" · ")}</p>}
                   {linkedPersonnel.length > 0 && (
-                    <p className="mt-1 text-xs text-muted-foreground">Staff: {linkedPersonnel.map(person => person.name).join(", ")}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Who did it: {linkedPersonnel.map(person => person.name).join(", ")}</p>
                   )}
                   {(activity.file || activity.attachment) && (
                     <p className="mt-1 flex items-center gap-1 break-all text-xs text-muted-foreground">
@@ -250,11 +247,11 @@ export function DprSiteActivitiesEditor({
                 </div>
                 <div>
                   <Label htmlFor={fieldId("chainage-from")}>From chainage (km)</Label>
-                  <Input id={fieldId("chainage-from")} inputMode="decimal" value={displayValue(activity.chainageFrom)} disabled={disabled} onChange={event => patch(index, { chainageFrom: event.target.value })} placeholder="2.600" />
+                  <Input id={fieldId("chainage-from")} inputMode="text" value={displayChainageInput(activity.chainageFrom)} disabled={disabled} onChange={event => patch(index, { chainageFrom: event.target.value })} onBlur={event => patch(index, { chainageFrom: formatDprChainage(event.target.value) })} placeholder="2+600" />
                 </div>
                 <div>
                   <Label htmlFor={fieldId("chainage-to")}>To chainage (km)</Label>
-                  <Input id={fieldId("chainage-to")} inputMode="decimal" value={displayValue(activity.chainageTo)} disabled={disabled} onChange={event => patch(index, { chainageTo: event.target.value })} placeholder="2.800" />
+                  <Input id={fieldId("chainage-to")} inputMode="text" value={displayChainageInput(activity.chainageTo)} disabled={disabled} onChange={event => patch(index, { chainageTo: event.target.value })} onBlur={event => patch(index, { chainageTo: formatDprChainage(event.target.value) })} placeholder="2+800" />
                 </div>
                 <div>
                   <Label htmlFor={fieldId("layer")}>Layer</Label>
@@ -293,7 +290,7 @@ export function DprSiteActivitiesEditor({
                 </div>
                 <div>
                   <Label htmlFor={fieldId("chainage-from")}>Chainage / sample from (km)</Label>
-                  <Input id={fieldId("chainage-from")} inputMode="decimal" value={displayValue(activity.chainageFrom)} disabled={disabled} onChange={event => patch(index, { chainageFrom: event.target.value })} />
+                  <Input id={fieldId("chainage-from")} inputMode="text" value={displayChainageInput(activity.chainageFrom)} disabled={disabled} onChange={event => patch(index, { chainageFrom: event.target.value })} onBlur={event => patch(index, { chainageFrom: formatDprChainage(event.target.value) })} placeholder="2+600" />
                 </div>
                 <div>
                   <Label htmlFor={fieldId("side")}>Side</Label>
@@ -345,7 +342,7 @@ export function DprSiteActivitiesEditor({
 
               {activity.activityType === "other" && (
                 <div className="sm:col-span-2">
-                  <Label htmlFor={fieldId("note")}>Activity</Label>
+                  <Label htmlFor={fieldId("note")}>What was done</Label>
                   <Textarea id={fieldId("note")} value={activity.note ?? ""} disabled={disabled} onChange={event => patch(index, { note: event.target.value })} rows={2} />
                 </div>
               )}

@@ -127,15 +127,17 @@ export async function reconcileDprSiteActivities(
     if (!row) throw Object.assign(new Error("A site activity could not be saved. Reload and try again."), { status: 409 });
     savedRows.push(row);
 
-    const requestedIds = Array.from(new Set((input.personnelIds ?? []).map(Number)));
+    const requestedIds: number[] = Array.from(new Set<number>(
+      (Array.isArray(input.personnelIds) ? input.personnelIds : []).map((value: unknown) => Number(value)),
+    ));
     if (requestedIds.some((id: number) => !Number.isInteger(id) || id <= 0)) {
       throw Object.assign(new Error("Choose valid site staff for this activity."), { status: 422 });
     }
-    const oldLinks = saved
+    const oldLinks: any[] = saved
       ? await tx.select().from(dprSiteActivityStaff).where(eq(dprSiteActivityStaff.siteActivityId, row.id))
       : [];
-    const priorIds = new Set(oldLinks.map((link: any) => Number(link.personnelId)));
-    const personnelRows = requestedIds.length
+    const priorIds = new Set<number>(oldLinks.map((link: any) => Number(link.personnelId)));
+    const personnelRows: any[] = requestedIds.length
       ? await tx.select().from(personnel).where(inArray(personnel.id, requestedIds))
       : [];
     if (personnelRows.length !== requestedIds.length) {
@@ -146,7 +148,7 @@ export async function reconcileDprSiteActivities(
     }
     const removed = oldLinks.filter((link: any) => !requestedIds.includes(Number(link.personnelId))).map((link: any) => link.id);
     if (removed.length) await tx.delete(dprSiteActivityStaff).where(inArray(dprSiteActivityStaff.id, removed));
-    const added = requestedIds.filter((id: number) => !priorIds.has(id));
+    const added: number[] = requestedIds.filter((id: number) => !priorIds.has(id));
     if (added.length) await tx.insert(dprSiteActivityStaff).values(added.map((personnelId: number) => ({
       siteActivityId: row.id,
       personnelId,

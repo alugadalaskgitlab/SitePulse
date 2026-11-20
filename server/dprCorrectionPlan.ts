@@ -74,7 +74,9 @@ export function planDprCorrection(saved: any, form: any, actor?: { isOwner?: boo
 
   for (const section of Object.keys(correctionFields)) {
     const olds = section === "header" ? [saved] : saved[section] ?? [];
-    let rows = section === "header" ? [form.header] : form[section];
+    let rows = section === "header" ? [form.header]
+      : section === "siteActivities" && form[section] === undefined ? olds
+      : form[section];
     if (!olds.length && Array.isArray(rows)) {
       // SiteEdit renders empty input placeholders, not new stored evidence.
       rows = rows.filter((r: any) => r?.persistedId != null
@@ -127,7 +129,7 @@ export function planDprCorrection(saved: any, form: any, actor?: { isOwner?: boo
           block(section, persistedId, "personnelIds", "Choose a valid list of staff.");
           continue;
         }
-        const extra = new Set(["id", "persistedId", "staff", "staffNames", "attachment", "file", "resultPass"]);
+        const extra = new Set(["id", "dprId", "createdAt", "updatedAt", "persistedId", "staff", "staffNames", "attachment", "file", "resultPass"]);
         for (const key of Object.keys(row)) {
           if (!correctionFields.siteActivities.includes(key) && !extra.has(key)) {
             block(section, persistedId, key, "Unknown site activity field; reload the current editor.");

@@ -92,7 +92,7 @@ import { APPLICABLE_ARRANGEMENT_STATUSES, blocksExternalReceiptsForBoqItem } fro
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { EquipmentRowRemove, resolveEquipmentRemovalIndex } from "@/components/EquipmentRowRemove";
 import { DprSiteActivitiesEditor, type DprSiteActivity } from "@/components/DprSiteActivitiesEditor";
-import { DPR_SITE_ACTIVITY_DEFAULT_LAYERS } from "@shared/dprSiteActivities";
+import { DPR_SITE_ACTIVITY_DEFAULT_LAYERS, parseDprChainageKm } from "@shared/dprSiteActivities";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 import { equipmentStatusRequiresReason } from "@shared/equipmentStatus";
 import { withNewEquipmentWorkingDefault, meaningfulEquipmentRows, isMeaningfulEquipmentRow, isVisibleEquipmentRow } from "@shared/equipmentUsage";
@@ -429,8 +429,8 @@ export function mapDprToFormState(dpr: any) {
     id: activity.id,
     persistedId: activity.id != null ? Number(activity.id) : undefined,
     activityType: activity.activityType,
-    chainageFrom: activity.chainageFrom == null ? null : String(activity.chainageFrom),
-    chainageTo: activity.chainageTo == null ? null : String(activity.chainageTo),
+    chainageFrom: activity.chainageFrom == null ? null : Number(activity.chainageFrom),
+    chainageTo: activity.chainageTo == null ? null : Number(activity.chainageTo),
     personnelIds: activity.personnelIds ?? activity.staff?.map((person: any) => person.id) ?? [],
     attachment: activity.objectPath ? activity.attachment ?? {
       fileName: activity.fileName ?? "Attachment",
@@ -699,6 +699,14 @@ export default function SiteEdit() {
 
   const { data: personnelList } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
+  });
+  const { data: personnelIncludingInactive } = useQuery<Personnel[]>({
+    queryKey: ["/api/personnel", "includeInactive"],
+    queryFn: async () => {
+      const response = await fetch("/api/personnel?includeInactive=true", { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load site staff.");
+      return response.json();
+    },
   });
   const siteActivityLayers = useMemo(() => {
     const found = new Set<string>();
@@ -1643,13 +1651,12 @@ export default function SiteEdit() {
     sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
     siteActivities: siteActivities.map((activity, index) => {
       const { id: _id, staffNames: _staffNames, staff: _staff, file: _file, ...row } = activity as any;
-      const finiteKm = (value: any) => value == null || value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
       return {
         ...row,
         persistedId: activity.persistedId ?? (typeof activity.id === "number" ? activity.id : undefined),
         sortOrder: index,
-        chainageFrom: finiteKm(activity.chainageFrom),
-        chainageTo: finiteKm(activity.chainageTo),
+        chainageFrom: parseDprChainageKm(activity.chainageFrom),
+        chainageTo: parseDprChainageKm(activity.chainageTo),
         resultValue: activity.resultValue == null || activity.resultValue === "" ? null : String(activity.resultValue),
         requiredValue: activity.requiredValue == null || activity.requiredValue === "" ? null : String(activity.requiredValue),
         personnelIds: activity.personnelIds ?? [],
@@ -1680,6 +1687,7 @@ export default function SiteEdit() {
 
   const draftSaveMutation = useMutation({
     mutationFn: async (payload: any) => {
+      if (isUploadingActivity) throw new Error("Wait for the site activity attachment to finish uploading before saving.");
       const response = await apiRequest("PATCH", `/api/dprs/${id}/draft`, {
         ...payload, ...requireDprWriteTokens(draftWriteTokensRef.current), equipment: await prepareBreakdownAttachments(payload.equipment),
       });
@@ -1733,6 +1741,7 @@ export default function SiteEdit() {
 
   const submitDraftMutation = useMutation({
     mutationFn: async (payload: any) => {
+      if (isUploadingActivity) throw new Error("Wait for the site activity attachment to finish uploading before submitting.");
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       const saved = await apiRequest("PATCH", `/api/dprs/${id}/draft`, {
         ...payload, ...requireDprWriteTokens(draftWriteTokensRef.current),
@@ -1770,6 +1779,10 @@ export default function SiteEdit() {
   });
 
   const handleDraftSave = () => {
+    if (isUploadingActivity) {
+      toast({ title: "Wait for the activity attachment to finish uploading", variant: "destructive" });
+      return;
+    }
     if (equipment.some((row) => Number(row.diesel || 0) > 0 && !row.dieselSource)) {
       toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
       return;
@@ -1791,6 +1804,10 @@ export default function SiteEdit() {
   };
 
   const handleSubmitDraft = () => {
+    if (isUploadingActivity) {
+      toast({ title: "Wait for the activity attachment to finish uploading", variant: "destructive" });
+      return;
+    }
     if (equipment.some((row) => Number(row.diesel || 0) > 0 && !row.dieselSource)) {
       toast({ title: "Select diesel source for every equipment row with positive diesel", variant: "destructive" });
       return;
@@ -2148,7 +2165,7 @@ export default function SiteEdit() {
             <Button
               variant="outline"
               onClick={handleDraftSave}
-              disabled={draftSaveMutation.isPending || submitDraftMutation.isPending}
+              disabled={draftSaveMutation.isPending || submitDraftMutation.isPending || isUploadingActivity}
               className="gap-2"
               data-testid="button-save-draft-progress"
             >
@@ -2158,7 +2175,7 @@ export default function SiteEdit() {
             {isEditFormComplete() && (
               <Button
                 onClick={handleSubmitDraft}
-                disabled={submitDraftMutation.isPending || draftSaveMutation.isPending}
+                disabled={submitDraftMutation.isPending || draftSaveMutation.isPending || isUploadingActivity}
                 className="gap-2 bg-green-600 hover:bg-green-700 text-white"
                 data-testid="button-submit-dpr"
               >
@@ -3258,7 +3275,7 @@ export default function SiteEdit() {
 
       <DprSiteActivitiesEditor
         activities={siteActivities}
-        personnel={(personnelList ?? []).map(person => ({
+        personnel={(personnelIncludingInactive ?? personnelList ?? []).map(person => ({
           id: person.id,
           name: person.name,
           isActive: Number(person.isActive ?? 1) !== 0,
@@ -3983,7 +4000,7 @@ export default function SiteEdit() {
             <Button
               variant="outline"
               onClick={handleDraftSave}
-              disabled={draftSaveMutation.isPending || submitDraftMutation.isPending}
+              disabled={draftSaveMutation.isPending || submitDraftMutation.isPending || isUploadingActivity}
               className="gap-2"
               data-testid="button-save-bottom"
             >
@@ -3993,7 +4010,7 @@ export default function SiteEdit() {
             {isEditFormComplete() && (
               <Button
                 onClick={handleSubmitDraft}
-                disabled={submitDraftMutation.isPending || draftSaveMutation.isPending}
+                disabled={submitDraftMutation.isPending || draftSaveMutation.isPending || isUploadingActivity}
                 className="gap-2 bg-green-600 hover:bg-green-700 text-white"
                 data-testid="button-submit-dpr-bottom"
               >

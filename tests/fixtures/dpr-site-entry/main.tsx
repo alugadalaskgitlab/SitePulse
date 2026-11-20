@@ -18,6 +18,7 @@ import DprDetails from "../../../client/src/pages/DprDetails";
 import SiteReport from "../../../client/src/pages/SiteReport";
 import SiteDashboard from "../../../client/src/pages/SiteDashboard";
 import { DprActivityReadOnly } from "../../../client/src/components/DprActivityReadOnly";
+import { DprSiteActivitiesEditor } from "../../../client/src/components/DprSiteActivitiesEditor";
 import { ActivityReceiptStrip } from "../../../client/src/components/ActivityReceiptStrip";
 import { queryClient } from "../../../client/src/lib/queryClient";
 import { ATTACHMENT_VIEWER_HISTORY_KEY } from "../../../client/src/hooks/use-before-unload";
@@ -34,6 +35,13 @@ const site = {
   name: "NARASIMHULU ROAD",
   location: "Kurnool District",
   isActive: 1,
+};
+const activity01BoqProject = {
+  id: 5501,
+  name: "NARASIMHULU ROAD BOQ",
+  siteId: site.id,
+  itemCount: 1,
+  status: "active",
 };
 
 // The recording's site is kept separate from the older DPR fixture site so
@@ -1432,10 +1440,44 @@ function dpr20B4Scenario() {
   ];
   return { report, receipts, snapshot: {
     dpr: report, context: normalizeDprSectionContext(report),
-    sectionTokens: { activity: "b4-a", equipment: "b4-e", labour: "b4-l", materials: "b4-m" },
+    sectionTokens: { activity: "b4-a", siteActivities: "b4-s", equipment: "b4-e", labour: "b4-l", materials: "b4-m" },
     headerToken: "b4-header", sections: dprSectionStates(report),
   } };
 }
+
+const dprActivity01Report = {
+  ...storedDpr,
+  id: 24602,
+  date: "2026-08-05",
+  site: site.name,
+  engineer: "ACTIVITY FIXTURE ENGINEER",
+  dprStatus: "draft",
+  workType: "road",
+  boqProjectId: 5501,
+  progress: [{ ...storedDpr.progress[0], id: 24701, activity: "WMM laying", quantity: 35, boqItemId: null, programmeBarId: null }],
+  equipment: [],
+  labour: [],
+  materials: [],
+  sitePurchases: [],
+  siteActivities: [{
+    id: 24801, persistedId: 24801, dprId: 24602, activityType: "test", sortOrder: 0,
+    testName: "Field density (FDD / compaction)", testPlace: "Site lab", layer: "WMM",
+    chainageFrom: 2.6, chainageTo: null, side: "LHS", resultValue: "95.9",
+    requiredValue: "97", resultPass: false, note: "Sample from the completed layer.",
+    fileName: "WMM-field-density.pdf", objectPath: "/objects/fixture-wmm-field-density.pdf",
+    mimeType: "application/pdf", fileSize: 1024,
+    attachment: { fileName: "WMM-field-density.pdf", objectPath: "/objects/fixture-wmm-field-density.pdf", mimeType: "application/pdf", fileSize: 1024 },
+    personnelIds: [personnel[0].id],
+    staffNames: [personnel[0].name], staff: [{ id: personnel[0].id, name: personnel[0].name, isActive: true }],
+  }],
+};
+const dprActivity01Snapshot = {
+  dpr: dprActivity01Report,
+  context: normalizeDprSectionContext(dprActivity01Report),
+  sectionTokens: { activity: "activity-a", siteActivities: "activity-s", equipment: "activity-e", labour: "activity-l", materials: "activity-m" },
+  headerToken: "activity-header",
+  sections: dprSectionStates(dprActivity01Report),
+};
 
 const fixtureState = {
   requests: [] as RequestRecord[],
@@ -1781,6 +1823,22 @@ window.fetch = async (input, init) => {
   const body = parseBody(init);
   const pathname = url.pathname;
   fixtureState.requests.push({ method, path: `${pathname}${url.search}`, body });
+
+  if (new URLSearchParams(window.location.search).has("dprActivity01")) {
+    if (method !== "GET") return json({ message: "DPR-ACTIVITY-01 fixture blocks all writes" }, 405);
+    if (pathname === "/api/dprs/24602") return json(dprActivity01Report);
+    if (pathname === "/api/dpr-sections/24602") return json(dprActivity01Snapshot);
+    if (pathname === "/api/personnel") return json(personnel);
+    if (pathname === "/api/sites") return json([site]);
+    if (pathname === "/api/plant-module/equipment") return json(equipment);
+    if (pathname === "/api/boq/projects") return json([activity01BoqProject]);
+    if (pathname === "/api/boq/projects/5501") return json(activity01BoqProject);
+    if (pathname === "/api/boq/projects/5501/items") return json(boqItems);
+    if (pathname === "/api/maintenance/logs" || pathname === "/api/equipment-usage/lifecycle") return json([]);
+    if (pathname === "/api/reports/equipment-performance") return json({ projects: [], equipment: [], rows: [] });
+    if (pathname === "/api/config") return json({});
+    if (pathname.startsWith("/api/")) return json([]);
+  }
 
   if (new URLSearchParams(window.location.search).has("dpr20b4")) {
     if (method !== "GET") return json({ message: "DPR20 B4 fixture blocks every write" }, 405);
@@ -2601,6 +2659,10 @@ const mount = () => {
   if (!new URLSearchParams(window.location.search).has("dpr20b4")) installDpr13Adapter();
   queryClient.clear();
   const isEdit = window.location.pathname.startsWith("/site/edit/");
+  const isDprActivity01 = new URLSearchParams(window.location.search).has("dprActivity01");
+  const isDprActivity01Hub = window.location.pathname === "/fixture/dpr-activity-hub";
+  const isDprActivity01Editor = window.location.pathname === "/fixture/dpr-activity-editor";
+  const isDprActivity01Report = window.location.pathname === "/dpr/24602";
   const isDpr19B1Dashboard = window.location.pathname === "/site/dashboard"
     && new URLSearchParams(window.location.search).get("dpr19b1") === "1";
   const isSiteSuccess = window.location.pathname.startsWith("/site/success/");
@@ -2632,12 +2694,24 @@ const mount = () => {
       {new URLSearchParams(window.location.search).has("dpr13Legacy") && <header className="border border-amber-500 bg-amber-50 p-4">DPR-13 synthetic legacy-token fixture — real Guided/SiteEdit components, intercepted API only.</header>}
       <Dpr16B2EvidenceBanner />
       {isDpr19B1Dashboard && <header data-testid="dpr19-b1-fixture-banner" className="border border-amber-500 bg-amber-50 p-4 text-sm font-semibold">DPR19 B1 · isolated synthetic GET responses · actual SiteDashboard · no customer database</header>}
+      {isDprActivity01 && <header data-testid="dpr-activity01-fixture-banner" className="border border-amber-500 p-4 text-sm font-semibold">DPR-ACTIVITY-01 · synthetic fixture only · no customer DPRs or writes</header>}
       <Dpr07EvidenceBanner />
         <Dpr10EvidenceBanner />
         <Dpr08EvidenceBanner />
         <Dpr09EvidenceBanner />
         <DprNullEvidenceBanner />
-      {isDpr19B1Dashboard ? <SiteDashboard /> : isDpr18B3Details ? <DprDetails /> : isDpr20B4Report && window.location.pathname === "/fixture/dpr20-b4-hub" ? <DprSections initialId={24601} /> : window.location.pathname === "/fixture/dpr16-b3-activity" ? (
+      {isDprActivity01Hub ? <DprSections initialId={24602} />
+        : isDprActivity01Report ? <DprDetails />
+        : isDprActivity01Editor ? <main className="mx-auto max-w-4xl space-y-4 p-6"><DprSiteActivitiesEditor
+            activities={dprActivity01Report.siteActivities}
+            personnel={personnel.map(person => ({ id: person.id, name: person.name, isActive: true }))}
+            layers={["WMM", "GSB"]}
+            onChange={() => {}}
+            onRemove={() => {}}
+            onFileSelected={() => {}}
+            onRemoveAttachment={() => {}}
+          /></main>
+        : isDpr19B1Dashboard ? <SiteDashboard /> : isDpr18B3Details ? <DprDetails /> : isDpr20B4Report && window.location.pathname === "/fixture/dpr20-b4-hub" ? <DprSections initialId={24601} /> : window.location.pathname === "/fixture/dpr16-b3-activity" ? (
         <main className="mx-auto max-w-4xl space-y-4 p-6">
           <h1 className="text-xl font-semibold">DPR16 B3 · isolated synthetic activity summary</h1>
           <p>Fixture only; this uses the same read-only activity component as both report routes.</p>
