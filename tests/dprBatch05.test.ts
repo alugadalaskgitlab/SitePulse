@@ -133,7 +133,7 @@ describe("deriveDprChecklist — real completeness, not row existence", () => {
       labour: [{ category: "", count: null, task: "", contractor: "" }],
     }), false);
     expect(c.items.find((i) => i.id === "c1")!.sub).toBe("No equipment recorded yet");
-    expect(c.items.find((i) => i.id === "c4")!.sub).toBe("No activities recorded yet");
+    expect(c.items.find((i) => i.id === "c4")!.sub).toBe("No work done recorded yet");
     expect(c.items.find((i) => i.id === "c2")!.details).toHaveLength(0);
   });
   it("hides only the legacy start-time auto-prefill from Field Home, while retaining genuine equipment evidence", () => {

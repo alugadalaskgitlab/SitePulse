@@ -65,9 +65,18 @@ vi.mock("../server/auth", async (importOriginal) => {
   return { ...actual, requireAuth: inject, optionalAuth: inject };
 });
 
-vi.mock("../server/db", () => ({
-  db: { transaction: async (callback: any) => callback({ execute: async () => [] }) },
-}));
+vi.mock("../server/db", () => {
+  const query: any = {
+    from: () => query,
+    where: () => query,
+    limit: async () => [{ id: 1, isActive: 1 }],
+    then: (resolve: any) => resolve([{ id: 1, isActive: 1 }]),
+  };
+  return { db: {
+    select: vi.fn(() => query),
+    transaction: async (callback: any) => callback({ execute: async () => [] }),
+  } };
+});
 
 vi.mock("../server/dprSections", async (importOriginal) => ({
   ...await importOriginal<typeof import("../server/dprSections")>(),
@@ -167,6 +176,7 @@ function guidedPayload(opts: {
     date: "2026-08-05",
     site: "Test Site",
     engineer: "TEST ENGINEER - ENGINEER",
+    engineerPersonnelId: 1,
     role: "engineer",
     workType: "road",
     boqProjectId: PROJECT_ID,

@@ -33,16 +33,25 @@ function hydratedFixture() {
   saved.materials = [{ id: 6, type: null, material: "Stone", quantity: "12.000", uom: "MT" }];
   saved.sitePurchases = [{ id: 7, itemDescription: "Consumable", amount: "50.00", quantity: "2.000" }];
   const form = mapRealForm(saved);
-  // Match the dedicated SiteEdit POST body, which deliberately uses raw state.
+  // The one-off DPR-314 planner accepts only the fields it may correct. The
+  // real editor now also hydrates its independent Site activities section.
+  expect(form.siteActivities).toEqual([]);
+  // Keep only fields this standalone planner is designed to inspect.
   form.structureItems = [];
   form.baselineProgress = structuredClone(saved.progress);
   form.progress[0].chainageFrom = "1+100";
   form.progress[0].chainageTo = "1+200";
   form.progress[0].chainageOverrideReason = "Correct overlap";
-  return { saved, form };
+  const { siteActivities: _siteActivities, ...correctionFields } = form;
+  const header = Object.fromEntries(
+    ["date", "site", "engineer", "remarks", "boqProjectId"]
+      .filter(key => Object.hasOwn(form.header ?? {}, key))
+      .map(key => [key, form.header[key]]),
+  );
+  return { saved, form: { ...correctionFields, header } };
 }
 
-it("accepts actual hydrated/JSON-submitted SiteEdit rows with sticky session flags but unchanged facts", () => {
+it("accepts hydrated DPR-314 correction fields with sticky session flags but unchanged facts", () => {
   const { saved, form } = hydratedFixture();
   expect(form.equipment[0].workAssignmentEdited).toBeUndefined();
   expect(form.equipment[0].isNew).toBeUndefined();

@@ -1,0 +1,46 @@
+# CHECKUP-01 — Test failure review
+
+## Class B — app issues still present
+
+These are real behavior defects. I left application code and these tests unchanged.
+
+| Test | First failing commit | Finding and impact |
+| --- | --- | --- |
+| `programmeScopeAlignmentApply.test.ts` — “applies the remaining front's full quantity and preserves baseline and revision history”; “reports a row with no returned update while applying the other rows”; “previews and applies the exact three remaining structure fronts across a no-scope gap”; “reports a previewed row when its proposal changes before Apply and continues other rows” | `6310c498` (`Implement boq project detail and storage logic updates`). The tests pass at its parent `4b02372e` and fail at `6310c498`. | The preview treats outside-scope bar #956 as an update: it expects 4 updates instead of 3 and suggests removing 0 bars instead of 1. At Apply, #956 returns no saved row. The surviving bars also stay at chainage 1.6–3.2 instead of the expected 1.9–2.9. This can leave work bars outside the approved reach and fail to align their chainages. **Severity: high.** Smallest fix: classify outside-scope bars as remove suggestions, and use the clipped 1.9–2.9 range for the surviving in-scope updates. |
+| `arrangementProcurementCorrection.test.ts` — “Part G — internal earthwork_arrangement_required renders as mapping status user-facing text is 'Material mapping required', never 'Execution Arrangement Required'” | `e6920753` (`Refactor work demand logic and update server routes`). The test passes at its parent and fails at this commit. | The Work Demand status label “Material mapping required” was replaced with the action button “Link to master”. Users no longer see the required status text. **Severity: medium.** Smallest fix: show “Material mapping required” alongside the link action. |
+
+## Failures corrected with test-only updates
+
+These failures came from tests that no longer matched intentional behavior or lacked the fixtures required by current code. I changed test setup/expectations only.
+
+| Class | File and failing tests | Failure first confirmed | Test-only update |
+| --- | --- | --- | --- |
+| A | `dpr04Fix2.test.ts` (5): “PATCH allows a project mismatch only for a no-BOQ draft and canonicalizes the saved project”; “submit allows a project mismatch only for a no-BOQ draft and preserves the saved project”; “saving mixed real BOQ refs is rejected before submission, including equipment segments and labour”; “PATCH also rejects a real labour/equipment BOQ reference”; “does not allow a PATCH to bypass the guard by omitting stored equipment child refs” | `051d6162` (SR-01: “Add DPR staff links and tidy work labels”) | Added a selected active engineer to the route fixture. New DPR creation now requires an active staff member. |
+| A | `dpr07VersionValidation.test.ts` (3): “applies all-row validation to fresh 'programme links'”; “applies all-row validation to fresh 'quantity sources'”; “applies all-row validation to fresh 'material outcomes'” | `051d6162` (SR-01) | Added the active engineer to the request fixture so each test reaches its intended validation check. |
+| C | `guidedDprReliability.test.ts` (14): “rejects stale client tokens before submitting the saved draft”; “draft POST with INCOMPLETE chainage keeps the link (draft-lenient)”; “full lifecycle: create draft → PATCH draft twice → submit — link intact at every step, exactly one DPR record”; “submit strictly blocks a linked row with missing chainage (no silent link drop)”; “unlinked BOQ progress survives draft → update → submit, then requires correction review”; “keeps stale programme links server-invalid until the row is explicitly unlinked”; “submit without a reason is blocked with PROGRAMME_LINK_INVALID”; “with a reason: submit succeeds, reason persisted, row stamped review_required”; “executedBy set on a draft reaches submitDraftDpr unchanged”; and actor attribution tests A–E for draft creation, every draft save, submit, direct submit, and submitted-version edit | `051d6162` (SR-01 staff-selection setup) | The route mock did not implement the active-personnel query and the payload omitted the selected engineer. Added both to the test fixture. |
+| A | `dpr20B4MaterialsClarity.test.tsx` (4): “keeps the persisted empty materials status”; “keeps the persisted incomplete materials status”; and “keeps the persisted ready materials status” (two fixtures) | `051d6162` | Updated the section-hub heading and visible status-label assertions to the current “Materials” tile and sentence-case labels; the readiness state and gate assertions remain. |
+| A | `dprBatch05.test.ts` (1): “blank placeholder rows never warn” | `051d6162` | Updated the expected label from “No activities recorded yet” to “No work done recorded yet”. |
+| A | `dpr13FrontendTokens.test.ts` (2): “copies the hydrated baseline rather than following mutations of cached query data”; “accepts a complete successful-persist receipt as a new explicit baseline” | `f6cb2b0c` (DPR-ACTIVITY-01 site-activity section) | Added the new `siteActivities` section token to the snapshot fixture. |
+| C | `dpr314Correction.test.ts` (10): “accepts actual hydrated/JSON-submitted SiteEdit rows with sticky session flags but unchanged facts”; rejects actual assignment changes to `boqItemId`, `resourceScope`, `structureId`, and `activitySegments`; rejects real mapped changes to `labour.count`, `materials.quantity`, `sitePurchases.amount`, `equipment.plantUsageId`, and `equipment.persistedId` | `f6cb2b0c` (DPR-ACTIVITY-01) | SiteEdit now hydrates the optional `siteActivities` field. The isolated DPR-314 helper rejects fields outside its narrow correction contract and has no route caller. The test now checks hydration and supplies the helper only its supported correction fields; the correction guards remain covered. |
+| C | `equipmentConsistencyRuntime.test.ts` (1): “does not let a second recovery overwrite the first recovered project pin” | `f6cb2b0c` (DPR-ACTIVITY-01) | Added the missing empty result to the mock query sequence for the new site-activity read. |
+| C | `materialReceiptReversal06mD.test.ts` (1): “receipt in supplier UOM reverses the CONVERTED stock quantity (2 Ton × 1000 = 2000 Kg)” | `4f6e7ab1` (stock tracking/unit-conversion update) | The fixture said the stock balance was in Liters while the assertion expected Kg. Set the fixture balance unit to Kg. |
+| C | `purchase-indent-pi01.test.ts` (1): “excludes incompatible units with an explicit warning and rolls back atomically” | `4f6e7ab1` (stock tracking/unit-conversion update) | The test had tried to create a new incompatible CUM-to-MT receipt. It now seeds a legacy receipt directly in the disposable test database, exercising the warning path while preserving the current create-time conversion guard. |
+| C | `unscheduledReportCredit.test.ts` (3): “reports the persisted null-link BOQ total”; “ignores a stale factor when row and contractual UOM are both SQM”; “nulls completion and valuation when any eligible credit is unresolved” | `1f5beff7` (STOCK-01C DPR and incidental accounting) | Added submitted status and false lifecycle flags to the mocked DPR rows. The shared eligibility check requires those facts even when the SQL query already filters them. |
+
+The first-failure commits above were checked in temporary worktrees against each commit and its parent. For the full suite, the pre-update baseline had 50 failures; the 45 A/C test updates resolved those. The two Class B issues account for the remaining five failures.
+
+None of the failures first appeared in WORKVALUE-02, TRIP-ROLE-02, or HOTFIX-01. The current scope-alignment defect begins in the later BOQ project/storage update `6310c498`; the missing Work Demand label begins in the earlier `e6920753` refactor. The resolved failures trace to SR-01, DPR-ACTIVITY-01, stock unit conversion, and STOCK-01C test/setup changes.
+
+## TESTS-01 and earlier known failures
+
+`reports/TESTS-01.md` recorded 59 failures across 15 files. Of those, `dieselStockGuard06mB.test.ts` (1) and `programmeBarLinkage030A.test.ts` (8) now pass without changes in this batch. The other 13 files were in the current pre-update baseline; the table above lists their disposition.
+
+The prior six known failure signatures were one arrangement test, one material-receipt test, one purchase-indent test, and three unscheduled-report tests. After the test-only updates, only the arrangement test remains failing; the other five pass. `vendorBillVb15Server.test.ts`, which failed in an earlier full-suite report, also passes now.
+
+## Final verification and safety
+
+- Focused rerun after test updates: **11 files passed, 175 tests passed**.
+- Final full suite after the test updates: **481 test files; 5,859 passed, 5 failed, 3 skipped**. The only failing tests are the two Class B items above: 1 arrangement test and 4 programme-scope tests.
+- The suite inventory is one file larger than the 480-file TESTS-01 run because `client/src/pages/SiteEditOwnerCorrection.test.tsx` was added afterward.
+- The full suite used a disposable local PostgreSQL database built from the current schema. No development or production database was accessed or changed.
+- This batch changed test files and this report only. No application code, schema, or business data changed. Nothing was published.

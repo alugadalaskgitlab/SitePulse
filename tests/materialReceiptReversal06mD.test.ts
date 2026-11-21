@@ -67,6 +67,7 @@ type Fixture = {
   receipt: any;
   material: any;
   balance: number;
+  balanceUom?: string;
   hasReversalRow: boolean;
 };
 
@@ -82,7 +83,7 @@ function stubTx(f: Fixture) {
         return { rows: f.hasReversalRow ? [{ id: 999 }] : [] };
       }
       // stock_balances FOR UPDATE
-      return { rows: [{ id: 1, balance: f.balance, uom: "Liters" }] };
+      return { rows: [{ id: 1, balance: f.balance, uom: f.balanceUom ?? "Liters" }] };
     }),
     select: vi.fn(() => ({
       from: (table: any) => {
@@ -212,7 +213,7 @@ describe("06M-D cancel reversal (tx body)", () => {
   it("conversion parity: receipt in supplier UOM reverses the CONVERTED stock quantity (2 Ton × 1000 = 2000 Kg)", async () => {
     const mat = { id: 30, name: "CEMENT", conversionFactor: 1000, conversionFromUom: "Ton", conversionToUom: "Kg" };
     const rec = { ...RECEIPT, id: 91, materialId: 30, quantity: 2, uom: "Ton" };
-    const { tx, calls } = stubTx({ receipt: rec, material: mat, balance: 5000, hasReversalRow: false });
+    const { tx, calls } = stubTx({ receipt: rec, material: mat, balance: 5000, balanceUom: "Kg", hasReversalRow: false });
     await inst._cancelMaterialReceiptWithinTx(tx, 91, 9, "wrong entry");
     expect(calls.ledgerInserts[0]).toMatchObject({ quantityOut: 2000, balanceAfter: 3000, uom: "Kg" });
   });

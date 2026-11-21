@@ -39,7 +39,7 @@ vi.mock("../server/db", () => {
     from: () => query,
     innerJoin: () => query,
     where: () => query,
-      limit: async () => [{ siteId: 19, siteName: fx.recoveryProjectSite }],
+      limit: async () => [{ id: 19, isActive: 1, siteId: 19, siteName: fx.recoveryProjectSite }],
       then: (resolve: any) => resolve([{ id: 19, name: fx.recoveryProjectSite }]),
   };
   return {
@@ -139,6 +139,7 @@ function noBoqPayload(projectId: number, asDraft = true): any {
     date: "2026-09-10",
     site: "DPR-04 TEST SITE",
     engineer: "TEST ENGINEER",
+    engineerPersonnelId: 19,
     role: "engineer",
     workType: "road",
     boqProjectId: projectId,
@@ -209,7 +210,7 @@ describe("DPR-04 Fix 2 — no-BOQ mismatch carve-out", () => {
 
   it("B/D: PATCH allows a project mismatch only for a no-BOQ draft and canonicalizes the saved project", async () => {
     const created = await request(app).post("/api/dprs").send(noBoqPayload(PROJECT_A));
-    expect(created.status).toBe(201);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
 
     const patched = await request(app)
       .patch(`/api/dprs/${created.body.id}/draft`)

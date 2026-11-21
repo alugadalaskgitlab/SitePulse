@@ -56,6 +56,18 @@ describe("PI-01 executable PostgreSQL and storage integration", () => {
       isCancelled: false, isDeleted: false, receiptNo: `R${id}` });
     await holder.db.transaction((tx: any) => storage._linkPiReceiptWithinTx(tx, 1, id));
   }
+  async function legacyReceipt(id: number, qty: number, uom: string) {
+    // This intentionally models a pre-validation receipt that already exists in
+    // history. New receipt creation correctly refuses CUM→MT without density.
+    await holder.db.insert(schema.materialReceipts).values({
+      id, date: "2026-02-01", quantity: qty, uom, materialId: 1,
+      isPlantCommon: 1, plantName: "Main Plant", receiptNo: `LEGACY-${id}`,
+      isCancelled: false, isDeleted: false,
+    });
+    await holder.db.update(schema.purchaseIndentItems)
+      .set({ linkedReceiptId: id })
+      .where(eq(schema.purchaseIndentItems.id, 1));
+  }
   async function trip(id: number, qty: number, uom = "MT") {
     await storage.createSiteMaterialTrip({ id, indentId: 1, indentItemId: 1, date: "2026-02-03",
       site: "Site A", material: "WMM", quantity: qty, uom, isCancelled: false, isDeleted: false, receiptNumber: `T${id}` });
@@ -159,7 +171,7 @@ describe("PI-01 executable PostgreSQL and storage integration", () => {
   });
 
   it("excludes incompatible units with an explicit warning and rolls back atomically", async () => {
-    await receipt(1, 10, "CUM");
+    await legacyReceipt(1, 10, "CUM");
     await trip(1, 200);
     expect(await total()).toBe(200);
     const evidence = await storage._getPiDeliveryEvidence(holder.db, 1);

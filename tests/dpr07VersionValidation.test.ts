@@ -56,8 +56,8 @@ vi.mock("../server/db", () => {
     from: () => query,
     innerJoin: () => query,
     where: () => query,
-    limit: async () => [{ siteId: 19, siteName: fx.recoveryProjectSite }],
-    then: (resolve: any) => resolve([{ id: 19, name: fx.recoveryProjectSite }]),
+     limit: async () => [{ id: 19, isActive: 1, siteId: 19, siteName: fx.recoveryProjectSite }],
+     then: (resolve: any) => resolve([{ id: 19, name: fx.recoveryProjectSite, isActive: 1 }]),
   };
   return { db: { select: vi.fn(() => query), execute: vi.fn().mockResolvedValue({ rows: [] }) } };
 });
@@ -190,6 +190,7 @@ function header(overrides: Record<string, unknown> = {}) {
     date: "2026-09-10",
     site: "DPR-07 TEST SITE",
     engineer: "TEST ENGINEER",
+    engineerPersonnelId: 19,
     role: "manager",
     workType: "road",
     boqProjectId: PROJECT_ID,

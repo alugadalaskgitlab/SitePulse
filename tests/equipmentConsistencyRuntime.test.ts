@@ -545,6 +545,7 @@ describe("DPR draft operational side-effect boundary", () => {
       [{ id: 99, projectId: 2 }],
       [], // old progress
       [], // old labour (worker-name preservation)
+      [], // old site activities
       // Second transaction locks both its optimistic source and requested
       // target before observing the first pin under the DPR lock.
       [{ id: 7, dprStatus: "draft", boqProjectId: 2, site: "SITE A" }],

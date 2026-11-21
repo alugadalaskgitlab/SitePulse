@@ -38,6 +38,12 @@ import { DatabaseStorage } from "../server/storage";
 
 const PROJECT_ID = 910001;
 const ITEM_ID = 701;
+const submittedDprFacts = {
+  dprStatus: "submitted",
+  isDeleted: false,
+  isCancelled: false,
+  isSuperseded: false,
+};
 const boqItem = {
   id: ITEM_ID,
   boqProjectId: PROJECT_ID,
@@ -82,6 +88,7 @@ describe("unscheduled BOQ progress remains in reporting credit", () => {
     fx.selectRows.push(
       [{ id: 6001 }], // submitted, non-superseded DPR ids
       [{
+        ...submittedDprFacts,
         boqItemId: ITEM_ID,
         quantity: 12,
         uom: "SQM",
@@ -111,6 +118,7 @@ describe("unscheduled BOQ progress remains in reporting credit", () => {
     // row-aware unit contract. A null programmeBarId is still not a filter.
     fx.executeRows.push(
       [{
+        ...submittedDprFacts,
         boqItemId: ITEM_ID,
         quantity: 12,
         uom: "SQM",
@@ -146,8 +154,8 @@ describe("unscheduled BOQ progress remains in reporting credit", () => {
     }
     fx.executeRows.push(
       [
-        { boqItemId: 13, quantity: 2400, uom: "SQM", boqUnit: "Sqm", measurementMethod: null, conversionFactor: 0.0001, dprDate: "2026-08-16" },
-        { boqItemId: 13, quantity: 2400, uom: "SQM", boqUnit: "Sqm", measurementMethod: null, conversionFactor: 0.0001, dprDate: "2026-08-17" },
+        { ...submittedDprFacts, boqItemId: 13, quantity: 2400, uom: "SQM", boqUnit: "Sqm", measurementMethod: null, conversionFactor: 0.0001, dprDate: "2026-08-16" },
+        { ...submittedDprFacts, boqItemId: 13, quantity: 2400, uom: "SQM", boqUnit: "Sqm", measurementMethod: null, conversionFactor: 0.0001, dprDate: "2026-08-17" },
       ],
       [],
     );
@@ -174,6 +182,7 @@ describe("unscheduled BOQ progress remains in reporting credit", () => {
     }
     fx.executeRows.push(
       [{
+        ...submittedDprFacts,
         boqItemId: ITEM_ID, quantity: 10, uom: "NOS", quantitySource: "measured",
         boqUnit: "MT", measurementMethod: null, conversionFactor: 2, dprDate: "2026-08-18",
       }],

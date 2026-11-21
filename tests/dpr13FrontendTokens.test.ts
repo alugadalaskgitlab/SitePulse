@@ -4,7 +4,7 @@ import { readDprWriteTokens, requireDprWriteTokens } from "../client/src/lib/dpr
 describe("DPR-13 legacy editor write-token baseline", () => {
   const snapshot = () => ({
     headerToken: "h0",
-    sectionTokens: { activity: "a0", equipment: "e0", labour: "l0", materials: "m0" },
+    sectionTokens: { activity: "a0", siteActivities: "s0", equipment: "e0", labour: "l0", materials: "m0" },
   });
   it("copies the hydrated baseline rather than following mutations of cached query data", () => {
     const cached = snapshot();

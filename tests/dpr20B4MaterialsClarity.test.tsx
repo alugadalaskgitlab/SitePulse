@@ -60,7 +60,8 @@ vi.mock("../client/src/pages/SiteEdit", () => ({ default: () => null }));
 const title = "Materials consumed / issued";
 const emptyText = "No materials consumed or issued recorded.";
 const note = "Bulk vehicle deliveries are tracked separately in Materials Received.";
-const tileTitle = `${title} & site purchases`;
+const hubNote = "Bulk vehicle deliveries are tracked separately in Materials received.";
+const tileTitle = "Materials";
 const material = {
   id: 24801, type: "Issued", material: "Synthetic cement", quantity: 2.5, uom: "MT",
   vehicleNumber: "SYN-ISSUED", supplier: "Synthetic store", location: "Synthetic work item", receiptNumber: "SYN-I-1",
@@ -169,8 +170,8 @@ describe.each([
 
 describe("DPR20 B4 section hub wording does not change readiness", () => {
   it.each([
-    ["empty", [], [], "Not yet entered"],
-    ["incomplete", [{ ...material, quantity: 0 }], [], "Needs completion"],
+    ["empty", [], [], "Not entered yet"],
+    ["incomplete", [{ ...material, quantity: 0 }], [], "Incomplete"],
     ["ready", [material], [], "Ready"],
     ["ready", [], [purchase], "Ready"],
   ])("keeps the persisted %s materials status, issues, submit gate and editor navigation", async (expectedState, materials, purchases, expectedLabel) => {
@@ -182,19 +183,19 @@ describe("DPR20 B4 section hub wording does not change readiness", () => {
       dpr: state.dpr, sections,
       context: { site: state.dpr.site, date: state.dpr.date, workType: "road", boqProjectId: null },
       headerToken: "synthetic-header",
-      sectionTokens: { activity: "a", equipment: "e", labour: "l", materials: "m" },
+       sectionTokens: { activity: "a", siteActivities: "s", equipment: "e", labour: "l", materials: "m" },
     };
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => snapshot });
     vi.stubGlobal("fetch", fetchMock);
     render(<DprSections initialId={24601} />);
     const heading = await screen.findByRole("heading", { name: tileTitle });
     const tile = heading.closest("button")!;
-    expect(within(tile).getByText(note)).toBeTruthy();
-    expect(within(tile).getByText(`${expectedState} — ${expectedLabel}`)).toBeTruthy();
+    expect(within(tile).getByText(hubNote)).toBeTruthy();
+    expect(within(tile).getByText(expectedLabel)).toBeTruthy();
     for (const issue of sections.materials.issues ?? []) {
       expect(within(tile).getByText(issue.message)).toBeTruthy();
     }
-    expect(screen.getAllByText(note)).toHaveLength(1);
+    expect(screen.getAllByText(hubNote)).toHaveLength(1);
     expect(sections.materials.state).toBe(expectedState);
     // Receipts remain a separate concept and are not included in section payload/readiness.
     expect(dprSectionStates({ ...state.dpr, receivedTrips: state.receipts })).toEqual(sections);
