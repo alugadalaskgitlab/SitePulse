@@ -24,7 +24,7 @@ const harness = vi.hoisted(() => {
   const tx: any = {
     execute: vi.fn(async () => ({ rows: [{ token: scopeToken }] })),
     select: vi.fn(() => {
-      const results = [[{ id: 2 }], bars, items, segments];
+      const results = [[{ id: 2 }], bars, items, [], segments];
       return query(results[selectIndex++] ?? []);
     }),
     transaction: vi.fn(async (callback: (executor: any) => Promise<unknown>) => callback(tx)),
