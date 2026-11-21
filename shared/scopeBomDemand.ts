@@ -162,8 +162,11 @@ function makeItemScopePlan(
     segment.segmentType === "temporary_block",
   );
   const allocation = allocateBoqQuantityToWorkingReaches(toWorkingReachItem(item), segments, item.sections);
-  const unrestricted = allocation.shares.some(share => share.label === "Full BOQ") ||
-    (allocation.shares.some(share => share.label === "Whole road") && workingSegments.length === 0);
+  // A full-BOQ allocation can still have a confirmed working reach that
+  // constrains where an existing bar may remain. Only skip chainage clipping
+  // when this item has no applicable confirmed working reach.
+  const unrestricted = workingSegments.length === 0 &&
+    allocation.shares.some(share => share.label === "Full BOQ" || share.label === "Whole road");
   const parts: ItemScopePlan["parts"] = [];
 
   for (const share of allocation.shares) {
@@ -515,7 +518,7 @@ export function buildScopeProgrammeAlignment(input: {
   const items = input.items as ScopeBomItem[];
   const bars = input.bars as ScopeBomBar[];
   const itemById = new Map(items.map(item => [Number(item.id), item]));
-  const { plansByItem, quantityByBarId } = calculateScopeBarQuantities(items, bars, input.segments);
+  const { plansByItem } = calculateScopeBarQuantities(items, bars, input.segments);
   const states: Array<{
     bar: ScopeBomBar;
     item: ScopeBomItem;
@@ -584,6 +587,27 @@ export function buildScopeProgrammeAlignment(input: {
 
     states.push({ bar, item, plan, currentFrom, currentTo, proposedFrom, proposedTo, action, reason });
   }
+
+  // Preview quantities against the same clipped bars that Apply will write.
+  // Outside bars must not dilute the allocator's quantity across surviving
+  // bars, and reach clipping must be reflected in length-share allocation.
+  const stateByBarId = new Map(states
+    .filter(state => state.bar.id != null)
+    .map(state => [Number(state.bar.id), state]));
+  const alignedBars = bars.flatMap(bar => {
+    if (bar.id == null) return [bar];
+    const state = stateByBarId.get(Number(bar.id));
+    if (state?.action === "suggest_remove") return [];
+    if (state?.action === "update") {
+      return [{
+        ...bar,
+        chainageFrom: state.proposedFrom,
+        chainageTo: state.proposedTo,
+      }];
+    }
+    return [bar];
+  });
+  const { quantityByBarId } = calculateScopeBarQuantities(items, alignedBars, input.segments);
 
   const fixedQuantityByBarId = new Map<number, number>();
   const noRemainingFixedItems = new Set<number>();

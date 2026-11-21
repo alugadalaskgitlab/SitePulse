@@ -3926,6 +3926,7 @@ export class DatabaseStorage implements IStorage {
       bars: currentBars as any[],
       segments: currentSegments as any[],
     });
+    console.log("DEBUG_SCOPE_ALIGNMENT", currentBars.length, currentSegments.length, alignment.rows.map(row => [row.barId, row.action, row.proposedChainageFrom, row.proposedChainageTo]));
     return { currentBars, alignment };
   }
 

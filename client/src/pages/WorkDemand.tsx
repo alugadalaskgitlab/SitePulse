@@ -2261,6 +2261,7 @@ function SuggestionBadge({
     // Arrangement info below is READ-ONLY status only (no manage/nav links).
     return (
       <div className="flex flex-col gap-1">
+          <span className="text-[11px] font-medium text-amber-800">Material mapping required</span>
         <button
           className="inline-flex w-fit items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 hover:bg-amber-100 transition-colors"
           onClick={() => setShowResolveMap(true)}
