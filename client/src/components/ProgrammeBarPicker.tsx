@@ -450,6 +450,7 @@ export function BarLinkFeedback({
   executedBy?: string | null;
   onExecutedBy?: (v: "hlc" | "agency") => void;
 }) {
+  const { companyShortName } = useFeatureFlags();
   const [reasonModalOpen, setReasonModalOpen] = useState(false);
   const { data: bars = [] } = useQuery<PickerBar[]>({
     queryKey: ["/api/dpr/programme-bars", projectId, boqItemId],

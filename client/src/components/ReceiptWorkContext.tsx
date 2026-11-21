@@ -367,6 +367,7 @@ export function TripWorkContextSummary({ trip, testIdPrefix = "trip-ctx" }: {
   trip: { id: number; date?: string | null; boqProjectId?: number | null; boqItemId?: number | null; programmeBarId?: number | null; earthworkArrangementId?: number | null };
   testIdPrefix?: string;
 }) {
+  const { companyShortName } = useFeatureFlags();
   const hasAny = trip.boqProjectId != null || trip.boqItemId != null || trip.programmeBarId != null || trip.earthworkArrangementId != null;
   const { items, arrangements, bars } = useProjectContextData(hasAny ? trip.boqProjectId ?? null : null, trip.boqItemId ?? null);
   if (!hasAny) return null;

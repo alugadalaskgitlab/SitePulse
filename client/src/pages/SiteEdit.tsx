@@ -99,6 +99,7 @@ import { withNewEquipmentWorkingDefault, meaningfulEquipmentRows, isMeaningfulEq
 import { arrangementStatusAsOf, isArrangementOperationalAsOf } from "@shared/arrangementStatusHistory";
 import { transitionDieselSource, validateDieselTankBalance } from "@shared/dieselEntryValidation";
 import { normalizeSiteEditEquipmentPayload, normalizeSiteEditProgressPayload } from "@/lib/siteEditPayload";
+import { boqItemDisplayText as boqItemDisplayName } from "@shared/boqItemName";
 
 interface ProgressEntry {
   /** Persisted row id used as a server-validated legacy-facts fallback. */

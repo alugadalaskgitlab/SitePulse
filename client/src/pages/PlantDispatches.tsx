@@ -937,7 +937,7 @@ export default function PlantDispatches() {
                     // template's theoretical values on submit.
                     if (editingDispatch && val !== mixTemplateId) {
                       setActualBitumenPercent("");
-                      setActualLdoPerTon("");
+                      setActualLdoLiters("");
                     }
                     setMixTemplateId(val);
                   }}

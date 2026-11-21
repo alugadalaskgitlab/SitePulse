@@ -819,8 +819,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     key={g.id}
                     onClick={() => {
                       setStaleAlertDismissed(false);
-                      setAwaitingPiFilter(false);
-                      setDraftOnly(false);
+                      setStatusMode("");
                       setSelectedId(g.id);
                     }}
                     className="inline-flex items-center gap-1 text-sm font-mono bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-600 rounded px-1.5 py-0.5 hover:bg-amber-200 dark:hover:bg-amber-800/40 transition-colors"

@@ -61,6 +61,8 @@ const normLedger = (e: ReceiptDatedLedgerEntry): ReceiptDatedLedgerEntry => ({
   quantityOut: n(e.quantityOut) as typeof e.quantityOut,
   balanceAfter: n(e.balanceAfter) as typeof e.balanceAfter,
 });
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 export default function PlantStock() {
   const { toast } = useToast();
@@ -2391,9 +2393,6 @@ export default function PlantStock() {
                 const hasMismatches = rows.some(r => r.delta != null && Math.abs(r.delta) > 0.001);
                 const hasLegacy = rows.some(r => r.isLegacy);
                 const PROJECT_NAME = companyName;
-
-                const escapeHtml = (s: string) =>
-                  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
                 const handlePrintRecon = () => {
                   const tableRows = rows.map(r => {
