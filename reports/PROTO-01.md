@@ -25,3 +25,11 @@ The uploaded HTML does **not** contain `og:title`, `og:image`, or a robots/noind
 - [Phone-width Lab test sheets view](evidence/proto01-lab-test-sheets-phone.png)
 
 No application code, routes, permissions, or data were changed, and nothing was published.
+
+## Follow-up — corrected prototype
+
+- Replaced the prototype with the corrected upload unchanged (SHA-256: `3e8fb42abb1513475fbe1183e676145d67e5612d9b3de59b612954f6148a3ba0`).
+- The head contains `og:title` = `SitePulse · Site records prototypes`, `og:image` = `https://site-reporter--8shmmcw622.replit.app/sitepulse-logo.png`, and `robots` = `noindex`.
+- At 402 × 874, each tab showed exactly its own screen: Site day home, Lab test sheets, Level sheet, and RFIs.
+- `npm run build` passed. The uploaded file, `client/public/prototypes/site-records.html`, and `dist/public/prototypes/site-records.html` have matching hashes.
+- No other source file was changed. Nothing was published.
