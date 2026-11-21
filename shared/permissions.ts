@@ -19,6 +19,7 @@ export const SECTION_KEYS = [
 
   // ── Site DPRs ─────────────────────────────────────────────────────────────
   "site_dprs",
+  "lab_tests",
   "site_materials",
   "dpr_layer_assignment",
 
@@ -155,6 +156,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
 
   // Site
   site_dprs: "Site DPRs — File & View",
+  lab_tests: "Tests — Soil laboratory and field testing",
   site_materials: "Site Materials Received",
   dpr_layer_assignment: "DPR layer assignment — Owner only",
 
@@ -617,8 +619,8 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
   },
   {
     id: "site",
-    label: "Site — DPRs & Materials",
-    sections: ["site_dprs", "site_materials", "labour_management"],
+    label: "Site — DPRs, Tests & Materials",
+    sections: ["site_dprs", "lab_tests", "site_materials", "labour_management"],
   },
   {
     id: "indents",

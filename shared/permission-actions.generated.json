@@ -103,6 +103,18 @@
       "notify": "Receive notifications for Site DPRs — File & View, when user notifications and a device subscription are enabled."
     }
   },
+  "lab_tests": {
+    "actions": [
+      "view",
+      "create",
+      "edit"
+    ],
+    "tooltips": {
+      "view": "Open soil laboratory and field test sheets.",
+      "create": "Save and submit soil test records.",
+      "edit": "Edit draft tests. Submitted tests require an Owner correction."
+    }
+  },
   "site_materials": {
     "actions": [
       "view",

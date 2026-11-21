@@ -1,4 +1,4 @@
-import { pgTable, text, serial, real, integer, timestamp, date, boolean, index, jsonb, uniqueIndex, numeric, check, foreignKey, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, real, integer, timestamp, date, boolean, index, jsonb, uniqueIndex, numeric, check, foreignKey, unique, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -238,6 +238,110 @@ export const dprSiteActivityStaff = pgTable("dpr_site_activity_staff", {
 }, table => ({
   activityIdx: index("dpr_site_activity_staff_activity_idx").on(table.siteActivityId),
   personnelIdx: index("dpr_site_activity_staff_personnel_idx").on(table.personnelId),
+}));
+
+// Soil laboratory / field quality testing. Calculated result JSON is written
+// by the server only; readings remain the user's captured source values.
+export const labTests = pgTable("lab_tests", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
+  siteId: integer("site_id").notNull().references(() => sites.id),
+  testType: text("test_type").notNull(),
+  testNo: text("test_no").notNull(),
+  sampleNo: text("sample_no"),
+  dateSampled: date("date_sampled").notNull(),
+  dateTested: date("date_tested"),
+  place: text("place").notNull(),
+  boqItemId: integer("boq_item_id").references(() => boqItems.id, { onDelete: "set null" }),
+  layerNo: integer("layer_no"),
+  chainageFrom: real("chainage_from"),
+  chainageTo: real("chainage_to"),
+  side: text("side"),
+  sampleSourceKind: text("sample_source_kind").notNull(),
+  sampleSourceName: text("sample_source_name"),
+  materialId: integer("material_id").references(() => plantMaterials.id, { onDelete: "set null" }),
+  siteEngineerPersonnelId: integer("site_engineer_personnel_id").references(() => personnel.id, { onDelete: "set null" }),
+  sampledByPersonnelId: integer("sampled_by_personnel_id").references(() => personnel.id, { onDelete: "set null" }),
+  testedByPersonnelId: integer("tested_by_personnel_id").references(() => personnel.id, { onDelete: "set null" }),
+  header: jsonb("header").$type<Record<string, unknown>>().notNull().default({}),
+  readings: jsonb("readings").$type<Record<string, unknown>>().notNull().default({}),
+  results: jsonb("results").$type<Record<string, unknown>>().notNull().default({}),
+  verdict: text("verdict").notNull().default("na"),
+  retestOfTestId: integer("retest_of_test_id").references((): AnyPgColumn => labTests.id, { onDelete: "set null" }),
+  remarks: text("remarks"),
+  status: text("status").notNull().default("draft"),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  ...cancellationFields,
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => ({
+  projectTestNoUq: uniqueIndex("lab_tests_project_test_no_uq").on(table.boqProjectId, table.testNo),
+  projectDateIdx: index("lab_tests_project_date_idx").on(table.boqProjectId, table.dateSampled, table.id),
+  siteDateIdx: index("lab_tests_site_date_idx").on(table.siteId, table.dateSampled, table.id),
+  itemLayerIdx: index("lab_tests_item_layer_idx").on(table.boqItemId, table.layerNo, table.dateTested),
+  retestIdx: index("lab_tests_retest_idx").on(table.retestOfTestId),
+}));
+
+export const labTestAttachments = pgTable("lab_test_attachments", {
+  id: serial("id").primaryKey(),
+  labTestId: integer("lab_test_id").notNull().references(() => labTests.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  objectPath: text("object_path").notNull(),
+  mimeType: text("mime_type"),
+  fileSize: integer("file_size"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const labCalibrations = pgTable("lab_calibrations", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").references(() => sites.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  equipmentNo: text("equipment_no").notNull(),
+  values: jsonb("values").$type<Record<string, unknown>>().notNull().default({}),
+  calibratedOn: date("calibrated_on").notNull(),
+  validUntil: date("valid_until"),
+  calibratedByPersonnelId: integer("calibrated_by_personnel_id").references(() => personnel.id, { onDelete: "set null" }),
+  fileName: text("file_name"),
+  objectPath: text("object_path"),
+  mimeType: text("mime_type"),
+  fileSize: integer("file_size"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => ({
+  kindDateIdx: index("lab_calibrations_kind_date_idx").on(table.kind, table.siteId, table.validUntil),
+}));
+
+export const materialBenchmarks = pgTable("material_benchmarks", {
+  id: serial("id").primaryKey(),
+  materialId: integer("material_id").references(() => plantMaterials.id, { onDelete: "set null" }),
+  sourceName: text("source_name"),
+  boqProjectId: integer("boq_project_id").references(() => boqProjects.id, { onDelete: "cascade" }),
+  mddGcc: real("mdd_gcc").notNull(),
+  omcPercent: real("omc_percent").notNull(),
+  specificGravity: real("specific_gravity"),
+  sourceTestId: integer("source_test_id").references(() => labTests.id, { onDelete: "set null" }),
+  effectiveFrom: date("effective_from").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => ({
+  materialSourceDateIdx: index("material_benchmarks_material_source_date_idx").on(table.materialId, table.sourceName, table.effectiveFrom),
+  projectDateIdx: index("material_benchmarks_project_date_idx").on(table.boqProjectId, table.effectiveFrom),
+}));
+
+export const boqItemQualitySpecs = pgTable("boq_item_quality_specs", {
+  id: serial("id").primaryKey(),
+  boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
+  testType: text("test_type").notNull(),
+  minValue: real("min_value"),
+  maxValue: real("max_value"),
+  frequencyQty: real("frequency_qty").notNull(),
+  frequencyUnit: text("frequency_unit").notNull(),
+  note: text("note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => ({
+  itemTestUq: uniqueIndex("boq_item_quality_specs_item_test_uq").on(table.boqItemId, table.testType),
 }));
 
 // Equipment Log
@@ -1116,6 +1220,33 @@ export const insertDprSiteActivitySchema = createInsertSchema(dprSiteActivities)
     fileSize: z.number().int().nonnegative().nullable().optional(),
     resultPass: z.boolean().nullable().optional(),
   });
+export const insertLabTestSchema = createInsertSchema(labTests)
+  .omit({ id: true, testNo: true, sampleNo: true, results: true, verdict: true, createdByUserId: true, createdAt: true, updatedAt: true })
+  .extend({
+    testType: z.enum(["field_density_sand", "field_density_core_cutter", "moisture_content", "proctor_light", "proctor_modified", "cbr", "atterberg"]),
+    place: z.enum(["on_site", "site_lab", "plant_lab", "outside_lab"]),
+    sampleSourceKind: z.enum(["site", "borrow_area", "quarry", "plant", "stockpile", "other"]),
+    status: z.enum(["draft", "submitted"]).optional(),
+    verdict: z.enum(["pass", "fail", "na"]).optional(),
+  });
+export const insertLabTestAttachmentSchema = createInsertSchema(labTestAttachments)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    fileSize: z.number().int().nonnegative().max(15 * 1024 * 1024).nullable().optional(),
+  });
+export const insertLabCalibrationSchema = createInsertSchema(labCalibrations)
+  .omit({ id: true, createdAt: true, updatedAt: true })
+  .extend({
+    kind: z.enum(["sand_pouring_cylinder", "speedy_moisture_meter", "proving_ring", "core_cutter"]),
+    fileSize: z.number().int().nonnegative().max(15 * 1024 * 1024).nullable().optional(),
+  });
+export const insertMaterialBenchmarkSchema = createInsertSchema(materialBenchmarks)
+  .omit({ id: true, sourceTestId: true, createdAt: true, updatedAt: true });
+export const insertBoqItemQualitySpecSchema = createInsertSchema(boqItemQualitySpecs)
+  .omit({ id: true, createdAt: true, updatedAt: true })
+  .extend({
+    frequencyUnit: z.enum(["sqm", "cum", "MT", "per_layer", "as_required"]),
+  });
 export const insertEquipmentSchema = createInsertSchema(equipmentLogs).omit({ id: true, dprId: true });
 export const insertEquipmentActivityAllocationSchema = createInsertSchema(equipmentActivityAllocations).omit({ id: true, equipmentLogId: true, createdAt: true });
 export const insertEquipmentActivitySegmentSchema = createInsertSchema(equipmentActivitySegments).omit({ id: true, equipmentLogId: true, createdAt: true });
@@ -1134,6 +1265,11 @@ export type ProgressEntry = typeof progressEntries.$inferSelect;
 export type DprStructureItem = typeof dprStructureItems.$inferSelect;
 export type DprSiteActivity = typeof dprSiteActivities.$inferSelect;
 export type DprSiteActivityStaff = typeof dprSiteActivityStaff.$inferSelect;
+export type LabTest = typeof labTests.$inferSelect;
+export type LabTestAttachment = typeof labTestAttachments.$inferSelect;
+export type LabCalibration = typeof labCalibrations.$inferSelect;
+export type MaterialBenchmark = typeof materialBenchmarks.$inferSelect;
+export type BoqItemQualitySpec = typeof boqItemQualitySpecs.$inferSelect;
 export type EquipmentLog = typeof equipmentLogs.$inferSelect;
 export type EquipmentActivityAllocation = typeof equipmentActivityAllocations.$inferSelect;
 export type EquipmentActivitySegment = typeof equipmentActivitySegments.$inferSelect;
@@ -3442,6 +3578,8 @@ export const boqProjects = pgTable("boq_projects", {
   name: text("name").notNull(),
   contractNo: text("contract_no"),
   client: text("client"),
+  clientName: text("client_name"),
+  consultantName: text("consultant_name"),
   contractor: text("contractor"),
   roadLengthKm: real("road_length_km"),
   startDate: date("start_date"),

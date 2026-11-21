@@ -45,6 +45,15 @@ export default function DprDetails() {
   const performance = useDprEquipmentPerformance(dpr, canViewPerformance, user?.id, completePerformanceContext);
   const { toast } = useToast();
   const { data: personnelList = [] } = useQuery<Personnel[]>({ queryKey: ["/api/personnel"] });
+  const { data: dprLabTests = [] } = useQuery<any[]>({
+    queryKey: ["/api/lab-tests/dpr", id],
+    queryFn: async () => {
+      const response = await fetch(`/api/lab-tests/dpr/${id}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load related tests.");
+      return response.json();
+    },
+    enabled: !!dpr,
+  });
 
   const { data: equipmentList = [] } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment", "all"],
@@ -351,6 +360,27 @@ export default function DprDetails() {
       </Card>
 
       <DprSiteActivitiesReadOnly activities={(dpr as any).siteActivities ?? []} />
+
+      <Card>
+        <CardHeader><CardTitle>Tests</CardTitle></CardHeader>
+        <CardContent>
+          {dprLabTests.length === 0 ? <p className="text-muted-foreground italic">No tests recorded for this site and date.</p> : (
+            <div className="space-y-2">
+              {dprLabTests.map(test => (
+                <div key={test.id} className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 text-sm last:border-0">
+                  <div>
+                    <strong>{test.testNo} · {test.testName}</strong>
+                    <p>{test.itemLabel || "No BOQ item"} · Layer {test.layerNo ?? "—"} · {test.chainageFrom == null ? "—" : `${test.chainageFrom} km`}</p>
+                    {test.testType.startsWith("field_density") && <p>Compaction: {test.results?.pits?.map((pit: any) => `${pit.compactionPercent ?? "—"}%`).join(", ") || "—"}</p>}
+                    {test.testType === "cbr" && <p>CBR: {test.results?.reportedCbrPercent ?? "—"}%</p>}
+                  </div>
+                  <span className="border px-2 py-1 font-bold">{String(test.verdict ?? "na").toUpperCase()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Two Column Layout for Resources */}
       <div className="grid grid-cols-1 gap-8">

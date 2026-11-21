@@ -140,6 +140,7 @@ import { buildVendorBillExport } from "@shared/vendorBillExport";
 import { normalizeVendorBillActorName, vendorBillStatusAction } from "@shared/vendorBillAccess";
 import { findPossibleDoubleBillMatches } from "@shared/vendorBillPossibleDouble";
 import { buildVendorBillCompleteWorkbook } from "./vendorBillCompleteWorkbook";
+import { registerLabTestRoutes } from "./labTestRoutes";
 import {
   buildTallyExportReadiness,
   parseTallyExportConfig,
@@ -780,6 +781,7 @@ export async function registerRoutes(
     if (isOptionalAuthPath(fullPath)) return optionalAuth(req, res, next);
     return requireAuth(req, res, next);
   });
+  registerLabTestRoutes(app);
 
   // ============================================
   // ESTIMATOR PORTAL SESSION AUTH

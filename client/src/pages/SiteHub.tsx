@@ -102,6 +102,15 @@ export default function SiteHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
+              href="/site/tests"
+              icon={ClipboardList}
+              title="Tests"
+              description="Record and review soil laboratory and field test sheets"
+              accent="violet"
+              iconBg="bg-violet-100"
+              enabled={sectionVisible("lab_tests")}
+            />
+            <HubActionTile
               href={roadDprHref(HUB)}
               icon={Route}
               title="Road Works DPR"

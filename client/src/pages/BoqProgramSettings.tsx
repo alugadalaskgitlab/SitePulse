@@ -382,6 +382,8 @@ export default function BoqProgramSettings() {
   const [chFrom, setChFrom] = useState("");
   const [chTo, setChTo] = useState("");
   const [projInfoSaved, setProjInfoSaved] = useState(false);
+  const [clientName, setClientName] = useState("");
+  const [consultantName, setConsultantName] = useState("");
 
   const { data: project, isLoading: projectLoading } = useQuery<BoqProject>({
     queryKey: ["/api/boq/projects", projectId],
@@ -470,7 +472,7 @@ export default function BoqProgramSettings() {
 
   // ── Project PATCH mutation (chainage / road length) ───────────────────────
   const projPatchMutation = useMutation({
-    mutationFn: (data: { chainageFrom?: number | null; chainageTo?: number | null; roadLengthKm?: number | null }) =>
+    mutationFn: (data: { chainageFrom?: number | null; chainageTo?: number | null; roadLengthKm?: number | null; clientName?: string | null; consultantName?: string | null }) =>
       apiRequest("PATCH", `/api/boq/projects/${projectId}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/boq/projects", projectId] });
@@ -483,6 +485,8 @@ export default function BoqProgramSettings() {
   // Populate chainage fields from project when it loads (once)
   useEffect(() => {
     if (!project) return;
+    setClientName(String((project as any).clientName ?? ""));
+    setConsultantName(String((project as any).consultantName ?? ""));
     if (chFrom === "" && chTo === "") {
       const cf = (project as any).chainageFrom;
       const ct = (project as any).chainageTo;
@@ -625,6 +629,24 @@ export default function BoqProgramSettings() {
             Values are auto-detected from the project name — update if the detected range is incorrect.
             Saves on blur. Re-run <strong>Auto-Sequence</strong> after changing these values.
           </p>
+          <div className="mt-4 grid grid-cols-1 gap-3 border-t pt-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-sm">Client name (optional)</Label>
+              <Input value={clientName} onChange={event => setClientName(event.target.value)} placeholder="Shown on test reports" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Consultant name (optional)</Label>
+              <Input value={consultantName} onChange={event => setConsultantName(event.target.value)} placeholder="Shown on test reports" />
+            </div>
+            <Button
+              className="sm:col-span-2 sm:justify-self-start"
+              variant="outline"
+              onClick={() => projPatchMutation.mutate({ clientName: clientName.trim() || null, consultantName: consultantName.trim() || null })}
+              disabled={projPatchMutation.isPending}
+            >
+              {projPatchMutation.isPending ? "Saving…" : "Save report names"}
+            </Button>
+          </div>
         </SectionCard>
 
         {/* ── 1. Schedule Defaults ─────────────────────────────────────────── */}

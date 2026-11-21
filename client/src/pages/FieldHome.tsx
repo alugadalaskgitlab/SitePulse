@@ -1255,6 +1255,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
 
   interface QuickAction { label: string; icon: any; color: string; href: string; perm?: boolean }
   const allQuickActions: QuickAction[] = [
+    { label: "Tests",                 icon: ClipboardList,   color: "bg-violet-600", href: "/site/tests",                                             perm: sectionVisible("lab_tests") },
     { label: "Material Trip",        icon: Truck,          color: "bg-blue-600",   href: "/site/material-trips?returnTo=/",                              perm: sectionVisible("site_materials") },
     { label: "Raise IRN",            icon: BookOpen,       color: "bg-indigo-600", href: "/irn/new?from=site&returnTo=/",                                perm: canRaiseIrn },
     { label: "Tomorrow's Plan",      icon: CalendarPlus,   color: "bg-teal-600",   href: tomorrowPlanHref,                                               perm: sectionVisible("site_dprs") },

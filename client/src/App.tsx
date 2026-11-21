@@ -67,6 +67,7 @@ const SiteRequirementNew    = lazy(() => import("@/pages/SiteRequirementNew"));
 const SiteRequirementsList  = lazy(() => import("@/pages/SiteRequirementsList"));
 const MyPlans               = lazy(() => import("@/pages/MyPlans"));
 const SiteBackfill          = lazy(() => import("@/pages/SiteBackfill"));
+const LabTests              = lazy(() => import("@/pages/LabTests"));
 
 // Plant pages
 const Plant                         = lazy(() => import("@/pages/Plant"));
@@ -384,6 +385,7 @@ function AuthedShell() {
           <Route path="/site/edit/:id" component={gated(DprEditEntry, "site_dprs")} />
           <Route path="/site/success/:id" component={gated(SiteSuccess, "site_dprs")} />
           <Route path="/site/report/:id" component={gated(SiteReport, "site_dprs")} />
+          <Route path="/site/tests" component={gated(LabTests, "lab_tests")} />
           <Route path="/reports/progress" component={gated(ProgressReport, "site_dprs")} />
           <Route path="/reports/material-balance" component={featureGated(MaterialBalanceReport, "boq_programme")} />
           <Route path="/reports/dpr-actual-vs-theoretical" component={gated(DprActualTheoreticalReport, "site_dprs")} />

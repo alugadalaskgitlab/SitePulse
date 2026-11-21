@@ -82,6 +82,7 @@ const ACTIVITY_TYPES: { value: DprSiteActivityType; label: string }[] = [
   { value: "visit", label: "Inspection / meeting" },
   { value: "other", label: "Other" },
 ];
+const NEW_ACTIVITY_TYPES = ACTIVITY_TYPES.filter(option => option.value !== "test");
 
 function activityLabel(type: string) {
   return ACTIVITY_TYPES.find(option => option.value === type)?.label ?? type;
@@ -425,7 +426,7 @@ export function DprSiteActivitiesEditor({
       )}
 
       <div className="flex flex-wrap gap-2" aria-label="Add a site activity">
-        {ACTIVITY_TYPES.map(option => (
+        {NEW_ACTIVITY_TYPES.map(option => (
           <Button key={option.value} type="button" size="sm" variant="outline" disabled={disabled || editingIndex != null} onClick={() => addActivity(option.value)}>
             <Plus className="mr-1 h-4 w-4" />{option.label}
           </Button>
