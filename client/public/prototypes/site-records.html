@@ -1,0 +1,1025 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SitePulse – Site records prototypes</title>
+<style>
+:root{--bg:#f4f5f3;--fg:#1d221f;--muted:#5f6862;--line:#d9ddd8;--accent:#2f6b4f;--soft:#e3efe8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-family:Inter,system-ui,sans-serif;font-size:15px;line-height:1.45}
+header{position:sticky;top:0;z-index:2;background:#fff;border-bottom:1px solid var(--line);padding:12px max(16px,env(safe-area-inset-left))}
+h1{font-size:18px;margin:0 0 2px}.sub{color:var(--muted);font-size:13px}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.t{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 13px;font:inherit;font-size:14px;cursor:pointer;color:var(--fg)}
+.t[aria-selected="true"]{border-color:var(--accent);background:var(--soft);color:var(--accent);font-weight:600}
+details{max-width:900px;margin:10px auto 0;padding:0 16px;font-size:14px}summary{cursor:pointer;color:var(--accent);font-weight:600}
+details ul{padding-left:18px}
+iframe{display:block;width:100%;border:0;height:calc(100vh - 150px);min-height:600px;background:#fff}
+</style></head><body>
+<header><h1>SitePulse · Site records prototypes</h1><div class="sub">For review by Babu before building. Sample data only; nothing is saved.</div><nav><button type="button" class="t" data-k="day" aria-selected="true">Site day home</button><button type="button" class="t" data-k="tests" aria-selected="false">Lab test sheets</button><button type="button" class="t" data-k="levels" aria-selected="false">Level sheet</button><button type="button" class="t" data-k="rfi" aria-selected="false">RFIs</button></nav></header>
+<details><summary>What each screen is, and what to check</summary><ul><li><b>Site day home</b> — Home screen for each person (switch &#x27;Viewing as&#x27; at the top): Levels &amp; tests, Visits &amp; inspections, Daily work log.</li><li><b>Lab test sheets</b> — Field density, Proctor, CBR, WMM sieve analysis and concrete cubes. Type readings in the white boxes; the app calculates, draws the graph and shows Pass/Fail. &#x27;Print view&#x27; shows the sheet to sign.</li><li><b>Level sheet</b> — Levels for a stretch: enter RLs or staff readings (BS / IS / FS), compare with design, cross-section and cut/fill quantity. To be changed to level-book style entry with variable points and toe.</li><li><b>RFIs</b> — Raise and send RFIs, attach tests and levels, record full or part approval (the rest becomes an &#x27;-A&#x27; re-inspection RFI), and the approved-quantity summary per layer.</li></ul>
+<p>Please note: wrong or missing fields, wording site staff won't understand, tests or formats we use that are missing, and how the department/consultant actually approves RFIs on your sites.</p></details>
+<iframe title="Site day home" data-k="day"  srcdoc="&lt;!doctype html&gt;&lt;html lang=&quot;en&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot;&gt;&lt;style&gt;:root{color-scheme:light}body{margin:0;font-family:system-ui,sans-serif;font-size:14px}img{max-width:100%}[hidden]{display:none!important}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;&lt;title&gt;Site Day Records&lt;/title&gt;
+&lt;meta name=&quot;claude:viewport-fit-sides&quot; content=&quot;cover&quot;&gt;
+&lt;link rel=&quot;stylesheet&quot; href=&quot;https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap&quot;&gt;
+&lt;style&gt;
+/* Layout: phone-width column — tabs for &quot;Add site record&quot; and &quot;Layer register&quot;; benchmark box sits beside the result entry */
+:root{
+  --bg:#f5f6f4; --card:#fff; --fg:#1d221f; --muted:#5f6862; --line:#d9ddd8;
+  --accent:#2f6b4f; --accent-soft:#e3efe8; --bad:#a3322a; --bad-soft:#f8e3e1; --info:#3b5b8a; --info-soft:#e6edf7;
+  --display:&quot;Space Grotesk&quot;,system-ui,sans-serif; --body:&quot;Inter&quot;,system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=&quot;light&quot;]){
+  --bg:#141816; --card:#1c211e; --fg:#e7ebe8; --muted:#9aa49e; --line:#2f3732;
+  --accent:#7cc39d; --accent-soft:#213229; --bad:#ef8a80; --bad-soft:#3a2120; --info:#9db8e0; --info-soft:#1f2a3a; color-scheme:dark}}
+:root[data-theme=&quot;dark&quot;]{
+  --bg:#141816; --card:#1c211e; --fg:#e7ebe8; --muted:#9aa49e; --line:#2f3732;
+  --accent:#7cc39d; --accent-soft:#213229; --bad:#ef8a80; --bad-soft:#3a2120; --info:#9db8e0; --info-soft:#1f2a3a; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:680px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:14px}
+.note{font-size:12.5px;color:var(--muted);border:1px dashed var(--line);border-radius:8px;padding:8px 10px}
+h1{font-family:var(--display);font-size:22px;margin:0}
+.meta{color:var(--muted);font-size:13px;margin-top:2px}
+h2{font-family:var(--display);font-size:16px;margin:0}
+.tabs,.seg{display:flex;gap:6px;flex-wrap:wrap}
+.tab,.chip{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:7px 13px;font:inherit;font-size:14px;cursor:pointer}
+.tab[aria-selected=&quot;true&quot;],.chip[aria-pressed=&quot;true&quot;]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:14px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.full{grid-column:1/-1}
+label{display:grid;gap:5px;font-size:13px;color:var(--muted);min-width:0}
+input,select,textarea{font:inherit;font-size:15px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;box-sizing:border-box}
+input[readonly]{color:var(--muted)}
+textarea{min-height:56px;resize:vertical}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.sub{font-size:12px;color:var(--muted)}
+.bench{border:1px solid var(--line);border-radius:8px;display:grid}
+.bench .h{font-size:12px;letter-spacing:.04em;text-transform:uppercase;font-weight:600;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line)}
+.brow{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 10px;border-top:1px solid var(--line);align-items:baseline}
+.brow:nth-child(2){border-top:0}
+.brow b{font-variant-numeric:tabular-nums}
+.src{grid-column:1/-1;font-size:12px;color:var(--muted)}
+.src .new{color:var(--info);font-weight:600}
+.verdict{border-radius:8px;padding:10px 12px;font-size:14px}
+.pass{background:var(--accent-soft);color:var(--accent)} .fail{background:var(--bad-soft);color:var(--bad)}
+.verdict b{font-variant-numeric:tabular-nums}
+.staff{display:flex;flex-wrap:wrap;gap:6px}
+.staff .chip{font-size:13px;padding:5px 10px}
+.btn{background:var(--accent);color:var(--card);border:0;border-radius:8px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer;justify-self:end}
+.toast{font-size:13px;color:var(--accent)}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;white-space:nowrap}
+th{font-size:12px;color:var(--muted);font-weight:600}
+.c{display:inline-flex;gap:4px;align-items:center}
+.p{font-weight:600;color:var(--accent)} .f{font-weight:600;color:var(--bad)} .n{color:var(--muted)}
+.lv{font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--muted)}
+.lv.j{border-color:var(--accent);color:var(--accent)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted)}
+@media (max-width:460px){.grid{grid-template-columns:1fr}}
+.proto{display:grid;gap:4px;border:1px dashed var(--line);border-radius:8px;padding:10px}
+.screen{display:grid;gap:14px}
+.tiles{display:grid;gap:10px}
+.tile{display:grid;gap:4px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;font:inherit;color:var(--fg);cursor:pointer}
+.tile:hover{border-color:var(--accent)}
+.tt{display:flex;justify-content:space-between;font-family:var(--display);font-weight:600;font-size:17px}
+.cnt{justify-self:start;font-size:12px;font-weight:600;color:var(--muted);background:var(--bg);border-radius:999px;padding:2px 8px;margin-top:4px}
+.back{justify-self:start;background:none;border:0;color:var(--accent);font:inherit;cursor:pointer;padding:0}
+.list{padding:0;gap:0}
+.row{display:grid;grid-template-columns:1fr auto;gap:10px;padding:11px 14px;border-top:1px solid var(--line);align-items:start}
+.row:first-child{border-top:0}
+.row .main{min-width:0}.row .t{font-weight:600}.row .d{color:var(--muted);font-size:13.5px;overflow-wrap:anywhere}.row .who{font-size:13px;margin-top:2px}
+.pill{font-size:12px;font-weight:600;border-radius:999px;padding:2px 8px}
+.empty{padding:16px 14px;color:var(--muted)}
+.att{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;border:1px dashed var(--line);border-radius:8px;padding:8px 10px;font-size:14px}
+#d-mine .list{border:1px solid var(--line);border-radius:8px}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:10px}
+&lt;/style&gt;
+&lt;div class=&quot;wrap&quot;&gt;
+  &lt;div class=&quot;proto&quot;&gt;
+    &lt;label for=&quot;role&quot;&gt;Prototype — viewing as
+      &lt;select id=&quot;role&quot;&gt;
+        &lt;option value=&quot;eng&quot;&gt;Engineer A · site engineer, TAKKADPALLY-SIRUR&lt;/option&gt;
+        &lt;option value=&quot;lab&quot;&gt;Lab tech D · HLC plant lab&lt;/option&gt;
+        &lt;option value=&quot;plant&quot;&gt;Plant in-charge G · HLC plant&lt;/option&gt;
+        &lt;option value=&quot;office&quot;&gt;Office admin F · head office&lt;/option&gt;
+      &lt;/select&gt;&lt;/label&gt;
+    &lt;span class=&quot;sub&quot;&gt;Sample data only. Nothing is saved to SitePulse.&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;!-- Level 1: home --&gt;
+  &lt;section id=&quot;home&quot; class=&quot;screen&quot;&gt;
+    &lt;div&gt;&lt;h1 id=&quot;hello&quot;&gt;&lt;/h1&gt;&lt;div class=&quot;meta&quot; id=&quot;where&quot;&gt;&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;tiles&quot; id=&quot;tiles&quot;&gt;&lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;!-- Level 2: Levels &amp; tests --&gt;
+  &lt;section id=&quot;s-tests&quot; class=&quot;screen&quot; hidden&gt;
+    &lt;button class=&quot;back&quot; data-home&gt;‹ Home&lt;/button&gt;
+    &lt;div&gt;&lt;h1&gt;Levels &amp;amp; tests&lt;/h1&gt;&lt;div class=&quot;meta&quot; id=&quot;tmeta&quot;&gt;&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;tabs&quot; role=&quot;tablist&quot; data-group=&quot;t&quot;&gt;
+      &lt;button class=&quot;tab&quot; role=&quot;tab&quot; aria-selected=&quot;true&quot; data-pane=&quot;t-add&quot;&gt;Add&lt;/button&gt;
+      &lt;button class=&quot;tab&quot; role=&quot;tab&quot; aria-selected=&quot;false&quot; data-pane=&quot;t-list&quot;&gt;Today&lt;/button&gt;
+      &lt;button class=&quot;tab&quot; role=&quot;tab&quot; aria-selected=&quot;false&quot; data-pane=&quot;t-reg&quot;&gt;Layer register&lt;/button&gt;
+    &lt;/div&gt;
+    &lt;div id=&quot;t-add&quot; class=&quot;card&quot;&gt;
+      &lt;div id=&quot;work&quot; class=&quot;grid&quot;&gt;&lt;/div&gt;
+      &lt;div style=&quot;display:grid;gap:6px&quot;&gt;&lt;span class=&quot;sub&quot; id=&quot;who&quot;&gt;Tested by&lt;/span&gt;&lt;div class=&quot;staff&quot; id=&quot;staff&quot;&gt;&lt;/div&gt;&lt;/div&gt;
+      &lt;label for=&quot;photo&quot;&gt;Photo / sheet (optional)&lt;input id=&quot;photo&quot; type=&quot;file&quot; accept=&quot;image/*,application/pdf&quot;&gt;&lt;/label&gt;
+      &lt;div class=&quot;foot&quot;&gt;&lt;span class=&quot;toast&quot; id=&quot;ttoast&quot;&gt;&lt;/span&gt;&lt;button class=&quot;btn&quot; id=&quot;tsave&quot; type=&quot;button&quot;&gt;Save record&lt;/button&gt;&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div id=&quot;t-list&quot; class=&quot;card list&quot; hidden&gt;&lt;/div&gt;
+    &lt;div id=&quot;t-reg&quot; class=&quot;card&quot; hidden&gt;
+      &lt;div class=&quot;grid&quot;&gt;
+        &lt;label for=&quot;regItem&quot;&gt;BOQ item&lt;select id=&quot;regItem&quot;&gt;&lt;option&gt;Construction of sub grade&lt;/option&gt;&lt;option&gt;GSB&lt;/option&gt;&lt;option&gt;WMM&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+        &lt;label for=&quot;regReach&quot;&gt;Stretch&lt;select id=&quot;regReach&quot;&gt;&lt;option&gt;Reach 3 (2+500 – 3+620)&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;legend&quot;&gt;&lt;span&gt;&lt;span class=&quot;p&quot;&gt;✓ 97.8&lt;/span&gt; passed&lt;/span&gt;&lt;span&gt;&lt;span class=&quot;f&quot;&gt;✗ 95.9&lt;/span&gt; failed&lt;/span&gt;&lt;span&gt;&lt;span class=&quot;n&quot;&gt;—&lt;/span&gt; not tested&lt;/span&gt;&lt;span&gt;&lt;span class=&quot;lv j&quot;&gt;JL&lt;/span&gt; joint levels&lt;/span&gt;&lt;span&gt;&lt;span class=&quot;lv&quot;&gt;OL&lt;/span&gt; own levels&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;tablewrap&quot;&gt;&lt;table id=&quot;reg&quot;&gt;&lt;/table&gt;&lt;/div&gt;
+      &lt;div class=&quot;sub&quot;&gt;Ready to bill = every layer passed and joint levels taken on the top layer.&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;!-- Level 2: Visits &amp; inspections --&gt;
+  &lt;section id=&quot;s-visits&quot; class=&quot;screen&quot; hidden&gt;
+    &lt;button class=&quot;back&quot; data-home&gt;‹ Home&lt;/button&gt;
+    &lt;div&gt;&lt;h1&gt;Visits &amp;amp; inspections&lt;/h1&gt;&lt;div class=&quot;meta&quot; id=&quot;vmeta&quot;&gt;&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;tabs&quot; role=&quot;tablist&quot; data-group=&quot;v&quot;&gt;
+      &lt;button class=&quot;tab&quot; role=&quot;tab&quot; aria-selected=&quot;true&quot; data-pane=&quot;v-list&quot;&gt;Today&lt;/button&gt;
+      &lt;button class=&quot;tab&quot; role=&quot;tab&quot; aria-selected=&quot;false&quot; data-pane=&quot;v-add&quot;&gt;Add visit&lt;/button&gt;
+    &lt;/div&gt;
+    &lt;div id=&quot;v-list&quot; class=&quot;card list&quot;&gt;&lt;/div&gt;
+    &lt;div id=&quot;v-add&quot; class=&quot;card&quot; hidden&gt;
+      &lt;div class=&quot;grid&quot;&gt;
+        &lt;label class=&quot;full&quot; for=&quot;vplace&quot;&gt;Place&lt;select id=&quot;vplace&quot;&gt;&lt;/select&gt;&lt;/label&gt;
+        &lt;label for=&quot;vname&quot;&gt;Visitor(s)&lt;input id=&quot;vname&quot; placeholder=&quot;Name&quot;&gt;&lt;/label&gt;
+        &lt;label for=&quot;vorg&quot;&gt;Designation / organisation&lt;input id=&quot;vorg&quot; placeholder=&quot;e.g. DEE, R&amp;amp;B&quot;&gt;&lt;/label&gt;
+        &lt;label for=&quot;vpur&quot;&gt;Purpose&lt;select id=&quot;vpur&quot;&gt;&lt;option&gt;Inspection&lt;/option&gt;&lt;option&gt;Meeting&lt;/option&gt;&lt;option&gt;Audit&lt;/option&gt;&lt;option&gt;Other&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+        &lt;label for=&quot;vby&quot;&gt;Action by (date, optional)&lt;input id=&quot;vby&quot; type=&quot;date&quot;&gt;&lt;/label&gt;
+        &lt;label class=&quot;full&quot; for=&quot;vnote&quot;&gt;Instructions given / points discussed&lt;textarea id=&quot;vnote&quot;&gt;&lt;/textarea&gt;&lt;/label&gt;
+        &lt;label class=&quot;full&quot; for=&quot;vact&quot;&gt;Action needed (optional)&lt;input id=&quot;vact&quot; placeholder=&quot;e.g. Complete shoulders before GSB&quot;&gt;&lt;/label&gt;
+      &lt;/div&gt;
+      &lt;div style=&quot;display:grid;gap:6px&quot;&gt;&lt;span class=&quot;sub&quot;&gt;Received by&lt;/span&gt;&lt;div class=&quot;staff&quot; id=&quot;vstaff&quot;&gt;&lt;/div&gt;&lt;/div&gt;
+      &lt;label for=&quot;vphoto&quot;&gt;Photo / document (optional)&lt;input id=&quot;vphoto&quot; type=&quot;file&quot; accept=&quot;image/*,application/pdf&quot;&gt;&lt;/label&gt;
+      &lt;div class=&quot;foot&quot;&gt;&lt;span class=&quot;toast&quot; id=&quot;vtoast&quot;&gt;&lt;/span&gt;&lt;button class=&quot;btn&quot; id=&quot;vsave&quot; type=&quot;button&quot;&gt;Save visit&lt;/button&gt;&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;!-- Level 2: Daily work log --&gt;
+  &lt;section id=&quot;s-day&quot; class=&quot;screen&quot; hidden&gt;
+    &lt;button class=&quot;back&quot; data-home&gt;‹ Home&lt;/button&gt;
+    &lt;div&gt;&lt;h1&gt;Daily work log&lt;/h1&gt;&lt;div class=&quot;meta&quot; id=&quot;dmeta&quot;&gt;&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;tabs&quot; role=&quot;tablist&quot; data-group=&quot;d&quot;&gt;
+      &lt;button class=&quot;tab&quot; role=&quot;tab&quot; aria-selected=&quot;true&quot; data-pane=&quot;d-mine&quot;&gt;My day&lt;/button&gt;
+      &lt;button class=&quot;tab&quot; role=&quot;tab&quot; aria-selected=&quot;false&quot; data-pane=&quot;d-team&quot;&gt;Team (managers)&lt;/button&gt;
+    &lt;/div&gt;
+    &lt;div id=&quot;d-mine&quot; class=&quot;card&quot;&gt;
+      &lt;div class=&quot;att&quot;&gt;&lt;span&gt;Attendance&lt;/span&gt;&lt;span class=&quot;sub&quot;&gt;Present / Leave / At other site — comes in the attendance step&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;list&quot; id=&quot;dlist&quot;&gt;&lt;/div&gt;
+      &lt;div class=&quot;grid&quot;&gt;
+        &lt;label for=&quot;dplace&quot;&gt;Where&lt;select id=&quot;dplace&quot;&gt;&lt;option&gt;Site office&lt;/option&gt;&lt;option&gt;Plant office&lt;/option&gt;&lt;option&gt;Head office&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+        &lt;label for=&quot;dtype&quot;&gt;Work&lt;select id=&quot;dtype&quot;&gt;&lt;option&gt;MB entry&lt;/option&gt;&lt;option&gt;RA bill&lt;/option&gt;&lt;option&gt;Drawings / cross sections&lt;/option&gt;&lt;option&gt;Reports&lt;/option&gt;&lt;option&gt;Letters / correspondence&lt;/option&gt;&lt;option&gt;Stores / records&lt;/option&gt;&lt;option&gt;Accounts&lt;/option&gt;&lt;option&gt;Purchase&lt;/option&gt;&lt;option&gt;Other&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+        &lt;label for=&quot;dsite&quot;&gt;For site (optional)&lt;select id=&quot;dsite&quot;&gt;&lt;option value=&quot;&quot;&gt;—&lt;/option&gt;&lt;option&gt;TAKKADPALLY-SIRUR&lt;/option&gt;&lt;option&gt;ALLADURG&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+        &lt;label for=&quot;dhrs&quot;&gt;Hours (optional)&lt;input id=&quot;dhrs&quot; inputmode=&quot;decimal&quot; placeholder=&quot;2&quot;&gt;&lt;/label&gt;
+        &lt;label class=&quot;full&quot; for=&quot;dnote&quot;&gt;What was done&lt;textarea id=&quot;dnote&quot; placeholder=&quot;e.g. MB entries for subgrade 2+400 to 2+980&quot;&gt;&lt;/textarea&gt;&lt;/label&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;foot&quot;&gt;&lt;span class=&quot;toast&quot; id=&quot;dtoast&quot;&gt;&lt;/span&gt;&lt;button class=&quot;btn&quot; id=&quot;dsave&quot; type=&quot;button&quot;&gt;Add to my day&lt;/button&gt;&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div id=&quot;d-team&quot; class=&quot;card&quot; hidden&gt;
+      &lt;div class=&quot;tablewrap&quot;&gt;&lt;table id=&quot;team&quot;&gt;&lt;/table&gt;&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+const $=id=&gt;document.getElementById(id);
+const esc=s=&gt;String(s??&quot;&quot;).replace(/[&amp;&lt;&gt;&quot;]/g,c=&gt;({&quot;&amp;&quot;:&quot;&amp;amp;&quot;,&quot;&lt;&quot;:&quot;&amp;lt;&quot;,&quot;&gt;&quot;:&quot;&amp;gt;&quot;,&#x27;&quot;&#x27;:&quot;&amp;quot;&quot;}[c]));
+const STAFF=[&quot;Engineer A&quot;,&quot;Surveyor C&quot;,&quot;Lab tech D&quot;,&quot;Office admin F&quot;];
+const ENGINEERS=[&quot;Engineer A&quot;,&quot;Engineer B&quot;];
+const ITEMS={
+ emb:{name:&quot;Embankment with borrow earth&quot;,layers:3,material:&quot;BORROW EARTH&quot;,mdd:1.85,mddSrc:&quot;Material details: BORROW EARTH · compacted density&quot;,omc:12.0,omcNew:true,spec:95,specSrc:&quot;MoRTH 305: embankment 95% of MDD&quot;,tests:[&quot;fdd&quot;,&quot;moist&quot;,&quot;cbr&quot;,&quot;grad&quot;,&quot;pi&quot;]},
+ sg:{name:&quot;Construction of sub grade&quot;,layers:2,material:&quot;SUBGRADE SOIL (CBR&gt;10)&quot;,mdd:1.90,mddSrc:&quot;Material details: SUBGRADE SOIL · compacted density&quot;,omc:11.5,omcNew:true,spec:97,specSrc:&quot;MoRTH 305: subgrade 97% of MDD&quot;,tests:[&quot;fdd&quot;,&quot;moist&quot;,&quot;cbr&quot;,&quot;grad&quot;,&quot;pi&quot;]},
+ gsb:{name:&quot;GSB&quot;,layers:1,material:&quot;GSB MIX&quot;,mdd:2.20,mddSrc:&quot;Recipe: GSB · compacted density&quot;,omc:6.5,omcNew:true,spec:98,specSrc:&quot;MoRTH 401: 98% of MDD&quot;,tests:[&quot;fdd&quot;,&quot;moist&quot;,&quot;grad&quot;,&quot;pi&quot;]},
+ wmm:{name:&quot;WMM&quot;,layers:1,material:&quot;WMM MIX&quot;,mdd:2.30,mddSrc:&quot;Recipe: WMM · compacted density&quot;,omc:5.5,omcNew:true,spec:98,specSrc:&quot;MoRTH 406: 98% of MDD&quot;,tests:[&quot;fdd&quot;,&quot;moist&quot;,&quot;grad&quot;]},
+ bc:{name:&quot;Bituminous concrete 40 mm&quot;,layers:1,material:&quot;BC GRADING - II TAKKADPALLY&quot;,mdd:2.35,mddSrc:&quot;Recipe: BC GRADING - II TAKKADPALLY · density 2.35 T/cum&quot;,bit:5.2,bitSrc:&quot;Recipe: BC GRADING - II TAKKADPALLY · VG-30 5.2%&quot;,spec:98,specSrc:&quot;MoRTH 507: core density 98% of job mix density&quot;,tests:[&quot;core&quot;,&quot;bitx&quot;,&quot;marshall&quot;,&quot;grad&quot;]}
+};
+const TESTS={
+ fdd:{name:&quot;Field density (FDD / compaction)&quot;,place:&quot;On site (field test)&quot;,input:&quot;Field dry density (g/cc)&quot;,ph:&quot;1.86&quot;},
+ moist:{name:&quot;Moisture content before rolling&quot;,place:&quot;On site (field test)&quot;,input:&quot;Moisture content (%)&quot;,ph:&quot;11.0&quot;},
+ cbr:{name:&quot;CBR&quot;,place:&quot;Site lab&quot;,input:&quot;CBR (%)&quot;,ph:&quot;11.5&quot;,material:true},
+ grad:{name:&quot;Gradation&quot;,place:&quot;Site lab&quot;,input:&quot;Within grading envelope?&quot;,yesno:true,material:true},
+ pi:{name:&quot;Atterberg limits (PI)&quot;,place:&quot;Site lab&quot;,input:&quot;Plasticity index&quot;,ph:&quot;9&quot;,material:true},
+ core:{name:&quot;Core density&quot;,place:&quot;Site lab&quot;,input:&quot;Core density (g/cc)&quot;,ph:&quot;2.31&quot;},
+ bitx:{name:&quot;Bitumen extraction&quot;,place:&quot;Site lab&quot;,input:&quot;Bitumen content (%)&quot;,ph:&quot;5.1&quot;},
+ marshall:{name:&quot;Marshall stability&quot;,place:&quot;Site lab&quot;,input:&quot;Stability (kN)&quot;,ph:&quot;10.5&quot;}
+};
+let kind=&quot;work&quot;, rtype=&quot;test&quot;, item=&quot;sg&quot;, test=&quot;fdd&quot;, picked=new Set([&quot;Engineer A&quot;]), sampleAt=&quot;&quot;, sampleAtFor=&quot;&quot;;
+
+function opts(list,sel){return list.map(([v,l])=&gt;`&lt;option value=&quot;${esc(v)}&quot;${v===sel?&quot; selected&quot;:&quot;&quot;}&gt;${esc(l)}&lt;/option&gt;`).join(&quot;&quot;)}
+function benchmarks(){const it=ITEMS[item];const t=TESTS[test];const rows=[];
+ if(test===&quot;fdd&quot;||test===&quot;core&quot;){rows.push([&quot;Max dry density (MDD)&quot;,`${it.mdd.toFixed(2)} g/cc`,it.mddSrc,false]);rows.push([&quot;Required compaction&quot;,`${it.spec}%`,it.specSrc,false])}
+ if(test===&quot;moist&quot;){rows.push([&quot;OMC&quot;,`${it.omc}%`,`Material details: ${it.material} · OMC`,true]);rows.push([&quot;Allowed range&quot;,&quot;OMC ±2%&quot;,&quot;MoRTH 305&quot;,false])}
+ if(test===&quot;cbr&quot;){rows.push([&quot;Required CBR&quot;,item===&quot;sg&quot;?&quot;≥ 10%&quot;:&quot;≥ 8%&quot;,&quot;BOQ item description&quot;,false])}
+ if(test===&quot;pi&quot;){rows.push([&quot;Max PI&quot;,item===&quot;gsb&quot;?&quot;&lt; 6&quot;:&quot;&lt; 12&quot;,&quot;BOQ item / MoRTH&quot;,false])}
+ if(test===&quot;bitx&quot;){rows.push([&quot;Design bitumen&quot;,`${it.bit}%`,it.bitSrc,false]);rows.push([&quot;Allowed range&quot;,&quot;±0.3%&quot;,&quot;MoRTH 500&quot;,false])}
+ if(test===&quot;marshall&quot;){rows.push([&quot;Min stability&quot;,&quot;9 kN&quot;,&quot;MoRTH 507&quot;,false])}
+ if(test===&quot;grad&quot;){rows.push([&quot;Grading&quot;,item===&quot;bc&quot;?&quot;Grading II&quot;:item===&quot;gsb&quot;?&quot;Grading III&quot;:item===&quot;wmm&quot;?&quot;WMM table 400-11&quot;:&quot;—&quot;,&quot;Recipe / BOQ item&quot;,false])}
+ return rows}
+function verdict(v){const it=ITEMS[item];const n=parseFloat(v);if(TESTS[test].yesno){return v?{ok:v===&quot;Yes&quot;,txt:v===&quot;Yes&quot;?&quot;Within the grading envelope&quot;:&quot;Outside the grading envelope&quot;}:null}
+ if(!isFinite(n))return null;
+ switch(test){
+  case&quot;fdd&quot;:case&quot;core&quot;:{const pct=n/it.mdd*100;return{ok:pct&gt;=it.spec,txt:`Compaction &lt;b&gt;${pct.toFixed(1)}%&lt;/b&gt; of MDD — required ${it.spec}%`}}
+  case&quot;moist&quot;:{const d=n-it.omc;return{ok:Math.abs(d)&lt;=2,txt:`&lt;b&gt;${d&gt;=0?&quot;+&quot;:&quot;&quot;}${d.toFixed(1)}%&lt;/b&gt; from OMC ${it.omc}% — allowed ±2%`}}
+  case&quot;cbr&quot;:{const r=item===&quot;sg&quot;?10:8;return{ok:n&gt;=r,txt:`CBR &lt;b&gt;${n}%&lt;/b&gt; — required ${r}% or more`}}
+  case&quot;pi&quot;:{const r=item===&quot;gsb&quot;?6:12;return{ok:n&lt;r,txt:`PI &lt;b&gt;${n}&lt;/b&gt; — must be below ${r}`}}
+  case&quot;bitx&quot;:{const d=n-it.bit;return{ok:Math.abs(d)&lt;=0.3,txt:`&lt;b&gt;${d&gt;=0?&quot;+&quot;:&quot;&quot;}${d.toFixed(2)}%&lt;/b&gt; from design ${it.bit}% — allowed ±0.3%`}}
+  case&quot;marshall&quot;:return{ok:n&gt;=9,txt:`Stability &lt;b&gt;${n} kN&lt;/b&gt; — required 9 kN or more`};
+ }return null}
+
+function renderWork(){if(!ITEMS[item].tests.includes(test))test=ITEMS[item].tests[0];const it=ITEMS[item];const t=TESTS[test];
+ const testList=it.tests.map(k=&gt;[k,TESTS[k].name]);if(!it.tests.includes(test)){test=it.tests[0]}
+ const layerOpts=Array.from({length:it.layers},(_,i)=&gt;[String(i+1),`Layer ${i+1}`]);
+ const onMaterial=rtype===&quot;test&quot;&amp;&amp;TESTS[test].material;
+ let h=`&lt;div class=&quot;seg full&quot; role=&quot;group&quot; aria-label=&quot;Record type&quot;&gt;
+   ${[[&quot;levels&quot;,&quot;Levels / survey&quot;],[&quot;test&quot;,&quot;Lab / field test&quot;]].map(([k,l])=&gt;`&lt;button type=&quot;button&quot; class=&quot;chip&quot; aria-pressed=&quot;${k===rtype}&quot; data-r=&quot;${k}&quot;&gt;${l}&lt;/button&gt;`).join(&quot;&quot;)}&lt;/div&gt;
+  ${role===&quot;lab&quot;?`&lt;label for=&quot;proj&quot;&gt;Site (project)&lt;select id=&quot;proj&quot;&gt;${opts([[&quot;t&quot;,&quot;TAKKADPALLY-SIRUR&quot;],[&quot;a&quot;,&quot;ALLADURG&quot;]],&quot;t&quot;)}&lt;/select&gt;&lt;/label&gt;`:`&lt;label for=&quot;proj&quot;&gt;Project&lt;input id=&quot;proj&quot; value=&quot;TAKKADPALLY-SIRUR&quot; readonly&gt;&lt;/label&gt;`}
+  &lt;label for=&quot;eng&quot;&gt;Site engineer&lt;select id=&quot;eng&quot;&gt;${opts(ENGINEERS.map(e=&gt;[e,e]),&quot;Engineer A&quot;)}&lt;/select&gt;&lt;/label&gt;
+  &lt;label class=&quot;full&quot; for=&quot;item&quot;&gt;BOQ item&lt;select id=&quot;item&quot;&gt;${opts(Object.entries(ITEMS).map(([k,v])=&gt;[k,v.name]),item)}&lt;/select&gt;&lt;/label&gt;`;
+ if(rtype===&quot;levels&quot;){
+  h+=`&lt;label for=&quot;lyr&quot;&gt;Layer&lt;select id=&quot;lyr&quot;&gt;${opts([[&quot;0&quot;,&quot;Initial ground (OGL)&quot;],...layerOpts,[&quot;top&quot;,&quot;Finished top&quot;]],&quot;2&quot;)}&lt;/select&gt;&lt;/label&gt;
+  &lt;label for=&quot;lk&quot;&gt;Levels taken as&lt;select id=&quot;lk&quot;&gt;${opts([[&quot;own&quot;,&quot;Own check&quot;],[&quot;joint&quot;,&quot;Joint levels with department&quot;],[&quot;set&quot;,&quot;Setting out / centre line&quot;]],&quot;joint&quot;)}&lt;/select&gt;&lt;/label&gt;
+  &lt;label for=&quot;cf&quot;&gt;From chainage (km)&lt;input id=&quot;cf&quot; inputmode=&quot;decimal&quot; value=&quot;2.50&quot;&gt;&lt;/label&gt;
+  &lt;label for=&quot;ct&quot;&gt;To chainage (km)&lt;input id=&quot;ct&quot; inputmode=&quot;decimal&quot; value=&quot;2.60&quot;&gt;&lt;/label&gt;
+  &lt;label class=&quot;full&quot; for=&quot;dp&quot;&gt;Department person (if joint)&lt;input id=&quot;dp&quot; placeholder=&quot;AE name&quot;&gt;&lt;/label&gt;
+  &lt;div class=&quot;full sub&quot;&gt;Level readings (RLs) will be entered here once the levels screen (Part 2) is built.&lt;/div&gt;`;
+ } else {
+  const placeNow=TESTS[test]._p||(item===&quot;bc&quot;&amp;&amp;!t.place.startsWith(&quot;On site&quot;)?&quot;Plant lab&quot;:t.place);
+  const field=placeNow.startsWith(&quot;On site&quot;);
+  const defAt=onMaterial&amp;&amp;item!==&quot;bc&quot;?&quot;source&quot;:&quot;site&quot;;
+  if(!sampleAt||sampleAtFor!==test+item){sampleAt=defAt;sampleAtFor=test+item}
+  h+=`&lt;label for=&quot;tst&quot;&gt;Test&lt;select id=&quot;tst&quot;&gt;${opts(testList,test)}&lt;/select&gt;&lt;/label&gt;
+  &lt;label for=&quot;plc&quot;&gt;Done at&lt;select id=&quot;plc&quot;&gt;${opts([[&quot;On site (field test)&quot;,&quot;On site (field test)&quot;],[&quot;Site lab&quot;,&quot;Site lab&quot;],[&quot;Plant lab&quot;,&quot;Plant lab&quot;],[&quot;Outside lab&quot;,&quot;Outside lab&quot;]],placeNow)}&lt;/select&gt;&lt;/label&gt;`;
+  if(!field){
+   const code={emb:&quot;EMB&quot;,sg:&quot;SG&quot;,gsb:&quot;GSB&quot;,wmm:&quot;WMM&quot;,bc:&quot;BC&quot;}[item];
+   h+=`&lt;label for=&quot;sno&quot;&gt;Sample no.&lt;input id=&quot;sno&quot; value=&quot;TKP/${code}/0${item===&quot;bc&quot;?&quot;07&quot;:&quot;14&quot;}&quot; readonly&gt;&lt;span class=&quot;sub&quot;&gt;Given by the app, per project and item&lt;/span&gt;&lt;/label&gt;
+   &lt;label for=&quot;scb&quot;&gt;Sample collected by&lt;select id=&quot;scb&quot;&gt;${opts(STAFF.map(s=&gt;[s,s]),&quot;Engineer A&quot;)}&lt;/select&gt;&lt;/label&gt;
+   &lt;div class=&quot;seg full&quot; role=&quot;group&quot; aria-label=&quot;Sample collected at&quot;&gt;
+     &lt;button type=&quot;button&quot; class=&quot;chip&quot; aria-pressed=&quot;${sampleAt===&quot;site&quot;}&quot; data-at=&quot;site&quot;&gt;Collected at site (chainage)&lt;/button&gt;
+     &lt;button type=&quot;button&quot; class=&quot;chip&quot; aria-pressed=&quot;${sampleAt===&quot;source&quot;}&quot; data-at=&quot;source&quot;&gt;Collected at source&lt;/button&gt;&lt;/div&gt;`;
+  }
+  if(!field&amp;&amp;sampleAt===&quot;source&quot;){h+=`&lt;label class=&quot;full&quot; for=&quot;srcm&quot;&gt;Source&lt;select id=&quot;srcm&quot;&gt;${opts(item===&quot;bc&quot;?[[&quot;p&quot;,&quot;HLC plant – paver/truck before laying&quot;]]:[[&quot;b&quot;,&quot;Borrow area – Peddaloni&quot;],[&quot;q&quot;,&quot;Quarry / crusher lot&quot;],[&quot;s&quot;,&quot;Stockpile at site&quot;],[&quot;p&quot;,&quot;HLC plant (WMM mix)&quot;]],item===&quot;wmm&quot;?&quot;p&quot;:item===&quot;bc&quot;?&quot;p&quot;:&quot;b&quot;)}&lt;/select&gt;&lt;/label&gt;
+   &lt;label class=&quot;full&quot; for=&quot;cfs&quot;&gt;For laying at chainage (km, optional)&lt;input id=&quot;cfs&quot; inputmode=&quot;decimal&quot; placeholder=&quot;2.50 – 2.60&quot;&gt;&lt;/label&gt;`}
+  else{h+=`&lt;label for=&quot;lyr&quot;&gt;Layer&lt;select id=&quot;lyr&quot;&gt;${opts(layerOpts,String(Math.min(2,it.layers)))}&lt;/select&gt;&lt;/label&gt;
+  &lt;label for=&quot;side&quot;&gt;Side&lt;select id=&quot;side&quot;&gt;${opts([[&quot;C&quot;,&quot;Centre&quot;],[&quot;L&quot;,&quot;LHS&quot;],[&quot;R&quot;,&quot;RHS&quot;]],&quot;L&quot;)}&lt;/select&gt;&lt;/label&gt;
+  &lt;label class=&quot;full&quot; for=&quot;cf&quot;&gt;Chainage (km)&lt;input id=&quot;cf&quot; inputmode=&quot;decimal&quot; value=&quot;2.55&quot;&gt;&lt;/label&gt;`}
+  const b=benchmarks();
+  if(b.length)h+=`&lt;div class=&quot;bench full&quot;&gt;&lt;div class=&quot;h&quot;&gt;Benchmark — filled in by the app&lt;/div&gt;${b.map(([k,v,s,nw])=&gt;`&lt;div class=&quot;brow&quot;&gt;&lt;span&gt;${k}&lt;/span&gt;&lt;b&gt;${v}&lt;/b&gt;&lt;span class=&quot;src&quot;&gt;From ${esc(s)}${nw?&#x27; · &lt;span class=&quot;new&quot;&gt;new field to add&lt;/span&gt;&#x27;:&quot;&quot;}&lt;/span&gt;&lt;/div&gt;`).join(&quot;&quot;)}&lt;/div&gt;`;
+  h+=TESTS[test].yesno?`&lt;label class=&quot;full&quot; for=&quot;res&quot;&gt;${t.input}&lt;select id=&quot;res&quot;&gt;${opts([[&quot;&quot;,&quot;Choose…&quot;],[&quot;Yes&quot;,&quot;Yes&quot;],[&quot;No&quot;,&quot;No&quot;]],&quot;&quot;)}&lt;/select&gt;&lt;/label&gt;`
+   :`&lt;label class=&quot;full&quot; for=&quot;res&quot;&gt;${t.input}&lt;input id=&quot;res&quot; inputmode=&quot;decimal&quot; placeholder=&quot;${esc(t.ph)}&quot;&gt;&lt;/label&gt;`;
+  h+=`&lt;div class=&quot;full verdict&quot; id=&quot;ver&quot; hidden&gt;&lt;/div&gt;`;
+ }
+ h+=`&lt;label class=&quot;full&quot; for=&quot;wn&quot;&gt;Note&lt;textarea id=&quot;wn&quot;&gt;&lt;/textarea&gt;&lt;/label&gt;`;
+ $(&quot;work&quot;).innerHTML=h;
+}
+function updVerdict(){const el=$(&quot;ver&quot;),r=$(&quot;res&quot;);if(!el||!r)return;const v=verdict(r.value.trim());if(!v){el.hidden=true;return}
+ el.hidden=false;el.className=&quot;full verdict &quot;+(v.ok?&quot;pass&quot;:&quot;fail&quot;);el.innerHTML=(v.ok?&quot;Pass · &quot;:&quot;Fail · &quot;)+v.txt}
+const REG=[
+ [&quot;2+500 – 2+600&quot;,[[&quot;p&quot;,&quot;97.8&quot;,&quot;OL&quot;],[&quot;p&quot;,&quot;98.1&quot;,&quot;JL&quot;]],&quot;Ready&quot;],
+ [&quot;2+600 – 2+700&quot;,[[&quot;p&quot;,&quot;97.2&quot;,&quot;OL&quot;],[&quot;f&quot;,&quot;95.9&quot;,&quot;OL&quot;]],&quot;Retest layer 2&quot;],
+ [&quot;2+700 – 2+800&quot;,[[&quot;p&quot;,&quot;97.5&quot;,&quot;&quot;],[&quot;n&quot;,&quot;&quot;,&quot;&quot;]],&quot;Layer 2 pending&quot;],
+ [&quot;2+800 – 2+900&quot;,[[&quot;p&quot;,&quot;98.0&quot;,&quot;OL&quot;],[&quot;p&quot;,&quot;97.4&quot;,&quot;OL&quot;]],&quot;Joint levels pending&quot;],
+ [&quot;2+900 – 3+000&quot;,[[&quot;n&quot;,&quot;&quot;,&quot;&quot;],[&quot;n&quot;,&quot;&quot;,&quot;&quot;]],&quot;Not started&quot;]];
+function cell([s,v,l]){const t=s===&quot;p&quot;?`&lt;span class=&quot;p&quot;&gt;✓ ${v}&lt;/span&gt;`:s===&quot;f&quot;?`&lt;span class=&quot;f&quot;&gt;✗ ${v}&lt;/span&gt;`:`&lt;span class=&quot;n&quot;&gt;—&lt;/span&gt;`;
+ return `&lt;td&gt;&lt;span class=&quot;c&quot;&gt;${t}${l?`&lt;span class=&quot;lv${l===&quot;JL&quot;?&quot; j&quot;:&quot;&quot;}&quot;&gt;${l}&lt;/span&gt;`:&quot;&quot;}&lt;/span&gt;&lt;/td&gt;`}
+function renderStaff(){$(&quot;staff&quot;).innerHTML=STAFF.map(s=&gt;`&lt;button type=&quot;button&quot; class=&quot;chip&quot; aria-pressed=&quot;${picked.has(s)}&quot; data-s=&quot;${esc(s)}&quot;&gt;${esc(s)}&lt;/button&gt;`).join(&quot;&quot;)}
+const ROLES={
+ eng:{name:&quot;Engineer A&quot;,title:&quot;Site engineer&quot;,home:&quot;TAKKADPALLY-SIRUR&quot;,homeKind:&quot;site&quot;,tiles:[&quot;tests&quot;,&quot;visits&quot;,&quot;day&quot;],dplace:&quot;Site office&quot;},
+ lab:{name:&quot;Lab tech D&quot;,title:&quot;Lab technician&quot;,home:&quot;HLC plant&quot;,homeKind:&quot;plant&quot;,tiles:[&quot;tests&quot;,&quot;visits&quot;,&quot;day&quot;],dplace:&quot;Plant office&quot;},
+ plant:{name:&quot;Plant in-charge G&quot;,title:&quot;Plant in-charge&quot;,home:&quot;HLC plant&quot;,homeKind:&quot;plant&quot;,tiles:[&quot;visits&quot;,&quot;day&quot;],dplace:&quot;Plant office&quot;},
+ office:{name:&quot;Office admin F&quot;,title:&quot;Office admin&quot;,home:&quot;Head office&quot;,homeKind:&quot;office&quot;,tiles:[&quot;visits&quot;,&quot;day&quot;],dplace:&quot;Head office&quot;}};
+const PLACES=[[&quot;site&quot;,&quot;Site · TAKKADPALLY-SIRUR&quot;],[&quot;site2&quot;,&quot;Site · ALLADURG&quot;],[&quot;plant&quot;,&quot;Plant · HLC plant&quot;],[&quot;office&quot;,&quot;Office · Head office&quot;]];
+let role=&quot;eng&quot;;
+const TILE={tests:[&quot;Levels &amp; tests&quot;,&quot;Levels, field and lab tests by item, layer and chainage&quot;],visits:[&quot;Visits &amp; inspections&quot;,&quot;Who visited, instructions given&quot;],day:[&quot;Daily work log&quot;,&quot;What you did today, and where&quot;]};
+let TREC=[
+ {t:&quot;Joint levels with department&quot;,d:&quot;Subgrade layer 2 · 2+500 – 2+600 · AE (sample)&quot;,by:&quot;Engineer A, Surveyor C&quot;,ok:null},
+ {t:&quot;Field density (FDD / compaction)&quot;,d:&quot;Subgrade layer 2 · 2+550 LHS · 97.8% of MDD&quot;,by:&quot;Lab tech D&quot;,ok:true},
+ {t:&quot;Bitumen extraction · TKP/BC/006&quot;,d:&quot;Plant lab · sample from paver at 1+200 · 5.1% (design 5.2%)&quot;,by:&quot;Lab tech D&quot;,ok:true}];
+let VREC=[
+ {place:&quot;site&quot;,t:&quot;Sample name, DEE R&amp;B · Inspection&quot;,d:&quot;Complete shoulders before GSB on 2+500 – 2+700. Action by 25 Nov.&quot;,by:&quot;Engineer A&quot;},
+ {place:&quot;plant&quot;,t:&quot;Pollution control board · Inspection&quot;,d:&quot;Stack emission check; renew consent before March.&quot;,by:&quot;Plant in-charge G&quot;},
+ {place:&quot;office&quot;,t:&quot;Statutory auditor · Audit&quot;,d:&quot;Asked for fixed asset register and bank reconciliations.&quot;,by:&quot;Office admin F&quot;}];
+let DREC={eng:[[&quot;Site office&quot;,&quot;MB entry&quot;,&quot;TAKKADPALLY-SIRUR&quot;,&quot;MB entries for subgrade 2+400 – 2+980&quot;,&quot;2&quot;]],lab:[[&quot;Plant office&quot;,&quot;Reports&quot;,&quot;&quot;,&quot;Weekly test summary for Takkadpally&quot;,&quot;1&quot;]],plant:[[&quot;Plant office&quot;,&quot;Stores / records&quot;,&quot;&quot;,&quot;Bitumen and LDO stock check&quot;,&quot;1.5&quot;]],office:[[&quot;Head office&quot;,&quot;Accounts&quot;,&quot;ALLADURG&quot;,&quot;Vendor bills entered and checked&quot;,&quot;3&quot;],[&quot;Head office&quot;,&quot;Letters / correspondence&quot;,&quot;TAKKADPALLY-SIRUR&quot;,&quot;Reply to EE on time extension&quot;,&quot;1&quot;]]};
+const placeOfRole=()=&gt;({site:&quot;site&quot;,plant:&quot;plant&quot;,office:&quot;office&quot;})[ROLES[role].homeKind];
+
+function show(id){document.querySelectorAll(&quot;.screen&quot;).forEach(s=&gt;s.hidden=s.id!==id);window.scrollTo({top:0})}
+function renderHome(){const r=ROLES[role];$(&quot;hello&quot;).textContent=`Good morning, ${r.name}`;$(&quot;where&quot;).textContent=`${r.title} · ${r.home} · Fri 20 Nov 2026`;
+ const count={tests:TREC.length,visits:VREC.filter(v=&gt;v.place===placeOfRole()).length,day:DREC[role].length};
+ $(&quot;tiles&quot;).innerHTML=r.tiles.map(k=&gt;`&lt;button class=&quot;tile&quot; data-go=&quot;${k}&quot;&gt;&lt;span class=&quot;tt&quot;&gt;${TILE[k][0]}&lt;span aria-hidden=&quot;true&quot;&gt;›&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;sub&quot;&gt;${TILE[k][1]}&lt;/span&gt;&lt;span class=&quot;cnt&quot;&gt;${count[k]} today&lt;/span&gt;&lt;/button&gt;`).join(&quot;&quot;);}
+function rowHtml(r){const pill=r.ok==null?&quot;&quot;:`&lt;span class=&quot;pill ${r.ok?&quot;pass&quot;:&quot;fail&quot;}&quot;&gt;${r.ok?&quot;Pass&quot;:&quot;Fail&quot;}&lt;/span&gt;`;return `&lt;div class=&quot;row&quot;&gt;&lt;div class=&quot;main&quot;&gt;&lt;div class=&quot;t&quot;&gt;${esc(r.t)}&lt;/div&gt;&lt;div class=&quot;d&quot;&gt;${esc(r.d)}&lt;/div&gt;&lt;div class=&quot;who&quot;&gt;${esc(r.by)}&lt;/div&gt;&lt;/div&gt;${pill}&lt;/div&gt;`}
+function renderTests(){$(&quot;tmeta&quot;).textContent=role===&quot;lab&quot;?&quot;Plant lab · tests are recorded against the site and chainage&quot;:&quot;TAKKADPALLY-SIRUR · project pre-filled from the site&quot;;$(&quot;t-list&quot;).innerHTML=TREC.map(rowHtml).join(&quot;&quot;);renderWork();renderStaff();setWho()}
+function renderVisits(){const p=placeOfRole();$(&quot;vmeta&quot;).textContent=PLACES.find(x=&gt;x[0]===p)[1];
+ const mine=VREC.filter(v=&gt;v.place===p);$(&quot;v-list&quot;).innerHTML=mine.length?mine.map(rowHtml).join(&quot;&quot;):&#x27;&lt;div class=&quot;empty&quot;&gt;No visits recorded today.&lt;/div&gt;&#x27;;
+ $(&quot;vplace&quot;).innerHTML=opts(PLACES,p);$(&quot;vstaff&quot;).innerHTML=STAFF.concat([&quot;Plant in-charge G&quot;]).map(s=&gt;`&lt;button type=&quot;button&quot; class=&quot;chip&quot; aria-pressed=&quot;${s===ROLES[role].name}&quot; data-s=&quot;${esc(s)}&quot;&gt;${esc(s)}&lt;/button&gt;`).join(&quot;&quot;)}
+function renderDay(){const r=ROLES[role];$(&quot;dmeta&quot;).textContent=`${r.name} · Fri 20 Nov 2026`;$(&quot;dplace&quot;).value=r.dplace;
+ $(&quot;dlist&quot;).innerHTML=DREC[role].map(([w,t,s,n,h])=&gt;`&lt;div class=&quot;row&quot;&gt;&lt;div class=&quot;main&quot;&gt;&lt;div class=&quot;t&quot;&gt;${esc(t)}${s?` · ${esc(s)}`:&quot;&quot;}&lt;/div&gt;&lt;div class=&quot;d&quot;&gt;${esc(n)}&lt;/div&gt;&lt;div class=&quot;who&quot;&gt;${esc(w)}&lt;/div&gt;&lt;/div&gt;&lt;span class=&quot;sub num&quot;&gt;${h?h+&quot; h&quot;:&quot;&quot;}&lt;/span&gt;&lt;/div&gt;`).join(&quot;&quot;)||&#x27;&lt;div class=&quot;empty&quot;&gt;Nothing logged yet today.&lt;/div&gt;&#x27;;
+ $(&quot;team&quot;).innerHTML=`&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Person&lt;/th&gt;&lt;th&gt;Where&lt;/th&gt;&lt;th&gt;Work&lt;/th&gt;&lt;th&gt;Hours&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;${Object.entries(DREC).map(([k,rows])=&gt;rows.map(([w,t,s,n,h],i)=&gt;`&lt;tr&gt;&lt;td&gt;${i?&quot;&quot;:esc(ROLES[k].name)}&lt;/td&gt;&lt;td&gt;${esc(w)}&lt;/td&gt;&lt;td&gt;${esc(t)}${s?&quot; · &quot;+esc(s):&quot;&quot;}&lt;/td&gt;&lt;td class=&quot;num&quot;&gt;${h||&quot;&quot;}&lt;/td&gt;&lt;/tr&gt;`).join(&quot;&quot;)).join(&quot;&quot;)}&lt;/tbody&gt;`}
+function refreshCurrent(){const vis=[...document.querySelectorAll(&quot;.screen&quot;)].find(s=&gt;!s.hidden);if(vis.id===&quot;home&quot;)renderHome();if(vis.id===&quot;s-tests&quot;)renderTests();if(vis.id===&quot;s-visits&quot;)renderVisits();if(vis.id===&quot;s-day&quot;)renderDay()}
+
+$(&quot;role&quot;).addEventListener(&quot;change&quot;,e=&gt;{role=e.target.value;if(role===&quot;lab&quot;){item=&quot;bc&quot;;test=&quot;bitx&quot;}else{item=&quot;sg&quot;;test=&quot;fdd&quot;}picked=new Set([ROLES[role].name]);show(&quot;home&quot;);renderHome()});
+document.addEventListener(&quot;click&quot;,e=&gt;{
+ const g=e.target.closest(&quot;[data-go]&quot;);if(g){const k=g.dataset.go;show(&quot;s-&quot;+k);if(k===&quot;tests&quot;)renderTests();if(k===&quot;visits&quot;)renderVisits();if(k===&quot;day&quot;)renderDay();return}
+ if(e.target.closest(&quot;[data-home]&quot;)){show(&quot;home&quot;);renderHome();return}
+ const tb=e.target.closest(&quot;[data-pane]&quot;);if(tb){const grp=tb.parentElement;grp.querySelectorAll(&quot;.tab&quot;).forEach(t=&gt;{t.setAttribute(&quot;aria-selected&quot;,t===tb);$(t.dataset.pane).hidden=t!==tb});return}
+ const vs=e.target.closest(&quot;#vstaff [data-s]&quot;);if(vs){vs.setAttribute(&quot;aria-pressed&quot;,vs.getAttribute(&quot;aria-pressed&quot;)!==&quot;true&quot;)}
+});
+$(&quot;work&quot;).addEventListener(&quot;click&quot;,e=&gt;{const b=e.target.closest(&quot;[data-r]&quot;);if(b){rtype=b.dataset.r;renderWork();setWho();return}
+ const a=e.target.closest(&quot;[data-at]&quot;);if(a){sampleAt=a.dataset.at;renderWork()}});
+function setWho(){$(&quot;who&quot;).textContent=rtype===&quot;test&quot;?&quot;Tested by&quot;:&quot;Done by&quot;}
+$(&quot;work&quot;).addEventListener(&quot;change&quot;,e=&gt;{if(e.target.id===&quot;item&quot;){item=e.target.value;if(!ITEMS[item].tests.includes(test))test=ITEMS[item].tests[0];renderWork()}
+ else if(e.target.id===&quot;tst&quot;){test=e.target.value;renderWork()} else if(e.target.id===&quot;plc&quot;){TESTS[test]._p=e.target.value;renderWork()} else updVerdict()});
+$(&quot;work&quot;).addEventListener(&quot;input&quot;,e=&gt;{if(e.target.id===&quot;res&quot;)updVerdict()});
+$(&quot;staff&quot;).addEventListener(&quot;click&quot;,e=&gt;{const b=e.target.closest(&quot;[data-s]&quot;);if(!b)return;const s=b.dataset.s;picked.has(s)?picked.delete(s):picked.add(s);renderStaff()});
+function flash(id){$(id).textContent=&quot;Saved&quot;;setTimeout(()=&gt;$(id).textContent=&quot;&quot;,2000)}
+$(&quot;tsave&quot;).addEventListener(&quot;click&quot;,()=&gt;{const v=$(&quot;res&quot;)?verdict($(&quot;res&quot;).value.trim()):null;
+ const t=rtype===&quot;levels&quot;?($(&quot;lk&quot;).selectedOptions[0].text):(TESTS[test].name+($(&quot;sno&quot;)?&quot; · &quot;+$(&quot;sno&quot;).value:&quot;&quot;));
+ const where=rtype===&quot;levels&quot;?`${$(&quot;lyr&quot;).selectedOptions[0].text} · ${km($(&quot;cf&quot;).value)} – ${km($(&quot;ct&quot;).value)}`:($(&quot;cf&quot;)?`${$(&quot;lyr&quot;).selectedOptions[0].text} · ${km($(&quot;cf&quot;).value)} ${$(&quot;side&quot;).selectedOptions[0].text}`:`Source: ${$(&quot;srcm&quot;).selectedOptions[0].text}`);
+ TREC.push({t,d:`${ITEMS[item].name} · ${where}${$(&quot;res&quot;)&amp;&amp;$(&quot;res&quot;).value?&quot; · result &quot;+$(&quot;res&quot;).value:&quot;&quot;}`,by:[...picked].join(&quot;, &quot;)||ROLES[role].name,ok:v?v.ok:null});
+ flash(&quot;ttoast&quot;);renderTests()});
+$(&quot;vsave&quot;).addEventListener(&quot;click&quot;,()=&gt;{const by=[...document.querySelectorAll(&#x27;#vstaff [aria-pressed=&quot;true&quot;]&#x27;)].map(b=&gt;b.dataset.s).join(&quot;, &quot;);
+ VREC.push({place:$(&quot;vplace&quot;).value,t:`${$(&quot;vname&quot;).value||&quot;Visitor&quot;}${$(&quot;vorg&quot;).value?&quot;, &quot;+$(&quot;vorg&quot;).value:&quot;&quot;} · ${$(&quot;vpur&quot;).value}`,d:$(&quot;vnote&quot;).value+($(&quot;vact&quot;).value?` Action: ${$(&quot;vact&quot;).value}`:&quot;&quot;),by});
+ flash(&quot;vtoast&quot;);renderVisits()});
+$(&quot;dsave&quot;).addEventListener(&quot;click&quot;,()=&gt;{DREC[role].push([$(&quot;dplace&quot;).value,$(&quot;dtype&quot;).value,$(&quot;dsite&quot;).value,$(&quot;dnote&quot;).value,$(&quot;dhrs&quot;).value]);$(&quot;dnote&quot;).value=&quot;&quot;;$(&quot;dhrs&quot;).value=&quot;&quot;;flash(&quot;dtoast&quot;);renderDay()});
+const km=v=&gt;{const n=Number(v);if(v===&quot;&quot;||!isFinite(n))return&quot;&quot;;const k=Math.floor(n),m=Math.round((n-k)*1000);return k+&quot;+&quot;+String(m).padStart(3,&quot;0&quot;)};
+$(&quot;reg&quot;).innerHTML=`&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Chainage&lt;/th&gt;&lt;th&gt;Layer 1&lt;/th&gt;&lt;th&gt;Layer 2&lt;/th&gt;&lt;th&gt;Status&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;${REG.map(([c,ls,st])=&gt;`&lt;tr&gt;&lt;td&gt;${c}&lt;/td&gt;${ls.map(cell).join(&quot;&quot;)}&lt;td&gt;${st===&quot;Ready&quot;?`&lt;span class=&quot;p&quot;&gt;${st}&lt;/span&gt;`:st.startsWith(&quot;Retest&quot;)?`&lt;span class=&quot;f&quot;&gt;${st}&lt;/span&gt;`:esc(st)}&lt;/td&gt;&lt;/tr&gt;`).join(&quot;&quot;)}&lt;/tbody&gt;`;
+renderHome();
+
+&lt;/script&gt;
+&lt;/body&gt;&lt;/html&gt;"></iframe><iframe title="Lab test sheets" data-k="tests" hidden srcdoc="&lt;!doctype html&gt;&lt;html lang=&quot;en&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot;&gt;&lt;style&gt;:root{color-scheme:light}body{margin:0;font-family:system-ui,sans-serif;font-size:14px}img{max-width:100%}[hidden]{display:none!important}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;&lt;title&gt;Lab Test Sheets&lt;/title&gt;
+&lt;meta name=&quot;claude:viewport-fit-sides&quot; content=&quot;cover&quot;&gt;
+&lt;link rel=&quot;stylesheet&quot; href=&quot;https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap&quot;&gt;
+&lt;style&gt;
+/* Layout: test picker → sheet header → readings table (inputs inline) → result box; &quot;Print view&quot; swaps to a black-and-white form */
+:root{
+  --bg:#f4f5f3; --card:#fff; --fg:#1d221f; --muted:#5f6862; --line:#d9ddd8;
+  --accent:#2f6b4f; --accent-soft:#e3efe8; --bad:#a3322a; --bad-soft:#f8e3e1; --calc:#f2f4f1;
+  --display:&quot;Space Grotesk&quot;,system-ui,sans-serif; --body:&quot;Inter&quot;,system-ui,sans-serif; --mono:&quot;JetBrains Mono&quot;,ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=&quot;light&quot;]){
+  --bg:#141816; --card:#1c211e; --fg:#e7ebe8; --muted:#9aa49e; --line:#2f3732;
+  --accent:#7cc39d; --accent-soft:#213229; --bad:#ef8a80; --bad-soft:#3a2120; --calc:#222824; color-scheme:dark}}
+:root[data-theme=&quot;dark&quot;]{
+  --bg:#141816; --card:#1c211e; --fg:#e7ebe8; --muted:#9aa49e; --line:#2f3732;
+  --accent:#7cc39d; --accent-soft:#213229; --bad:#ef8a80; --bad-soft:#3a2120; --calc:#222824; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:900px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:14px}
+.note{font-size:12.5px;color:var(--muted);border:1px dashed var(--line);border-radius:8px;padding:8px 10px}
+h1{font-family:var(--display);font-size:22px;margin:0}
+.meta{color:var(--muted);font-size:13px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.tests{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:7px 12px;font:inherit;font-size:14px;cursor:pointer}
+.chip[aria-pressed=&quot;true&quot;]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.toggle{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.toggle button{border:0;background:var(--card);color:var(--fg);font:inherit;font-size:14px;padding:7px 12px;cursor:pointer}
+.toggle button[aria-pressed=&quot;true&quot;]{background:var(--accent);color:var(--card);font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:12px;min-width:0}
+.ttl{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
+.ttl h2{font-family:var(--display);font-size:18px;margin:0}
+.std{font-size:12.5px;color:var(--muted)}
+.hdr{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+label{display:grid;gap:4px;font-size:12.5px;color:var(--muted);min-width:0}
+input,select{font:inherit;font-size:14px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px 8px;width:100%;box-sizing:border-box}
+input.n{font-family:var(--mono);text-align:right;padding:5px 6px;min-width:68px}
+input[readonly]{color:var(--muted)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{border-bottom:1px solid var(--line);padding:5px 6px;text-align:left;vertical-align:middle}
+th{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap}
+td.l{font-size:13.5px;min-width:200px}
+td.l small{color:var(--muted)}
+td.u{font-size:12px;color:var(--muted);white-space:nowrap}
+td.c{font-family:var(--mono);font-size:13.5px;background:var(--calc);text-align:right;white-space:nowrap}
+td.c.ok{color:var(--accent);font-weight:600} td.c.bad{color:var(--bad);font-weight:600}
+tr.sec td{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding-top:12px;border-bottom:0}
+.res{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.k{border:1px solid var(--line);border-radius:8px;padding:10px;display:grid;gap:2px}
+.k b{font-family:var(--display);font-size:20px;font-variant-numeric:tabular-nums}
+.k span{font-size:12.5px;color:var(--muted)}
+.k.ok{border-color:var(--accent);background:var(--accent-soft)} .k.ok b{color:var(--accent)}
+.k.bad{border-color:var(--bad);background:var(--bad-soft)} .k.bad b{color:var(--bad)}
+.k.wait b{color:var(--muted)}
+.legend{font-size:12.5px;color:var(--muted)}
+.chart text{fill:var(--muted);font-family:var(--body);font-size:11px}
+.sub{font-size:12.5px;color:var(--muted)}
+/* Print view: plain black on white, rules only */
+.paper{background:#fff;color:#000;border:1px solid #000;padding:18px;font-family:&quot;Times New Roman&quot;,Times,serif;font-size:13px;display:grid;gap:10px}
+.paper *{color:#000!important;background:none!important}
+.paper .phead{text-align:center;display:grid;gap:2px}
+.paper .phead b{font-size:16px;letter-spacing:.03em}
+.paper .pinfo{display:grid;grid-template-columns:1fr 1fr;border:1px solid #000}
+.paper .pinfo div{padding:3px 6px;border-bottom:1px solid #000}
+.paper .pinfo div:nth-child(odd){border-right:1px solid #000}
+.paper table{border:1px solid #000}
+.paper th,.paper td{border:1px solid #000;padding:3px 5px;font-family:&quot;Times New Roman&quot;,Times,serif;font-size:12.5px}
+.paper .pres{border:1px solid #000;padding:6px;display:grid;gap:2px}
+.paper .sig{display:flex;justify-content:space-between;margin-top:28px}
+.paper .sig div{border-top:1px solid #000;padding-top:3px;width:42%;text-align:center}
+.paper svg *{stroke:#000!important}
+@media (max-width:640px){.hdr{grid-template-columns:1fr 1fr}}
+&lt;/style&gt;
+
+&lt;div class=&quot;wrap&quot;&gt;
+  &lt;div class=&quot;note&quot;&gt;Prototype. Layouts follow your lab forms (IS 2720 / IS 2386 / IS 516) and HLC&#x27;s WMM sheet; all readings are samples. Change any white box to see the results recalculate.&lt;/div&gt;
+  &lt;div&gt;&lt;h1&gt;Lab test sheets&lt;/h1&gt;&lt;div class=&quot;meta&quot;&gt;Tests → Add test · TAKKADPALLY-SIRUR&lt;/div&gt;&lt;/div&gt;
+  &lt;div class=&quot;bar&quot;&gt;
+    &lt;div class=&quot;tests&quot; id=&quot;picker&quot; role=&quot;group&quot; aria-label=&quot;Test&quot;&gt;&lt;/div&gt;
+    &lt;div class=&quot;toggle&quot; role=&quot;group&quot; aria-label=&quot;View&quot;&gt;
+      &lt;button type=&quot;button&quot; aria-pressed=&quot;true&quot; data-v=&quot;entry&quot;&gt;Entry&lt;/button&gt;
+      &lt;button type=&quot;button&quot; aria-pressed=&quot;false&quot; data-v=&quot;print&quot;&gt;Print view&lt;/button&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div id=&quot;sheet&quot;&gt;&lt;/div&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+const $=id=&gt;document.getElementById(id);
+const esc=s=&gt;String(s??&quot;&quot;).replace(/[&amp;&lt;&gt;&quot;]/g,c=&gt;({&quot;&amp;&quot;:&quot;&amp;amp;&quot;,&quot;&lt;&quot;:&quot;&amp;lt;&quot;,&quot;&gt;&quot;:&quot;&amp;gt;&quot;,&#x27;&quot;&#x27;:&quot;&amp;quot;&quot;}[c]));
+const f=(v,d=2)=&gt;v==null||!isFinite(v)?&quot;—&quot;:Number(v).toFixed(d);
+const PROJECT={name:&quot;Widening and Strengthening of Road from Takkadapally X Road to Sirur Village&quot;,client:&quot;Roads &amp; Buildings Department, Government of Telangana&quot;,consultant:&quot;(as per agreement)&quot;,contractor:&quot;HIGH LANE CONSTRUCTIONS PVT LTD&quot;};
+let view=&quot;entry&quot;, cur=&quot;fdd&quot;;
+
+/* ---------------- test definitions ---------------- */
+const T={
+fdd:{name:&quot;Field density (sand replacement)&quot;,form:&quot;Form 5&quot;,std:&quot;IS 2720 (Part 28)&quot;,
+ head:[[&quot;RFI no.&quot;,&quot;HW/014&quot;],[&quot;Date&quot;,&quot;20 Nov 2026&quot;],[&quot;BOQ item&quot;,&quot;Construction of sub grade&quot;],[&quot;Layer&quot;,&quot;Layer 2&quot;],[&quot;Sampled / tested by&quot;,&quot;LAB TECH D&quot;],[&quot;Pouring cylinder no.&quot;,&quot;PC-2&quot;]],
+ cols:[&quot;Test 1&quot;,&quot;Test 2&quot;,&quot;Test 3&quot;],
+ rows:[
+  [&quot;sec&quot;,&quot;Location&quot;],
+  [&quot;ch&quot;,&quot;Chainage (our km)&quot;,&quot;&quot;,[&quot;2.550&quot;,&quot;2.600&quot;,&quot;2.650&quot;],&quot;t&quot;],
+  [&quot;off&quot;,&quot;Offset from centre line&quot;,&quot;m&quot;,[&quot;3.5 L&quot;,&quot;CL&quot;,&quot;3.5 R&quot;],&quot;t&quot;],
+  [&quot;dep&quot;,&quot;Depth of hole&quot;,&quot;mm&quot;,[&quot;150&quot;,&quot;150&quot;,&quot;150&quot;]],
+  [&quot;sec&quot;,&quot;Field density&quot;],
+  [&quot;ww&quot;,&quot;Wet material from hole (Ww)&quot;,&quot;g&quot;,[3720,3655,3590]],
+  [&quot;w1&quot;,&quot;Sand + cylinder before pouring (W1)&quot;,&quot;g&quot;,[10500,10500,10500]],
+  [&quot;w2&quot;,&quot;Sand + cylinder after pouring (W2)&quot;,&quot;g&quot;,[6420,6460,6400]],
+  [&quot;w3&quot;,&quot;Sand in cone (W3) — from calibration&quot;,&quot;g&quot;,[1520,1520,1520]],
+  [&quot;w4&quot;,&quot;Sand in hole W4 = W1 − W2 − W3&quot;,&quot;g&quot;,null,&quot;c&quot;],
+  [&quot;ys&quot;,&quot;Bulk density of sand (γs) — from calibration&quot;,&quot;g/cc&quot;,[1.45,1.45,1.45]],
+  [&quot;vol&quot;,&quot;Volume of hole = W4 / γs&quot;,&quot;cc&quot;,null,&quot;c&quot;],
+  [&quot;yb&quot;,&quot;Bulk density γb = Ww / volume&quot;,&quot;g/cc&quot;,null,&quot;c&quot;],
+  [&quot;sec&quot;,&quot;Moisture content (oven dry)&quot;],
+  [&quot;c5&quot;,&quot;Container (W5)&quot;,&quot;g&quot;,[25,25,25]],
+  [&quot;c6&quot;,&quot;Wet soil + container (W6)&quot;,&quot;g&quot;,[125,125,125]],
+  [&quot;c7&quot;,&quot;Dry soil + container (W7)&quot;,&quot;g&quot;,[114,114.6,113.8]],
+  [&quot;mc&quot;,&quot;Water content w = (W6 − W7) / (W7 − W5)&quot;,&quot;%&quot;,null,&quot;c&quot;],
+  [&quot;sec&quot;,&quot;Results&quot;],
+  [&quot;yd&quot;,&quot;Field dry density γd = γb / (1 + w)&quot;,&quot;g/cc&quot;,null,&quot;c&quot;],
+  [&quot;mdd&quot;,&quot;Lab MDD — from Proctor of this material&quot;,&quot;g/cc&quot;,[1.90,1.90,1.90]],
+  [&quot;omc&quot;,&quot;OMC — from Proctor&quot;,&quot;%&quot;,[11.8,11.8,11.8]],
+  [&quot;cp&quot;,&quot;Compaction obtained = γd / MDD&quot;,&quot;%&quot;,null,&quot;c&quot;],
+  [&quot;req&quot;,&quot;Compaction required&quot;,&quot;%&quot;,[97,97,97]],
+  [&quot;pf&quot;,&quot;Result&quot;,&quot;&quot;,null,&quot;c&quot;]],
+ calc(v){const n=v.ww.length,o={w4:[],vol:[],yb:[],mc:[],yd:[],cp:[],pf:[]};
+  for(let i=0;i&lt;n;i++){const w4=v.w1[i]-v.w2[i]-v.w3[i];const vol=w4/v.ys[i];const yb=v.ww[i]/vol;const mc=(v.c6[i]-v.c7[i])/(v.c7[i]-v.c5[i])*100;const yd=yb/(1+mc/100);const cp=yd/v.mdd[i]*100;
+   o.w4.push([f(w4,0)]);o.vol.push([f(vol,1)]);o.yb.push([f(yb,3)]);o.mc.push([f(mc,2)]);o.yd.push([f(yd,3)]);o.cp.push([f(cp,1),cp&gt;=v.req[i]?&quot;ok&quot;:&quot;bad&quot;]);o.pf.push([cp&gt;=v.req[i]?&quot;Pass&quot;:&quot;Fail&quot;,cp&gt;=v.req[i]?&quot;ok&quot;:&quot;bad&quot;])}
+  const cps=v.ww.map((_,i)=&gt;{const w4=v.w1[i]-v.w2[i]-v.w3[i];const yb=v.ww[i]/(w4/v.ys[i]);const mc=(v.c6[i]-v.c7[i])/(v.c7[i]-v.c5[i])*100;return yb/(1+mc/100)/v.mdd[i]*100});
+  const fails=cps.filter((c,i)=&gt;c&lt;v.req[i]).length;
+  o.summary=[[`${cps.length-fails} of ${cps.length}`,&quot;tests passed&quot;,fails?&quot;bad&quot;:&quot;ok&quot;],[f(Math.min(...cps),1)+&quot;%&quot;,&quot;lowest compaction (required 97%)&quot;,fails?&quot;bad&quot;:&quot;ok&quot;],[fails?&quot;Re-roll and retest&quot;:&quot;Layer accepted&quot;,&quot;next step&quot;,fails?&quot;bad&quot;:&quot;ok&quot;]];
+  return o}},
+
+proctor:{name:&quot;Modified Proctor (MDD &amp; OMC)&quot;,form:&quot;Form 7&quot;,std:&quot;IS 2720 (Part 8)&quot;,
+ head:[[&quot;Lab job no.&quot;,&quot;TKP/SOIL/006&quot;],[&quot;Date tested&quot;,&quot;18 Nov 2026&quot;],[&quot;Material / source&quot;,&quot;BORROW EARTH – PEDDALONI&quot;],[&quot;Proposed use&quot;,&quot;Subgrade&quot;],[&quot;Mould no. / weight W1 (g)&quot;,&quot;M-3 / 4250&quot;],[&quot;Mould volume V (cc)&quot;,&quot;2250&quot;],[&quot;Specific gravity G (for zero air voids line)&quot;,&quot;2.65&quot;]],
+ cols:[&quot;Trial I&quot;,&quot;Trial II&quot;,&quot;Trial III&quot;,&quot;Trial IV&quot;,&quot;Trial V&quot;],
+ rows:[
+  [&quot;sec&quot;,&quot;Density&quot;],
+  [&quot;w2&quot;,&quot;Wet soil + mould (W2)&quot;,&quot;g&quot;,[8624,8854,9038,9072,9027]],
+  [&quot;w3&quot;,&quot;Wet soil W3 = W2 − W1&quot;,&quot;g&quot;,null,&quot;c&quot;],
+  [&quot;yb&quot;,&quot;Wet density γb = W3 / V&quot;,&quot;g/cc&quot;,null,&quot;c&quot;],
+  [&quot;sec&quot;,&quot;Moisture content&quot;],
+  [&quot;c5&quot;,&quot;Container (W5)&quot;,&quot;g&quot;,[30,30,30,30,30]],
+  [&quot;c6&quot;,&quot;Wet soil + container (W6)&quot;,&quot;g&quot;,[130,130,130,130,130]],
+  [&quot;c7&quot;,&quot;Dry soil + container (W7)&quot;,&quot;g&quot;,[122.59,120.91,119.29,117.72,116.21]],
+  [&quot;mc&quot;,&quot;Water content w&quot;,&quot;%&quot;,null,&quot;c&quot;],
+  [&quot;yd&quot;,&quot;Dry density γd = γb / (1 + w)&quot;,&quot;g/cc&quot;,null,&quot;c&quot;]],
+ calc(v){const W1=4250,V=2250,o={w3:[],yb:[],mc:[],yd:[]},pts=[];
+  v.w2.forEach((w2,i)=&gt;{const w3=w2-W1,yb=w3/V,mc=(v.c6[i]-v.c7[i])/(v.c7[i]-v.c5[i])*100,yd=yb/(1+mc/100);o.w3.push([f(w3,0)]);o.yb.push([f(yb,3)]);o.mc.push([f(mc,2)]);o.yd.push([f(yd,3)]);pts.push([mc,yd])});
+  // parabola through the peak and its neighbours
+  let k=pts.reduce((b,p,i)=&gt;p[1]&gt;pts[b][1]?i:b,0);k=Math.min(Math.max(k,1),pts.length-2);
+  const [a,b,c]=fitPar(pts.slice(k-1,k+2));const omc=-b/(2*a),mdd=a*omc*omc+b*omc+c;
+  o.summary=[[f(mdd,3)+&quot; g/cc&quot;,&quot;MDD (maximum dry density)&quot;,&quot;ok&quot;],[f(omc,1)+&quot;%&quot;,&quot;OMC (optimum moisture)&quot;,&quot;ok&quot;],[&quot;Saved as benchmark&quot;,&quot;for BORROW EARTH – PEDDALONI; used by field density tests&quot;,&quot;ok&quot;]];
+  const G=2.65,xs=pts.map(p=&gt;p[0]),zav=[];for(let w=Math.min(...xs);w&lt;=Math.max(...xs)+0.01;w+=0.25)zav.push([w,G/(1+w*G/100)]);
+  o.chart=chartXY(pts,{x:&quot;Water content (%)&quot;,y:&quot;Dry density (g/cc)&quot;,peak:[omc,mdd],smooth:[a,b,c,pts[k-1][0],pts[k+1][0]],lines:[{pts:zav,label:&quot;Zero air voids (G = 2.65)&quot;}]});return o}},
+
+cbr:{name:&quot;California bearing ratio (CBR)&quot;,form:&quot;Form 8&quot;,std:&quot;IS 2720 (Part 16)&quot;,
+ head:[[&quot;Lab job no.&quot;,&quot;TKP/SOIL/007&quot;],[&quot;Date tested&quot;,&quot;19 Nov 2026&quot;],[&quot;Material / source&quot;,&quot;BORROW EARTH – PEDDALONI&quot;],[&quot;Proposed use&quot;,&quot;Subgrade (required ≥ 10%)&quot;],[&quot;Soaking&quot;,&quot;4 days, surcharge 5 kg&quot;],[&quot;Proving ring constant (kg/div)&quot;,&quot;1.2&quot;]],
+ cols:[&quot;Dial reading (div)&quot;],
+ rows:[[&quot;sec&quot;,&quot;Load – penetration (mould M-1, 97% of MDD)&quot;],
+  ...[0,0.5,1,1.5,2,2.5,3,4,5,7.5,10,12.5].map((p,i)=&gt;[`p${i}`,`${p} mm`,&quot;div&quot;,[[0,22,45,70,95,118,138,170,195,240,270,290][i]]])],
+ extra:[[&quot;sw0&quot;,&quot;Swell gauge – initial&quot;,&quot;mm&quot;,3.20],[&quot;sw1&quot;,&quot;Swell gauge – after 4 days&quot;,&quot;mm&quot;,3.62],[&quot;h&quot;,&quot;Specimen height&quot;,&quot;mm&quot;,116.4]],
+ calc(v){const K=1.2,P=[0,0.5,1,1.5,2,2.5,3,4,5,7.5,10,12.5];const pts=P.map((p,i)=&gt;[p,v[`p${i}`][0]*K]);
+  const l25=v.p5[0]*K,l50=v.p8[0]*K,c25=l25/1370*100,c50=l50/2055*100,cbr=Math.max(c25,c50);const sw=(v.sw1-v.sw0)/v.h*100;
+  const o={};P.forEach((_,i)=&gt;o[`p${i}`]=[[f(v[`p${i}`][0]*K,1)+&quot; kg&quot;]]);
+  o.summary=[[f(c25,1)+&quot;%&quot;,&quot;CBR at 2.5 mm (load &quot;+f(l25,0)+&quot; kg ÷ 1370)&quot;,&quot;&quot;],[f(c50,1)+&quot;%&quot;,&quot;CBR at 5.0 mm (load &quot;+f(l50,0)+&quot; kg ÷ 2055)&quot;,&quot;&quot;],[f(cbr,1)+&quot;%&quot;,&quot;CBR reported (higher of the two) — required ≥ 10%&quot;,cbr&gt;=10?&quot;ok&quot;:&quot;bad&quot;],[f(sw,2)+&quot;%&quot;,&quot;swell after soaking&quot;,sw&lt;=2?&quot;ok&quot;:&quot;bad&quot;]];
+  o.calcHead=&quot;Load (kg)&quot;;o.chart=chartXY(pts,{x:&quot;Penetration (mm)&quot;,y:&quot;Load (kg)&quot;,marks:[2.5,5]});return o}},
+
+wmm:{name:&quot;Sieve analysis — WMM&quot;,form:&quot;HLC WMM sheet&quot;,std:&quot;MoRTH Table 400-13&quot;,
+ head:[[&quot;Sample no.&quot;,&quot;TKP/WMM/003&quot;],[&quot;Date tested&quot;,&quot;20 Nov 2026&quot;],[&quot;Source&quot;,&quot;HLC PLANT – WMM MIX&quot;],[&quot;Layer / chainage&quot;,&quot;WMM · 1+200 – 1+300&quot;],[&quot;Sampled by / tested by&quot;,&quot;ENGINEER A / LAB TECH D&quot;],[&quot;Total dry weight (g)&quot;,&quot;10000&quot;]],
+ sieves:[[&quot;53 mm&quot;,0,&quot;100&quot;,&quot;100&quot;],[&quot;45 mm&quot;,300,&quot;95&quot;,&quot;100&quot;],[&quot;22.4 mm&quot;,2410,&quot;60&quot;,&quot;80&quot;],[&quot;11.2 mm&quot;,2280,&quot;40&quot;,&quot;60&quot;],[&quot;4.75 mm&quot;,2010,&quot;25&quot;,&quot;40&quot;],[&quot;2.36 mm&quot;,730,&quot;15&quot;,&quot;30&quot;],[&quot;600 µm&quot;,920,&quot;8&quot;,&quot;22&quot;],[&quot;75 µm&quot;,990,&quot;0&quot;,&quot;8&quot;],[&quot;Pan&quot;,360,&quot;&quot;,&quot;&quot;]],
+ calc(v){let cum=0;const T=10000,o={rows:[]};let bad=0;
+  v.ret.forEach((r,i)=&gt;{cum+=r;const pass=100-cum/T*100;const [s,,lo,hi]=T_W.sieves[i];const ok=lo===&quot;&quot;?null:(pass&gt;=+lo&amp;&amp;pass&lt;=+hi);if(ok===false)bad++;
+   o.rows.push([f(cum,0),f(cum/T*100,1),f(pass,1),lo===&quot;&quot;?&quot;&quot;:`${lo} – ${hi}`,ok==null?&quot;&quot;:ok?&quot;Within&quot;:&quot;Outside&quot;,ok==null?&quot;&quot;:ok?&quot;ok&quot;:&quot;bad&quot;])});
+  const sz=[53,45,22.4,11.2,4.75,2.36,0.6,0.075];const passes=[];let c2=0;v.ret.slice(0,8).forEach(r=&gt;{c2+=r;passes.push(100-c2/T*100)});
+  o.chart=chartGrad(sz,passes,T_W.sieves.slice(0,8).map(x=&gt;+x[2]),T_W.sieves.slice(0,8).map(x=&gt;+x[3]));
+  o.summary=[[bad?`${bad} sieve(s) outside`:&quot;All sieves within&quot;,&quot;MoRTH grading limits&quot;,bad?&quot;bad&quot;:&quot;ok&quot;],[f(cum,0)+&quot; g&quot;,&quot;total of retained weights (should be 10000)&quot;,Math.abs(cum-T)&lt;1?&quot;ok&quot;:&quot;bad&quot;]];return o}},
+
+cube:{name:&quot;Concrete cube strength&quot;,form:&quot;Form 21 / cube register&quot;,std:&quot;IS 516 · acceptance IS 456&quot;,
+ head:[[&quot;Structure / element&quot;,&quot;Pipe culvert 1+840 · head wall&quot;],[&quot;Grade&quot;,&quot;M25&quot;],[&quot;Date of casting&quot;,&quot;06 Nov 2026&quot;],[&quot;Pour card no.&quot;,&quot;TKP/PC/012&quot;],[&quot;Slump at pour (mm)&quot;,&quot;70 (design 50–75)&quot;],[&quot;Cube size&quot;,&quot;150 × 150 × 150 mm (area 22500 mm²)&quot;]],
+ cols:[&quot;Cube 1&quot;,&quot;Cube 2&quot;,&quot;Cube 3&quot;,&quot;Cube 4&quot;,&quot;Cube 5&quot;,&quot;Cube 6&quot;],
+ rows:[[&quot;age&quot;,&quot;Age at test&quot;,&quot;days&quot;,[7,7,7,28,28,28],&quot;t&quot;],[&quot;due&quot;,&quot;Test date&quot;,&quot;&quot;,[&quot;13 Nov&quot;,&quot;13 Nov&quot;,&quot;13 Nov&quot;,&quot;04 Dec&quot;,&quot;04 Dec&quot;,&quot;04 Dec&quot;],&quot;t&quot;],
+  [&quot;wt&quot;,&quot;Weight of cube&quot;,&quot;g&quot;,[8420,8395,8440,&quot;&quot;,&quot;&quot;,&quot;&quot;]],[&quot;ld&quot;,&quot;Crushing load&quot;,&quot;kN&quot;,[410,425,398,&quot;&quot;,&quot;&quot;,&quot;&quot;]],
+  [&quot;den&quot;,&quot;Density = weight / 3375 cc&quot;,&quot;g/cc&quot;,null,&quot;c&quot;],[&quot;st&quot;,&quot;Strength = load / area&quot;,&quot;N/mm²&quot;,null,&quot;c&quot;]],
+ calc(v){const o={den:[],st:[]},s7=[],s28=[];v.ld.forEach((l,i)=&gt;{const has=l!==&quot;&quot;&amp;&amp;isFinite(l);o.den.push([has?f(v.wt[i]/3375,3):&quot;—&quot;]);const st=has?l*1000/22500:null;o.st.push([has?f(st,1):&quot;due &quot;+v.due[i]]);if(has)(v.age[i]==7?s7:s28).push(st)});
+  const a7=s7.length?s7.reduce((a,b)=&gt;a+b)/s7.length:null;const fck=25;
+  o.chart=chartBars(v.ld.map((l,i)=&gt;[`C${i+1} · ${v.age[i]}d`,l!==&quot;&quot;&amp;&amp;isFinite(l)?l*1000/22500:null]),[[0.65*fck,&quot;7-day expected (65% of fck)&quot;],[fck+4,&quot;28-day average needed (fck + 4)&quot;]]);
+  o.summary=[[a7?f(a7,1)+&quot; N/mm²&quot;:&quot;—&quot;,&quot;7-day average (&quot;+(a7?Math.round(a7/fck*100):0)+&quot;% of 25; about 65% expected)&quot;,a7&amp;&amp;a7&gt;=0.65*fck?&quot;ok&quot;:&quot;bad&quot;],
+   [s28.length?f(s28.reduce((a,b)=&gt;a+b)/s28.length,1):&quot;14 days to go&quot;,&quot;28-day average — needs ≥ 29 N/mm² (fck + 4) and each cube ≥ 21&quot;,s28.length?&quot;&quot;:&quot;wait&quot;],
+   [&quot;04 Dec 2026&quot;,&quot;28-day test reminder set for the lab&quot;,&quot;wait&quot;]];return o}}
+};
+const T_W=T.wmm;
+
+/* ---------------- state ---------------- */
+const S={};
+for(const [k,t] of Object.entries(T)){S[k]={};if(t.rows)t.rows.forEach(r=&gt;{if(r[0]!==&quot;sec&quot;&amp;&amp;r[3])S[k][r[0]]=r[3].slice()});(t.extra||[]).forEach(e=&gt;S[k][e[0]]=e[3]);if(k===&quot;wmm&quot;)S[k].ret=t.sieves.map(s=&gt;s[1])}
+function vals(k){const o={};for(const [key,a] of Object.entries(S[k]))o[key]=Array.isArray(a)?a.map(x=&gt;x===&quot;&quot;?&quot;&quot;:isNaN(+x)?x:+x):+a;return o}
+
+/* ---------------- helpers ---------------- */
+function fitPar(p){const [[x1,y1],[x2,y2],[x3,y3]]=p;const d=(x1-x2)*(x1-x3)*(x2-x3);const a=(x3*(y2-y1)+x2*(y1-y3)+x1*(y3-y2))/d;const b=(x3*x3*(y1-y2)+x2*x2*(y3-y1)+x1*x1*(y2-y3))/d;const c=(x2*x3*(x2-x3)*y1+x3*x1*(x3-x1)*y2+x1*x2*(x1-x2)*y3)/d;return[a,b,c]}
+function chartBars(bars,refs){const W=560,H=220,L=44,R=16,Tp=14,B=36,max=35;const bw=(W-L-R)/bars.length;const Y=v=&gt;H-B-v/max*(H-B-Tp);
+ let s=`&lt;svg class=&quot;chart&quot; viewBox=&quot;0 0 ${W} ${H}&quot; width=&quot;100%&quot; role=&quot;img&quot; aria-label=&quot;Cube strengths against required values&quot;&gt;`;
+ [0,10,20,30].forEach(t=&gt;s+=`&lt;line x1=&quot;${L}&quot; x2=&quot;${W-R}&quot; y1=&quot;${Y(t)}&quot; y2=&quot;${Y(t)}&quot; stroke=&quot;var(--line)&quot;/&gt;&lt;text x=&quot;${L-6}&quot; y=&quot;${Y(t)+4}&quot; text-anchor=&quot;end&quot;&gt;${t}&lt;/text&gt;`);
+ bars.forEach(([lab,v],i)=&gt;{const x=L+i*bw+bw*0.2,w=bw*0.6;s+=v==null?`&lt;rect x=&quot;${x}&quot; y=&quot;${Y(2)}&quot; width=&quot;${w}&quot; height=&quot;${Y(0)-Y(2)}&quot; fill=&quot;none&quot; stroke=&quot;var(--muted)&quot; stroke-dasharray=&quot;3 3&quot;/&gt;&lt;text x=&quot;${x+w/2}&quot; y=&quot;${Y(4)}&quot; text-anchor=&quot;middle&quot;&gt;due&lt;/text&gt;`:`&lt;rect x=&quot;${x}&quot; y=&quot;${Y(v)}&quot; width=&quot;${w}&quot; height=&quot;${Y(0)-Y(v)}&quot; fill=&quot;none&quot; stroke=&quot;var(--accent)&quot; stroke-width=&quot;2&quot;/&gt;&lt;text x=&quot;${x+w/2}&quot; y=&quot;${Y(v)-5}&quot; text-anchor=&quot;middle&quot;&gt;${v.toFixed(1)}&lt;/text&gt;`;
+  s+=`&lt;text x=&quot;${x+w/2}&quot; y=&quot;${H-B+15}&quot; text-anchor=&quot;middle&quot;&gt;${esc(lab)}&lt;/text&gt;`});
+ refs.forEach(([v,lab])=&gt;s+=`&lt;line x1=&quot;${L}&quot; x2=&quot;${W-R}&quot; y1=&quot;${Y(v)}&quot; y2=&quot;${Y(v)}&quot; stroke=&quot;var(--fg)&quot; stroke-dasharray=&quot;6 4&quot;/&gt;&lt;text x=&quot;${W-R-4}&quot; y=&quot;${Y(v)-4}&quot; text-anchor=&quot;end&quot;&gt;${esc(lab)} ${v.toFixed(1)}&lt;/text&gt;`);
+ return s+`&lt;text x=&quot;12&quot; y=&quot;${(H-B)/2}&quot; transform=&quot;rotate(-90 12 ${(H-B)/2})&quot; text-anchor=&quot;middle&quot;&gt;N/mm²&lt;/text&gt;&lt;/svg&gt;`}
+function chartGrad(sz,pass,lo,hi){const W=560,H=250,L=44,R=16,Tp=14,B=44;const lx=Math.log10(0.05),hx=Math.log10(80);
+ const X=d=&gt;L+(Math.log10(d)-lx)/(hx-lx)*(W-L-R),Y=v=&gt;H-B-v/100*(H-B-Tp);
+ let s=`&lt;svg class=&quot;chart&quot; viewBox=&quot;0 0 ${W} ${H}&quot; width=&quot;100%&quot; role=&quot;img&quot; aria-label=&quot;Gradation curve: percent passing against sieve size, with MoRTH limits&quot;&gt;`;
+ [0,20,40,60,80,100].forEach(t=&gt;s+=`&lt;line x1=&quot;${L}&quot; x2=&quot;${W-R}&quot; y1=&quot;${Y(t)}&quot; y2=&quot;${Y(t)}&quot; stroke=&quot;var(--line)&quot;/&gt;&lt;text x=&quot;${L-6}&quot; y=&quot;${Y(t)+4}&quot; text-anchor=&quot;end&quot;&gt;${t}&lt;/text&gt;`);
+ sz.forEach(d=&gt;s+=`&lt;line x1=&quot;${X(d)}&quot; x2=&quot;${X(d)}&quot; y1=&quot;${Tp}&quot; y2=&quot;${H-B}&quot; stroke=&quot;var(--line)&quot;/&gt;${d===53?&quot;&quot;:`&lt;text x=&quot;${X(d)}&quot; y=&quot;${H-B+15}&quot; text-anchor=&quot;middle&quot;&gt;${d&lt;1?d*1000+&quot;µ&quot;:d===45?&quot;45 / 53&quot;:d}&lt;/text&gt;`}`);
+ s+=`&lt;text x=&quot;${(L+W-R)/2}&quot; y=&quot;${H-8}&quot; text-anchor=&quot;middle&quot;&gt;Sieve size (mm, log scale)&lt;/text&gt;&lt;text x=&quot;12&quot; y=&quot;${(H-B)/2}&quot; transform=&quot;rotate(-90 12 ${(H-B)/2})&quot; text-anchor=&quot;middle&quot;&gt;% passing&lt;/text&gt;`;
+ const pl=(arr,st)=&gt;`&lt;polyline points=&quot;${sz.map((d,i)=&gt;X(d)+&quot;,&quot;+Y(arr[i])).join(&quot; &quot;)}&quot; fill=&quot;none&quot; ${st}/&gt;`;
+ s+=pl(lo,&#x27;stroke=&quot;var(--muted)&quot; stroke-width=&quot;1.5&quot; stroke-dasharray=&quot;6 4&quot;&#x27;)+pl(hi,&#x27;stroke=&quot;var(--muted)&quot; stroke-width=&quot;1.5&quot; stroke-dasharray=&quot;6 4&quot;&#x27;);
+ s+=pl(pass,&#x27;stroke=&quot;var(--accent)&quot; stroke-width=&quot;2&quot;&#x27;);
+ sz.forEach((d,i)=&gt;{const ok=pass[i]&gt;=lo[i]&amp;&amp;pass[i]&lt;=hi[i];s+=`&lt;circle cx=&quot;${X(d)}&quot; cy=&quot;${Y(pass[i])}&quot; r=&quot;4&quot; fill=&quot;${ok?&quot;var(--accent)&quot;:&quot;var(--bad)&quot;}&quot;/&gt;`});
+ s+=`&lt;text x=&quot;${L+8}&quot; y=&quot;${Tp+12}&quot;&gt;—— sample   - - - MoRTH lower / upper limits&lt;/text&gt;`;
+ return s+&quot;&lt;/svg&gt;&quot;}
+function chartXY(pts,o){const W=560,H=230,L=52,R=16,Tp=14,B=40;const xs=pts.map(p=&gt;p[0]),ys=pts.map(p=&gt;p[1]);
+ let x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);const py=(y1-y0)*0.12||1;y0-=py;y1+=py;if(o.marks)y0=0;
+ const X=x=&gt;L+(x-x0)/(x1-x0)*(W-L-R),Y=y=&gt;H-B-(y-y0)/(y1-y0)*(H-B-Tp);
+ const tick=(a,b,n)=&gt;Array.from({length:n+1},(_,i)=&gt;a+(b-a)*i/n);
+ let s=`&lt;svg class=&quot;chart&quot; viewBox=&quot;0 0 ${W} ${H}&quot; width=&quot;100%&quot; role=&quot;img&quot; aria-label=&quot;${esc(o.y)} against ${esc(o.x)}&quot;&gt;`;
+ tick(y0,y1,4).forEach(t=&gt;{s+=`&lt;line x1=&quot;${L}&quot; x2=&quot;${W-R}&quot; y1=&quot;${Y(t)}&quot; y2=&quot;${Y(t)}&quot; stroke=&quot;var(--line)&quot;/&gt;&lt;text x=&quot;${L-6}&quot; y=&quot;${Y(t)+4}&quot; text-anchor=&quot;end&quot;&gt;${t.toFixed(o.marks?0:2)}&lt;/text&gt;`});
+ tick(x0,x1,o.marks?5:4).forEach(t=&gt;s+=`&lt;text x=&quot;${X(t)}&quot; y=&quot;${H-B+16}&quot; text-anchor=&quot;middle&quot;&gt;${t.toFixed(1)}&lt;/text&gt;`);
+ s+=`&lt;text x=&quot;${(L+W-R)/2}&quot; y=&quot;${H-6}&quot; text-anchor=&quot;middle&quot;&gt;${esc(o.x)}&lt;/text&gt;&lt;text x=&quot;12&quot; y=&quot;${(H-B)/2}&quot; transform=&quot;rotate(-90 12 ${(H-B)/2})&quot; text-anchor=&quot;middle&quot;&gt;${esc(o.y)}&lt;/text&gt;`;
+ (o.marks||[]).forEach(m=&gt;s+=`&lt;line x1=&quot;${X(m)}&quot; x2=&quot;${X(m)}&quot; y1=&quot;${Tp}&quot; y2=&quot;${H-B}&quot; stroke=&quot;var(--muted)&quot; stroke-dasharray=&quot;4 4&quot;/&gt;`);
+ s+=`&lt;polyline points=&quot;${pts.map(p=&gt;X(p[0])+&quot;,&quot;+Y(p[1])).join(&quot; &quot;)}&quot; fill=&quot;none&quot; stroke=&quot;var(--accent)&quot; stroke-width=&quot;2&quot;/&gt;`;
+ pts.forEach(p=&gt;s+=`&lt;circle cx=&quot;${X(p[0])}&quot; cy=&quot;${Y(p[1])}&quot; r=&quot;3.5&quot; fill=&quot;var(--accent)&quot;/&gt;`);
+ s+=`&lt;defs&gt;&lt;clipPath id=&quot;clp&quot;&gt;&lt;rect x=&quot;${L}&quot; y=&quot;${Tp}&quot; width=&quot;${W-L-R}&quot; height=&quot;${H-B-Tp}&quot;/&gt;&lt;/clipPath&gt;&lt;/defs&gt;`;
+ (o.lines||[]).forEach(ln=&gt;{s+=`&lt;polyline clip-path=&quot;url(#clp)&quot; points=&quot;${ln.pts.map(p=&gt;X(p[0])+&quot;,&quot;+Y(p[1])).join(&quot; &quot;)}&quot; fill=&quot;none&quot; stroke=&quot;var(--muted)&quot; stroke-width=&quot;1.5&quot; stroke-dasharray=&quot;6 4&quot;/&gt;`;const vis=ln.pts.filter(p=&gt;p[1]&lt;=y1&amp;&amp;p[1]&gt;=y0);if(vis.length){const q=vis[0];s+=`&lt;text x=&quot;${X(q[0])-8}&quot; y=&quot;${Y(q[1])+12}&quot; text-anchor=&quot;end&quot;&gt;${esc(ln.label)}&lt;/text&gt;`}});
+ if(o.smooth){const [a,b,c,lo,hi]=o.smooth;const sp=[];for(let x=lo;x&lt;=hi+1e-9;x+=(hi-lo)/24)sp.push([x,a*x*x+b*x+c]);s+=`&lt;polyline points=&quot;${sp.map(p=&gt;X(p[0])+&quot;,&quot;+Y(p[1])).join(&quot; &quot;)}&quot; fill=&quot;none&quot; stroke=&quot;var(--fg)&quot; stroke-width=&quot;1&quot;/&gt;`}
+ if(o.peak){const [px,pyv]=o.peak;s+=`&lt;line x1=&quot;${X(px)}&quot; x2=&quot;${X(px)}&quot; y1=&quot;${Y(pyv)}&quot; y2=&quot;${H-B}&quot; stroke=&quot;var(--fg)&quot; stroke-dasharray=&quot;3 3&quot;/&gt;&lt;text x=&quot;${X(px)+6}&quot; y=&quot;${Y(pyv)-6}&quot;&gt;MDD ${pyv.toFixed(3)} at ${px.toFixed(1)}%&lt;/text&gt;`}
+ return s+&quot;&lt;/svg&gt;&quot;}
+
+/* ---------------- rendering ---------------- */
+function header(t,paper){
+ if(paper)return `&lt;div class=&quot;phead&quot;&gt;&lt;b&gt;${esc(PROJECT.contractor)}&lt;/b&gt;&lt;span&gt;${esc(PROJECT.name)}&lt;/span&gt;&lt;span&gt;&lt;b&gt;${esc(t.name.toUpperCase())}&lt;/b&gt; · ${esc(t.std)}&lt;/span&gt;&lt;span&gt;${esc(t.form)}&lt;/span&gt;&lt;/div&gt;
+  &lt;div class=&quot;pinfo&quot;&gt;&lt;div&gt;Client: ${esc(PROJECT.client)}&lt;/div&gt;&lt;div&gt;Consultant: ${esc(PROJECT.consultant)}&lt;/div&gt;${t.head.map(([a,b])=&gt;`&lt;div&gt;${esc(a)}: ${esc(b)}&lt;/div&gt;`).join(&quot;&quot;)}&lt;/div&gt;`;
+ return `&lt;div class=&quot;ttl&quot;&gt;&lt;h2&gt;${esc(t.name)}&lt;/h2&gt;&lt;span class=&quot;std&quot;&gt;${esc(t.std)} · ${esc(t.form)}&lt;/span&gt;&lt;/div&gt;
+  &lt;div class=&quot;hdr&quot;&gt;${t.head.map(([a,b],i)=&gt;`&lt;label for=&quot;h-${i}&quot;&gt;${esc(a)}&lt;input id=&quot;h-${i}&quot; value=&quot;${esc(b)}&quot;&gt;&lt;/label&gt;`).join(&quot;&quot;)}&lt;/div&gt;`}
+function table(k,t,o,paper){
+ if(k===&quot;wmm&quot;){return `&lt;div class=&quot;tw&quot;&gt;&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Sieve&lt;/th&gt;&lt;th&gt;Weight retained (g)&lt;/th&gt;&lt;th&gt;Cumulative retained (g)&lt;/th&gt;&lt;th&gt;% retained&lt;/th&gt;&lt;th&gt;% passing&lt;/th&gt;&lt;th&gt;MoRTH limits&lt;/th&gt;&lt;th&gt;&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;${
+  t.sieves.map((sv,i)=&gt;{const r=o.rows[i];return `&lt;tr&gt;&lt;td class=&quot;l&quot;&gt;${sv[0]}&lt;/td&gt;&lt;td&gt;${paper?f(S.wmm.ret[i],0):`&lt;input class=&quot;n&quot; data-k=&quot;ret&quot; data-i=&quot;${i}&quot; value=&quot;${S.wmm.ret[i]}&quot; inputmode=&quot;decimal&quot; aria-label=&quot;Retained on ${sv[0]}&quot;&gt;`}&lt;/td&gt;&lt;td class=&quot;c&quot;&gt;${r[0]}&lt;/td&gt;&lt;td class=&quot;c&quot;&gt;${r[1]}&lt;/td&gt;&lt;td class=&quot;c ${r[5]}&quot;&gt;${i===t.sieves.length-1?&quot;&quot;:r[2]}&lt;/td&gt;&lt;td class=&quot;u&quot;&gt;${r[3]}&lt;/td&gt;&lt;td class=&quot;c ${r[5]}&quot;&gt;${r[4]}&lt;/td&gt;&lt;/tr&gt;`}).join(&quot;&quot;)}&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;`}
+ const cols=t.cols;let h=`&lt;div class=&quot;tw&quot;&gt;&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Description&lt;/th&gt;&lt;th&gt;Unit&lt;/th&gt;${cols.map(c=&gt;`&lt;th&gt;${c}&lt;/th&gt;`).join(&quot;&quot;)}${o.calcHead?`&lt;th&gt;${o.calcHead}&lt;/th&gt;`:&quot;&quot;}&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;`;
+ t.rows.forEach(r=&gt;{const [key,label,unit,,kind]=r;
+  if(key===&quot;sec&quot;){h+=`&lt;tr class=&quot;sec&quot;&gt;&lt;td colspan=&quot;${cols.length+2+(o.calcHead?1:0)}&quot;&gt;${esc(label)}&lt;/td&gt;&lt;/tr&gt;`;return}
+  h+=`&lt;tr&gt;&lt;td class=&quot;l&quot;&gt;${esc(label)}&lt;/td&gt;&lt;td class=&quot;u&quot;&gt;${esc(unit)}&lt;/td&gt;`;
+  if(kind===&quot;c&quot;){(o[key]||[]).forEach(([val,cls])=&gt;h+=`&lt;td class=&quot;c ${cls||&quot;&quot;}&quot;&gt;${esc(val)}&lt;/td&gt;`)}
+  else{S[k][key].forEach((val,i)=&gt;h+=`&lt;td&gt;${paper?esc(val):`&lt;input class=&quot;n&quot; data-k=&quot;${key}&quot; data-i=&quot;${i}&quot; value=&quot;${esc(val)}&quot; ${kind===&quot;t&quot;?&quot;&quot;:&#x27;inputmode=&quot;decimal&quot;&#x27;} aria-label=&quot;${esc(label)} ${cols[i]}&quot;&gt;`}&lt;/td&gt;`);
+   if(o.calcHead)(o[key]||[]).forEach(([val])=&gt;h+=`&lt;td class=&quot;c&quot;&gt;${esc(val)}&lt;/td&gt;`)}
+  h+=&quot;&lt;/tr&gt;&quot;});
+ (t.extra||[]).forEach(([key,label,unit])=&gt;{h+=`&lt;tr&gt;&lt;td class=&quot;l&quot;&gt;${esc(label)}&lt;/td&gt;&lt;td class=&quot;u&quot;&gt;${unit}&lt;/td&gt;&lt;td&gt;${paper?S[k][key]:`&lt;input class=&quot;n&quot; data-k=&quot;${key}&quot; value=&quot;${S[k][key]}&quot; inputmode=&quot;decimal&quot; aria-label=&quot;${esc(label)}&quot;&gt;`}&lt;/td&gt;&lt;td&gt;&lt;/td&gt;&lt;/tr&gt;`});
+ return h+&quot;&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;&quot;}
+function results(o,paper){
+ if(paper)return `&lt;div class=&quot;pres&quot;&gt;&lt;b&gt;RESULTS&lt;/b&gt;${o.summary.map(([v,l,c])=&gt;`&lt;div&gt;${esc(l)}: &lt;b&gt;${esc(v)}&lt;/b&gt;&lt;/div&gt;`).join(&quot;&quot;)}&lt;/div&gt;`;
+ return `&lt;div class=&quot;res&quot;&gt;${o.summary.map(([v,l,c])=&gt;`&lt;div class=&quot;k ${c}&quot;&gt;&lt;b&gt;${esc(v)}&lt;/b&gt;&lt;span&gt;${esc(l)}&lt;/span&gt;&lt;/div&gt;`).join(&quot;&quot;)}&lt;/div&gt;`}
+function render(){
+ const t=T[cur],o=t.calc(vals(cur)),paper=view===&quot;print&quot;;
+ const body=`${header(t,paper)}${table(cur,t,o,paper)}${o.chart?`&lt;div&gt;${o.chart}&lt;/div&gt;`:&quot;&quot;}${results(o,paper)}${paper?`&lt;div&gt;Remarks: ____________________________________________&lt;/div&gt;&lt;div class=&quot;sig&quot;&gt;&lt;div&gt;For ${esc(PROJECT.contractor)}&lt;br&gt;(Lab in-charge)&lt;/div&gt;&lt;div&gt;Consultant&#x27;s / Department representative&lt;/div&gt;&lt;/div&gt;`:`&lt;div class=&quot;sub&quot;&gt;White boxes are what the lab tech types from the test. Grey boxes are worked out by the app. Values marked &quot;from calibration&quot; or &quot;from Proctor&quot; fill in automatically.&lt;/div&gt;`}`;
+ $(&quot;sheet&quot;).innerHTML=paper?`&lt;div class=&quot;paper&quot;&gt;${body}&lt;/div&gt;`:`&lt;section class=&quot;card&quot;&gt;${body}&lt;/section&gt;`;
+}
+$(&quot;picker&quot;).innerHTML=Object.entries(T).map(([k,t])=&gt;`&lt;button type=&quot;button&quot; class=&quot;chip&quot; aria-pressed=&quot;${k===cur}&quot; data-t=&quot;${k}&quot;&gt;${esc(t.name.replace(/ \(.*\)/,&quot;&quot;).replace(&quot;Sieve analysis — &quot;,&quot;Sieve analysis &quot;).replace(&quot;California bearing ratio&quot;,&quot;CBR&quot;))}&lt;/button&gt;`).join(&quot;&quot;);
+$(&quot;picker&quot;).addEventListener(&quot;click&quot;,e=&gt;{const b=e.target.closest(&quot;[data-t]&quot;);if(!b)return;cur=b.dataset.t;$(&quot;picker&quot;).querySelectorAll(&quot;.chip&quot;).forEach(c=&gt;c.setAttribute(&quot;aria-pressed&quot;,c===b));render()});
+document.querySelector(&quot;.toggle&quot;).addEventListener(&quot;click&quot;,e=&gt;{const b=e.target.closest(&quot;[data-v]&quot;);if(!b)return;view=b.dataset.v;b.parentElement.querySelectorAll(&quot;button&quot;).forEach(x=&gt;x.setAttribute(&quot;aria-pressed&quot;,x===b));render()});
+$(&quot;sheet&quot;).addEventListener(&quot;change&quot;,e=&gt;{const el=e.target;if(!el.dataset.k)return;const k=el.dataset.k,i=el.dataset.i;
+ if(i==null)S[cur][k]=el.value;else S[cur][k][+i]=el.value;
+ setTimeout(()=&gt;{const active=document.activeElement;const ak=active&amp;&amp;active.dataset?[active.dataset.k,active.dataset.i]:null;render();if(ak&amp;&amp;ak[0]){const back=document.querySelector(`[data-k=&quot;${ak[0]}&quot;]${ak[1]!=null?`[data-i=&quot;${ak[1]}&quot;]`:&quot;&quot;}`);if(back)back.focus()}},0)});
+render();
+&lt;/script&gt;
+&lt;/body&gt;&lt;/html&gt;"></iframe><iframe title="Level sheet" data-k="levels" hidden srcdoc="&lt;!doctype html&gt;&lt;html lang=&quot;en&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot;&gt;&lt;style&gt;:root{color-scheme:light}body{margin:0;font-family:system-ui,sans-serif;font-size:14px}img{max-width:100%}[hidden]{display:none!important}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;&lt;title&gt;Level Sheet Prototype&lt;/title&gt;
+&lt;meta name=&quot;claude:viewport-fit-sides&quot; content=&quot;cover&quot;&gt;
+&lt;link rel=&quot;stylesheet&quot; href=&quot;https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap&quot;&gt;
+&lt;style&gt;
+/* Layout: level-book sheet — header settings, then a chainage × offset grid, then a cross-section and the quantity summary */
+:root{
+  --bg:#f4f5f3; --card:#fff; --fg:#1d221f; --muted:#5f6862; --line:#d9ddd8;
+  --accent:#2f6b4f; --accent-soft:#e3efe8; --hi:#8a4b00; --hi-soft:#fbefdc; --lo:#2c5c9a; --lo-soft:#e4ecf8;
+  --display:&quot;Space Grotesk&quot;,system-ui,sans-serif; --body:&quot;Inter&quot;,system-ui,sans-serif; --mono:&quot;JetBrains Mono&quot;,ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=&quot;light&quot;]){
+  --bg:#141816; --card:#1c211e; --fg:#e7ebe8; --muted:#9aa49e; --line:#2f3732;
+  --accent:#7cc39d; --accent-soft:#213229; --hi:#e8b25c; --hi-soft:#352a17; --lo:#9dbbe8; --lo-soft:#1f2a3a; color-scheme:dark}}
+:root[data-theme=&quot;dark&quot;]{
+  --bg:#141816; --card:#1c211e; --fg:#e7ebe8; --muted:#9aa49e; --line:#2f3732;
+  --accent:#7cc39d; --accent-soft:#213229; --hi:#e8b25c; --hi-soft:#352a17; --lo:#9dbbe8; --lo-soft:#1f2a3a; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:860px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:14px}
+.note{font-size:12.5px;color:var(--muted);border:1px dashed var(--line);border-radius:8px;padding:8px 10px}
+h1{font-family:var(--display);font-size:22px;margin:0}
+h2{font-family:var(--display);font-size:16px;margin:0}
+.meta{color:var(--muted);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:12px;min-width:0}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+label{display:grid;gap:5px;font-size:13px;color:var(--muted);min-width:0}
+input,select{font:inherit;font-size:15px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;box-sizing:border-box}
+input[readonly]{color:var(--muted)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:6px 12px;font:inherit;font-size:14px;cursor:pointer}
+.chip[aria-pressed=&quot;true&quot;]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.hirow{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:end}
+.hirow label{width:150px}
+.calc{font-family:var(--mono);font-size:14px}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{border-bottom:1px solid var(--line);padding:6px 6px;text-align:left;vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap}
+td.ch{white-space:nowrap;font-family:var(--mono);font-size:13.5px}
+td.ch small{display:block;color:var(--muted);font-size:11.5px}
+tr.sel td{background:var(--accent-soft)}
+.cell{display:grid;gap:2px;min-width:94px}
+.cell input{font-family:var(--mono);font-size:14px;padding:6px 7px}
+.dv{font-family:var(--mono);font-size:12px;border-radius:4px;padding:1px 5px;justify-self:start}
+.ok{color:var(--accent);background:var(--accent-soft)} .high{color:var(--hi);background:var(--hi-soft)} .low{color:var(--lo);background:var(--lo-soft)}
+.des{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.st{font-size:12.5px;font-weight:600;white-space:nowrap}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--muted);align-items:center}
+.sum{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.k{border:1px solid var(--line);border-radius:8px;padding:10px}
+.k b{display:block;font-family:var(--display);font-size:20px;font-variant-numeric:tabular-nums}
+.k span{font-size:12.5px;color:var(--muted)}
+svg text{fill:var(--muted);font-family:var(--body);font-size:11px}
+.btns{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.btn{background:var(--accent);color:var(--card);border:0;border-radius:8px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer}
+.btn.ghost{background:none;color:var(--fg);border:1px solid var(--line)}
+.sub{font-size:12.5px;color:var(--muted)}
+@media (max-width:640px){.grid{grid-template-columns:1fr 1fr}.sum{grid-template-columns:1fr 1fr}}
+&lt;/style&gt;
+
+&lt;div class=&quot;wrap&quot;&gt;
+  &lt;div class=&quot;note&quot;&gt;Prototype only. Readings are from your level book (consultant 3250–3350 = our 2+500–2+600), design is subgrade top at 5 m. TBM and staff readings are samples. Nothing is saved.&lt;/div&gt;
+  &lt;div&gt;
+    &lt;h1&gt;Level sheet&lt;/h1&gt;
+    &lt;div class=&quot;meta&quot;&gt;TAKKADPALLY-SIRUR · Levels &amp;amp; tests → Levels / survey → Enter readings&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;section class=&quot;card&quot;&gt;
+    &lt;div class=&quot;grid&quot;&gt;
+      &lt;label for=&quot;item&quot;&gt;BOQ item&lt;select id=&quot;item&quot;&gt;&lt;option&gt;Construction of sub grade&lt;/option&gt;&lt;option&gt;Embankment with borrow earth&lt;/option&gt;&lt;option&gt;GSB&lt;/option&gt;&lt;option&gt;WMM&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+      &lt;label for=&quot;layer&quot;&gt;Levels of&lt;select id=&quot;layer&quot;&gt;&lt;option&gt;Initial ground (OGL)&lt;/option&gt;&lt;option&gt;Layer 1 top&lt;/option&gt;&lt;option selected&gt;Layer 2 top (finished subgrade)&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+      &lt;label for=&quot;kind&quot;&gt;Taken as&lt;select id=&quot;kind&quot;&gt;&lt;option&gt;Own check&lt;/option&gt;&lt;option selected&gt;Joint levels with department&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+      &lt;label for=&quot;from&quot;&gt;From (our km)&lt;input id=&quot;from&quot; value=&quot;2+500&quot; readonly&gt;&lt;/label&gt;
+      &lt;label for=&quot;to&quot;&gt;To (our km)&lt;input id=&quot;to&quot; value=&quot;2+600&quot; readonly&gt;&lt;/label&gt;
+      &lt;label for=&quot;step&quot;&gt;Every&lt;select id=&quot;step&quot;&gt;&lt;option&gt;10 m&lt;/option&gt;&lt;option&gt;20 m&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+      &lt;label for=&quot;offs&quot;&gt;Points across&lt;select id=&quot;offs&quot;&gt;&lt;option&gt;LHS 5 m · CL · RHS 5 m&lt;/option&gt;&lt;option&gt;LHS 7 m · LHS 5 m · CL · RHS 5 m · RHS 7 m&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+      &lt;label for=&quot;tol&quot;&gt;Tolerance (MoRTH, subgrade)&lt;input id=&quot;tol&quot; value=&quot;+20 mm / −25 mm&quot; readonly&gt;&lt;/label&gt;
+      &lt;label for=&quot;dept&quot;&gt;Department person&lt;input id=&quot;dept&quot; placeholder=&quot;AE name&quot;&gt;&lt;/label&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;seg&quot; role=&quot;group&quot; aria-label=&quot;How readings are entered&quot;&gt;
+      &lt;button type=&quot;button&quot; class=&quot;chip&quot; aria-pressed=&quot;true&quot; data-m=&quot;rl&quot;&gt;Enter RLs&lt;/button&gt;
+      &lt;button type=&quot;button&quot; class=&quot;chip&quot; aria-pressed=&quot;false&quot; data-m=&quot;staff&quot;&gt;Enter staff readings&lt;/button&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;hirow&quot; id=&quot;hirow&quot; hidden&gt;
+      &lt;label for=&quot;tbm&quot;&gt;TBM&lt;select id=&quot;tbm&quot;&gt;&lt;option&gt;TBM 3 · RL 533.500&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+      &lt;label for=&quot;bs&quot;&gt;Back sight on TBM&lt;input id=&quot;bs&quot; class=&quot;calc&quot; value=&quot;1.250&quot; inputmode=&quot;decimal&quot;&gt;&lt;/label&gt;
+      &lt;div class=&quot;calc&quot;&gt;HI = 533.500 + &lt;span id=&quot;bsv&quot;&gt;1.250&lt;/span&gt; = &lt;b id=&quot;hi&quot;&gt;534.750&lt;/b&gt;&lt;/div&gt;
+      &lt;label for=&quot;fs&quot;&gt;Fore sight back on TBM&lt;input id=&quot;fs&quot; class=&quot;calc&quot; value=&quot;1.254&quot; inputmode=&quot;decimal&quot;&gt;&lt;/label&gt;
+      &lt;div class=&quot;calc&quot;&gt;Closing error &lt;b id=&quot;cerr&quot;&gt;4 mm&lt;/b&gt;&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;card&quot;&gt;
+    &lt;div class=&quot;legend&quot;&gt;
+      &lt;span&gt;Design shown under each box ·&lt;/span&gt;
+      &lt;span class=&quot;dv ok&quot;&gt;+12 within&lt;/span&gt;&lt;span class=&quot;dv high&quot;&gt;+245 high → cut&lt;/span&gt;&lt;span class=&quot;dv low&quot;&gt;−83 low → fill&lt;/span&gt;
+      &lt;span&gt;· tap a chainage to see its cross-section&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;tablewrap&quot;&gt;&lt;table id=&quot;sheet&quot;&gt;&lt;/table&gt;&lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;card&quot;&gt;
+    &lt;h2 id=&quot;xsh&quot;&gt;Cross-section&lt;/h2&gt;
+    &lt;svg id=&quot;xs&quot; viewBox=&quot;0 0 640 210&quot; width=&quot;100%&quot; role=&quot;img&quot; aria-label=&quot;Cross-section of design and measured levels&quot;&gt;&lt;/svg&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;card&quot;&gt;
+    &lt;h2&gt;For this stretch&lt;/h2&gt;
+    &lt;div class=&quot;sum&quot; id=&quot;sum&quot;&gt;&lt;/div&gt;
+    &lt;div class=&quot;sub&quot;&gt;Quantities = average difference × top width 10.25 m × 10 m per interval. With OGL and each layer top recorded, the same sheet gives the measured quantity of each layer for the RA bill.&lt;/div&gt;
+    &lt;div class=&quot;btns&quot;&gt;&lt;button class=&quot;btn ghost&quot; type=&quot;button&quot;&gt;Save draft&lt;/button&gt;&lt;button class=&quot;btn&quot; type=&quot;button&quot;&gt;Save levels&lt;/button&gt;&lt;/div&gt;
+  &lt;/section&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+const $=id=&gt;document.getElementById(id);
+// [consultant ch, LHS, CL, RHS, design CL]  (design at 5 m = CL − 0.125)
+const DATA=[[3250,532.913,532.948,532.918,532.703],[3260,532.814,532.79,532.694,532.717],[3270,532.704,532.675,532.568,532.731],[3280,532.654,532.504,532.454,532.745],[3290,532.462,532.489,532.562,532.759],[3300,532.791,532.811,532.716,532.773],[3310,532.812,532.756,532.766,532.787],[3320,532.877,532.831,532.772,532.799],[3330,532.837,532.856,532.901,532.798],[3340,532.894,532.866,532.827,532.784],[3350,532.821,532.771,532.72,532.756]];
+const TBM=533.5; let mode=&quot;rl&quot;, sel=0;
+const ours=c=&gt;{const m=c-750;return `${Math.floor(m/1000)}+${String(m%1000).padStart(3,&quot;0&quot;)}`};
+const design=r=&gt;[r[4]-0.125,r[4],r[4]-0.125];
+const rl=DATA.map(r=&gt;[r[1],r[2],r[3]]);
+const hi=()=&gt;TBM+(parseFloat($(&quot;bs&quot;).value)||0);
+const cls=d=&gt;d&gt;20?&quot;high&quot;:d&lt;-25?&quot;low&quot;:&quot;ok&quot;;
+const sign=d=&gt;(d&gt;0?&quot;+&quot;:d&lt;0?&quot;−&quot;:&quot;&quot;)+Math.abs(d);
+function diffs(i){const d=design(DATA[i]);return rl[i].map((v,j)=&gt;v==null?null:Math.round((v-d[j])*1000))}
+function render(){
+ const H=hi();
+ let h=`&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Chainage&lt;/th&gt;&lt;th&gt;LHS 5 m&lt;/th&gt;&lt;th&gt;CL&lt;/th&gt;&lt;th&gt;RHS 5 m&lt;/th&gt;&lt;th&gt;Status&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;`;
+ DATA.forEach((r,i)=&gt;{const d=design(r),df=diffs(i);
+  const cells=rl[i].map((v,j)=&gt;{const val=mode===&quot;rl&quot;?v.toFixed(3):(H-v).toFixed(3);
+   return `&lt;td&gt;&lt;div class=&quot;cell&quot;&gt;&lt;input aria-label=&quot;${mode===&quot;rl&quot;?&quot;RL&quot;:&quot;Staff reading&quot;} ${ours(r[0])} ${[&quot;LHS&quot;,&quot;CL&quot;,&quot;RHS&quot;][j]}&quot; data-i=&quot;${i}&quot; data-j=&quot;${j}&quot; value=&quot;${val}&quot; inputmode=&quot;decimal&quot;&gt;
+   ${mode===&quot;staff&quot;?`&lt;span class=&quot;des&quot;&gt;RL ${v.toFixed(3)}&lt;/span&gt;`:&quot;&quot;}&lt;span class=&quot;des&quot;&gt;D ${d[j].toFixed(3)}&lt;/span&gt;&lt;span class=&quot;dv ${cls(df[j])}&quot;&gt;${sign(df[j])}&lt;/span&gt;&lt;/div&gt;&lt;/td&gt;`}).join(&quot;&quot;);
+  const worst=df.reduce((a,b)=&gt;Math.abs(b)&gt;Math.abs(a)?b:a,0);
+  const st=df.every(x=&gt;cls(x)===&quot;ok&quot;)?`&lt;span class=&quot;st&quot; style=&quot;color:var(--accent)&quot;&gt;Within&lt;/span&gt;`:worst&gt;0?`&lt;span class=&quot;st&quot; style=&quot;color:var(--hi)&quot;&gt;Cut&lt;/span&gt;`:`&lt;span class=&quot;st&quot; style=&quot;color:var(--lo)&quot;&gt;Fill&lt;/span&gt;`;
+  h+=`&lt;tr data-row=&quot;${i}&quot; class=&quot;${i===sel?&quot;sel&quot;:&quot;&quot;}&quot;&gt;&lt;td class=&quot;ch&quot;&gt;${ours(r[0])}&lt;small&gt;cons. ${r[0]}&lt;/small&gt;&lt;/td&gt;${cells}&lt;td&gt;${st}&lt;/td&gt;&lt;/tr&gt;`});
+ $(&quot;sheet&quot;).innerHTML=h+&quot;&lt;/tbody&gt;&quot;;
+ summary();xsec();
+}
+function summary(){let pts=0,ok=0,hiN=0,loN=0,cut=0,fill=0;
+ DATA.forEach((r,i)=&gt;{const df=diffs(i);df.forEach(d=&gt;{pts++;const c=cls(d);c===&quot;ok&quot;?ok++:c===&quot;high&quot;?hiN++:loN++});
+  if(i&lt;DATA.length-1){const a=(df.reduce((s,x)=&gt;s+x,0)/3+diffs(i+1).reduce((s,x)=&gt;s+x,0)/3)/2/1000;const v=a*10.25*10;v&gt;0?cut+=v:fill-=v}});
+ $(&quot;sum&quot;).innerHTML=[[`${ok} of ${pts}`,&quot;points within tolerance&quot;],[`${hiN} / ${loN}`,&quot;points high / low&quot;],[`${Math.round(cut)} cum`,&quot;to cut (above design)&quot;],[`${Math.round(fill)} cum`,&quot;to fill (below design)&quot;]].map(([b,s])=&gt;`&lt;div class=&quot;k&quot;&gt;&lt;b&gt;${b}&lt;/b&gt;&lt;span&gt;${s}&lt;/span&gt;&lt;/div&gt;`).join(&quot;&quot;)}
+function xsec(){const r=DATA[sel],d=design(r),m=rl[sel];$(&quot;xsh&quot;).textContent=`Cross-section · ${ours(r[0])} (cons. ${r[0]})`;
+ const W=640,Hh=210,pad=46,x=o=&gt;pad+(o+7)/14*(W-2*pad);
+ const all=[...d,...m,r[4]-0.175];const lo=Math.min(...all)-0.08,hiV=Math.max(...all)+0.08;const y=v=&gt;Hh-30-(v-lo)/(hiV-lo)*(Hh-60);
+ const dl=[[-7,r[4]-0.175],[0,r[4]],[7,r[4]-0.175]].map(([o,v])=&gt;`${x(o)},${y(v)}`).join(&quot; &quot;);
+ const ml=[[-5,m[0]],[0,m[1]],[5,m[2]]].map(([o,v])=&gt;`${x(o)},${y(v)}`).join(&quot; &quot;);
+ const pts=[[-5,m[0]],[0,m[1]],[5,m[2]]].map(([o,v],j)=&gt;{const df=diffs(sel)[j];return `&lt;circle cx=&quot;${x(o)}&quot; cy=&quot;${y(v)}&quot; r=&quot;5&quot; fill=&quot;var(--${cls(df)===&quot;ok&quot;?&quot;accent&quot;:cls(df)===&quot;high&quot;?&quot;hi&quot;:&quot;lo&quot;})&quot;/&gt;&lt;text x=&quot;${x(o)}&quot; y=&quot;${y(v)-10}&quot; text-anchor=&quot;middle&quot;&gt;${sign(df)} mm&lt;/text&gt;`}).join(&quot;&quot;);
+ const ticks=[-7,-5,0,5,7].map(o=&gt;`&lt;text x=&quot;${x(o)}&quot; y=&quot;${Hh-8}&quot; text-anchor=&quot;middle&quot;&gt;${o===0?&quot;CL&quot;:(o&lt;0?&quot;L &quot;:&quot;R &quot;)+Math.abs(o)+&quot; m&quot;}&lt;/text&gt;`).join(&quot;&quot;);
+ $(&quot;xs&quot;).innerHTML=`&lt;line x1=&quot;${pad}&quot; x2=&quot;${W-pad}&quot; y1=&quot;${Hh-24}&quot; y2=&quot;${Hh-24}&quot; stroke=&quot;var(--line)&quot;/&gt;
+ &lt;polyline points=&quot;${dl}&quot; fill=&quot;none&quot; stroke=&quot;var(--muted)&quot; stroke-width=&quot;2&quot; stroke-dasharray=&quot;6 4&quot;/&gt;
+ &lt;polyline points=&quot;${ml}&quot; fill=&quot;none&quot; stroke=&quot;var(--fg)&quot; stroke-width=&quot;1.5&quot;/&gt;${pts}${ticks}
+ &lt;text x=&quot;${pad}&quot; y=&quot;16&quot;&gt;— — design subgrade top&lt;/text&gt;&lt;text x=&quot;${pad+170}&quot; y=&quot;16&quot;&gt;—— measured&lt;/text&gt;`}
+$(&quot;sheet&quot;).addEventListener(&quot;input&quot;,e=&gt;{const t=e.target;if(!t.dataset.i)return;const v=parseFloat(t.value);if(!isFinite(v))return;
+ rl[t.dataset.i][t.dataset.j]=mode===&quot;rl&quot;?v:hi()-v;if(mode===&quot;staff&quot;&amp;&amp;rd)rd[t.dataset.i][t.dataset.j]=v;const i=+t.dataset.i,j=+t.dataset.j;
+ const df=diffs(i)[j];const tag=t.parentElement.querySelector(&quot;.dv&quot;);tag.className=&quot;dv &quot;+cls(df);tag.textContent=sign(df);
+ if(mode===&quot;staff&quot;)t.parentElement.querySelector(&quot;.des&quot;).textContent=&quot;RL &quot;+rl[i][j].toFixed(3);sel=i;summary();xsec();
+ document.querySelectorAll(&quot;tr[data-row]&quot;).forEach(tr=&gt;tr.classList.toggle(&quot;sel&quot;,+tr.dataset.row===sel))});
+$(&quot;sheet&quot;).addEventListener(&quot;click&quot;,e=&gt;{const tr=e.target.closest(&quot;tr[data-row]&quot;);if(!tr)return;sel=+tr.dataset.row;
+ document.querySelectorAll(&quot;tr[data-row]&quot;).forEach(t=&gt;t.classList.toggle(&quot;sel&quot;,t===tr));xsec()});
+document.querySelector(&quot;[aria-label=&#x27;How readings are entered&#x27;]&quot;).addEventListener(&quot;click&quot;,e=&gt;{const b=e.target.closest(&quot;[data-m]&quot;);if(!b)return;mode=b.dataset.m;
+ b.parentElement.querySelectorAll(&quot;.chip&quot;).forEach(c=&gt;c.setAttribute(&quot;aria-pressed&quot;,c===b));$(&quot;hirow&quot;).hidden=mode!==&quot;staff&quot;;if(mode===&quot;staff&quot;){const H=hi();rd=rl.map(r=&gt;r.map(v=&gt;H-v))}render()});
+let rd=null;
+function hiUpd(){if(mode===&quot;staff&quot;&amp;&amp;rd){const H=hi();rd.forEach((row,i)=&gt;row.forEach((r,j)=&gt;rl[i][j]=H-r))}$(&quot;bsv&quot;).textContent=(parseFloat($(&quot;bs&quot;).value)||0).toFixed(3);$(&quot;hi&quot;).textContent=hi().toFixed(3);
+ const err=Math.round((hi()-(parseFloat($(&quot;fs&quot;).value)||0)-TBM)*1000);$(&quot;cerr&quot;).textContent=`${Math.abs(err)} mm${Math.abs(err)&gt;10?&quot; — too high, re-check&quot;:&quot;&quot;}`;if(mode===&quot;staff&quot;)render()}
+$(&quot;bs&quot;).addEventListener(&quot;input&quot;,hiUpd);$(&quot;fs&quot;).addEventListener(&quot;input&quot;,hiUpd);
+render();
+&lt;/script&gt;
+&lt;/body&gt;&lt;/html&gt;"></iframe><iframe title="RFIs" data-k="rfi" hidden srcdoc="&lt;!doctype html&gt;&lt;html lang=&quot;en&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot;&gt;&lt;style&gt;:root{color-scheme:light}body{margin:0;font-family:system-ui,sans-serif;font-size:14px}img{max-width:100%}[hidden]{display:none!important}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;&lt;title&gt;RFI Register&lt;/title&gt;
+&lt;meta name=&quot;claude:viewport-fit-sides&quot; content=&quot;cover&quot;&gt;
+&lt;link rel=&quot;stylesheet&quot; href=&quot;https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap&quot;&gt;
+&lt;style&gt;
+/* Layout: project route bar → tabs (RFIs / Raise RFI / RFI summary); RFI detail opens below the list with steps, evidence and the decision panel */
+:root{
+  --bg:#f4f5f3; --card:#fff; --fg:#1d221f; --muted:#5f6862; --line:#d9ddd8;
+  --accent:#2f6b4f; --accent-soft:#e3efe8; --warn:#8a5a00; --warn-soft:#fbefdc; --bad:#a3322a; --bad-soft:#f8e3e1; --info:#355d93; --info-soft:#e5edf8;
+  --display:&quot;Space Grotesk&quot;,system-ui,sans-serif; --body:&quot;Inter&quot;,system-ui,sans-serif; --mono:&quot;JetBrains Mono&quot;,ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=&quot;light&quot;]){
+  --bg:#141816; --card:#1c211e; --fg:#e7ebe8; --muted:#9aa49e; --line:#2f3732;
+  --accent:#7cc39d; --accent-soft:#213229; --warn:#e8b25c; --warn-soft:#352a17; --bad:#ef8a80; --bad-soft:#3a2120; --info:#9dbbe8; --info-soft:#1f2a3a; color-scheme:dark}}
+:root[data-theme=&quot;dark&quot;]{
+  --bg:#141816; --card:#1c211e; --fg:#e7ebe8; --muted:#9aa49e; --line:#2f3732;
+  --accent:#7cc39d; --accent-soft:#213229; --warn:#e8b25c; --warn-soft:#352a17; --bad:#ef8a80; --bad-soft:#3a2120; --info:#9dbbe8; --info-soft:#1f2a3a; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:900px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:14px}
+.note{font-size:12.5px;color:var(--muted);border:1px dashed var(--line);border-radius:8px;padding:8px 10px}
+h1{font-family:var(--display);font-size:22px;margin:0} h2{font-family:var(--display);font-size:17px;margin:0} h3{font-size:14px;margin:0}
+.meta,.sub{color:var(--muted);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:12px;min-width:0}
+.route{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
+label{display:grid;gap:4px;font-size:12.5px;color:var(--muted);min-width:0}
+input,select,textarea{font:inherit;font-size:14px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:8px 9px;width:100%;box-sizing:border-box}
+textarea{min-height:52px;resize:vertical}
+input[readonly]{color:var(--muted)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab,.chip{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:7px 13px;font:inherit;font-size:14px;cursor:pointer}
+.tab[aria-selected=&quot;true&quot;],.chip[aria-pressed=&quot;true&quot;]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.full{grid-column:1/-1}
+.list{display:grid}
+.row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid var(--line);cursor:pointer;background:none;border-left:0;border-right:0;border-bottom:0;font:inherit;color:inherit;text-align:left;width:100%}
+.row:first-child{border-top:0}
+.row:hover,.row.sel{background:var(--accent-soft)}
+.no{font-family:var(--mono);font-size:13px;font-weight:500;white-space:nowrap}
+.row .d{min-width:0}.row .d b{display:block;font-weight:600}.row .d span{font-size:13px;color:var(--muted)}
+.pill{font-size:12px;font-weight:600;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.p-ok{color:var(--accent);background:var(--accent-soft)} .p-part{color:var(--warn);background:var(--warn-soft)} .p-bad{color:var(--bad);background:var(--bad-soft)} .p-sent{color:var(--info);background:var(--info-soft)} .p-draft{color:var(--muted);background:var(--bg);border:1px solid var(--line)}
+.steps{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
+.step{border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--muted)}
+.step.done{border-color:var(--accent);color:var(--accent);font-weight:600}
+.step.now{border-color:var(--info);color:var(--info);font-weight:600}
+.arrow{color:var(--muted)}
+.kv{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.kv div{border:1px solid var(--line);border-radius:8px;padding:8px}
+.kv b{display:block;font-variant-numeric:tabular-nums}
+.kv span{font-size:12px;color:var(--muted)}
+.ev{display:grid;gap:6px}
+.evr{display:grid;grid-template-columns:1fr auto;gap:8px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px}
+.evr .s{font-size:12.5px;color:var(--muted)}
+.need{border-radius:8px;padding:8px 10px;font-size:13.5px}
+.need.ok{background:var(--accent-soft);color:var(--accent)} .need.warn{background:var(--warn-soft);color:var(--warn)}
+.pieces{display:grid;gap:8px}
+.piece{display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;align-items:end}
+.btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.btn{background:var(--accent);color:var(--card);border:0;border-radius:8px;padding:9px 14px;font:inherit;font-weight:600;cursor:pointer}
+.btn.ghost{background:none;color:var(--fg);border:1px solid var(--line)}
+.btn.bad{background:var(--bad)}
+.link{background:none;border:0;color:var(--accent);font:inherit;font-size:13px;cursor:pointer;padding:0}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:13.5px}
+th,td{border-bottom:1px solid var(--line);padding:6px 7px;text-align:left;white-space:nowrap}
+th{font-size:12px;color:var(--muted);font-weight:600}
+td.r,th.r{text-align:right}
+tfoot td{font-weight:600}
+.toast{font-size:13px;color:var(--accent)}
+.hist{font-size:13px;color:var(--muted);display:grid;gap:2px}
+@media (max-width:640px){.grid{grid-template-columns:1fr 1fr}.kv{grid-template-columns:1fr 1fr}.piece{grid-template-columns:1fr 1fr}}
+&lt;/style&gt;
+
+&lt;div class=&quot;wrap&quot;&gt;
+  &lt;div class=&quot;note&quot;&gt;Prototype with sample RFIs for Takkadpally. Width and depth come from the typical section (subgrade 10.25 m, 250 mm per layer). Nothing is saved.&lt;/div&gt;
+  &lt;div&gt;&lt;h1&gt;RFIs&lt;/h1&gt;&lt;div class=&quot;meta&quot;&gt;TAKKADPALLY-SIRUR · Requests for inspection, approvals and approved quantities&lt;/div&gt;&lt;/div&gt;
+
+  &lt;section class=&quot;card&quot;&gt;
+    &lt;div class=&quot;route&quot;&gt;
+      &lt;label for=&quot;route&quot;&gt;Approval route for this project
+        &lt;select id=&quot;route&quot;&gt;
+          &lt;option value=&quot;cd&quot;&gt;Consultant, then Department&lt;/option&gt;
+          &lt;option value=&quot;d&quot; selected&gt;Department only&lt;/option&gt;
+          &lt;option value=&quot;c&quot;&gt;Consultant only&lt;/option&gt;
+          &lt;option value=&quot;i&quot;&gt;No RFI process — internal sign-off by HLC&lt;/option&gt;
+        &lt;/select&gt;&lt;/label&gt;
+      &lt;span class=&quot;sub&quot; id=&quot;routeNote&quot;&gt;&lt;/span&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;div class=&quot;tabs&quot; role=&quot;tablist&quot;&gt;
+    &lt;button class=&quot;tab&quot; role=&quot;tab&quot; aria-selected=&quot;true&quot; data-tab=&quot;list&quot;&gt;RFIs&lt;/button&gt;
+    &lt;button class=&quot;tab&quot; role=&quot;tab&quot; aria-selected=&quot;false&quot; data-tab=&quot;new&quot; id=&quot;tabNew&quot;&gt;Raise RFI&lt;/button&gt;
+    &lt;button class=&quot;tab&quot; role=&quot;tab&quot; aria-selected=&quot;false&quot; data-tab=&quot;sum&quot;&gt;RFI summary&lt;/button&gt;
+  &lt;/div&gt;
+
+  &lt;section id=&quot;p-list&quot; class=&quot;card&quot; style=&quot;padding:0;gap:0&quot;&gt;
+    &lt;div class=&quot;list&quot; id=&quot;list&quot;&gt;&lt;/div&gt;
+  &lt;/section&gt;
+  &lt;section id=&quot;detail&quot; class=&quot;card&quot; hidden&gt;&lt;/section&gt;
+
+  &lt;section id=&quot;p-new&quot; class=&quot;card&quot; hidden&gt;
+    &lt;h2 id=&quot;newH&quot;&gt;Raise RFI&lt;/h2&gt;
+    &lt;div class=&quot;grid&quot;&gt;
+      &lt;label for=&quot;nType&quot;&gt;Type&lt;select id=&quot;nType&quot;&gt;&lt;option&gt;Highway&lt;/option&gt;&lt;option&gt;Structure&lt;/option&gt;&lt;option&gt;Drain&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+      &lt;label for=&quot;nItem&quot;&gt;BOQ item&lt;select id=&quot;nItem&quot;&gt;&lt;option value=&quot;sg&quot;&gt;Construction of sub grade&lt;/option&gt;&lt;option value=&quot;emb&quot;&gt;Embankment with borrow earth&lt;/option&gt;&lt;option value=&quot;gsb&quot;&gt;GSB&lt;/option&gt;&lt;option value=&quot;wmm&quot;&gt;WMM&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+      &lt;label for=&quot;nLayer&quot;&gt;Layer&lt;select id=&quot;nLayer&quot;&gt;&lt;option&gt;Layer 1&lt;/option&gt;&lt;option selected&gt;Layer 2&lt;/option&gt;&lt;option&gt;Layer 3&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+      &lt;label for=&quot;nFrom&quot;&gt;From (our km)&lt;input id=&quot;nFrom&quot; value=&quot;2.650&quot; inputmode=&quot;decimal&quot;&gt;&lt;/label&gt;
+      &lt;label for=&quot;nTo&quot;&gt;To (our km)&lt;input id=&quot;nTo&quot; value=&quot;2.800&quot; inputmode=&quot;decimal&quot;&gt;&lt;/label&gt;
+      &lt;label for=&quot;nSide&quot;&gt;Side&lt;select id=&quot;nSide&quot;&gt;&lt;option&gt;Both&lt;/option&gt;&lt;option&gt;LHS&lt;/option&gt;&lt;option&gt;RHS&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+      &lt;label for=&quot;nDate&quot;&gt;Inspection date&lt;input id=&quot;nDate&quot; type=&quot;date&quot; value=&quot;2026-11-23&quot;&gt;&lt;/label&gt;
+      &lt;label for=&quot;nTime&quot;&gt;Time&lt;input id=&quot;nTime&quot; type=&quot;time&quot; value=&quot;11:00&quot;&gt;&lt;/label&gt;
+      &lt;label for=&quot;nContact&quot;&gt;Contact person&lt;select id=&quot;nContact&quot;&gt;&lt;option&gt;ENGINEER A&lt;/option&gt;&lt;option&gt;SUPERVISOR B&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;kv&quot; id=&quot;nCalc&quot;&gt;&lt;/div&gt;
+    &lt;div class=&quot;need ok&quot; id=&quot;nNeed&quot;&gt;&lt;/div&gt;
+    &lt;div class=&quot;btns&quot;&gt;&lt;span class=&quot;toast&quot; id=&quot;nToast&quot;&gt;&lt;/span&gt;&lt;button class=&quot;btn ghost&quot; type=&quot;button&quot; id=&quot;nDraft&quot;&gt;Save draft&lt;/button&gt;&lt;button class=&quot;btn&quot; type=&quot;button&quot; id=&quot;nSend&quot;&gt;Send RFI&lt;/button&gt;&lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section id=&quot;p-sum&quot; class=&quot;card&quot; hidden&gt;
+    &lt;div class=&quot;grid&quot;&gt;
+      &lt;label for=&quot;sItem&quot;&gt;BOQ item / layer&lt;select id=&quot;sItem&quot;&gt;&lt;/select&gt;&lt;/label&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;tw&quot;&gt;&lt;table id=&quot;sum&quot;&gt;&lt;/table&gt;&lt;/div&gt;
+    &lt;div class=&quot;sub&quot;&gt;Only approved stretches count. This is the measured quantity that goes to the RA bill.&lt;/div&gt;
+  &lt;/section&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+const $=id=&gt;document.getElementById(id);
+const esc=s=&gt;String(s??&quot;&quot;).replace(/[&amp;&lt;&gt;&quot;]/g,c=&gt;({&quot;&amp;&quot;:&quot;&amp;amp;&quot;,&quot;&lt;&quot;:&quot;&amp;lt;&quot;,&quot;&gt;&quot;:&quot;&amp;gt;&quot;,&#x27;&quot;&#x27;:&quot;&amp;quot;&quot;}[c]));
+const km=v=&gt;{const n=Number(v);const k=Math.floor(n+1e-9),m=Math.round((n-k)*1000);return k+&quot;+&quot;+String(m).padStart(3,&quot;0&quot;)};
+const ITEM={sg:{name:&quot;Subgrade&quot;,w:10.25,d:0.25,freq:2000,test:&quot;Field density&quot;},emb:{name:&quot;Embankment&quot;,w:12.25,d:0.25,freq:3000,test:&quot;Field density&quot;},gsb:{name:&quot;GSB&quot;,w:7.4,d:0.2,freq:1000,test:&quot;Field density + gradation&quot;},wmm:{name:&quot;WMM&quot;,w:7.2,d:0.25,freq:500,test:&quot;Field density + gradation&quot;}};
+const ROUTES={cd:{steps:[&quot;Consultant&quot;,&quot;Department&quot;],who:&quot;consultant and department&quot;,send:true},d:{steps:[&quot;Department&quot;],who:&quot;department (AE / DEE, R&amp;B)&quot;,send:true},c:{steps:[&quot;Consultant&quot;],who:&quot;consultant&quot;,send:true},i:{steps:[&quot;HLC site engineer&quot;],who:&quot;HLC (internal)&quot;,send:false}};
+let route=&quot;d&quot;, sel=&quot;TKP/HW/015&quot;, tab=&quot;list&quot;;
+const widthFor=(item,side)=&gt;side===&quot;Both&quot;?ITEM[item].w:ITEM[item].w/2;
+
+let RFIS=[
+ {no:&quot;TKP/HW/012&quot;,item:&quot;sg&quot;,layer:&quot;Layer 1&quot;,from:2.5,to:2.65,side:&quot;Both&quot;,date:&quot;18 Nov 2026&quot;,time:&quot;11:00&quot;,status:&quot;ok&quot;,approved:[[2.5,2.65]],by:&quot;AE (sample) · OTP link · 18 Nov 12:40&quot;,ev:[[&quot;Field density · TKP/FDD/031&quot;,&quot;2+550 · 98.2%&quot;,true],[&quot;Level sheet · layer 1 top&quot;,&quot;33 of 33 within&quot;,true]],hist:[&quot;Raised 17 Nov by ENGINEER A&quot;,&quot;Sent 17 Nov 6:10 pm&quot;,&quot;Approved full stretch 18 Nov 12:40&quot;]},
+ {no:&quot;TKP/HW/013&quot;,item:&quot;sg&quot;,layer:&quot;Layer 1&quot;,from:2.65,to:2.9,side:&quot;Both&quot;,date:&quot;19 Nov 2026&quot;,time:&quot;15:00&quot;,status:&quot;part&quot;,approved:[[2.65,2.8]],remark:&quot;2+800 – 2+900 levels high, cut and re-roll&quot;,by:&quot;AE (sample) · signed on ENGINEER A&#x27;s phone · 19 Nov 4:05 pm&quot;,ev:[[&quot;Field density · TKP/FDD/033&quot;,&quot;2+700 · 97.6%&quot;,true],[&quot;Field density · TKP/FDD/034&quot;,&quot;2+850 · 97.9%&quot;,true],[&quot;Level sheet · layer 1 top&quot;,&quot;24 of 33 within&quot;,false]],hist:[&quot;Raised 18 Nov&quot;,&quot;Sent 18 Nov&quot;,&quot;Approved 2+650 – 2+800 (150 m); 2+800 – 2+900 not approved&quot;,&quot;Re-inspection TKP/HW/013-A created&quot;]},
+ {no:&quot;TKP/HW/013-A&quot;,item:&quot;sg&quot;,layer:&quot;Layer 1&quot;,from:2.8,to:2.9,side:&quot;Both&quot;,date:&quot;&quot;,time:&quot;&quot;,status:&quot;draft&quot;,approved:[],ev:[],parent:&quot;TKP/HW/013&quot;,hist:[&quot;Created from TKP/HW/013 (part not approved) — set date and send&quot;]},
+ {no:&quot;TKP/HW/015&quot;,item:&quot;sg&quot;,layer:&quot;Layer 2&quot;,from:2.5,to:2.65,side:&quot;Both&quot;,date:&quot;22 Nov 2026&quot;,time:&quot;11:00&quot;,status:&quot;sent&quot;,approved:[],ev:[[&quot;Field density · TKP/FDD/036&quot;,&quot;2+550 · 98.7% Pass&quot;,true],[&quot;Field density · TKP/FDD/037&quot;,&quot;2+600 · 95.9% Fail&quot;,false],[&quot;Level sheet · layer 2 top&quot;,&quot;linked when saved&quot;,null]],hist:[&quot;Raised 21 Nov by ENGINEER A&quot;,&quot;Sent to department 21 Nov 5:30 pm (WhatsApp link)&quot;]},
+ {no:&quot;TKP/HW/016&quot;,item:&quot;gsb&quot;,layer:&quot;Layer 1&quot;,from:1.2,to:1.4,side:&quot;Both&quot;,date:&quot;&quot;,time:&quot;&quot;,status:&quot;draft&quot;,approved:[],ev:[],hist:[&quot;Draft saved 21 Nov&quot;]}];
+let approvals={}; // per RFI for two-step route
+
+const STATUS={ok:[&quot;Approved&quot;,&quot;p-ok&quot;],part:[&quot;Part approved&quot;,&quot;p-part&quot;],bad:[&quot;Not approved&quot;,&quot;p-bad&quot;],sent:[&quot;Sent · due&quot;,&quot;p-sent&quot;],draft:[&quot;Draft&quot;,&quot;p-draft&quot;],c1:[&quot;Consultant approved · awaiting department&quot;,&quot;p-sent&quot;]};
+function stLabel(r){if(r.status===&quot;sent&quot;)return route===&quot;i&quot;?&quot;Inspection due&quot;:`Sent · inspection ${r.date.slice(0,6)} ${r.time}`;if(route===&quot;i&quot;&amp;&amp;r.status===&quot;ok&quot;)return &quot;Signed off&quot;;return STATUS[r.status][0]}
+const len=r=&gt;Math.round((r.to-r.from)*1000);
+const qty=(r,a,b)=&gt;((b-a)*1000)*widthFor(r.item,r.side)*ITEM[r.item].d;
+
+function renderRoute(){const R=ROUTES[route];$(&quot;routeNote&quot;).textContent=R.send?`RFIs go to the ${R.who}.`:&quot;Nothing is sent outside. HLC signs off each stretch.&quot;;
+ $(&quot;tabNew&quot;).textContent=R.send?&quot;Raise RFI&quot;:&quot;New inspection record&quot;;$(&quot;newH&quot;).textContent=R.send?&quot;Raise RFI&quot;:&quot;New inspection record&quot;;$(&quot;nSend&quot;).textContent=R.send?&quot;Send RFI&quot;:&quot;Save record&quot;;}
+function renderList(){$(&quot;list&quot;).innerHTML=RFIS.map(r=&gt;`&lt;button type=&quot;button&quot; class=&quot;row${r.no===sel?&quot; sel&quot;:&quot;&quot;}&quot; data-no=&quot;${r.no}&quot;&gt;&lt;span class=&quot;no&quot;&gt;${r.no}&lt;/span&gt;&lt;span class=&quot;d&quot;&gt;&lt;b&gt;${ITEM[r.item].name} ${r.layer} · ${km(r.from)} – ${km(r.to)} ${r.side}&lt;/b&gt;&lt;span&gt;${len(r)} m · ${Math.round(qty(r,r.from,r.to))} cum${r.parent?` · re-inspection of ${r.parent}`:&quot;&quot;}&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;pill ${STATUS[r.status][1]}&quot;&gt;${esc(stLabel(r))}&lt;/span&gt;&lt;/button&gt;`).join(&quot;&quot;);}
+function renderDetail(){const r=RFIS.find(x=&gt;x.no===sel);const D=$(&quot;detail&quot;);if(!r||tab!==&quot;list&quot;){D.hidden=true;return}D.hidden=false;
+ const R=ROUTES[route];const steps=[&quot;Raised&quot;,...(R.send?[&quot;Sent&quot;]:[]),&quot;Inspected&quot;,...R.steps.map(s=&gt;`${s} decision`)];
+ const doneN=r.status===&quot;draft&quot;?1:r.status===&quot;sent&quot;?(R.send?2:1):r.status===&quot;c1&quot;?steps.length-1:steps.length;
+ const area=len(r)*widthFor(r.item,r.side);const need=Math.max(1,Math.ceil(area/ITEM[r.item].freq));const fdd=r.ev.filter(e=&gt;e[0].startsWith(&quot;Field density&quot;));const fails=fdd.filter(e=&gt;e[2]===false).length;
+ let h=`&lt;div style=&quot;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline&quot;&gt;&lt;h2&gt;${r.no}&lt;/h2&gt;&lt;span class=&quot;pill ${STATUS[r.status][1]}&quot;&gt;${esc(stLabel(r))}&lt;/span&gt;&lt;/div&gt;
+ &lt;div class=&quot;steps&quot;&gt;${steps.map((s,i)=&gt;`&lt;span class=&quot;step ${i&lt;doneN?&quot;done&quot;:i===doneN?&quot;now&quot;:&quot;&quot;}&quot;&gt;${s}&lt;/span&gt;`).join(&#x27;&lt;span class=&quot;arrow&quot;&gt;›&lt;/span&gt;&#x27;)}&lt;/div&gt;
+ &lt;div class=&quot;kv&quot;&gt;&lt;div&gt;&lt;b&gt;${ITEM[r.item].name} · ${r.layer}&lt;/b&gt;&lt;span&gt;BOQ item / layer&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;${km(r.from)} – ${km(r.to)}&lt;/b&gt;&lt;span&gt;${r.side} · ${len(r)} m&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;${widthFor(r.item,r.side)} m × ${ITEM[r.item].d*1000} mm&lt;/b&gt;&lt;span&gt;width × depth (typical section)&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;${Math.round(qty(r,r.from,r.to))} cum&lt;/b&gt;&lt;span&gt;proposed quantity&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;`;
+ if(r.status!==&quot;draft&quot;){h+=`&lt;h3&gt;Evidence&lt;/h3&gt;&lt;div class=&quot;ev&quot;&gt;${r.ev.map(([t,s,ok])=&gt;`&lt;div class=&quot;evr&quot;&gt;&lt;span&gt;${esc(t)}&lt;div class=&quot;s&quot;&gt;${esc(s)}&lt;/div&gt;&lt;/span&gt;&lt;span class=&quot;pill ${ok===true?&quot;p-ok&quot;:ok===false?&quot;p-bad&quot;:&quot;p-draft&quot;}&quot;&gt;${ok===true?&quot;Pass&quot;:ok===false?&quot;Fail&quot;:&quot;Pending&quot;}&lt;/span&gt;&lt;/div&gt;`).join(&quot;&quot;)}
+  &lt;button type=&quot;button&quot; class=&quot;link&quot; style=&quot;justify-self:start&quot;&gt;+ Attach test or level sheet&lt;/button&gt;&lt;/div&gt;
+  &lt;div class=&quot;need ${fdd.length&gt;=need&amp;&amp;!fails?&quot;ok&quot;:&quot;warn&quot;}&quot;&gt;${ITEM[r.item].test}: &lt;b&gt;${need} required&lt;/b&gt; for ${Math.round(area)} sqm · ${fdd.length} attached${fails?` · ${fails} failed — retest or approve part only`:&quot;&quot;} · Levels: ${r.ev.some(e=&gt;e[0].startsWith(&quot;Level&quot;))?&quot;attached&quot;:&quot;missing&quot;}&lt;/div&gt;`}
+ if(r.status===&quot;draft&quot;)h+=`&lt;div class=&quot;grid&quot;&gt;&lt;label for=&quot;dDate&quot;&gt;Inspection date&lt;input id=&quot;dDate&quot; type=&quot;date&quot; value=&quot;2026-11-24&quot;&gt;&lt;/label&gt;&lt;label for=&quot;dTime&quot;&gt;Time&lt;input id=&quot;dTime&quot; type=&quot;time&quot; value=&quot;11:00&quot;&gt;&lt;/label&gt;&lt;/div&gt;&lt;div class=&quot;btns&quot;&gt;&lt;button class=&quot;btn&quot; type=&quot;button&quot; data-act=&quot;send&quot;&gt;${R.send?&quot;Send RFI&quot;:&quot;Mark ready for inspection&quot;}&lt;/button&gt;&lt;/div&gt;`;
+ if(r.status===&quot;sent&quot;||r.status===&quot;c1&quot;){const who=r.status===&quot;c1&quot;?&quot;Department&quot;:R.steps[0];
+  h+=`&lt;h3&gt;${who} decision&lt;/h3&gt;
+  &lt;div class=&quot;grid&quot;&gt;&lt;label for=&quot;dBy&quot;&gt;Inspected by&lt;input id=&quot;dBy&quot; value=&quot;${route===&quot;i&quot;?&quot;ENGINEER A&quot;:who===&quot;Consultant&quot;?&quot;Consultant&#x27;s engineer (name)&quot;:&quot;AE, R&amp;B (name)&quot;}&quot;&gt;&lt;/label&gt;
+  &lt;label for=&quot;dHow&quot;&gt;${route===&quot;i&quot;?&quot;Sign-off&quot;:&quot;Signed by&quot;}&lt;select id=&quot;dHow&quot;&gt;&lt;option&gt;${route===&quot;i&quot;?&quot;Finger signature&quot;:&quot;OTP link on their phone&quot;}&lt;/option&gt;&lt;option&gt;Finger signature on our phone&lt;/option&gt;&lt;option&gt;Signed paper (photo attached)&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;&lt;/div&gt;
+  &lt;div class=&quot;seg&quot; role=&quot;group&quot; aria-label=&quot;Decision&quot; style=&quot;display:flex;gap:6px;flex-wrap:wrap&quot;&gt;
+   &lt;button type=&quot;button&quot; class=&quot;chip&quot; aria-pressed=&quot;false&quot; data-dec=&quot;full&quot;&gt;Approve full stretch&lt;/button&gt;
+   &lt;button type=&quot;button&quot; class=&quot;chip&quot; aria-pressed=&quot;true&quot; data-dec=&quot;part&quot;&gt;Approve part&lt;/button&gt;
+   &lt;button type=&quot;button&quot; class=&quot;chip&quot; aria-pressed=&quot;false&quot; data-dec=&quot;none&quot;&gt;Not approved&lt;/button&gt;&lt;/div&gt;
+  &lt;div id=&quot;decBody&quot;&gt;&lt;/div&gt;`}
+ if(r.status===&quot;ok&quot;||r.status===&quot;part&quot;){h+=`&lt;div class=&quot;ev&quot;&gt;${r.approved.map(([a,b])=&gt;`&lt;div class=&quot;evr&quot;&gt;&lt;span&gt;Approved ${km(a)} – ${km(b)} &lt;div class=&quot;s&quot;&gt;${Math.round((b-a)*1000)} m · ${Math.round(qty(r,a,b))} cum&lt;/div&gt;&lt;/span&gt;&lt;span class=&quot;pill p-ok&quot;&gt;Approved&lt;/span&gt;&lt;/div&gt;`).join(&quot;&quot;)}${r.remark?`&lt;div class=&quot;evr&quot;&gt;&lt;span&gt;Not approved: ${esc(r.remark)}&lt;/span&gt;&lt;span class=&quot;pill p-bad&quot;&gt;Re-inspect&lt;/span&gt;&lt;/div&gt;`:&quot;&quot;}&lt;/div&gt;&lt;div class=&quot;sub&quot;&gt;${esc(r.by||&quot;&quot;)}&lt;/div&gt;`}
+ h+=`&lt;div class=&quot;hist&quot;&gt;&lt;b style=&quot;color:var(--fg);font-size:13px&quot;&gt;History&lt;/b&gt;${r.hist.map(x=&gt;`&lt;span&gt;· ${esc(x)}&lt;/span&gt;`).join(&quot;&quot;)}&lt;/div&gt;`;
+ D.innerHTML=h;if(r.status===&quot;sent&quot;||r.status===&quot;c1&quot;)renderDec(&quot;part&quot;);}
+let dec=&quot;part&quot;,pieces=null;
+function renderDec(d){dec=d;const r=RFIS.find(x=&gt;x.no===sel);document.querySelectorAll(&quot;[data-dec]&quot;).forEach(b=&gt;b.setAttribute(&quot;aria-pressed&quot;,b.dataset.dec===d));
+ if(d===&quot;part&quot;&amp;&amp;!pieces)pieces=[[r.from,+(r.from+0.1).toFixed(3)]];
+ let h=&quot;&quot;;
+ if(d===&quot;part&quot;){h+=`&lt;div class=&quot;pieces&quot;&gt;${pieces.map(([a,b],i)=&gt;`&lt;div class=&quot;piece&quot;&gt;&lt;label for=&quot;pa${i}&quot;&gt;Approved from (km)&lt;input id=&quot;pa${i}&quot; data-p=&quot;${i}&quot; data-e=&quot;0&quot; value=&quot;${a.toFixed(3)}&quot; inputmode=&quot;decimal&quot;&gt;&lt;/label&gt;&lt;label for=&quot;pb${i}&quot;&gt;To (km)&lt;input id=&quot;pb${i}&quot; data-p=&quot;${i}&quot; data-e=&quot;1&quot; value=&quot;${b.toFixed(3)}&quot; inputmode=&quot;decimal&quot;&gt;&lt;/label&gt;&lt;span class=&quot;sub&quot;&gt;${Math.round((b-a)*1000)} m&lt;/span&gt;${pieces.length&gt;1?`&lt;button type=&quot;button&quot; class=&quot;link&quot; data-rm=&quot;${i}&quot;&gt;Remove&lt;/button&gt;`:&quot;&lt;span&gt;&lt;/span&gt;&quot;}&lt;/div&gt;`).join(&quot;&quot;)}
+   &lt;button type=&quot;button&quot; class=&quot;link&quot; data-addp style=&quot;justify-self:start&quot;&gt;+ Add another approved piece&lt;/button&gt;&lt;/div&gt;`;
+  const rest=remainder(r,pieces);h+=`&lt;div class=&quot;need warn&quot;&gt;Approved: &lt;b&gt;${pieces.reduce((s,[a,b])=&gt;s+Math.round((b-a)*1000),0)} m · ${Math.round(pieces.reduce((s,[a,b])=&gt;s+qty(r,a,b),0))} cum&lt;/b&gt;. Not approved: ${rest.length?rest.map(([a,b])=&gt;`${km(a)} – ${km(b)}`).join(&quot;, &quot;):&quot;none&quot;} → becomes &lt;b&gt;${r.no}-A&lt;/b&gt; for re-inspection.&lt;/div&gt;`}
+ if(d!==&quot;full&quot;)h+=`&lt;label for=&quot;dRem&quot;&gt;${d===&quot;none&quot;?&quot;Reason&quot;:&quot;Reason for the part not approved&quot;}&lt;textarea id=&quot;dRem&quot;&gt;${d===&quot;none&quot;?&quot;&quot;:&quot;2+600 FDD 95.9%, re-roll and retest&quot;}&lt;/textarea&gt;&lt;/label&gt;`;
+ h+=`&lt;div class=&quot;btns&quot;&gt;&lt;span class=&quot;toast&quot; id=&quot;dToast&quot;&gt;&lt;/span&gt;&lt;button class=&quot;btn ${d===&quot;none&quot;?&quot;bad&quot;:&quot;&quot;}&quot; type=&quot;button&quot; data-act=&quot;decide&quot;&gt;Record decision&lt;/button&gt;&lt;/div&gt;`;
+ $(&quot;decBody&quot;).innerHTML=h;}
+function remainder(r,ps){const s=ps.map(p=&gt;[Math.max(r.from,Math.min(p[0],p[1])),Math.min(r.to,Math.max(p[0],p[1]))]).sort((a,b)=&gt;a[0]-b[0]);const out=[];let c=r.from;s.forEach(([a,b])=&gt;{if(a&gt;c+1e-6)out.push([c,a]);c=Math.max(c,b)});if(c&lt;r.to-1e-6)out.push([c,r.to]);return out}
+function decide(){const r=RFIS.find(x=&gt;x.no===sel);const R=ROUTES[route];const who=r.status===&quot;c1&quot;?&quot;Department&quot;:R.steps[0];const how=$(&quot;dHow&quot;).value,by=$(&quot;dBy&quot;).value;
+ let ap=dec===&quot;full&quot;?[[r.from,r.to]]:dec===&quot;part&quot;?pieces.map(p=&gt;[Math.min(...p),Math.max(...p)]):[];
+ if(route===&quot;cd&quot;&amp;&amp;r.status===&quot;sent&quot;&amp;&amp;dec!==&quot;none&quot;){r.status=&quot;c1&quot;;r.approvedC=ap;r.hist.push(`Consultant: ${dec===&quot;full&quot;?&quot;approved full stretch&quot;:&quot;approved &quot;+ap.map(([a,b])=&gt;km(a)+&quot; – &quot;+km(b)).join(&quot;, &quot;)} (${how})`);pieces=ap.map(x=&gt;x.slice());render();return}
+ if(r.status===&quot;c1&quot;&amp;&amp;r.approvedC&amp;&amp;dec===&quot;full&quot;)ap=r.approvedC;
+ const rest=remainder(r,ap);r.approved=ap;r.status=ap.length===0?&quot;bad&quot;:rest.length?&quot;part&quot;:&quot;ok&quot;;r.by=`${by} · ${how} · 21 Nov 2026`;
+ const rem=$(&quot;dRem&quot;)?$(&quot;dRem&quot;).value:&quot;&quot;;if(rest.length)r.remark=`${rest.map(([a,b])=&gt;km(a)+&quot; – &quot;+km(b)).join(&quot;, &quot;)} — ${rem}`;
+ r.hist.push(`${who}: ${ap.length?&quot;approved &quot;+ap.map(([a,b])=&gt;km(a)+&quot; – &quot;+km(b)).join(&quot;, &quot;):&quot;not approved&quot;} (${how})`);
+ if(rest.length){const nn=r.no+&quot;-A&quot;;if(!RFIS.some(x=&gt;x.no===nn)){RFIS.splice(RFIS.indexOf(r)+1,0,{no:nn,item:r.item,layer:r.layer,from:rest[0][0],to:rest[rest.length-1][1],side:r.side,date:&quot;&quot;,time:&quot;&quot;,status:&quot;draft&quot;,approved:[],ev:[],parent:r.no,hist:[`Created from ${r.no} (part not approved) — set date and send`]});r.hist.push(`Re-inspection ${nn} created`)}}
+ pieces=null;render();}
+function renderNew(){const it=$(&quot;nItem&quot;).value,side=$(&quot;nSide&quot;).value,a=+$(&quot;nFrom&quot;).value,b=+$(&quot;nTo&quot;).value;const L=Math.max(0,Math.round((b-a)*1000)),w=widthFor(it,side),d=ITEM[it].d,area=L*w;const need=Math.max(1,Math.ceil(area/ITEM[it].freq));
+ $(&quot;nCalc&quot;).innerHTML=`&lt;div&gt;&lt;b&gt;${L} m&lt;/b&gt;&lt;span&gt;length&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;${w} m&lt;/b&gt;&lt;span&gt;width (typical section)&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;${d*1000} mm&lt;/b&gt;&lt;span&gt;layer depth&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;${Math.round(L*w*d)} cum&lt;/b&gt;&lt;span&gt;proposed quantity&lt;/span&gt;&lt;/div&gt;`;
+ const lower=$(&quot;nLayer&quot;).value!==&quot;Layer 1&quot;&amp;&amp;it===&quot;sg&quot;&amp;&amp;b&gt;2.8;
+ $(&quot;nNeed&quot;).className=&quot;need &quot;+(lower?&quot;warn&quot;:&quot;ok&quot;);
+ $(&quot;nNeed&quot;).innerHTML=`Needed at inspection: &lt;b&gt;${ITEM[it].test} × ${need}&lt;/b&gt; (1 per ${ITEM[it].freq} sqm) · &lt;b&gt;Levels&lt;/b&gt; of the layer top.`+(lower?`&lt;br&gt;Layer 1 is not approved on 2+800 – 2+900 yet (TKP/HW/013-A). Approve it before raising layer 2 there.`:&quot;&quot;);}
+function renderSum(){const keys=[...new Set(RFIS.filter(r=&gt;r.approved.length).map(r=&gt;r.item+&quot;|&quot;+r.layer))];const cur=$(&quot;sItem&quot;).value||keys[0];
+ $(&quot;sItem&quot;).innerHTML=keys.map(k=&gt;{const [i,l]=k.split(&quot;|&quot;);return `&lt;option value=&quot;${k}&quot;${k===cur?&quot; selected&quot;:&quot;&quot;}&gt;${ITEM[i].name} · ${l}&lt;/option&gt;`}).join(&quot;&quot;);
+ const [i,l]=(cur||&quot;&quot;).split(&quot;|&quot;);let rows=[];RFIS.filter(r=&gt;r.item===i&amp;&amp;r.layer===l).forEach(r=&gt;r.approved.forEach(([a,b])=&gt;rows.push([r,a,b])));rows.sort((x,y)=&gt;x[1]-y[1]);
+ let tq=0,tl=0;$(&quot;sum&quot;).innerHTML=`&lt;thead&gt;&lt;tr&gt;&lt;th&gt;RFI no.&lt;/th&gt;&lt;th&gt;From&lt;/th&gt;&lt;th&gt;To&lt;/th&gt;&lt;th&gt;Side&lt;/th&gt;&lt;th class=&quot;r&quot;&gt;Length (m)&lt;/th&gt;&lt;th class=&quot;r&quot;&gt;Width (m)&lt;/th&gt;&lt;th class=&quot;r&quot;&gt;Depth (m)&lt;/th&gt;&lt;th class=&quot;r&quot;&gt;Qty (cum)&lt;/th&gt;&lt;th&gt;Approved by&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;${rows.map(([r,a,b])=&gt;{const L=Math.round((b-a)*1000),q=qty(r,a,b);tq+=q;tl+=L;return `&lt;tr&gt;&lt;td&gt;${r.no}&lt;/td&gt;&lt;td&gt;${km(a)}&lt;/td&gt;&lt;td&gt;${km(b)}&lt;/td&gt;&lt;td&gt;${r.side}&lt;/td&gt;&lt;td class=&quot;r&quot;&gt;${L}&lt;/td&gt;&lt;td class=&quot;r&quot;&gt;${widthFor(r.item,r.side)}&lt;/td&gt;&lt;td class=&quot;r&quot;&gt;${ITEM[r.item].d}&lt;/td&gt;&lt;td class=&quot;r&quot;&gt;${q.toFixed(1)}&lt;/td&gt;&lt;td&gt;${esc((r.by||&quot;&quot;).split(&quot; · &quot;)[0])}&lt;/td&gt;&lt;/tr&gt;`}).join(&quot;&quot;)}&lt;/tbody&gt;&lt;tfoot&gt;&lt;tr&gt;&lt;td colspan=&quot;4&quot;&gt;Total approved&lt;/td&gt;&lt;td class=&quot;r&quot;&gt;${tl}&lt;/td&gt;&lt;td&gt;&lt;/td&gt;&lt;td&gt;&lt;/td&gt;&lt;td class=&quot;r&quot;&gt;${tq.toFixed(1)}&lt;/td&gt;&lt;td&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tfoot&gt;`}
+function render(){renderRoute();renderList();renderDetail();renderNew();if(tab===&quot;sum&quot;)renderSum()}
+
+document.querySelector(&quot;.tabs&quot;).addEventListener(&quot;click&quot;,e=&gt;{const b=e.target.closest(&quot;[data-tab]&quot;);if(!b)return;tab=b.dataset.tab;document.querySelectorAll(&quot;.tab&quot;).forEach(t=&gt;t.setAttribute(&quot;aria-selected&quot;,t===b));
+ $(&quot;p-list&quot;).hidden=tab!==&quot;list&quot;;$(&quot;p-new&quot;).hidden=tab!==&quot;new&quot;;$(&quot;p-sum&quot;).hidden=tab!==&quot;sum&quot;;render()});
+$(&quot;route&quot;).addEventListener(&quot;change&quot;,e=&gt;{route=e.target.value;RFIS.forEach(r=&gt;{if(r.status===&quot;c1&quot;)r.status=&quot;sent&quot;});render()});
+$(&quot;list&quot;).addEventListener(&quot;click&quot;,e=&gt;{const b=e.target.closest(&quot;[data-no]&quot;);if(!b)return;sel=b.dataset.no;pieces=null;render();$(&quot;detail&quot;).scrollIntoView({behavior:&quot;smooth&quot;,block:&quot;start&quot;})});
+$(&quot;detail&quot;).addEventListener(&quot;click&quot;,e=&gt;{const d=e.target.closest(&quot;[data-dec]&quot;);if(d){renderDec(d.dataset.dec);return}
+ if(e.target.closest(&quot;[data-addp]&quot;)){const r=RFIS.find(x=&gt;x.no===sel);const last=pieces[pieces.length-1][1];pieces.push([Math.min(r.to,last+0.02),r.to]);renderDec(&quot;part&quot;);return}
+ const rm=e.target.closest(&quot;[data-rm]&quot;);if(rm){pieces.splice(+rm.dataset.rm,1);renderDec(&quot;part&quot;);return}
+ const a=e.target.closest(&quot;[data-act]&quot;);if(!a)return;const r=RFIS.find(x=&gt;x.no===sel);
+ if(a.dataset.act===&quot;send&quot;){const dt=new Date($(&quot;dDate&quot;).value);r.date=dt.toLocaleDateString(&quot;en-GB&quot;,{day:&quot;2-digit&quot;,month:&quot;short&quot;,year:&quot;numeric&quot;});r.time=$(&quot;dTime&quot;).value;r.status=&quot;sent&quot;;r.ev=[[&quot;Field density&quot;,&quot;not done yet&quot;,null],[&quot;Level sheet&quot;,&quot;not done yet&quot;,null]];r.hist.push(ROUTES[route].send?`Sent for inspection on ${r.date} ${r.time}`:`Ready for inspection ${r.date}`);render()}
+ if(a.dataset.act===&quot;decide&quot;)decide()});
+$(&quot;detail&quot;).addEventListener(&quot;change&quot;,e=&gt;{const t=e.target;if(t.dataset.p!=null){const v=parseFloat(t.value);if(isFinite(v)){pieces[+t.dataset.p][+t.dataset.e]=v;setTimeout(()=&gt;renderDec(&quot;part&quot;),0)}}});
+[&quot;nItem&quot;,&quot;nSide&quot;,&quot;nFrom&quot;,&quot;nTo&quot;,&quot;nLayer&quot;].forEach(id=&gt;$(id).addEventListener(&quot;input&quot;,renderNew));
+function addNew(status){const it=$(&quot;nItem&quot;).value;const n=17+RFIS.filter(r=&gt;/^TKP\/HW\/0(1[7-9]|[2-9]\d)$/.test(r.no)).length;const no=`TKP/HW/0${n}`;
+ const dt=new Date($(&quot;nDate&quot;).value);RFIS.push({no,item:it,layer:$(&quot;nLayer&quot;).value,from:+$(&quot;nFrom&quot;).value,to:+$(&quot;nTo&quot;).value,side:$(&quot;nSide&quot;).value,date:status===&quot;sent&quot;?dt.toLocaleDateString(&quot;en-GB&quot;,{day:&quot;2-digit&quot;,month:&quot;short&quot;,year:&quot;numeric&quot;}):&quot;&quot;,time:status===&quot;sent&quot;?$(&quot;nTime&quot;).value:&quot;&quot;,status,approved:[],ev:status===&quot;sent&quot;?[[&quot;Field density&quot;,&quot;not done yet&quot;,null],[&quot;Level sheet&quot;,&quot;not done yet&quot;,null]]:[],hist:[`Raised 21 Nov by ${$(&quot;nContact&quot;).value}`,...(status===&quot;sent&quot;?[ROUTES[route].send?&quot;Sent for inspection&quot;:&quot;Ready for inspection&quot;]:[])]});
+ sel=no;$(&quot;nToast&quot;).textContent=`${no} ${status===&quot;sent&quot;?(ROUTES[route].send?&quot;sent&quot;:&quot;saved&quot;):&quot;saved as draft&quot;}`;setTimeout(()=&gt;$(&quot;nToast&quot;).textContent=&quot;&quot;,2500);render()}
+$(&quot;nSend&quot;).addEventListener(&quot;click&quot;,()=&gt;addNew(&quot;sent&quot;));$(&quot;nDraft&quot;).addEventListener(&quot;click&quot;,()=&gt;addNew(&quot;draft&quot;));
+$(&quot;sItem&quot;).addEventListener(&quot;change&quot;,renderSum);
+render();
+&lt;/script&gt;
+&lt;/body&gt;&lt;/html&gt;"></iframe>
+<script>
+document.querySelector("nav").addEventListener("click",e=>{const b=e.target.closest("[data-k]");if(!b)return;
+document.querySelectorAll(".t").forEach(t=>t.setAttribute("aria-selected",t===b));
+document.querySelectorAll("iframe").forEach(f=>f.hidden=f.dataset.k!==b.dataset.k);window.scrollTo(0,0)});
+</script></body></html>
