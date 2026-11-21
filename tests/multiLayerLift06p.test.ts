@@ -273,9 +273,11 @@ describe("06P Tests I/J — schema surface", () => {
     const cols = getTableColumns(dprStructureItems);
     expect(Object.keys(cols).filter((k) => k.toLowerCase().includes("layer"))).toEqual([]);
   });
-  it("no layerLabel / layer free-text anywhere in schema.ts", () => {
+  it("keeps DPR structure free of layer fields while lab tests have their own layer label", () => {
     const src = readFileSync("shared/schema.ts", "utf8");
     expect(src).not.toMatch(/layerLabel|layer_label/);
-    expect((src.match(/layer_no/g) ?? []).length).toBe(1); // only progress_entries
+    const structure = src.split("export const dprStructureItems")[1]?.split("\n});")[0] ?? "";
+    expect(structure).not.toMatch(/layer/i);
+    expect(src).toMatch(/export const labTests[\s\S]*?layer: text\("layer"\)/);
   });
 });

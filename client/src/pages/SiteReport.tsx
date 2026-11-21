@@ -30,6 +30,7 @@ import { DprDraftSubmitDialog } from "@/components/DprDraftSubmitDialog";
 import { useDprBoqItems } from "@/hooks/use-dpr-boq-items";
 import { isVisibleEquipmentRow } from "@shared/equipmentUsage";
 import { getBaseSiteName } from "@shared/siteName";
+import { formatDprChainage } from "@shared/dprSiteActivities";
 import { useDprMaterialReceipts } from "@/hooks/use-dpr-material-receipts";
 import { buildManagementShare, managementMachines, managementNumber, managementReceivedEntry, managementReceivedGroups, managementSummaryList, managementWorkEntries, shareManagementReport } from "@/lib/dprManagementPresentation";
 import "@/components/dprManagement.css";
@@ -41,6 +42,15 @@ export default function SiteReport() {
   const { data: dpr, isLoading, error, refetch } = useDpr(id);
   const { toast } = useToast();
   const { featureCan, user } = useAuth();
+  const { data: dprLabTests = [] } = useQuery<any[]>({
+    queryKey: ["/api/lab-tests/dpr", id],
+    queryFn: async () => {
+      const response = await fetch(`/api/lab-tests/dpr/${id}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load the DPR test summary.");
+      return response.json();
+    },
+    enabled: id > 0 && !!dpr,
+  });
   const canEdit = featureCan("dpr", "edit");
   const canDelete = featureCan("dpr", "cancel");
   const canViewPerformance = featureCan("reports", "view") && featureCan("equipment_usage", "view");
@@ -203,6 +213,23 @@ export default function SiteReport() {
           {item.programmeBarId != null && <ProgrammeBarOutcomeHistory management projectId={(dpr as any).boqProjectId} boqItemId={item.boqItemId} programmeBarId={Number(item.programmeBarId)} testidPrefix={`progress-${i}`} />}
         </DprActivityReadOnly>)}</tbody>
       </table>}
+    </section>
+    <section aria-label="Tests">
+      <h2>Tests</h2>
+      {!dprLabTests.length ? <p className="dpr-management-subtle">No tests recorded for this site and date.</p> : (
+        <table className="dpr-management-table" aria-label="DPR tests">
+          <thead><tr><th>Test</th><th>Item / layer</th><th>Chainage</th><th>People</th><th>Result</th></tr></thead>
+          <tbody>{dprLabTests.map(test => (
+            <tr key={test.id}>
+              <td data-label="Test">{test.testNo} · {test.testName}</td>
+              <td data-label="Item / layer">{test.itemLabel ? String(test.itemLabel).toLocaleUpperCase() : "No BOQ item"} · {test.layer || "Layer not set"}{test.layerNo != null ? ` · Layer ${test.layerNo}` : ""}</td>
+              <td data-label="Chainage">{test.chainageFrom == null ? "—" : formatDprChainage(test.chainageFrom)}{test.chainageTo == null ? "" : `–${formatDprChainage(test.chainageTo)}`}</td>
+              <td data-label="People">Site engineer: {test.siteEngineerName ? String(test.siteEngineerName).toLocaleUpperCase() : "—"} · Sampled by: {test.sampledByName ? String(test.sampledByName).toLocaleUpperCase() : "—"} · Tested by: {test.testedByName ? String(test.testedByName).toLocaleUpperCase() : "—"}</td>
+              <td data-label="Result"><strong>{String(test.verdict ?? "na").toUpperCase()}</strong>{test.testType.startsWith("field_density") && <div>Compaction: {test.results?.pits?.map((pit: any) => `${pit.compactionPercent ?? "—"}%`).join(", ") || "—"}</div>}{test.testType === "cbr" && <div>CBR: {test.results?.reportedCbrPercent ?? "—"}%</div>}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      )}
     </section>
     <section><h2>Equipment</h2>
       {!visibleEquipment.length ? <p className="dpr-management-subtle">No equipment usage recorded.</p> : <DprEquipmentReadOnlyTable management rows={visibleEquipment} equipmentFor={row => equipmentById.get(row.equipmentId)}

@@ -123,7 +123,8 @@ export function PermissionReview({ matrix, privileged = false }: { matrix: Permi
             <div key={group.id}>
               <h5 className="font-semibold">{group.label}</h5>
               {group.sections.map((section) => {
-                const actions = permissionActions[section].actions as readonly Action[];
+                const actionMetadata = permissionActions as Record<string, { actions?: readonly Action[] }>;
+                const actions = actionMetadata[section]?.actions ?? [];
                 if (!actions.length) return null;
                 const allowed = actions.filter((a) => matrix[section]?.[a]);
                 const denied = actions.filter((a) => !matrix[section]?.[a]);

@@ -575,6 +575,11 @@ export function canLegacySection(
   state: FeatureAccessState,
   path?: string,
 ): boolean {
+  if (section === "lab_tests") {
+    if (!user || user.isActive === false) return false;
+    if (user.isOwner) return true;
+    return !!(matrix?.lab_tests as Record<string, boolean> | undefined)?.[action];
+  }
   if (section === "fund_planner") {
     if (!user || user.isActive === false) return false;
     if (user.isOwner) return true;

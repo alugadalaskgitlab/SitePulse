@@ -370,7 +370,8 @@ export default function DprDetails() {
                 <div key={test.id} className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 text-sm last:border-0">
                   <div>
                     <strong>{test.testNo} · {test.testName}</strong>
-                    <p>{test.itemLabel || "No BOQ item"} · Layer {test.layerNo ?? "—"} · {test.chainageFrom == null ? "—" : `${test.chainageFrom} km`}</p>
+                    <p>{test.itemLabel ? String(test.itemLabel).toLocaleUpperCase() : "No BOQ item"} · {test.layer || "Layer not set"}{test.layerNo != null ? ` · Layer ${test.layerNo}` : ""} · {test.chainageFrom == null ? "—" : formatOurChainage(test.chainageFrom)}{test.chainageTo == null ? "" : `–${formatOurChainage(test.chainageTo)}`}</p>
+                    <p>Site engineer: {test.siteEngineerName ? String(test.siteEngineerName).toLocaleUpperCase() : "—"} · Sampled by: {test.sampledByName ? String(test.sampledByName).toLocaleUpperCase() : "—"} · Tested by: {test.testedByName ? String(test.testedByName).toLocaleUpperCase() : "—"}</p>
                     {test.testType.startsWith("field_density") && <p>Compaction: {test.results?.pits?.map((pit: any) => `${pit.compactionPercent ?? "—"}%`).join(", ") || "—"}</p>}
                     {test.testType === "cbr" && <p>CBR: {test.results?.reportedCbrPercent ?? "—"}%</p>}
                   </div>
@@ -516,4 +517,11 @@ export default function DprDetails() {
       </Card>
     </div>
   );
+}
+
+function formatOurChainage(value: unknown) {
+  const km = Number(value);
+  if (!Number.isFinite(km)) return "—";
+  const meters = Math.round(km * 1000);
+  return `${Math.floor(meters / 1000)}+${String(Math.abs(meters % 1000)).padStart(3, "0")}`;
 }

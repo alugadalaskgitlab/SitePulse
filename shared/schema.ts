@@ -253,6 +253,7 @@ export const labTests = pgTable("lab_tests", {
   dateTested: date("date_tested"),
   place: text("place").notNull(),
   boqItemId: integer("boq_item_id").references(() => boqItems.id, { onDelete: "set null" }),
+  layer: text("layer"),
   layerNo: integer("layer_no"),
   chainageFrom: real("chainage_from"),
   chainageTo: real("chainage_to"),

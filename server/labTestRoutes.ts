@@ -5,7 +5,7 @@ import { db } from "./db";
 import {
   auditLogs, boqItemQualitySpecs, boqItems, boqProjects, dprs, labCalibrations,
   labTestAttachments, labTests, materialBenchmarks, personnel, plantMaterials,
-  progressEntries, sites, userSiteAccess,
+  progressEntries, sites, userSiteAccess, users,
 } from "@shared/schema";
 import { assertCreate, assertEdit, assertView } from "./auth-routes";
 import { calculateSoilLabTest, soilQualityDefaultsForWork, type LabCalculationContext, type SoilLabTestType } from "@shared/labTests";
@@ -233,6 +233,7 @@ function validateInput(input: any) {
     dateTested: z.string().nullable().optional(),
     place: z.enum(["on_site", "site_lab", "plant_lab", "outside_lab"]),
     boqItemId: z.number().int().positive().nullable().optional(),
+    layer: z.string().trim().max(120).nullable().optional(),
     layerNo: z.number().int().positive().nullable().optional(),
     chainageFrom: z.number().finite().nullable().optional(),
     chainageTo: z.number().finite().nullable().optional(),
@@ -246,7 +247,6 @@ function validateInput(input: any) {
     header: z.record(z.string(), z.unknown()).optional(),
     readings: z.record(z.string(), z.unknown()),
     status: z.enum(["draft", "submitted"]).optional(),
-    useAsBenchmark: z.boolean().optional(),
     remarks: z.string().nullable().optional(),
     attachment: z.object({
       fileName: z.string(),
@@ -313,7 +313,7 @@ function actorRole(req: any) {
   return req.authUser?.isOwner ? "owner" : req.authUser?.isAdmin ? "admin" : "manager";
 }
 
-async function attachBenchmarkFromProctor(tx: any, test: any, results: any) {
+async function upsertBenchmarkFromSubmittedProctor(tx: any, test: any, results: any, req: any) {
   const mdd = numeric(results?.mddGcc);
   const omc = numeric(results?.omcPercent);
   if (mdd == null || omc == null) return;
@@ -340,8 +340,22 @@ async function attachBenchmarkFromProctor(tx: any, test: any, results: any) {
     isActive: true,
     updatedAt: new Date(),
   };
-  if (existing[0]) await tx.update(materialBenchmarks).set(values).where(eq(materialBenchmarks.id, existing[0].id));
-  else await tx.insert(materialBenchmarks).values(values);
+  const [saved] = existing[0]
+    ? await tx.update(materialBenchmarks).set(values).where(eq(materialBenchmarks.id, existing[0].id)).returning()
+    : await tx.insert(materialBenchmarks).values(values).returning();
+  if (!saved) throw new Error("Could not save the Proctor benchmark.");
+  await tx.insert(auditLogs).values({
+    module: "lab_test",
+    transactionId: saved.id,
+    action: existing[0] ? "benchmark_edit" : "benchmark_create",
+    userId: req.authUser.id,
+    userName: actorName(req),
+    userRole: actorRole(req),
+    oldValues: existing[0] ?? null,
+    newValues: saved,
+    reason: `Generated from submitted Proctor test ${test.testNo}.`,
+  });
+  return saved;
 }
 
 export function registerLabTestRoutes(app: Express) {
@@ -357,8 +371,20 @@ export function registerLabTestRoutes(app: Express) {
       }).from(boqProjects)
         .where(and(eq(boqProjects.status, "active"), siteIds ? inArray(boqProjects.siteId, siteIds) : sql`true`))
         .orderBy(asc(boqProjects.name));
-      const staff = await db.select({ id: personnel.id, name: personnel.name, role: personnel.role })
-        .from(personnel).where(eq(personnel.isActive, 1)).orderBy(asc(personnel.name));
+      const projectIds = projects.map(project => Number(project.id)).filter(Number.isFinite);
+      const linkedStaffRows = projectIds.length ? await db.select({
+        siteEngineerPersonnelId: labTests.siteEngineerPersonnelId,
+        sampledByPersonnelId: labTests.sampledByPersonnelId,
+        testedByPersonnelId: labTests.testedByPersonnelId,
+      }).from(labTests).where(inArray(labTests.boqProjectId, projectIds)) : [];
+      const linkedStaffIds = Array.from(new Set(linkedStaffRows.flatMap(row =>
+        [row.siteEngineerPersonnelId, row.sampledByPersonnelId, row.testedByPersonnelId]
+          .filter((id): id is number => id != null),
+      )));
+      const staffConditions = [eq(personnel.isActive, 1)];
+      if (linkedStaffIds.length) staffConditions.push(inArray(personnel.id, linkedStaffIds) as any);
+      const staff = await db.select({ id: personnel.id, name: personnel.name, role: personnel.role, isActive: personnel.isActive })
+        .from(personnel).where(or(...staffConditions)).orderBy(asc(personnel.name));
       const materials = await db.select({ id: plantMaterials.id, name: plantMaterials.name })
         .from(plantMaterials).where(eq(plantMaterials.isActive, 1)).orderBy(asc(plantMaterials.name));
       const projectId = Number(req.query.projectId);
@@ -369,7 +395,10 @@ export function registerLabTestRoutes(app: Express) {
         items = await db.select({ id: boqItems.id, itemCode: boqItems.itemCode, itemName: boqItems.itemName, description: boqItems.description, unit: boqItems.unit, layerConfig: boqItems.layerConfig })
           .from(boqItems).where(eq(boqItems.boqProjectId, projectId)).orderBy(asc(boqItems.sortOrder), asc(boqItems.id));
       }
-      res.json({ sites: siteRows, projects, personnel: staff, materials, items });
+      const [account] = req.authUser?.id != null
+        ? await db.select({ personnelId: users.personnelId }).from(users).where(eq(users.id, Number(req.authUser.id))).limit(1)
+        : [];
+      res.json({ sites: siteRows, projects, personnel: staff, materials, items, currentUserPersonnelId: account?.personnelId ?? null });
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Could not load test setup." });
     }
@@ -387,13 +416,18 @@ export function registerLabTestRoutes(app: Express) {
       const calibrations = await db.select().from(labCalibrations)
         .where(or(eq(labCalibrations.siteId, siteId), isNull(labCalibrations.siteId)))
         .orderBy(desc(labCalibrations.calibratedOn), desc(labCalibrations.id));
-      const benchmarks = await db.select().from(materialBenchmarks)
+      const benchmarkRows = await db.select({ benchmark: materialBenchmarks, sourceTestNo: labTests.testNo }).from(materialBenchmarks)
+        .leftJoin(labTests, eq(materialBenchmarks.sourceTestId, labTests.id))
         .where(or(eq(materialBenchmarks.boqProjectId, projectId), isNull(materialBenchmarks.boqProjectId)))
         .orderBy(desc(materialBenchmarks.effectiveFrom));
       const specs = await db.select().from(boqItemQualitySpecs)
         .innerJoin(boqItems, eq(boqItemQualitySpecs.boqItemId, boqItems.id))
         .where(eq(boqItems.boqProjectId, projectId));
-      res.json({ calibrations, benchmarks, specs: specs.map(row => row.boq_item_quality_specs) });
+      res.json({
+        calibrations,
+        benchmarks: benchmarkRows.map(row => ({ ...row.benchmark, sourceTestNo: row.sourceTestNo })),
+        specs: specs.map(row => row.boq_item_quality_specs),
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Could not load test setup." });
     }
@@ -447,12 +481,22 @@ export function registerLabTestRoutes(app: Express) {
       const attachments = ids.length
         ? await db.select().from(labTestAttachments).where(inArray(labTestAttachments.labTestId, ids))
         : [];
+      const personnelIds = Array.from(new Set(rows.flatMap(row => [
+        row.test.siteEngineerPersonnelId, row.test.sampledByPersonnelId, row.test.testedByPersonnelId,
+      ]).filter((id): id is number => id != null)));
+      const people = personnelIds.length
+        ? await db.select({ id: personnel.id, name: personnel.name }).from(personnel).where(inArray(personnel.id, personnelIds))
+        : [];
+      const peopleById = new Map(people.map(person => [Number(person.id), person.name]));
       res.json(rows.map(row => ({
         ...row.test,
         projectName: row.projectName,
         siteName: row.siteName,
         itemLabel: row.itemName || row.itemDescription || "",
         engineerName: row.engineerName,
+        siteEngineerName: peopleById.get(Number(row.test.siteEngineerPersonnelId)) ?? null,
+        sampledByName: peopleById.get(Number(row.test.sampledByPersonnelId)) ?? null,
+        testedByName: peopleById.get(Number(row.test.testedByPersonnelId)) ?? null,
         attachments: attachments.filter(file => file.labTestId === row.test.id),
       })));
     } catch (error: any) {
@@ -467,12 +511,14 @@ export function registerLabTestRoutes(app: Express) {
       const [dpr] = await db.select().from(dprs).where(eq(dprs.id, dprId)).limit(1);
       if (!dpr) return res.status(404).json({ error: "dpr_not_found" });
       const [site] = await db.select().from(sites).where(ilike(sites.name, dpr.site)).limit(1);
-      if (site && !await siteAllowed(req, res, site.id)) return;
+      if (!site) return res.status(404).json({ error: "dpr_site_not_found" });
+      if (!await siteAllowed(req, res, site.id)) return;
       const rows = await db.select({
         id: labTests.id,
         testNo: labTests.testNo,
         testType: labTests.testType,
         boqItemId: labTests.boqItemId,
+        layer: labTests.layer,
         layerNo: labTests.layerNo,
         chainageFrom: labTests.chainageFrom,
         chainageTo: labTests.chainageTo,
@@ -480,6 +526,9 @@ export function registerLabTestRoutes(app: Express) {
         results: labTests.results,
         itemName: boqItems.itemName,
         description: boqItems.description,
+        siteEngineerPersonnelId: labTests.siteEngineerPersonnelId,
+        sampledByPersonnelId: labTests.sampledByPersonnelId,
+        testedByPersonnelId: labTests.testedByPersonnelId,
       }).from(labTests)
         .leftJoin(boqItems, eq(labTests.boqItemId, boqItems.id))
         .where(and(
@@ -490,7 +539,19 @@ export function registerLabTestRoutes(app: Express) {
           eq(labTests.isDeleted, false),
         ))
         .orderBy(asc(labTests.testNo));
-      res.json(rows.map(row => ({ ...row, testName: testNameForType(row.testType), itemLabel: row.itemName || row.description || "" })));
+      const personnelIds = Array.from(new Set(rows.flatMap(row => [
+        row.siteEngineerPersonnelId, row.sampledByPersonnelId, row.testedByPersonnelId,
+      ]).filter((id): id is number => id != null)));
+      const people = personnelIds.length
+        ? await db.select({ id: personnel.id, name: personnel.name }).from(personnel).where(inArray(personnel.id, personnelIds))
+        : [];
+      const peopleById = new Map(people.map(person => [Number(person.id), person.name]));
+      res.json(rows.map(row => ({
+        ...row, testName: testNameForType(row.testType), itemLabel: row.itemName || row.description || "",
+        siteEngineerName: peopleById.get(Number(row.siteEngineerPersonnelId)) ?? null,
+        sampledByName: peopleById.get(Number(row.sampledByPersonnelId)) ?? null,
+        testedByName: peopleById.get(Number(row.testedByPersonnelId)) ?? null,
+      })));
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Could not load DPR tests." });
     }
@@ -527,6 +588,7 @@ export function registerLabTestRoutes(app: Express) {
           dateTested: input.dateTested || null,
           place: input.place,
           boqItemId: input.boqItemId ?? null,
+          layer: input.layer?.trim() || null,
           layerNo: input.layerNo ?? null,
           chainageFrom: input.chainageFrom ?? null,
           chainageTo: input.chainageTo ?? null,
@@ -548,9 +610,8 @@ export function registerLabTestRoutes(app: Express) {
         }).returning();
         if (!row) throw new Error("Test save returned no row.");
         if (attachment) await tx.insert(labTestAttachments).values({ labTestId: row.id, ...attachment });
-        if (status === "submitted" && input.useAsBenchmark && req.authUser?.isOwner === true
-            && (row.testType === "proctor_light" || row.testType === "proctor_modified")) {
-          await attachBenchmarkFromProctor(tx, row, calculation.results);
+        if (status === "submitted" && (row.testType === "proctor_light" || row.testType === "proctor_modified")) {
+          await upsertBenchmarkFromSubmittedProctor(tx, row, calculation.results, req);
         }
         await tx.insert(auditLogs).values({
           module: "lab_test",
@@ -600,6 +661,7 @@ export function registerLabTestRoutes(app: Express) {
         dateTested: input.dateTested || null,
         place: input.place,
         boqItemId: input.boqItemId ?? null,
+        layer: input.layer?.trim() || null,
         layerNo: input.layerNo ?? null,
         chainageFrom: input.chainageFrom ?? null,
         chainageTo: input.chainageTo ?? null,
@@ -631,9 +693,8 @@ export function registerLabTestRoutes(app: Express) {
         newValues: updated,
         reason: correction ? String(req.body.reason).trim() : null,
       });
-      if (status === "submitted" && input.useAsBenchmark && req.authUser?.isOwner === true
-          && (updated.testType === "proctor_light" || updated.testType === "proctor_modified")) {
-        await attachBenchmarkFromProctor(tx, updated, calculation.results);
+      if (status === "submitted" && (updated.testType === "proctor_light" || updated.testType === "proctor_modified")) {
+        await upsertBenchmarkFromSubmittedProctor(tx, updated, calculation.results, req);
       }
       const attachments = await tx.select().from(labTestAttachments).where(eq(labTestAttachments.labTestId, id));
       return { ...updated, attachments };
@@ -672,6 +733,7 @@ export function registerLabTestRoutes(app: Express) {
       const id = Number(req.params.id);
       const [test] = await db.select().from(labTests).where(eq(labTests.id, id)).limit(1);
       if (!test) return res.status(404).json({ error: "test_not_found" });
+      if (test.isDeleted || test.isCancelled) return res.status(409).json({ error: "test_already_inactive" });
       if (!await siteAllowed(req, res, Number(test.siteId))) return;
       const [saved] = await db.update(labTests).set({
         isCancelled: true,
@@ -712,6 +774,9 @@ export function registerLabTestRoutes(app: Express) {
     try {
       const original = await getTestWithAttachment(Number(req.params.id));
       if (!original) return res.status(404).json({ error: "test_not_found" });
+      if (original.status !== "submitted" || original.verdict !== "fail" || original.isDeleted || original.isCancelled) {
+        return res.status(409).json({ error: "retest_requires_active_failed_submission" });
+      }
       if (!await siteAllowed(req, res, Number(original.siteId))) return;
       const body = {
         boqProjectId: original.boqProjectId,
@@ -721,6 +786,7 @@ export function registerLabTestRoutes(app: Express) {
         dateTested: null,
         place: original.place,
         boqItemId: original.boqItemId,
+        layer: original.layer,
         layerNo: original.layerNo,
         chainageFrom: original.chainageFrom,
         chainageTo: original.chainageTo,
@@ -768,18 +834,61 @@ export function registerLabTestRoutes(app: Express) {
       if (!["sand_pouring_cylinder", "speedy_moisture_meter", "proving_ring", "core_cutter"].includes(kind)) {
         return res.status(422).json({ error: "invalid_calibration_kind" });
       }
+      const equipmentNo = String(req.body?.equipmentNo ?? "").trim();
+      const calibratedOn = String(req.body?.calibratedOn ?? "");
+      const validUntil = req.body?.validUntil ? String(req.body.validUntil) : null;
+      if (!equipmentNo || !/^\d{4}-\d{2}-\d{2}$/.test(calibratedOn)
+          || (validUntil && (!/^\d{4}-\d{2}-\d{2}$/.test(validUntil) || validUntil < calibratedOn))) {
+        return res.status(422).json({ error: "calibration_details_invalid" });
+      }
+      const values = req.body.values && typeof req.body.values === "object" ? req.body.values : {};
+      const positiveFields = kind === "sand_pouring_cylinder" ? ["sandBulkDensityGcc"]
+        : kind === "speedy_moisture_meter" ? []
+          : kind === "proving_ring" ? ["ringConstantKgPerDivision"]
+            : ["cutterVolumeCc"];
+      if (positiveFields.some(field => numeric(values[field]) == null || Number(values[field]) <= 0)) {
+        return res.status(422).json({ error: "calibration_value_missing_or_invalid" });
+      }
+      if (kind === "sand_pouring_cylinder" && (numeric(values.sandInConeG) == null || Number(values.sandInConeG) < 0)) {
+        return res.status(422).json({ error: "sand_cone_value_required" });
+      }
+      if (kind === "core_cutter" && (numeric(values.cutterWeightG) == null || Number(values.cutterWeightG) < 0)) {
+        return res.status(422).json({ error: "cutter_weight_required" });
+      }
+      if (kind === "speedy_moisture_meter"
+          && (!Array.isArray(values.correctionPairs) || values.correctionPairs.length < 2
+            || values.correctionPairs.some((pair: any) => numeric(pair.indicated) == null || numeric(pair.corrected) == null))) {
+        return res.status(422).json({ error: "speedy_correction_pairs_required" });
+      }
+      const siteId = req.body.siteId == null ? null : Number(req.body.siteId);
+      if (siteId != null) {
+        if (!await siteAllowed(req, res, siteId)) return;
+        const [site] = await db.select({ id: sites.id }).from(sites).where(and(eq(sites.id, siteId), eq(sites.isActive, 1))).limit(1);
+        if (!site) return res.status(422).json({ error: "site_not_active" });
+      }
+      const calibratedByPersonnelId = req.body.calibratedByPersonnelId == null ? null : Number(req.body.calibratedByPersonnelId);
+      if (calibratedByPersonnelId != null) {
+        const [person] = await db.select({ id: personnel.id }).from(personnel)
+          .where(and(eq(personnel.id, calibratedByPersonnelId), eq(personnel.isActive, 1))).limit(1);
+        if (!person) return res.status(422).json({ error: "calibrated_by_not_active" });
+      }
       const attachment = safeAttachment(req.body?.attachment);
       const [row] = await db.insert(labCalibrations).values({
-        siteId: req.body.siteId == null ? null : Number(req.body.siteId),
+        siteId,
         kind,
-        equipmentNo: String(req.body.equipmentNo ?? "").trim(),
-        values: req.body.values ?? {},
-        calibratedOn: String(req.body.calibratedOn ?? ""),
-        validUntil: req.body.validUntil || null,
-        calibratedByPersonnelId: req.body.calibratedByPersonnelId ? Number(req.body.calibratedByPersonnelId) : null,
+        equipmentNo,
+        values,
+        calibratedOn,
+        validUntil,
+        calibratedByPersonnelId,
         ...(attachment ?? { fileName: null, objectPath: null, mimeType: null, fileSize: null }),
       }).returning();
       if (!row) throw new Error("Calibration was not saved.");
+      await db.insert(auditLogs).values({
+        module: "lab_test", transactionId: row.id, action: "calibration_create",
+        userId: req.authUser.id, userName: actorName(req), userRole: actorRole(req),
+        oldValues: null, newValues: row,
+      });
       res.status(201).json(row);
     } catch (error: any) {
       res.status(422).json({ error: error.message || "Could not save calibration." });
@@ -794,17 +903,31 @@ export function registerLabTestRoutes(app: Express) {
         const project = await projectAllowed(req, res, projectId);
         if (!project) return;
       }
+      const mdd = numeric(req.body.mddGcc);
+      const omc = numeric(req.body.omcPercent);
+      const specificGravity = req.body.specificGravity == null || req.body.specificGravity === "" ? null : numeric(req.body.specificGravity);
+      const effectiveFrom = String(req.body.effectiveFrom ?? "");
+      if (mdd == null || mdd <= 0 || omc == null || omc < 0 || omc > 100
+          || (req.body.specificGravity != null && specificGravity == null)
+          || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom)) {
+        return res.status(422).json({ error: "benchmark_values_invalid" });
+      }
       const [row] = await db.insert(materialBenchmarks).values({
         materialId: req.body.materialId == null ? null : Number(req.body.materialId),
         sourceName: req.body.sourceName ? String(req.body.sourceName).trim() : null,
         boqProjectId: projectId,
-        mddGcc: Number(req.body.mddGcc),
-        omcPercent: Number(req.body.omcPercent),
-        specificGravity: req.body.specificGravity == null ? null : Number(req.body.specificGravity),
+        mddGcc: mdd,
+        omcPercent: omc,
+        specificGravity,
         sourceTestId: req.body.sourceTestId == null ? null : Number(req.body.sourceTestId),
-        effectiveFrom: String(req.body.effectiveFrom ?? ""),
+        effectiveFrom,
         isActive: req.body.isActive !== false,
       }).returning();
+      if (row) await db.insert(auditLogs).values({
+        module: "lab_test", transactionId: row.id, action: "benchmark_create",
+        userId: req.authUser.id, userName: actorName(req), userRole: actorRole(req),
+        oldValues: null, newValues: row,
+      });
       res.status(201).json(row);
     } catch (error: any) {
       res.status(422).json({ error: error.message || "Could not save benchmark." });
@@ -854,6 +977,7 @@ export function registerLabTestRoutes(app: Express) {
       if (!item) return res.status(404).json({ error: "boq_item_not_found" });
       const project = await projectAllowed(req, res, Number(item.boqProjectId));
       if (!project) return;
+      if (!rows.length) return res.status(422).json({ error: "at_least_one_quality_spec_required" });
       const normalized = rows.map((row: any) => ({
         testType: String(row.testType),
         minValue: row.minValue == null || row.minValue === "" ? null : Number(row.minValue),
@@ -862,6 +986,16 @@ export function registerLabTestRoutes(app: Express) {
         frequencyUnit: String(row.frequencyUnit),
         note: row.note ? String(row.note) : null,
       }));
+      const validUnits = new Set(["sqm", "cum", "MT", "per_layer", "as_required"]);
+      if (normalized.some((spec: any) =>
+        !testTypes.includes(spec.testType)
+        || !validUnits.has(spec.frequencyUnit)
+        || !Number.isFinite(spec.frequencyQty) || spec.frequencyQty <= 0
+        || (spec.minValue != null && !Number.isFinite(spec.minValue))
+        || (spec.maxValue != null && !Number.isFinite(spec.maxValue))
+        || (spec.minValue != null && spec.maxValue != null && spec.minValue > spec.maxValue),
+      )) return res.status(422).json({ error: "quality_spec_invalid" });
+      const oldSpecs = await db.select().from(boqItemQualitySpecs).where(eq(boqItemQualitySpecs.boqItemId, itemId));
       await db.transaction(async tx => {
         for (const spec of normalized) {
           const [saved] = await tx.insert(boqItemQualitySpecs).values({ boqItemId: itemId, ...spec, updatedAt: new Date() })
@@ -871,6 +1005,11 @@ export function registerLabTestRoutes(app: Express) {
             }).returning();
           if (!saved) throw new Error(`Could not save ${spec.testType} quality specification.`);
         }
+        await tx.insert(auditLogs).values({
+          module: "lab_test", transactionId: itemId, action: "quality_specs_edit",
+          userId: req.authUser.id, userName: actorName(req), userRole: actorRole(req),
+          oldValues: oldSpecs, newValues: normalized,
+        });
       });
       res.json({ ok: true, count: normalized.length });
     } catch (error: any) {
@@ -894,7 +1033,7 @@ export function registerLabTestRoutes(app: Express) {
         eq(labTests.isDeleted, false),
       ];
       const rows = await db.select().from(labTests).where(and(...conditions))
-        .orderBy(desc(labTests.dateTested), desc(labTests.id));
+        .orderBy(sql`${labTests.dateTested} DESC NULLS LAST`, desc(labTests.id));
       const latest = new Map<string, any>();
       for (const test of rows) {
         const pits = Array.isArray((test.readings as any)?.pits) ? (test.readings as any).pits : [];
@@ -934,14 +1073,15 @@ export function registerLabTestRoutes(app: Express) {
       for (const item of items) {
         const savedSpecs = await db.select().from(boqItemQualitySpecs).where(eq(boqItemQualitySpecs.boqItemId, item.id));
         const specs = savedSpecs.length ? savedSpecs : soilQualityDefaultsForWork(`${item.itemName ?? ""} ${item.description ?? ""}`)
-          .map(spec => ({
+            .map(spec => ({
             boqItemId: item.id, testType: spec.testType, minValue: spec.minValue,
             maxValue: spec.maxValue, frequencyQty: spec.frequencyQty, frequencyUnit: spec.frequencyUnit, note: spec.note,
-          }));
+            }));
         for (const spec of specs) {
           const progress = await db.select({
             quantity: progressEntries.quantity,
             uom: progressEntries.uom,
+            layerNo: progressEntries.layerNo,
             length: progressEntries.length,
             width: progressEntries.width,
             dprStatus: dprs.dprStatus,
@@ -959,27 +1099,31 @@ export function registerLabTestRoutes(app: Express) {
               or(eq(dprs.isCancelled, false), isNull(dprs.isCancelled)),
               or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
               eq(progressEntries.boqItemId, item.id),
-              eq(progressEntries.isIncidental, false),
+              or(eq(progressEntries.isIncidental, false), isNull(progressEntries.isIncidental)),
               or(eq(progressEntries.reworkNoNewMaterial, false), isNull(progressEntries.reworkNoNewMaterial)),
             ));
           const unitKey = (unit: unknown) => String(unit ?? "").trim().toLowerCase().replace(/[\s²³]/g, "").replace("m³", "cum");
           const targetKey = unitKey(spec.frequencyUnit);
           let quantityLaid = 0;
           let comparable = true;
-          for (const row of progress) {
-            const rowUnit = unitKey(row.uom || item.unit);
-            let quantity = Number(row.quantity) || 0;
-            if (targetKey === "sqm" && row.length != null && row.width != null) {
-              quantity = Number(row.length) * Number(row.width);
-            } else if (rowUnit !== targetKey) {
-              const factor = getUnitConversionFactor(String(row.uom || item.unit), String(spec.frequencyUnit), {
-                densityTPerCum: null,
-                thicknessMm: numeric((item.layerConfig as any)?.thicknessMm ?? (item.layerConfig as any)?.thickness),
-              });
-              if (factor == null) comparable = false;
-              else quantity *= factor;
+          if (targetKey === "per_layer") {
+            quantityLaid = new Set(progress.map(row => row.layerNo).filter(layer => layer != null).map(Number)).size;
+          } else {
+            for (const row of progress) {
+              const rowUnit = unitKey(row.uom || item.unit);
+              let quantity = Number(row.quantity) || 0;
+              if (targetKey === "sqm" && row.length != null && row.width != null) {
+                quantity = Number(row.length) * Number(row.width);
+              } else if (rowUnit !== targetKey) {
+                const factor = getUnitConversionFactor(String(row.uom || item.unit), String(spec.frequencyUnit), {
+                  densityTPerCum: null,
+                  thicknessMm: numeric((item.layerConfig as any)?.thicknessMm ?? (item.layerConfig as any)?.thickness),
+                });
+                if (factor == null) comparable = false;
+                else quantity *= factor;
+              }
+              quantityLaid += quantity;
             }
-            quantityLaid += quantity;
           }
           const tests = await db.select().from(labTests).where(and(
             eq(labTests.boqProjectId, projectId), eq(labTests.boqItemId, item.id),

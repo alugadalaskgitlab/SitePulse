@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 import { apiRequest } from "@/lib/queryClient";
 import type { BoqProject, BoqMixTemplateLink } from "@shared/schema";
 import { WORKING_DAYS_DEFAULT, WORKING_HRS_DEFAULT } from "@shared/planningEngine";
@@ -373,6 +374,7 @@ function ProductivityOverridesSection({
 export default function BoqProgramSettings() {
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id);
+  const { isOwner } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [savedAt, setSavedAt] = useState<Date | null>(null);
@@ -632,20 +634,22 @@ export default function BoqProgramSettings() {
           <div className="mt-4 grid grid-cols-1 gap-3 border-t pt-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label className="text-sm">Client name (optional)</Label>
-              <Input value={clientName} onChange={event => setClientName(event.target.value)} placeholder="Shown on test reports" />
+              {isOwner ? <Input value={clientName} onChange={event => setClientName(event.target.value)} placeholder="Shown on test reports" />
+                : <p className="rounded border bg-muted/30 p-2 text-sm">{clientName || "Not set"}</p>}
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm">Consultant name (optional)</Label>
-              <Input value={consultantName} onChange={event => setConsultantName(event.target.value)} placeholder="Shown on test reports" />
+              {isOwner ? <Input value={consultantName} onChange={event => setConsultantName(event.target.value)} placeholder="Shown on test reports" />
+                : <p className="rounded border bg-muted/30 p-2 text-sm">{consultantName || "Not set"}</p>}
             </div>
-            <Button
+            {isOwner && <Button
               className="sm:col-span-2 sm:justify-self-start"
               variant="outline"
               onClick={() => projPatchMutation.mutate({ clientName: clientName.trim() || null, consultantName: consultantName.trim() || null })}
               disabled={projPatchMutation.isPending}
             >
               {projPatchMutation.isPending ? "Saving…" : "Save report names"}
-            </Button>
+            </Button>}
           </div>
         </SectionCard>
 

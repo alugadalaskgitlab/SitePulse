@@ -17653,6 +17653,11 @@ export async function registerRoutes(
   app.patch("/api/boq/projects/:id", async (req, res) => {
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
+      if ((Object.prototype.hasOwnProperty.call(req.body ?? {}, "clientName")
+          || Object.prototype.hasOwnProperty.call(req.body ?? {}, "consultantName"))
+          && req.authUser?.isOwner !== true) {
+        return res.status(403).json({ error: "owner_required_for_report_names" });
+      }
       const id = parseInt(req.params.id);
       if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "startDate")) {
         return res.status(409).json({

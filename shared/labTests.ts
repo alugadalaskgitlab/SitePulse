@@ -98,7 +98,7 @@ function calculateFdd(
     const cutterVolume = numberOrNull(pit?.cutterVolume);
     const w1 = numberOrNull(pit?.w1);
     const w2 = numberOrNull(pit?.w2);
-    const w3 = numberOrNull(pit?.w3);
+    const w3 = numberOrNull(pit?.w3) ?? (coreCutter ? null : context.sandInConeG ?? null);
     const sandBulkDensity = numberOrNull(pit?.sandBulkDensity) ?? context.sandBulkDensityGcc ?? null;
     const sandInCone = numberOrNull(pit?.sandInCone) ?? context.sandInConeG ?? null;
     const sandWeight = w1 !== null && w2 !== null && w3 !== null ? w1 - w2 - w3 : null;
@@ -128,16 +128,18 @@ function calculateFdd(
       moisturePercent: waterContent == null ? null : round(waterContent, 2),
       dryDensityGcc: dryDensity == null ? null : round(dryDensity, 3),
       mddGcc: context.mddGcc ?? null,
+      omcPercent: context.omcPercent ?? null,
       compactionPercent: compaction == null ? null : round(compaction, 2),
       requiredPercent: context.requiredPercent ?? null,
       verdict,
       sandInConeG: coreCutter ? null : sandInCone,
+      sandBulkDensityGcc: coreCutter ? null : sandBulkDensity,
     };
   });
   const verdict: LabVerdict = results.some((pit: any) => pit.verdict === "fail")
     ? "fail"
     : results.length && results.every((pit: any) => pit.verdict === "pass") ? "pass" : "na";
-  return { results: { pits }, verdict, errors };
+  return { results: { pits: results }, verdict, errors };
 }
 
 function calculateProctor(readings: any, context: LabCalculationContext): LabCalculation {
@@ -211,6 +213,7 @@ function calculateProctor(readings: any, context: LabCalculationContext): LabCal
 }
 
 function calculateCbr(readings: any, context: LabCalculationContext): LabCalculation {
+  const errors: string[] = [];
   const ringConstant = numberOrNull(readings?.ringConstantKgPerDivision) ?? context.ringConstantKgPerDivision ?? null;
   const penetrations = [0, 0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10, 12.5];
   const points = penetrations.map((penetration, index) => {
@@ -226,6 +229,10 @@ function calculateCbr(readings: any, context: LabCalculationContext): LabCalcula
   const final = numberOrNull(readings?.finalSwellGauge);
   const height = numberOrNull(readings?.specimenHeightMm);
   const swell = initial != null && final != null && height != null && height > 0 ? (final - initial) / height * 100 : null;
+  const mouldDensityBeforeSoaking = numberOrNull(readings?.mouldDensityBeforeSoaking);
+  const moistureBeforeSoaking = numberOrNull(readings?.moistureBeforeSoaking);
+  const mouldDensityAfterSoaking = numberOrNull(readings?.mouldDensityAfterSoaking);
+  const moistureAfterSoaking = numberOrNull(readings?.moistureAfterSoaking);
   if (ringConstant == null) errors.push("Enter the proving-ring constant.");
   for (const point of points) {
     if (point.dial == null) errors.push(`Enter the dial reading at ${point.penetrationMm} mm.`);
@@ -241,17 +248,26 @@ function calculateCbr(readings: any, context: LabCalculationContext): LabCalcula
       cbrAt50Percent: cbr50 == null ? null : round(cbr50, 2),
       reportedCbrPercent: reported == null ? null : round(reported, 2),
       swellPercent: swell == null ? null : round(swell, 2),
+      mouldDensityBeforeSoaking,
+      moistureBeforeSoaking,
+      mouldDensityAfterSoaking,
+      moistureAfterSoaking,
     },
     verdict: verdictForThreshold(reported, context.minValue, context.maxValue),
-    errors: reported == null ? ["Enter the 2.5 mm and 5.0 mm readings and ring constant."] : [],
+    errors: Array.from(new Set([
+      ...errors,
+      ...(reported == null ? ["Enter the 2.5 mm and 5.0 mm readings and ring constant."] : []),
+    ])),
   };
 }
 
 function calculateAtterberg(readings: any, context: LabCalculationContext): LabCalculation {
+  const errors: string[] = [];
   const flow = (Array.isArray(readings?.liquidLimitTrials) ? readings.liquidLimitTrials : [])
     .map((trial: any) => ({ blows: numberOrNull(trial?.blows), moisturePercent: moisture(trial, context) }))
     .filter((trial: any) => trial.blows != null && trial.blows > 0 && trial.moisturePercent != null);
   let liquidLimit: number | null = null;
+  let flowLineFit: Array<{ blows: number; moisturePercent: number }> = [];
   if (flow.length >= 2) {
     const xs = flow.map((trial: any) => Math.log10(trial.blows));
     const ys = flow.map((trial: any) => trial.moisturePercent);
@@ -259,7 +275,14 @@ function calculateAtterberg(readings: any, context: LabCalculationContext): LabC
     const meanY = ys.reduce((a: number, b: number) => a + b, 0) / ys.length;
     const slope = xs.reduce((sum: number, x: number, i: number) => sum + (x - meanX) * (ys[i] - meanY), 0)
       / xs.reduce((sum: number, x: number) => sum + (x - meanX) ** 2, 0);
-    liquidLimit = meanY + slope * (Math.log10(25) - meanX);
+    const intercept = meanY - slope * meanX;
+    liquidLimit = intercept + slope * Math.log10(25);
+    const minBlows = Math.min(...flow.map((trial: any) => trial.blows));
+    const maxBlows = Math.max(...flow.map((trial: any) => trial.blows));
+    flowLineFit = [minBlows, maxBlows].map(blows => ({
+      blows,
+      moisturePercent: round(intercept + slope * Math.log10(blows), 2),
+    }));
   }
   const plasticTrials = (Array.isArray(readings?.plasticLimitTrials) ? readings.plasticLimitTrials : [])
     .map((trial: any) => moisture(trial, context))
@@ -272,6 +295,7 @@ function calculateAtterberg(readings: any, context: LabCalculationContext): LabC
   return {
     results: {
       flowLine: flow.map((trial: any) => ({ blows: trial.blows, moisturePercent: round(trial.moisturePercent, 2) })),
+      flowLineFit,
       liquidLimitPercent: liquidLimit == null ? null : round(liquidLimit, 2),
       plasticLimitPercent: plasticLimit == null ? nonPlastic ? "NP" : null : round(plasticLimit, 2),
       plasticityIndexPercent: plasticityIndex == null ? null : round(plasticityIndex, 2),

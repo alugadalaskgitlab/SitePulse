@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Link } from "wouter";
 import { ArrowLeft, Beaker, Check, FileText, FlaskConical, Printer, RefreshCw, Save, Upload, X } from "lucide-react";
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceDot } from "recharts";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceDot, ReferenceLine } from "recharts";
 import { HubShell } from "@/components/HubShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { useToast } from "@/hooks/use-toast";
 import { useUpload } from "@/hooks/use-upload";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -43,9 +44,14 @@ const SOURCE_KINDS = [
   ["other", "Other"],
 ] as const;
 const PENETRATIONS = [0, 0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10, 12.5];
+const FALLBACK_LAYERS = [
+  "OGL / initial", "Embankment layer 1", "Embankment layer 2", "Embankment layer 3",
+  "Subgrade layer 1", "Subgrade layer 2", "GSB", "WMM", "BC",
+];
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
 function numberInput(value: unknown) {
@@ -80,6 +86,7 @@ function emptyForm(siteId?: number, projectId?: number) {
     dateTested: today(),
     place: "site_lab",
     boqItemId: null as number | null,
+    layer: "",
     layerNo: null as number | null,
     chainageFrom: "",
     chainageTo: "",
@@ -92,7 +99,6 @@ function emptyForm(siteId?: number, projectId?: number) {
     testedByPersonnelId: null as number | null,
     header: {} as Record<string, unknown>,
     readings: { pits: [{}] } as Record<string, any>,
-    useAsBenchmark: false,
     remarks: "",
     status: "draft",
     attachment: null as null | { fileName: string; objectPath: string; mimeType: string; fileSize: number },
@@ -113,20 +119,32 @@ function verdictBadge(verdict: string) {
   return <Badge variant="outline">Not assessed</Badge>;
 }
 
-function TestLineChart({ data, xKey, yKey, xLabel, yLabel, secondary }: {
+function TestLineChart({ data, xKey, yKey, xLabel, yLabel, secondary, secondaryYKey = "dryDensityGcc", secondaryLabel = "Zero air voids", xScale = "linear", peak, referenceXs = [] }: {
   data: any[]; xKey: string; yKey: string; xLabel: string; yLabel: string; secondary?: any[];
+  secondaryYKey?: string; secondaryLabel?: string; xScale?: "linear" | "log";
+  peak?: { x: number; y: number }; referenceXs?: number[];
 }) {
+  const yValues = [...data.map(row => Number(row?.[yKey])), ...(secondary ?? []).map(row => Number(row?.[secondaryYKey]))]
+    .filter(Number.isFinite);
+  if (peak) yValues.push(peak.y);
+  const min = yValues.length ? Math.min(...yValues) : 0;
+  const max = yValues.length ? Math.max(...yValues) : 1;
+  const pad = Math.max((max - min) * 0.15, Math.abs(max) * 0.03, 0.05);
+  const yMin = min >= 0 ? Math.max(0, min - pad) : min - pad;
+  const yMax = max + pad;
   return (
-    <div className="h-64 w-full rounded border bg-white p-2">
+    <div className="h-72 w-full rounded border bg-white p-2">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 10, right: 16, bottom: 14, left: 4 }}>
+        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 22, left: 4 }}>
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey={xKey} type="number" domain={["dataMin", "dataMax"]} label={{ value: xLabel, position: "insideBottom", offset: -8 }} />
-          <YAxis label={{ value: yLabel, angle: -90, position: "insideLeft" }} />
+          <XAxis dataKey={xKey} type="number" scale={xScale} domain={["dataMin", "dataMax"]} label={{ value: xLabel, position: "insideBottom", offset: -16 }} />
+          <YAxis domain={[yMin, yMax]} label={{ value: yLabel, angle: -90, position: "insideLeft" }} />
           <Tooltip />
-          <Legend />
+          <Legend verticalAlign="top" height={24} />
+          {referenceXs.map(value => <ReferenceLine key={value} x={value} stroke="#111827" strokeDasharray="4 4" />)}
           <Line name={yLabel} dataKey={yKey} type="monotone" stroke="#111827" strokeWidth={2} dot />
-          {secondary?.length ? <Line name="Zero air voids" data={secondary} dataKey="dryDensityGcc" type="monotone" stroke="#6b7280" strokeDasharray="5 4" dot={false} /> : null}
+          {secondary?.length ? <Line name={secondaryLabel} data={secondary} dataKey={secondaryYKey} type="linear" stroke="#6b7280" strokeDasharray="5 4" dot={false} /> : null}
+          {peak && <ReferenceDot x={peak.x} y={peak.y} r={5} fill="#111827" stroke="#111827" label="MDD / OMC" />}
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -135,6 +153,7 @@ function TestLineChart({ data, xKey, yKey, xLabel, yLabel, secondary }: {
 
 export default function LabTests() {
   const { sectionCan, user, isOwner } = useAuth();
+  const { companyName } = useFeatureFlags();
   const { toast } = useToast();
   const query = useQueryClient();
   const { uploadFile, isUploading } = useUpload();
@@ -153,17 +172,25 @@ export default function LabTests() {
     equipmentNo: "",
     calibratedOn: today(),
     validUntil: "",
+    calibratedByPersonnelId: null,
+    attachment: null,
     values: { sandBulkDensityGcc: "", sandInConeG: "" },
   });
   const [benchmarkForm, setBenchmarkForm] = useState<any>({
     materialId: "", sourceName: "", mddGcc: "", omcPercent: "", specificGravity: "", effectiveFrom: today(),
   });
+  const [editingBenchmarkId, setEditingBenchmarkId] = useState<number | null>(null);
+  const [benchmarkReason, setBenchmarkReason] = useState("");
   const [specItemId, setSpecItemId] = useState<number | null>(null);
   const [specRows, setSpecRows] = useState<any[]>([]);
   const [registerStretch, setRegisterStretch] = useState({ from: "", to: "" });
   const [selectedTest, setSelectedTest] = useState<any>(null);
   const [correctionReason, setCorrectionReason] = useState("");
   const [showCorrection, setShowCorrection] = useState(false);
+  const selectSite = (id: number) => {
+    setSiteId(id);
+    try { localStorage.setItem(`lab-tests:last-site:${String((user as any)?.id ?? "user")}`, String(id)); } catch {}
+  };
 
   const { data: bootstrap, isLoading: bootstrapLoading, error: bootstrapError } = useQuery<any>({
     queryKey: ["/api/lab-tests/bootstrap", projectId],
@@ -180,12 +207,17 @@ export default function LabTests() {
   const items = bootstrap?.items ?? [];
   const personnel = bootstrap?.personnel ?? [];
   const materials = bootstrap?.materials ?? [];
+  const personnelOptionsFor = (selectedId: unknown) => personnel
+    .filter((person: any) => Number(person.isActive) === 1 || Number(person.id) === Number(selectedId))
+    .map((person: any) => [String(person.id), `${displayCaps(person.name)}${Number(person.isActive) === 1 ? "" : " (inactive)"}`] as [string, string]);
   const projectItems = items as any[];
   const currentProject = projects.find((project: any) => Number(project.id) === Number(projectId));
 
   useEffect(() => {
     if (!siteId && sites.length) {
-      const preferred = Number((user as any)?.siteId);
+      let lastUsed = 0;
+      try { lastUsed = Number(localStorage.getItem(`lab-tests:last-site:${String((user as any)?.id ?? "user")}`)); } catch {}
+      const preferred = lastUsed || Number((user as any)?.siteId);
       const match = sites.find((site: any) => Number(site.id) === preferred);
       setSiteId(Number(match?.id ?? sites[0].id));
     }
@@ -201,6 +233,12 @@ export default function LabTests() {
   useEffect(() => {
     if (!editingId) setForm((current: any) => ({ ...current, siteId, boqProjectId: projectId, boqItemId: null }));
   }, [siteId, projectId, editingId]);
+  useEffect(() => {
+    const linkedId = Number(bootstrap?.currentUserPersonnelId);
+    if (!editingId && linkedId > 0 && !form.siteEngineerPersonnelId) {
+      setForm((current: any) => current.siteEngineerPersonnelId ? current : ({ ...current, siteEngineerPersonnelId: linkedId }));
+    }
+  }, [bootstrap?.currentUserPersonnelId, editingId, form.siteEngineerPersonnelId]);
 
   const { data: setup } = useQuery<any>({
     queryKey: ["/api/lab-tests/setup", siteId, projectId],
@@ -226,6 +264,17 @@ export default function LabTests() {
   });
 
   const selectedItem = projectItems.find((item: any) => Number(item.id) === Number(form.boqItemId));
+  const configuredLayers = selectedItem?.layerConfig?.dprLayers ?? selectedItem?.layerConfig?.layers;
+  const itemLayerCount = Math.max(1, Number(
+    Array.isArray(selectedItem?.layerConfig?.layers)
+      ? selectedItem.layerConfig.layers.length
+      : selectedItem?.layerConfig?.layerCount ?? 1,
+  ));
+  const layerChoices = Array.isArray(configuredLayers) && configuredLayers.length
+    ? configuredLayers.map((entry: any, index: number) => typeof entry === "string" ? entry
+      : typeof entry === "object" ? String(entry.name ?? entry.label ?? `Layer ${index + 1}`)
+        : `Layer ${index + 1}`)
+    : FALLBACK_LAYERS;
   const activeBenchmark = useMemo(() => {
     const rows = (setup?.benchmarks ?? []).filter((row: any) =>
       row.isActive && (row.materialId == null || Number(row.materialId) === Number(form.materialId))
@@ -339,6 +388,20 @@ export default function LabTests() {
     if (!uploaded) return;
     setFormField("attachment", { fileName: file.name, objectPath: uploaded.objectPath, mimeType: file.type || (isPdf ? "application/pdf" : "image/*"), fileSize: file.size });
   };
+  const onCalibrationAttachment = async (file?: File) => {
+    if (!file) return;
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (file.size > 15 * 1024 * 1024 || (!file.type.startsWith("image/") && !isPdf)) {
+      toast({ title: "Unsupported file", description: "Choose an image or PDF up to 15 MB.", variant: "destructive" });
+      return;
+    }
+    const uploaded = await uploadFile(file);
+    if (!uploaded) return;
+    setSetupForm((current: any) => ({
+      ...current,
+      attachment: { fileName: file.name, objectPath: uploaded.objectPath, mimeType: file.type || (isPdf ? "application/pdf" : "image/*"), fileSize: file.size },
+    }));
+  };
 
   const startEdit = (test: any) => {
     setEditingId(Number(test.id));
@@ -381,7 +444,7 @@ export default function LabTests() {
     ? `Calibration ${activeCalibration.equipmentNo} · ${activeCalibration.calibratedOn}`
     : "No active calibration";
   const benchmarkLabel = activeBenchmark?.sourceTestId
-    ? `Proctor ${activeBenchmark.sourceTestId} · ${activeBenchmark.effectiveFrom}`
+    ? `Proctor ${activeBenchmark.sourceTestNo || activeBenchmark.sourceTestId} · ${activeBenchmark.effectiveFrom}`
     : activeBenchmark ? `Benchmark · ${activeBenchmark.effectiveFrom}` : "No material benchmark";
   const specLabel = activeSpec?.note || (activeSpec ? "Saved quality specification" : "No quality requirement set");
   const detailsAllowed = !!siteId && !!projectId;
@@ -401,7 +464,7 @@ export default function LabTests() {
           <CardContent className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label>Site</Label>
-              <Select value={siteId ? String(siteId) : ""} onValueChange={value => setSiteId(Number(value))}>
+              <Select value={siteId ? String(siteId) : ""} onValueChange={value => selectSite(Number(value))}>
                 <SelectTrigger><SelectValue placeholder="Choose site" /></SelectTrigger>
                 <SelectContent>{sites.map((site: any) => <SelectItem key={site.id} value={String(site.id)}>{displayCaps(site.name)}</SelectItem>)}</SelectContent>
               </Select>
@@ -439,16 +502,17 @@ export default function LabTests() {
                       <FieldInput label="Date sampled" type="date" value={form.dateSampled} onChange={value => setFormField("dateSampled", value)} />
                       <FieldInput label="Date tested" type="date" value={form.dateTested} onChange={value => setFormField("dateTested", value)} />
                       <FieldSelect label="BOQ item" value={form.boqItemId ? String(form.boqItemId) : ""} options={projectItems.map((item: any) => [String(item.id), `${item.itemCode ? `${item.itemCode} · ` : ""}${item.itemName || item.description}`])} onChange={value => setFormField("boqItemId", value ? Number(value) : null)} optional />
-                      <FieldSelect label="Layer" value={form.layerNo ? String(form.layerNo) : ""} options={Array.from({ length: Math.max(1, Number(selectedItem?.layerConfig?.layers?.length ?? 1)) }, (_, index) => [String(index + 1), `Layer ${index + 1}`])} onChange={value => setFormField("layerNo", value ? Number(value) : null)} optional />
+                      <FieldSelect label="Layer" value={form.layer ?? ""} options={layerChoices.map((value: string) => [value, value] as [string, string])} onChange={value => setFormField("layer", value || null)} optional />
+                      <FieldSelect label="Layer number" value={form.layerNo ? String(form.layerNo) : ""} options={Array.from({ length: itemLayerCount }, (_, index) => [String(index + 1), `Layer ${index + 1}`] as [string, string])} onChange={value => setFormField("layerNo", value ? Number(value) : null)} optional />
                       <FieldInput label="From chainage (km)" value={form.chainageFrom} onChange={value => setFormField("chainageFrom", value)} placeholder="2+600" />
                       <FieldInput label="To chainage (km)" value={form.chainageTo} onChange={value => setFormField("chainageTo", value)} placeholder="2+700" />
                       <FieldSelect label="Side" value={form.side} options={[["Centre", "Centre"], ["LHS", "LHS"], ["RHS", "RHS"], ["Both", "Both"]]} onChange={value => setFormField("side", value)} optional />
                       <FieldSelect label="Sample source" value={form.sampleSourceKind} options={SOURCE_KINDS} onChange={value => setFormField("sampleSourceKind", value)} />
                       <FieldInput label="Source name" value={form.sampleSourceName} onChange={value => setFormField("sampleSourceName", value)} placeholder="Borrow area / quarry / stockpile" />
                       <FieldSelect label="Material" value={form.materialId ? String(form.materialId) : ""} options={materials.map((item: any) => [String(item.id), displayCaps(item.name)])} onChange={value => setFormField("materialId", value ? Number(value) : null)} optional />
-                      <FieldSelect label="Site engineer" value={form.siteEngineerPersonnelId ? String(form.siteEngineerPersonnelId) : ""} options={personnel.map((person: any) => [String(person.id), displayCaps(person.name)])} onChange={value => setFormField("siteEngineerPersonnelId", value ? Number(value) : null)} optional />
-                      <FieldSelect label="Sampled by" value={form.sampledByPersonnelId ? String(form.sampledByPersonnelId) : ""} options={personnel.map((person: any) => [String(person.id), displayCaps(person.name)])} onChange={value => setFormField("sampledByPersonnelId", value ? Number(value) : null)} optional />
-                      <FieldSelect label="Tested by" value={form.testedByPersonnelId ? String(form.testedByPersonnelId) : ""} options={personnel.map((person: any) => [String(person.id), displayCaps(person.name)])} onChange={value => setFormField("testedByPersonnelId", value ? Number(value) : null)} optional />
+                      <FieldSelect label="Site engineer" value={form.siteEngineerPersonnelId ? String(form.siteEngineerPersonnelId) : ""} options={personnelOptionsFor(form.siteEngineerPersonnelId)} onChange={value => setFormField("siteEngineerPersonnelId", value ? Number(value) : null)} optional />
+                      <FieldSelect label="Sampled by" value={form.sampledByPersonnelId ? String(form.sampledByPersonnelId) : ""} options={personnelOptionsFor(form.sampledByPersonnelId)} onChange={value => setFormField("sampledByPersonnelId", value ? Number(value) : null)} optional />
+                      <FieldSelect label="Tested by" value={form.testedByPersonnelId ? String(form.testedByPersonnelId) : ""} options={personnelOptionsFor(form.testedByPersonnelId)} onChange={value => setFormField("testedByPersonnelId", value ? Number(value) : null)} optional />
                     </div>
 
                     <div className="rounded border bg-slate-50 p-3 text-sm">
@@ -471,13 +535,6 @@ export default function LabTests() {
                       onReading={setReading}
                       onArrayRow={updateReadingObject}
                     />
-                    {isOwner && (form.testType === "proctor_light" || form.testType === "proctor_modified") && calculation.results?.mddGcc != null && (
-                      <div className="flex items-start gap-2 rounded border p-3">
-                        <input id="lab-use-benchmark" type="checkbox" checked={form.useAsBenchmark === true} onChange={event => setFormField("useAsBenchmark", event.target.checked)} />
-                        <Label htmlFor="lab-use-benchmark">Use this submitted Proctor result as the material benchmark</Label>
-                      </div>
-                    )}
-
                     <div className="space-y-2">
                       <Label>Remarks</Label>
                       <Textarea value={form.remarks} onChange={event => setFormField("remarks", event.target.value)} />
@@ -530,7 +587,8 @@ export default function LabTests() {
                             <span className="font-semibold">{test.testNo} · {labelForTest(test.testType)}</span>
                             {verdictBadge(test.verdict)}
                           </div>
-                          <div className="mt-1 text-sm text-muted-foreground">{test.dateSampled} · {test.itemLabel || displayCaps(test.sampleSourceName) || "No BOQ item"} · Layer {test.layerNo ?? "—"} · {chainageText(test.chainageFrom)}</div>
+                          <div className="mt-1 text-sm text-muted-foreground">{test.dateSampled} · {test.itemLabel || displayCaps(test.sampleSourceName) || "No BOQ item"} · {test.layer || "Layer not set"}{test.layerNo != null ? ` · Layer ${test.layerNo}` : ""} · {chainageText(test.chainageFrom)}</div>
+                           <div className="text-xs text-muted-foreground">Site engineer: {displayCaps(test.siteEngineerName) || "—"} · Sampled by: {displayCaps(test.sampledByName) || "—"} · Tested by: {displayCaps(test.testedByName) || "—"}</div>
                           {test.verdict === "fail" && <p className="mt-1 text-sm font-semibold">Failed test — retest required</p>}
                           {retest && <p className="mt-1 text-sm font-semibold">Retested → {retest.verdict === "pass" ? "Pass" : retest.verdict === "fail" ? "Fail" : "Not assessed"}</p>}
                         </button>
@@ -559,7 +617,16 @@ export default function LabTests() {
 
           <TabsContent value="frequency" className="space-y-4">
             <Card><CardHeader><CardTitle className="text-base">Frequency check</CardTitle></CardHeader><CardContent>
-              <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">BOQ item</th><th className="p-2">Test</th><th className="p-2">Quantity laid</th><th className="p-2">Required</th><th className="p-2">Done / passed</th><th className="p-2">Shortfall</th></tr></thead>
+              <div className="space-y-2 sm:hidden">{(frequencyQuery.data ?? []).map((row: any, index: number) => <div key={`${row.boqItemId}-${row.testType}-${index}`} className="rounded border p-3 text-sm">
+                <p className="font-semibold">{row.itemName}</p><p>{labelForTest(row.testType)}</p>
+                <dl className="mt-2 grid grid-cols-2 gap-2">
+                  <div><dt className="text-xs text-muted-foreground">Quantity laid</dt><dd>{row.quantityLaid} {row.frequencyUnit}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Required</dt><dd>{row.testsRequired}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Done / passed</dt><dd>{row.testsDone} / {row.testsPassed}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Shortfall</dt><dd className="font-semibold">{row.shortfall}</dd></div>
+                </dl>
+              </div>)}</div>
+              <div className="hidden overflow-x-auto sm:block"><table className="min-w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">BOQ item</th><th className="p-2">Test</th><th className="p-2">Quantity laid</th><th className="p-2">Required</th><th className="p-2">Done / passed</th><th className="p-2">Shortfall</th></tr></thead>
                 <tbody>{(frequencyQuery.data ?? []).map((row: any, index: number) => <tr key={`${row.boqItemId}-${row.testType}-${index}`} className="border-b"><td className="p-2">{row.itemName}</td><td className="p-2">{labelForTest(row.testType)}</td><td className="p-2">{row.quantityLaid} {row.frequencyUnit}</td><td className="p-2">{row.testsRequired}</td><td className="p-2">{row.testsDone} / {row.testsPassed}</td><td className="p-2 font-semibold">{row.shortfall}</td></tr>)}</tbody>
               </table></div>
               {frequencyQuery.data?.length === 0 && <p className="text-sm text-muted-foreground">No quality specifications are configured for this project.</p>}
@@ -576,7 +643,10 @@ export default function LabTests() {
                       ["speedy_moisture_meter", "Speedy moisture meter"],
                       ["proving_ring", "Proving ring"],
                       ["core_cutter", "Core cutter"],
-                    ]} onChange={value => setSetupForm((row: any) => ({ ...row, kind: value, values: {} }))} />
+                     ]} onChange={value => setSetupForm((row: any) => ({
+                       ...row, kind: value, values: value === "sand_pouring_cylinder" ? { sandBulkDensityGcc: "", sandInConeG: "" }
+                         : value === "speedy_moisture_meter" ? { correctionPairsText: '[{"indicated":10,"corrected":11},{"indicated":20,"corrected":21}]' } : {},
+                     }))} />
                     <FieldInput label="Equipment no." value={setupForm.equipmentNo} onChange={value => setSetupForm((row: any) => ({ ...row, equipmentNo: value }))} />
                     <FieldInput label="Calibrated on" type="date" value={setupForm.calibratedOn} onChange={value => setSetupForm((row: any) => ({ ...row, calibratedOn: value }))} />
                     <FieldInput label="Valid until" type="date" value={setupForm.validUntil} onChange={value => setSetupForm((row: any) => ({ ...row, validUntil: value }))} />
@@ -589,35 +659,77 @@ export default function LabTests() {
                       <FieldInput label="Cutter volume (cc)" type="number" value={setupForm.values.cutterVolumeCc ?? ""} onChange={value => setSetupForm((row: any) => ({ ...row, values: { ...row.values, cutterVolumeCc: value } }))} />
                       <FieldInput label="Cutter weight (g)" type="number" value={setupForm.values.cutterWeightG ?? ""} onChange={value => setSetupForm((row: any) => ({ ...row, values: { ...row.values, cutterWeightG: value } }))} />
                     </>}
-                    {setupForm.kind === "speedy_moisture_meter" && <p className="self-end text-sm text-muted-foreground">Correction pairs can be entered as JSON in the calibration editor after adding this first setup screen.</p>}
+                     {setupForm.kind === "speedy_moisture_meter" && <div className="space-y-1 sm:col-span-3"><Label>Indicated → corrected moisture pairs (JSON)</Label><Textarea value={setupForm.values.correctionPairsText ?? ""} onChange={event => setSetupForm((row: any) => ({ ...row, values: { ...row.values, correctionPairsText: event.target.value } }))} rows={3} /><p className="text-xs text-muted-foreground">Enter at least two pairs, for example: [{`{"indicated":10,"corrected":11}`}, {`{"indicated":20,"corrected":21}`}].</p></div>}
+                     <FieldSelect label="Calibrated by" value={setupForm.calibratedByPersonnelId ? String(setupForm.calibratedByPersonnelId) : ""} options={personnel.filter((person: any) => Number(person.isActive) === 1).map((person: any) => [String(person.id), displayCaps(person.name)])} onChange={value => setSetupForm((row: any) => ({ ...row, calibratedByPersonnelId: value ? Number(value) : null }))} optional />
                   </div>
-                  <Button onClick={() => void saveCalibration(setupForm, siteId)} disabled={!siteId}><Save className="mr-2 h-4 w-4" />Save calibration</Button>
+                   <div className="space-y-2 rounded border p-3">
+                     <Label htmlFor="lab-calibration-file">Calibration certificate (optional)</Label>
+                     <Input id="lab-calibration-file" type="file" accept="image/*,.pdf,application/pdf" onChange={event => void onCalibrationAttachment(event.target.files?.[0])} />
+                     {setupForm.attachment && <p className="text-sm">{setupForm.attachment.fileName}</p>}
+                   </div>
+                   <Button onClick={() => void saveCalibration(setupForm, siteId)} disabled={!siteId || isUploading}><Save className="mr-2 h-4 w-4" />Save calibration</Button>
                 </CardContent></Card>
-                <Card><CardHeader><CardTitle className="text-base">Add material benchmark</CardTitle></CardHeader><CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Card><CardHeader><CardTitle className="text-base">Saved calibrations</CardTitle></CardHeader><CardContent className="space-y-2">
+                  {(setup?.calibrations ?? []).map((row: any) => <div key={row.id} className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 text-sm last:border-0">
+                    <span>{row.equipmentNo} · {row.kind.replaceAll("_", " ")} · calibrated {row.calibratedOn}{row.validUntil ? ` · valid until ${row.validUntil}` : ""}</span>
+                    {row.objectPath && <a className="underline" href={row.objectPath} target="_blank" rel="noreferrer">{row.fileName || "Open certificate"}</a>}
+                  </div>)}
+                  {!setup?.calibrations?.length && <p className="text-sm text-muted-foreground">No calibration records for this site.</p>}
+                </CardContent></Card>
+                <Card><CardHeader><CardTitle className="text-base">{editingBenchmarkId ? "Edit material benchmark" : "Add material benchmark"}</CardTitle></CardHeader><CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <FieldSelect label="Material" value={benchmarkForm.materialId} options={materials.map((material: any) => [String(material.id), material.name])} onChange={value => setBenchmarkForm((row: any) => ({ ...row, materialId: value }))} optional />
                   <FieldInput label="Sample source" value={benchmarkForm.sourceName} onChange={value => setBenchmarkForm((row: any) => ({ ...row, sourceName: value }))} />
                   <FieldInput label="MDD (g/cc)" type="number" value={benchmarkForm.mddGcc} onChange={value => setBenchmarkForm((row: any) => ({ ...row, mddGcc: value }))} />
                   <FieldInput label="OMC (%)" type="number" value={benchmarkForm.omcPercent} onChange={value => setBenchmarkForm((row: any) => ({ ...row, omcPercent: value }))} />
                   <FieldInput label="Specific gravity" type="number" value={benchmarkForm.specificGravity} onChange={value => setBenchmarkForm((row: any) => ({ ...row, specificGravity: value }))} />
                   <FieldInput label="Effective from" type="date" value={benchmarkForm.effectiveFrom} onChange={value => setBenchmarkForm((row: any) => ({ ...row, effectiveFrom: value }))} />
-                  <Button onClick={() => void saveBenchmark(benchmarkForm, projectId)} disabled={!projectId}><Save className="mr-2 h-4 w-4" />Save benchmark</Button>
+                  {editingBenchmarkId && <div className="space-y-1 sm:col-span-2"><Label>Reason for change</Label><Input value={benchmarkReason} onChange={event => setBenchmarkReason(event.target.value)} /></div>}
+                  <Button onClick={() => void saveBenchmark(benchmarkForm, projectId)} disabled={!projectId || (editingBenchmarkId != null && !benchmarkReason.trim())}><Save className="mr-2 h-4 w-4" />{editingBenchmarkId ? "Save benchmark changes" : "Save benchmark"}</Button>
+                  {editingBenchmarkId && <Button variant="outline" onClick={() => { setEditingBenchmarkId(null); setBenchmarkReason(""); setBenchmarkForm({ materialId: "", sourceName: "", mddGcc: "", omcPercent: "", specificGravity: "", effectiveFrom: today() }); }}>Cancel edit</Button>}
+                </CardContent></Card>
+                <Card><CardHeader><CardTitle className="text-base">Saved material benchmarks</CardTitle></CardHeader><CardContent className="space-y-2">
+                  {(setup?.benchmarks ?? []).map((row: any) => <div key={row.id} className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 text-sm last:border-0">
+                    <span>{materials.find((material: any) => Number(material.id) === Number(row.materialId))?.name || row.sourceName || "Any material"} · MDD {row.mddGcc} g/cc · OMC {row.omcPercent}% · from {row.effectiveFrom}{row.sourceTestNo ? ` · ${row.sourceTestNo}` : ""}{row.isActive ? "" : " · inactive"}</span>
+                    <Button size="sm" variant="outline" onClick={() => {
+                      setEditingBenchmarkId(Number(row.id));
+                      setBenchmarkReason("");
+                      setBenchmarkForm({ ...row, materialId: row.materialId == null ? "" : String(row.materialId), sourceName: row.sourceName ?? "", mddGcc: String(row.mddGcc), omcPercent: String(row.omcPercent), specificGravity: row.specificGravity == null ? "" : String(row.specificGravity), effectiveFrom: String(row.effectiveFrom).slice(0, 10) });
+                    }}>Edit</Button>
+                    {row.isActive && <Button size="sm" variant="destructive" onClick={() => {
+                      setEditingBenchmarkId(Number(row.id));
+                      setBenchmarkReason("");
+                      setBenchmarkForm({ ...row, materialId: row.materialId == null ? "" : String(row.materialId), sourceName: row.sourceName ?? "", mddGcc: String(row.mddGcc), omcPercent: String(row.omcPercent), specificGravity: row.specificGravity == null ? "" : String(row.specificGravity), effectiveFrom: String(row.effectiveFrom).slice(0, 10), isActive: false });
+                    }}>Deactivate</Button>}
+                  </div>)}
+                  {!setup?.benchmarks?.length && <p className="text-sm text-muted-foreground">No material benchmarks saved.</p>}
                 </CardContent></Card>
                 <Card><CardHeader><CardTitle className="text-base">Quality specifications</CardTitle></CardHeader><CardContent className="space-y-3">
                   <FieldSelect label="BOQ item" value={specItemId ? String(specItemId) : ""} options={projectItems.map((item: any) => [String(item.id), item.itemName || item.description])} onChange={value => {
                     const id = value ? Number(value) : null;
                     setSpecItemId(id);
                     const item = projectItems.find((candidate: any) => Number(candidate.id) === id);
-                    const defaults = item ? soilQualityDefaultsForWork(`${item.itemName ?? ""} ${item.description ?? ""}`) : [];
-                    setSpecRows(defaults.map(row => ({ ...row, testType: row.testType, minValue: row.minValue, maxValue: row.maxValue, frequencyQty: row.frequencyQty, frequencyUnit: row.frequencyUnit, note: row.note })));
+                    const saved = (setup?.specs ?? []).filter((row: any) => Number(row.boqItemId) === Number(id));
+                    const defaults = !saved.length && item ? soilQualityDefaultsForWork(`${item.itemName ?? ""} ${item.description ?? ""}`) : [];
+                    setSpecRows((saved.length ? saved : defaults).map((row: any) => ({
+                      ...row, testType: row.testType, minValue: row.minValue, maxValue: row.maxValue,
+                      frequencyQty: row.frequencyQty, frequencyUnit: row.frequencyUnit, note: row.note,
+                    })));
                   }} optional />
                   {specRows.map((row, index) => <div key={`${row.testType}-${index}`} className="grid grid-cols-2 gap-2 rounded border p-3 sm:grid-cols-5">
                     <span className="col-span-2 self-center text-sm font-medium sm:col-span-1">{labelForTest(row.testType)}</span>
                     <FieldInput label="Minimum" type="number" value={numberInput(row.minValue)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, minValue: value === "" ? null : Number(value) } : entry))} />
                     <FieldInput label="Maximum" type="number" value={numberInput(row.maxValue)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, maxValue: value === "" ? null : Number(value) } : entry))} />
-                    <FieldInput label="Frequency quantity" type="number" value={numberInput(row.frequencyQty)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, frequencyQty: Number(value) } : entry))} />
+                    <FieldInput label="Frequency quantity" type="number" value={numberInput(row.frequencyQty)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, frequencyQty: value === "" ? "" : Number(value) } : entry))} />
                     <FieldSelect label="Frequency unit" value={row.frequencyUnit} options={[["sqm", "sqm"], ["cum", "cum"], ["MT", "MT"], ["per_layer", "per layer"], ["as_required", "As required"]]} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, frequencyUnit: value } : entry))} />
                   </div>)}
-                  {specItemId && <Button onClick={() => void saveSpecs(specItemId, specRows)}><Save className="mr-2 h-4 w-4" />Save specifications</Button>}
+                  {specItemId && <div className="flex flex-wrap gap-2">
+                    <FieldSelect label="Add test requirement" value="" options={TEST_TYPES.filter(row => !specRows.some(spec => spec.testType === row.value)).map(row => [row.value, row.label] as [string, string])} onChange={value => {
+                      const item = projectItems.find((candidate: any) => Number(candidate.id) === Number(specItemId));
+                      const fallback = soilQualityDefaultsForWork(`${item?.itemName ?? ""} ${item?.description ?? ""}`).find(row => row.testType === value);
+                      setSpecRows(rows => [...rows, fallback ? { ...fallback } : { testType: value, minValue: null, maxValue: null, frequencyQty: 1, frequencyUnit: "as_required", note: "" }]);
+                    }} optional />
+                    <Button onClick={() => void saveSpecs(specItemId, specRows)}><Save className="mr-2 h-4 w-4" />Save specifications</Button>
+                  </div>}
                   <p className="text-xs text-muted-foreground">Defaults are suggestions only. Saved edits are not overwritten.</p>
                 </CardContent></Card>
               </>
@@ -650,20 +762,37 @@ export default function LabTests() {
             }}
           />
         )}
-        {printTest && <LabTestPrint test={printTest} project={currentProject} onClose={() => setPrintTest(null)} />}
+        {printTest && <LabTestPrint test={printTest} project={currentProject} companyName={companyName} onClose={() => setPrintTest(null)} />}
       </div>
     </HubShell>
   );
 
   async function saveCalibration(value: any, selectedSiteId: number | null) {
     try {
+      const values = { ...value.values };
+      if (value.kind === "speedy_moisture_meter") {
+        try {
+          values.correctionPairs = JSON.parse(String(values.correctionPairsText ?? ""));
+        } catch {
+          throw new Error("Enter the speedy-meter correction pairs as valid JSON.");
+        }
+        delete values.correctionPairsText;
+      }
       await apiRequest("POST", "/api/lab-tests/calibrations", {
         ...value,
         siteId: selectedSiteId,
-        values: Object.fromEntries(Object.entries(value.values).map(([key, entry]) => [key, entry === "" ? null : Number(entry)])),
+        calibratedByPersonnelId: value.calibratedByPersonnelId ? Number(value.calibratedByPersonnelId) : null,
+        attachment: value.attachment,
+        values: value.kind === "speedy_moisture_meter"
+          ? values
+          : Object.fromEntries(Object.entries(values).map(([key, entry]) => [key, entry === "" ? null : Number(entry)])),
         validUntil: value.validUntil || null,
       });
       toast({ title: "Calibration saved" });
+      setSetupForm((current: any) => ({
+        ...current, equipmentNo: "", validUntil: "", calibratedByPersonnelId: null, attachment: null,
+        values: current.kind === "sand_pouring_cylinder" ? { sandBulkDensityGcc: "", sandInConeG: "" } : {},
+      }));
       await query.invalidateQueries({ queryKey: ["/api/lab-tests/setup"] });
     } catch (error: any) {
       toast({ title: "Could not save calibration", description: error.message, variant: "destructive" });
@@ -671,15 +800,21 @@ export default function LabTests() {
   }
   async function saveBenchmark(value: any, selectedProjectId: number | null) {
     try {
-      await apiRequest("POST", "/api/lab-tests/benchmarks", {
+      const payload = {
         ...value,
         materialId: value.materialId ? Number(value.materialId) : null,
         boqProjectId: selectedProjectId,
         mddGcc: Number(value.mddGcc),
         omcPercent: Number(value.omcPercent),
         specificGravity: value.specificGravity === "" ? null : Number(value.specificGravity),
-      });
-      toast({ title: "Benchmark saved" });
+      };
+      if (editingBenchmarkId) {
+        await apiRequest("PATCH", `/api/lab-tests/benchmarks/${editingBenchmarkId}`, { ...payload, reason: benchmarkReason });
+      } else await apiRequest("POST", "/api/lab-tests/benchmarks", payload);
+      toast({ title: editingBenchmarkId ? "Benchmark updated" : "Benchmark saved" });
+      setEditingBenchmarkId(null);
+      setBenchmarkReason("");
+      setBenchmarkForm({ materialId: "", sourceName: "", mddGcc: "", omcPercent: "", specificGravity: "", effectiveFrom: today() });
       await query.invalidateQueries({ queryKey: ["/api/lab-tests/setup"] });
     } catch (error: any) {
       toast({ title: "Could not save benchmark", description: error.message, variant: "destructive" });
@@ -790,7 +925,7 @@ function TestReadings({ testType, readings, results, activeCalibration, onReadin
             <div className="flex items-center justify-between"><h4 className="font-semibold">Pit {index + 1}</h4>{pits.length > 1 && <Button type="button" size="sm" variant="ghost" onClick={() => onReading("pits", pits.filter((_: any, i: number) => i !== index))}>Remove</Button>}</div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <FieldInput label="Chainage (km)" value={pit.chainage ?? ""} onChange={value => updatePit(index, "chainage", value)} placeholder="2+600" />
-              <FieldSelect label="Side" value={pit.side ?? ""} options={[["Centre", "Centre"], ["LHS", "LHS"], ["RHS", "RHS"]]} onChange={value => updatePit(index, "side", value)} optional />
+              <FieldSelect label="Side" value={pit.side ?? ""} options={[["Centre", "Centre"], ["LHS", "LHS"], ["RHS", "RHS"], ["Both", "Both"]]} onChange={value => updatePit(index, "side", value)} optional />
               <FieldInput label="Offset (m)" type="number" value={pit.offsetM ?? ""} onChange={value => updatePit(index, "offsetM", value)} />
               <FieldInput label="Depth (mm)" type="number" value={pit.depthMm ?? ""} onChange={value => updatePit(index, "depthMm", value)} />
             </div>
@@ -836,10 +971,10 @@ function TestReadings({ testType, readings, results, activeCalibration, onReadin
     return <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <FieldSelect label="Method" value={readings.moistureMethod ?? "oven"} options={[["oven", "Oven"], ["speedy", "Speedy meter"]]} onChange={value => onReading("moistureMethod", value)} />
-        {readings.moistureMethod === "speedy" ? <FieldInput label="Speedy indicated moisture (%)" type="number" value={readings.speedyIndicated ?? ""} onChange={value => onReading("speedyIndicated", Number(value))} /> : <>
-          <FieldInput label="W5 — empty container (g)" type="number" value={readings.w5 ?? ""} onChange={value => onReading("w5", Number(value))} />
-          <FieldInput label="W6 — container + wet soil (g)" type="number" value={readings.w6 ?? ""} onChange={value => onReading("w6", Number(value))} />
-          <FieldInput label="W7 — container + dry soil (g)" type="number" value={readings.w7 ?? ""} onChange={value => onReading("w7", Number(value))} />
+        {readings.moistureMethod === "speedy" ? <FieldInput label="Speedy indicated moisture (%)" type="number" value={readings.speedyIndicated ?? ""} onChange={value => onReading("speedyIndicated", value === "" ? "" : Number(value))} /> : <>
+          <FieldInput label="W5 — empty container (g)" type="number" value={readings.w5 ?? ""} onChange={value => onReading("w5", value === "" ? "" : Number(value))} />
+          <FieldInput label="W6 — container + wet soil (g)" type="number" value={readings.w6 ?? ""} onChange={value => onReading("w6", value === "" ? "" : Number(value))} />
+          <FieldInput label="W7 — container + dry soil (g)" type="number" value={readings.w7 ?? ""} onChange={value => onReading("w7", value === "" ? "" : Number(value))} />
         </>}
       </div>
       <ResultCell label="Moisture content" value={results?.moisturePercent} unit="%" />
@@ -865,10 +1000,14 @@ function TestReadings({ testType, readings, results, activeCalibration, onReadin
     const chart = (results?.points ?? []).filter((point: any) => point.loadKg != null);
     return <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <FieldInput label="Proving ring constant (kg/div)" type="number" value={readings.ringConstantKgPerDivision ?? activeCalibration?.values?.ringConstantKgPerDivision ?? ""} onChange={value => onReading("ringConstantKgPerDivision", Number(value))} />
-        <FieldInput label="Initial swell gauge" type="number" value={readings.initialSwellGauge ?? ""} onChange={value => onReading("initialSwellGauge", Number(value))} />
-        <FieldInput label="Final swell gauge" type="number" value={readings.finalSwellGauge ?? ""} onChange={value => onReading("finalSwellGauge", Number(value))} />
-        <FieldInput label="Specimen height (mm)" type="number" value={readings.specimenHeightMm ?? ""} onChange={value => onReading("specimenHeightMm", Number(value))} />
+        <FieldInput label="Proving ring constant (kg/div)" type="number" value={readings.ringConstantKgPerDivision ?? activeCalibration?.values?.ringConstantKgPerDivision ?? ""} onChange={value => onReading("ringConstantKgPerDivision", value === "" ? "" : Number(value))} />
+        <FieldInput label="Initial swell gauge" type="number" value={readings.initialSwellGauge ?? ""} onChange={value => onReading("initialSwellGauge", value === "" ? "" : Number(value))} />
+        <FieldInput label="Final swell gauge" type="number" value={readings.finalSwellGauge ?? ""} onChange={value => onReading("finalSwellGauge", value === "" ? "" : Number(value))} />
+        <FieldInput label="Specimen height (mm)" type="number" value={readings.specimenHeightMm ?? ""} onChange={value => onReading("specimenHeightMm", value === "" ? "" : Number(value))} />
+        <FieldInput label="Mould density before soaking (g/cc)" type="number" value={readings.mouldDensityBeforeSoaking ?? ""} onChange={value => onReading("mouldDensityBeforeSoaking", value === "" ? "" : Number(value))} />
+        <FieldInput label="Moisture before soaking (%)" type="number" value={readings.moistureBeforeSoaking ?? ""} onChange={value => onReading("moistureBeforeSoaking", value === "" ? "" : Number(value))} />
+        <FieldInput label="Mould density after soaking (g/cc)" type="number" value={readings.mouldDensityAfterSoaking ?? ""} onChange={value => onReading("mouldDensityAfterSoaking", value === "" ? "" : Number(value))} />
+        <FieldInput label="Moisture after soaking (%)" type="number" value={readings.moistureAfterSoaking ?? ""} onChange={value => onReading("moistureAfterSoaking", value === "" ? "" : Number(value))} />
       </div>
       <div className="overflow-x-auto rounded border"><table className="min-w-full text-sm"><thead><tr className="bg-slate-50"><th className="p-2">Penetration (mm)</th><th className="p-2">Dial reading</th><th className="p-2">Load (kg)</th></tr></thead><tbody>
         {PENETRATIONS.map(value => {
@@ -898,13 +1037,94 @@ function TestReadings({ testType, readings, results, activeCalibration, onReadin
       columns={[{ key: "trial", label: "Trial" }, { key: "moistureMethod", label: "Method", type: "text" }, { key: "w5", label: "W5 empty pan" }, { key: "w6", label: "W6 wet pan" }, { key: "w7", label: "W7 dry pan" }]}
       onRow={updatePlastic} onAdd={() => addRow("plasticLimitTrials", plasticRows, {})} />}
     <div className="grid grid-cols-3 gap-2"><ResultCell label="Liquid limit" value={results?.liquidLimitPercent} unit="%" /><ResultCell label="Plastic limit" value={results?.plasticLimitPercent} unit="%" /><ResultCell label="Plasticity index" value={results?.plasticityIndexPercent} unit="%" /></div>
-    {flowPoints.length > 1 && <TestLineChart data={flowPoints} xKey="blows" yKey="moisturePercent" xLabel="Blows (log scale)" yLabel="Moisture (%)" />}
+    {flowPoints.length > 1 && <TestLineChart data={flowPoints} xKey="blows" yKey="moisturePercent" xLabel="Blows (log scale)" yLabel="Moisture (%)" secondary={results?.flowLineFit} secondaryYKey="moisturePercent" secondaryLabel="Best-fit flow line" xScale="log" />}
   </div>;
 }
 
 function firstResult(test: any) {
   const result: any = test?.results ?? {};
   return result.pits?.[0]?.compactionPercent ?? result.reportedCbrPercent ?? result.plasticityIndexPercent ?? "—";
+}
+
+function TestResultsTable({ testType, readings = {}, results = {} }: { testType: SoilLabTestType; readings?: any; results?: any }) {
+  const compactRows = (headers: string[], rows: unknown[][]) => <div className="overflow-x-auto rounded border">
+    <table className="min-w-full border-collapse text-sm">
+      <thead><tr>{headers.map(header => <th key={header} className="border-b border-black p-2 text-left">{header}</th>)}</tr></thead>
+      <tbody>{rows.map((row, index) => <tr key={index} className="border-b border-slate-300 last:border-0">
+        {row.map((value, cell) => <td key={cell} className="p-2">{value == null || value === "" ? "—" : String(value)}</td>)}
+      </tr>)}</tbody>
+    </table>
+  </div>;
+  if (testType === "field_density_sand" || testType === "field_density_core_cutter") {
+    const inputs = Array.isArray(readings.pits) ? readings.pits : [];
+    const pits = Array.isArray(results.pits) ? results.pits : [];
+    const headers = testType === "field_density_sand"
+      ? ["Pit", "Chainage", "Side / offset", "Depth (mm)", "W1 (g)", "W2 (g)", "W3 (g)", "Sand density (g/cc)", "Ww (g)", "W4 (g)", "Volume (cc)", "Bulk density (g/cc)", "Water (%)", "Dry density (g/cc)", "MDD (g/cc)", "Compaction (%)", "Required (%)", "Result"]
+      : ["Pit", "Chainage", "Side / offset", "Depth (mm)", "Soil + cutter (g)", "Cutter (g)", "Volume (cc)", "Wet density (g/cc)", "Water (%)", "Dry density (g/cc)", "MDD (g/cc)", "Compaction (%)", "Required (%)", "Result"];
+    return <div className="space-y-3">
+      {compactRows(headers, pits.map((pit: any, index: number) => {
+        const input = inputs[index] ?? {};
+        const location = `${input.side ?? ""}${input.offsetM !== "" && input.offsetM != null ? ` ${input.offsetM} m` : ""}`.trim();
+        return testType === "field_density_sand"
+          ? [index + 1, input.chainage, location, input.depthMm, input.w1, input.w2, input.w3 ?? pit.sandInConeG, pit.sandBulkDensityGcc, input.wetSoilWeight, pit.sandWeightG, pit.pitVolumeCc, pit.bulkDensityGcc, pit.moisturePercent, pit.dryDensityGcc, pit.mddGcc, pit.compactionPercent, pit.requiredPercent, pit.verdict?.toUpperCase()]
+          : [index + 1, input.chainage, location, input.depthMm, input.soilAndCutterWeight, input.cutterWeight, pit.pitVolumeCc, pit.bulkDensityGcc, pit.moisturePercent, pit.dryDensityGcc, pit.mddGcc, pit.compactionPercent, pit.requiredPercent, pit.verdict?.toUpperCase()];
+      }))}
+    </div>;
+  }
+  if (testType === "proctor_light" || testType === "proctor_modified") {
+    const trials = Array.isArray(results.trials) ? results.trials : [];
+    const graph = Array.isArray(results.graph) ? results.graph : [];
+    const inputTrials = Array.isArray(readings.trials) ? readings.trials : [];
+    return <div className="space-y-3">
+      {compactRows(["Trial", "W1 (g)", "W2 (g)", "Volume (cc)", "W5 (g)", "W6 (g)", "W7 (g)", "Wet soil (g)", "Water content (%)", "Wet density (g/cc)", "Dry density (g/cc)"],
+        trials.map((trial: any, index: number) => {
+          const input = inputTrials[index] ?? {};
+          return [trial.trialNo, input.w1, input.w2, input.volumeCc, input.w5, input.w6, input.w7, trial.wetSoilWeightG, trial.moisturePercent, trial.bulkDensityGcc, trial.dryDensityGcc];
+        }))}
+      <div className="grid grid-cols-2 gap-3">
+        <ResultCell label="Maximum dry density" value={results.mddGcc} unit="g/cc" />
+        <ResultCell label="Optimum moisture content" value={results.omcPercent} unit="%" />
+      </div>
+      {graph.length > 0 && <TestLineChart data={graph} xKey="moisturePercent" yKey="dryDensityGcc" xLabel="Water content (%)" yLabel="Dry density (g/cc)" secondary={results.zeroAirVoids ?? []} peak={results.omcPercent != null && results.mddGcc != null ? { x: results.omcPercent, y: results.mddGcc } : undefined} />}
+    </div>;
+  }
+  if (testType === "cbr") {
+    const points = Array.isArray(results.points) ? results.points : [];
+    return <div className="space-y-3">
+      {compactRows(["Penetration (mm)", "Dial (div)", "Load (kg)"], points.map((point: any) => [point.penetrationMm, point.dial, point.loadKg]))}
+      <p className="text-sm">Proving ring: {readings.ringConstantKgPerDivision ?? "—"} kg/div · Swell gauge: {readings.initialSwellGauge ?? "—"} to {readings.finalSwellGauge ?? "—"} mm · Specimen height: {readings.specimenHeightMm ?? "—"} mm</p>
+      {compactRows(["Mould density before soaking (g/cc)", "Moisture before soaking (%)", "Mould density after soaking (g/cc)", "Moisture after soaking (%)"], [[
+        results.mouldDensityBeforeSoaking, results.moistureBeforeSoaking,
+        results.mouldDensityAfterSoaking, results.moistureAfterSoaking,
+      ]])}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <ResultCell label="CBR at 2.5 mm" value={results.cbrAt25Percent} unit="%" />
+        <ResultCell label="CBR at 5.0 mm" value={results.cbrAt50Percent} unit="%" />
+        <ResultCell label="CBR reported (higher value)" value={results.reportedCbrPercent} unit="%" />
+        <ResultCell label="Swell after soaking" value={results.swellPercent} unit="%" />
+      </div>
+      {points.some((point: any) => point.loadKg != null) && <TestLineChart data={points.filter((point: any) => point.loadKg != null)} xKey="penetrationMm" yKey="loadKg" xLabel="Penetration (mm)" yLabel="Load (kg)" referenceXs={[2.5, 5]} />}
+    </div>;
+  }
+  if (testType === "atterberg") {
+    return <div className="space-y-3">
+      {compactRows(["Liquid-limit blows", "W5 (g)", "W6 (g)", "W7 (g)", "Water content (%)"],
+        (Array.isArray(readings.liquidLimitTrials) ? readings.liquidLimitTrials : []).map((trial: any, index: number) => [
+          trial.blows, trial.w5, trial.w6, trial.w7, results.flowLine?.[index]?.moisturePercent,
+        ]))}
+      {!readings.nonPlastic && compactRows(["Plastic-limit trial", "W5 (g)", "W6 (g)", "W7 (g)"],
+        (Array.isArray(readings.plasticLimitTrials) ? readings.plasticLimitTrials : []).map((trial: any, index: number) => [
+          index + 1, trial.w5, trial.w6, trial.w7,
+        ]))}
+      <div className="grid grid-cols-3 gap-3">
+        <ResultCell label="Liquid limit" value={results.liquidLimitPercent} unit="%" />
+        <ResultCell label="Plastic limit" value={results.plasticLimitPercent} unit="%" />
+        <ResultCell label="Plasticity index" value={results.plasticityIndexPercent} unit="%" />
+      </div>
+      {Array.isArray(results.flowLine) && results.flowLine.length > 1 && <TestLineChart data={results.flowLine} xKey="blows" yKey="moisturePercent" xLabel="Blows (log scale)" yLabel="Moisture (%)" secondary={results.flowLineFit} secondaryYKey="moisturePercent" secondaryLabel="Best-fit flow line" xScale="log" />}
+    </div>;
+  }
+  return <ResultCell label="Moisture content" value={results.moisturePercent} unit="%" />;
 }
 
 function layerRegisterRows(stretch: { from: string; to: string }, tests: any[]) {
@@ -944,7 +1164,8 @@ function TestDetailDialog({ test, isOwner, canEdit, onClose, onEdit, onRetest, o
     <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-4 shadow-xl">
       <div className="flex items-start justify-between gap-2"><div><h2 className="text-lg font-bold">{test.testNo} · {labelForTest(test.testType)}</h2><p className="text-sm text-muted-foreground">{test.projectName} · {test.dateSampled} · {test.itemLabel || test.sampleSourceName}</p></div><Button variant="ghost" onClick={onClose} aria-label="Close">×</Button></div>
       <div className="my-3 flex items-center gap-2">{verdictBadge(test.verdict)}<Badge variant="outline">{test.status}</Badge>{test.retestOfTestId && <span className="text-sm">Retest of #{test.retestOfTestId}</span>}</div>
-      <pre className="overflow-x-auto rounded bg-slate-50 p-3 text-xs">{JSON.stringify(test.results, null, 2)}</pre>
+      <p className="mb-3 text-sm">Site engineer: {displayCaps(test.siteEngineerName) || "—"} · Sampled by: {displayCaps(test.sampledByName) || "—"} · Tested by: {displayCaps(test.testedByName) || "—"}</p>
+      <TestResultsTable testType={test.testType} readings={test.readings} results={test.results} />
       {test.attachments?.map((file: any) => <a key={file.id} href={file.objectPath} target="_blank" rel="noreferrer" className="mt-2 block text-sm underline">{file.fileName}</a>)}
       <details className="mt-3 rounded border p-3">
         <summary className="cursor-pointer font-semibold">Test history</summary>
@@ -991,35 +1212,49 @@ function resultSummary(value: any) {
   return String(value.verdict ?? value.status ?? "Saved");
 }
 
-function LabTestPrint({ test, project, onClose }: { test: any; project: any; onClose: () => void }) {
+function LabTestPrint({ test, project, companyName, onClose }: { test: any; project: any; companyName: string; onClose: () => void }) {
   const name = labelForTest(test.testType);
   return <div className="fixed inset-0 z-[60] overflow-y-auto bg-white p-4 sm:p-8 print:static print:overflow-visible print:p-0">
     <div className="mx-auto max-w-4xl print:max-w-none">
       <div className="mb-4 flex gap-2 print:hidden"><Button onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" />Print</Button><Button variant="outline" onClick={onClose}>Close</Button></div>
       <header className="border-b-2 border-black pb-3 text-center">
-        <h1 className="text-xl font-bold">{project?.clientName || project?.client || " "}</h1>
+        <h1 className="text-xl font-bold">{companyName}</h1>
         <p>{project?.name ?? test.projectName ?? ""}</p>
+        <p>{project?.clientName ?? ""}</p>
         <p>{project?.consultantName ?? ""}</p>
         <h2 className="mt-3 text-lg font-bold">{name}</h2>
-        <p>IS 2720 · Test no. {test.testNo}</p>
+        <p>{standardForType(test.testType)} · Test no. {test.testNo}</p>
       </header>
       <div className="my-4 grid grid-cols-2 gap-x-8 gap-y-2 border-b border-black pb-3 text-sm sm:grid-cols-4">
         <PrintFact label="Site" value={test.siteName} /><PrintFact label="Date sampled" value={test.dateSampled} />
         <PrintFact label="Date tested" value={test.dateTested} /><PrintFact label="Place" value={test.place} />
-        <PrintFact label="BOQ item" value={test.itemLabel} /><PrintFact label="Layer" value={test.layerNo} />
+        <PrintFact label="BOQ item" value={test.itemLabel} /><PrintFact label="Layer" value={test.layer} /><PrintFact label="Layer number" value={test.layerNo} />
         <PrintFact label="Chainage" value={`${chainageText(test.chainageFrom)} to ${chainageText(test.chainageTo)}`} /><PrintFact label="Side" value={test.side} />
         <PrintFact label="Sample source" value={test.sampleSourceName} /><PrintFact label="Sample no." value={test.sampleNo} />
+        <PrintFact label="Site engineer" value={displayCaps(test.siteEngineerName)} /><PrintFact label="Sampled by" value={displayCaps(test.sampledByName)} /><PrintFact label="Tested by" value={displayCaps(test.testedByName)} />
       </div>
-      <h3 className="font-bold">Readings</h3>
-      <pre className="my-2 whitespace-pre-wrap border border-black p-3 text-xs">{JSON.stringify(test.readings, null, 2)}</pre>
-      <h3 className="mt-4 font-bold">Calculated results</h3>
-      <pre className="my-2 whitespace-pre-wrap border border-black p-3 text-xs">{JSON.stringify(test.results, null, 2)}</pre>
+      <h3 className="font-bold">Calculated results</h3>
+      <div className="my-2 border border-black p-3 text-sm print:text-xs">
+        <TestResultsTable testType={test.testType} readings={test.readings} results={test.results} />
+      </div>
       <div className="my-3 flex items-center gap-3"><strong>Verdict</strong><span className="border border-black px-2 py-1 font-extrabold">{String(test.verdict ?? "na").toUpperCase()}</span></div>
       <p className="min-h-12 border-b border-black text-sm"><strong>Remarks: </strong>{test.remarks ?? ""}</p>
-      <div className="mt-16 grid grid-cols-2 gap-12 text-center text-sm"><div className="border-t border-black pt-2">For {project?.clientName || project?.client || "Company"}<br />Lab in-charge</div><div className="border-t border-black pt-2">Consultant's / Department representative</div></div>
+      <div className="mt-16 grid grid-cols-2 gap-12 text-center text-sm"><div className="border-t border-black pt-2">For {companyName}<br />Lab in-charge</div><div className="border-t border-black pt-2">Consultant's / Department representative</div></div>
     </div>
     <style>{`@media print { body * { visibility: hidden !important; } .fixed.inset-0, .fixed.inset-0 * { visibility: visible !important; } .fixed.inset-0 { position: absolute !important; inset: 0 !important; } }`}</style>
   </div>;
+}
+
+function standardForType(testType: SoilLabTestType) {
+  return ({
+    field_density_sand: "IS 2720 Part 28",
+    field_density_core_cutter: "IS 2720 Part 29",
+    moisture_content: "IS 2720 Part 2",
+    proctor_light: "IS 2720 Part 7",
+    proctor_modified: "IS 2720 Part 8",
+    cbr: "IS 2720 Part 16",
+    atterberg: "IS 2720 Part 5",
+  } as Record<SoilLabTestType, string>)[testType];
 }
 
 function PrintFact({ label, value }: { label: string; value: unknown }) {
