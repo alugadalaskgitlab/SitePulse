@@ -74,12 +74,22 @@ vi.mock("@/components/ChainageOverlapGuard", () => ({
 vi.mock("@/components/ui/select", async (importOriginal) => {
   const React = await import("react");
   const actual = await importOriginal<typeof import("@/components/ui/select")>();
+  const SelectContext = React.createContext<{ open: boolean; setOpen: (open: boolean) => void } | null>(null);
   return {
     ...actual,
-    Select: ({ children }: any) => React.createElement("div", null, children),
-    SelectTrigger: ({ children, ...props }: any) => React.createElement("button", { type: "button", ...props }, children),
+    Select: ({ children }: any) => {
+      const [open, setOpen] = React.useState(false);
+      return React.createElement(SelectContext.Provider, { value: { open, setOpen } }, children);
+    },
+    SelectTrigger: ({ children, ...props }: any) => {
+      const context = React.useContext(SelectContext) as any;
+      return React.createElement("button", { type: "button", ...props, onClick: () => context?.setOpen(!context?.open) }, children);
+    },
     SelectValue: ({ placeholder, children }: any) => React.createElement("span", null, children ?? placeholder),
-    SelectContent: ({ children }: any) => React.createElement("div", { role: "listbox" }, children),
+    SelectContent: ({ children }: any) => {
+      const context = React.useContext(SelectContext) as any;
+      return context?.open ? React.createElement("div", { role: "listbox" }, children) : null;
+    },
     SelectItem: ({ value, children }: any) => React.createElement("div", { role: "option", "data-value": value }, children),
   };
 });
@@ -159,6 +169,7 @@ describe("SiteEdit Owner correction item list", () => {
         return response([{ id: 12, name: "TEST BOQ PROJECT", siteId: 7, itemCount: 1 }]);
       }
       if (url === "/api/boq/projects/12/items") return response([boqItem]);
+      if (url === "/api/boq/projects/12/bom") return response({ items: [], bars: [] });
       return response([]);
     }));
 
@@ -167,9 +178,9 @@ describe("SiteEdit Owner correction item list", () => {
 
     const itemSelect = await screen.findByTestId("select-owner-correction-item-4101");
     expect(screen.getByTestId("owner-dpr-project-item-correction")).toBeTruthy();
-    if (savedItemId == null) expect(screen.getByText("Not linked")).toBeTruthy();
 
     fireEvent.click(itemSelect);
-    await waitFor(() => expect(screen.getByRole("option", { name: /WMM-01.*Wet mix macadam/ })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("option", { name: /WMM-01.*Wet mix macadam/i })).toBeTruthy());
+    if (savedItemId == null) expect(screen.getByRole("option", { name: "Not linked" })).toBeTruthy();
   });
 });
