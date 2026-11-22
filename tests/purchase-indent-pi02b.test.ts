@@ -20,6 +20,7 @@ describe("PI-02B explicit procurement-route correction", () => {
       schema.purchaseIndentItems,
       schema.piItemTransactions,
       schema.storeGrnItems,
+      schema.storeGrns,
       schema.purchaseIndentItemHistory,
       schema.auditLogs,
       schema.plantMaterials,
@@ -37,7 +38,7 @@ describe("PI-02B explicit procurement-route correction", () => {
 
   beforeEach(async () => {
     await pg.exec(`
-      TRUNCATE sites,purchase_indents,purchase_indent_items,pi_item_transactions,store_grn_items,purchase_indent_item_history,audit_logs,plant_materials RESTART IDENTITY;
+      TRUNCATE sites,purchase_indents,purchase_indent_items,pi_item_transactions,store_grn_items,store_grns,purchase_indent_item_history,audit_logs,plant_materials RESTART IDENTITY;
       INSERT INTO plant_materials(id,name,procurement_route) VALUES
         (10,'WMM BULK','bulk_plant'),(11,'CEMENT BAGS','stores');
       INSERT INTO sites(id,name,enabled_modules) VALUES(1,'Site A','{}'),(2,'Site B','{}');

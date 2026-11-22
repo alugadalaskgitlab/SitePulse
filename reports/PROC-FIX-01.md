@@ -19,7 +19,8 @@ The duplicate draft `STORE/26-27/0002` and finalized `STORE/26-27/0003` remain f
 
 ## Verification
 
-- Focused receiving, navigation, purchase-indent, PI history, and purchase-order tests: **6 files, 56 tests passed**.
-- Full test suite: **pending final run**.
+- Focused receiving, navigation, purchase-indent, PI history, and purchase-order tests: **7 files, 62 tests passed**.
+- The first full-suite run exposed an incomplete PI-02B test fixture: it created GRN line rows but not the parent `store_grns` table now queried for receipt progress. Added that table to the isolated fixture; no assertion was weakened.
+- Final `npm test`: **486 files passed, 2 skipped; 5,906 tests passed, 3 skipped; 0 failures**.
 - `npm run build`: passed.
 - Development app restarted; startup readiness passed (`ready: true`, 2,286 columns checked).
