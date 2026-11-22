@@ -25853,7 +25853,7 @@ export class DatabaseStorage implements IStorage {
       openingTankKg: [dipWeight(1, "opening"), dipWeight(2, "opening")],
       receiptLines: bitumenReceiptRows.map(receipt => ({ quantity: receipt.quantity, uom: receipt.uom })),
       closingTankKg: [dipWeight(1, "closing"), dipWeight(2, "closing")],
-      theoreticalMT,
+      theoreticalMT: theoreticalBitumenMT,
     });
     missingReadings.push(...physicalBitumen.missing);
 

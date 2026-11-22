@@ -1016,7 +1016,7 @@ export default function PlantShiftLog() {
     const prevDate = new Date(date);
     prevDate.setDate(prevDate.getDate() - 1);
     const prevDateStr = prevDate.toISOString().slice(0, 10);
-    fetch(`/api/plant-module/shift-logs/by-date?date=${prevDateStr}&plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
+    fetch(`/api/plant-module/shift-logs/by-date/${prevDateStr}?plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
       .then((prev: { bitumenTank1ClosingDip?: number | null; bitumenTank2ClosingDip?: number | null; ldoTank1ClosingDip?: number | null; ldoTank2ClosingDip?: number | null } | null) => {
         if (cancelled || !prev) return;
