@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth-context";
+import { resolveInternalReturnTo } from "@/lib/procurementNavigation";
 
 const BULK_RETURN = encodeURIComponent("/stores?tab=bulk");
 const ITEMS_RETURN = encodeURIComponent("/stores?tab=items");
@@ -19,6 +20,8 @@ export default function StoresHome() {
   const [, navigate] = useLocation();
   const search = useSearch();
   const params = new URLSearchParams(search);
+  const requestedReturnTo = params.get("returnTo");
+  const returnTo = resolveInternalReturnTo(requestedReturnTo, "/stores/hub");
   const tabParam = params.get("tab");
   const activeTab = tabParam === "items" ? "items" : (tabParam === "bulk" && canBulk) ? "bulk" : canBulk ? "bulk" : "items";
 
@@ -44,7 +47,7 @@ export default function StoresHome() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       {/* Back link — this page is a detail view under Stores Hub, not a second dashboard */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2.5 flex items-center gap-2">
-        <Link href="/stores/hub">
+        <Link href={returnTo}>
           <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground h-8" data-testid="button-back-stores-hub">
             <ChevronLeft className="w-4 h-4" />
             Back to Stores Hub

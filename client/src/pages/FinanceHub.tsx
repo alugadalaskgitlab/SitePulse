@@ -96,7 +96,7 @@ export default function FinanceHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
-              href={`/plant/purchase-indents?returnTo=${HUB}`}
+              href={`/plant/purchase-indents?returnTo=${HUB}&context=finance`}
               icon={ShoppingCart}
               title="Purchase Indents"
               description="Raise, track & approve material purchase requests"

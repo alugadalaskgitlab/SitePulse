@@ -23,6 +23,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { NegativeBalanceBannerMulti } from "@/components/NegativeBalanceBanner";
 import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
+import { contextKeyForReturnPath, resolveInternalReturnTo } from "@/lib/procurementNavigation";
 import { convertStockQuantity, stockUnitForMaterial } from "@shared/stockUnits";
 import { displayName } from "@shared/displayName";
 import { openPrintableHtmlOrPreview } from "@/lib/installedApp";
@@ -73,13 +74,25 @@ export default function PlantStock() {
   const canReconcile = featureCan("issues_stock", "verify");
   const isOwner = user?.isOwner === true;
   const tabColumnClass = isOwner ? "grid-cols-5" : canExport ? "grid-cols-4" : "grid-cols-3";
-  const { getPlantBackLink, appendPlantContext } = useOrigin();
+  const { appendPlantContext } = useOrigin();
   const queryClient = useQueryClient();
-  const backLink = getPlantBackLink({ defaultTab: "stock" });
-
   const [, navigate] = useLocation();
-  const [confirmAction, setConfirmAction] = useState<null | "reconcile" | "fix-phantom" | "rebuild" | "reassign">(null);
   const searchString = useSearch();
+  const routeParams = new URLSearchParams(searchString);
+  const requestedReturnTo = routeParams.get("returnTo");
+  const isPortalOrigin = routeParams.get("origin") === "portal";
+  const currentTab = routeParams.get("tab");
+  const backLink = isPortalOrigin
+    ? "/"
+    : resolveInternalReturnTo(requestedReturnTo, currentTab === "stock" ? "/plant/hub" : "/stores/hub");
+  const [confirmAction, setConfirmAction] = useState<null | "reconcile" | "fix-phantom" | "rebuild" | "reassign">(null);
+  useEffect(() => {
+    if (routeParams.get("context") || isPortalOrigin) return;
+    const context = contextKeyForReturnPath(requestedReturnTo) ?? (currentTab === "stock" ? "hmp" : "stores");
+    const params = new URLSearchParams(searchString);
+    params.set("context", context);
+    navigate(`/plant/stock?${params.toString()}`, { replace: true });
+  }, []);
   const scrollToId = useMemo(() => {
     const sp = new URLSearchParams(searchString);
     const v = sp.get("scrollTo");

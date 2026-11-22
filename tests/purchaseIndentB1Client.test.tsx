@@ -96,6 +96,39 @@ async function openNewMaterialDialogFromIndent(name: string) {
 }
 
 describe("PI-01 B1 existing item identities through the actual edit form", () => {
+  it("shows the purchase next step on the indent card and detail", async () => {
+    fixtureIndent.status = "approved";
+    fixtureIndent.piType = "stores";
+    fixtureIndent.items[0].purchaseStatus = "";
+    fixtureIndent.items[0].procurementRoute = "stores";
+    render(<QueryClientProvider client={queryClient}><PurchaseIndents /></QueryClientProvider>);
+
+    expect(await screen.findByTestId("button-next-purchase-1")).toHaveTextContent("Next: Purchase");
+    fireEvent.click(await screen.findByTestId("card-indent-1"));
+    expect(await screen.findByTestId("button-procurement-next-purchase")).toHaveTextContent("Next: Purchase");
+    expect(screen.getByTestId("text-procurement-next-step")).toHaveTextContent("Next: Purchase");
+  });
+
+  it("opens the draft GRN from the indent next step", async () => {
+    fixtureIndent.status = "awaiting_delivery";
+    fixtureIndent.piType = "stores";
+    fixtureIndent.items[0] = {
+      ...fixtureIndent.items[0],
+      procurementRoute: "stores",
+      purchaseStatus: "purchased",
+      grnReceivedQty: 0,
+      grnHasHistory: true,
+      grnDocuments: [{ id: 55, grnNumber: "STORE/26-27/0055", status: "draft" }],
+    } as any;
+    render(<QueryClientProvider client={queryClient}><PurchaseIndents /></QueryClientProvider>);
+
+    fireEvent.click(await screen.findByTestId("card-indent-1"));
+    const nextStep = await screen.findByTestId("button-indent-next-receive");
+    expect(nextStep).toHaveTextContent("Open GRN STORE/26-27/0055");
+    expect(nextStep.closest("a")).toHaveAttribute("href", expect.stringContaining("/stores/grns/55?"));
+    expect(screen.getByTestId("text-indent-next-step")).toHaveTextContent("Waiting for delivery → Receive material");
+  });
+
   it("round-trips the persisted ID on an ordered-item no-op update", async () => {
     await openEdit();
     const payload = await submit();

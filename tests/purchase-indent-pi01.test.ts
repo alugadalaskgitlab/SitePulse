@@ -19,7 +19,9 @@ describe("PI-01 executable PostgreSQL and storage integration", () => {
     pg = new PGlite();
     for (const table of [schema.appSettings, schema.sites, schema.vendors, schema.vendorAliases, schema.purchaseIndents, schema.purchaseIndentItems,
       schema.piItemTransactions, schema.pendingPlantReceipts, schema.materialReceipts, schema.siteMaterialTrips,
-      schema.plantMaterials, schema.stockBalances, schema.stockLedger, schema.ldoFlowReadings]) {
+      schema.plantMaterials, schema.stockBalances, schema.stockLedger, schema.ldoFlowReadings,
+      schema.storeItems, schema.storeGrns, schema.storeGrnItems, schema.storeIssues, schema.storeIssueItems,
+      schema.purchaseOrders, schema.auditLogs, schema.users]) {
       const config = getTableConfig(table);
       await pg.exec(`CREATE TABLE "${config.name}" (${config.columns
         .filter(c => c.name !== "delivered_qty")
@@ -37,7 +39,8 @@ describe("PI-01 executable PostgreSQL and storage integration", () => {
   }, 60000);
   afterAll(async () => { await pg?.close(); });
   beforeEach(async () => {
-    await pg.exec(`TRUNCATE app_settings,sites,purchase_indents,purchase_indent_items,pi_item_transactions,pending_plant_receipts,material_receipts,site_material_trips,plant_materials,stock_balances,stock_ledger,ldo_flow_readings RESTART IDENTITY;
+    await pg.exec(`TRUNCATE app_settings,sites,purchase_indents,purchase_indent_items,pi_item_transactions,pending_plant_receipts,material_receipts,site_material_trips,plant_materials,stock_balances,stock_ledger,ldo_flow_readings,
+      store_items,store_grns,store_grn_items,store_issues,store_issue_items,purchase_orders,audit_logs,users RESTART IDENTITY;
       INSERT INTO plant_materials(id,name,default_uom,conversion_factor,conversion_from_uom,conversion_to_uom) VALUES(1,'WMM','MT',.001,'kg','MT');
       INSERT INTO app_settings(key,value) VALUES('company_short_name','HLC');
       INSERT INTO vendors(id,name,is_active) VALUES(1,'WMM SUPPLIER',true) ON CONFLICT (id) DO NOTHING;

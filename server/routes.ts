@@ -11185,6 +11185,7 @@ export async function registerRoutes(
           throw new Error("Purchase indent item changed. Refresh and try again.");
         const [order] = await tx.insert(purchaseOrders).values({
         ...fields,
+        orderNo: fields.orderNo?.trim() || await storage.generatePurchaseOrderNumber(tx),
         purchaseIndentId: scoped.indent.id, purchaseIndentItemId: scoped.item.id,
         raisedByUserId: req.authUser!.id,
         vendorBusinessName: linkedVendor?.businessName ?? null, vendorGst: linkedVendor?.gstNumber ?? null,
@@ -11230,8 +11231,16 @@ export async function registerRoutes(
       if (!assertCreateEither(req, res, "site_procurement", "purchase_indents_raise")) return;
       const scoped = await scopedPoItem(req, res);
       if (!scoped) return;
-      const [order] = await db.update(purchaseOrders).set({ status: "submitted", submittedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(purchaseOrders.purchaseIndentItemId, scoped.item.id), eq(purchaseOrders.status, "draft"))).returning();
+      const [order] = await db.transaction(async tx => {
+        const [draft] = await tx.select().from(purchaseOrders)
+          .where(and(eq(purchaseOrders.purchaseIndentItemId, scoped.item.id), eq(purchaseOrders.status, "draft")))
+          .for("update");
+        if (!draft) return [];
+        return tx.update(purchaseOrders).set({
+          status: "submitted", submittedAt: new Date(), updatedAt: new Date(),
+          orderNo: draft.orderNo?.trim() || await storage.generatePurchaseOrderNumber(tx),
+        }).where(eq(purchaseOrders.id, draft.id)).returning();
+      });
       if (!order) return res.status(409).json({ message: "Only a draft can be submitted" });
       res.json(await poDetails(order));
     } catch (err) { poError(err, res); }
@@ -12421,7 +12430,9 @@ export async function registerRoutes(
       res.json({ indent, txnIdsByItemId: paResult.txnIdsByItemId, grnIdsByItemId: paResult.grnIdsByItemId, routeWarnings: paResult.routeWarnings ?? [] });
     } catch (err) {
       console.error("POST /api/purchase-indents/:id/purchaser-action:", err);
-      res.status((err as any)?.code === "BAD_REQUEST" ? 400 : 500).json({ message: String((err as Error).message) });
+      const code = (err as any)?.code;
+      res.status(code === "BAD_REQUEST" ? 400 : code === "PURCHASER_ACTION_EXISTS" ? 409 : 500)
+        .json({ message: String((err as Error).message) });
     }
   });
 
@@ -16409,7 +16420,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Cancellation reason is required" });
       }
       const userId = req.authUser!.id;
-      const grn = await storage.cancelStoreGrn(id, userId, reason.trim());
+      const grn = await storage.cancelStoreGrn(id, userId, reason.trim(), req.authUser!.isOwner);
       if (!grn) return res.status(404).json({ error: "GRN not found" });
       res.json(grn);
     } catch (err: any) {
@@ -16422,7 +16433,10 @@ export async function registerRoutes(
       if (msg.includes("does not exist") || msg.includes("column") || msg.includes("relation")) {
         return res.status(500).json({ error: "Cancel failed due to a database schema issue — contact an admin.", code: "SCHEMA_ERROR", detail: msg });
       }
-      res.status(500).json({ error: "Failed to cancel GRN" });
+      if (typeof msg === "string" && msg.trim()) {
+        return res.status(400).json({ error: msg });
+      }
+      res.status(500).json({ error: "Could not cancel this GRN. Please retry or contact an admin." });
     }
   });
 

@@ -96,12 +96,10 @@ export function buildPiTimeline(indent: any, transactions: any[] = [], audits: a
   }
   for (const item of items) {
     const has = (word: string) => events.some(e => e.itemId === item.id && e.label.startsWith(word));
-    if (!has("Ordered") && (item.orderPlacedAt || item.orderedQty || item.purchaseStatus === "ORDERED"))
+    // Do not invent an ordered event from status/quantity alone: older records
+    // may have no recorded timestamp or actor, and a placeholder is misleading.
+    if (!has("Ordered") && item.orderPlacedAt)
       add(`order-${item.id}`, "Ordered", item.orderPlacedAt, item.orderedByName, item.id);
-    if (!has("Purchased") && (Number(item.totalPurchasedQty ?? item.qtyPurchased) > 0 || item.purchaseStatus === "PURCHASED"))
-      add(`purchase-${item.id}`, "Purchased", null, item.purchasedBy, item.id);
-    if (!has("Received") && !has("Handed") && Number(item.totalAcceptedQty ?? item.deliveredQty) > 0)
-      add(`received-${item.id}`, "Received", null, null, item.id);
     if (!has("Cancelled") && (item.cancelledAt || item.purchaseStatus === "CANCELLED"))
       add(`cancelled-${item.id}`, "Cancelled", item.cancelledAt, item.cancelledBy, item.id);
   }

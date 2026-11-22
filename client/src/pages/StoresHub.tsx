@@ -166,7 +166,7 @@ export default function StoresHub() {
               enabled={canStores}
             />
             <HubActionTile
-              href="/stores/grns?piSourced=true"
+              href={`/stores/grns?piSourced=true&returnTo=${HUB}`}
               icon={Inbox}
               title="Pending Store Receipts"
               description="PI-sourced GRNs awaiting stores acceptance — raised by purchasers, ready to receive into stock"
@@ -274,7 +274,7 @@ export default function StoresHub() {
                 enabled={canBulk}
               />
               <HubActionTile
-                href="/stores/pending-plant-receipts"
+                href={`/stores/pending-plant-receipts?returnTo=${HUB}`}
                 icon={Inbox}
                 title="Pending Plant Receipts"
                 description="Bulk material receipts submitted by purchasers awaiting plant-staff confirmation before entering stock"

@@ -242,7 +242,7 @@ export default function ReportsHub() {
             <SectionHeading>Stock & Ledgers</SectionHeading>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <HubActionTile
-                href={`/plant/stock?returnTo=${HUB}`}
+                href={`/plant/stock?returnTo=${HUB}&context=reports`}
                 icon={Package}
                 title="Material Stock"
                 description="Current HMP stock levels, receipts & consumption ledger"

@@ -15,8 +15,10 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { resolveInternalReturnTo, storesGrnListQuery } from "@/lib/procurementNavigation";
 import { parseApiError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth-context";
+import { formatPiTimestamp } from "@shared/piTimeline";
 
 const STORE_CATEGORIES = ["Spares", "Lubricants", "Consumables", "Electricals", "Tools", "HMA", "RMC", "Office", "General", "Others"];
 const STORE_CATEGORY_CODES: Record<string, string> = {
@@ -67,6 +69,7 @@ type GrnWithItems = {
   id: number; grnNumber: string; date: string; supplier: string;
   invoiceNo: string | null; invoiceDate: string | null; siteId: number | null;
   indentRef: string | null; remarks: string | null;
+  linkedIndentNo?: string | null; linkedIndentId?: number | null;
   status: string; acceptanceStatus: string; acceptanceRemarks: string | null;
   isCancelled?: boolean; cancelledAt?: string | null; cancelledBy?: number | null; cancellationReason?: string | null;
   sourcePiIndentId?: number | null; createdByUserId?: number | null;
@@ -120,22 +123,23 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [, navigate] = useLocation();
   const search = useSearch();
   const searchParams = new URLSearchParams(search);
-  const returnTo = searchParams.get("returnTo") || "/stores";
+  const requestedReturnTo = searchParams.get("returnTo");
+  const returnTo = resolveInternalReturnTo(requestedReturnTo, "/stores/hub");
   const indentRefFilter = searchParams.get("indentRef") || "";
 
   const [showForm, setShowForm] = useState(!!isNew);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get("dateFrom") || "");
+  const [dateTo, setDateTo] = useState(() => searchParams.get("dateTo") || "");
   const [indentFilter, setIndentFilter] = useState(indentRefFilter);
-  const [supplierFilter, setSupplierFilter] = useState("");
-  const [siteFilter, setSiteFilter] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState(() => searchParams.get("supplier") || "");
+  const [siteFilter, setSiteFilter] = useState(() => searchParams.get("siteId") || "");
   // Single status-mode control replacing the old mix of chips + acceptance dropdown
   // Values: "" | "pending_receipt" | "draft_manual" | "awaiting_pi" | "finalized" | "cancelled"
   const [statusMode, setStatusMode] = useState<string>(
-    () => searchParams.get("piSourced") === "true" ? "pending_receipt" : ""
+    () => searchParams.get("statusMode") || (searchParams.get("piSourced") === "true" ? "pending_receipt" : "")
   );
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [itemFilter, setItemFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState(() => searchParams.get("category") || "");
+  const [itemFilter, setItemFilter] = useState(() => searchParams.get("item") || "");
   const [cancelDialogId, setCancelDialogId] = useState<number | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   // Admin self-finalise override dialog (triggered by OVERRIDE_REASON_REQUIRED 409)
@@ -168,6 +172,19 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     acceptanceRemarks: "",
   });
   const [lines, setLines] = useState<GrnLine[]>([emptyLine()]);
+  const grnListScrollKey = "stores-grn-list-scroll";
+  const buildGrnListQuery = () => storesGrnListQuery({
+    returnTo,
+    context: searchParams.get("context"),
+    dateFrom,
+    dateTo,
+    indentRef: indentFilter,
+    supplier: supplierFilter,
+    siteId: siteFilter,
+    statusMode,
+    category: categoryFilter,
+    item: itemFilter,
+  });
   const [grnCategory, setGrnCategory] = useState("Spares");
   const [indentComboSearch, setIndentComboSearch] = useState("");
   const [indentComboOpen, setIndentComboOpen] = useState(false);
@@ -410,6 +427,19 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       return res.json();
     },
   });
+  const invalidateGrnAndIndentViews = () => {
+    queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+    queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/purchase-indents") });
+  };
+  useEffect(() => {
+    if (selectedId == null && !isNew && !isLoading) {
+      const storedScroll = sessionStorage.getItem(grnListScrollKey);
+      if (storedScroll != null) {
+        requestAnimationFrame(() => window.scrollTo(0, Number(storedScroll) || 0));
+        sessionStorage.removeItem(grnListScrollKey);
+      }
+    }
+  }, [selectedId, isNew, isLoading, grns.length]);
 
   const { data: awaitingPiGrns = [] } = useQuery<GrnWithItems[]>({
     queryKey: ["/api/stores/grns/awaiting-pi-count"],
@@ -522,7 +552,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
         await uploadGrnPhotos(created.id);
         setStagedGrnPhotos([]);
       }
-      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      invalidateGrnAndIndentViews();
       if (isSavingDraft) {
         toast({ title: "Draft saved", description: "Find it in the GRN list to finalise later." });
       } else {
@@ -536,7 +566,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setGrnCategory("Spares");
       setIndentOverride(false);
       setIndentComboSearch("");
-      if (isNew) navigate(searchParams.get("returnTo") || "/stores/grns");
+      if (isNew) navigate(returnTo);
     },
     onError: (err: any) => {
       setIsSavingDraft(false);
@@ -548,7 +578,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     mutationFn: ({ id, indentRef, overrideReason }: { id: number; indentRef: string | null; overrideReason?: string }) =>
       apiRequest("PATCH", `/api/stores/grns/${id}`, { status: "finalized", indentRef, ...(overrideReason ? { overrideReason } : {}) }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      invalidateGrnAndIndentViews();
       toast({ title: "GRN finalised — items added to stock" });
       setFinalisingDraft(false);
       setDraftFinaliseIndentRef("");
@@ -574,7 +604,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const replaceMutation = useMutation({
     mutationFn: (data: any) => apiRequest("PUT", `/api/stores/grns/${editingDraftId}`, data),
     onSuccess: (_res, variables) => {
-      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      invalidateGrnAndIndentViews();
       const isDraft = variables?.grn?.status === "draft";
       toast({ title: isDraft ? "Draft updated" : "GRN finalised — items added to stock" });
       setIsSavingDraft(false);
@@ -597,7 +627,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const addStoreItemMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/stores/items", data); return res.json(); },
     onSuccess: (newItem: any) => {
-      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      invalidateGrnAndIndentViews();
       toast({ title: `"${newItem.name}" added to catalogue` });
       if (addItemTargetIdx !== null) {
         updateLine(addItemTargetIdx, "itemId", String(newItem.id));
@@ -614,11 +644,11 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     mutationFn: ({ id, reason }: { id: number; reason: string }) =>
       apiRequest("POST", `/api/stores/grns/${id}/cancel`, { reason }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      invalidateGrnAndIndentViews();
       toast({ title: "GRN cancelled" });
       setCancelDialogId(null);
       setCancelReason("");
-      if (selectedId && selectedId === cancelMutation.variables?.id) setSelectedId(null);
+      if (selectedId && selectedId === cancelMutation.variables?.id) closeDetail();
     },
     onError: (err: any) => { const p = parseApiError(err); toast({ title: "Failed to cancel GRN", description: p.message, variant: "destructive" }); },
   });
@@ -627,7 +657,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     mutationFn: ({ id, data }: { id: number; data: { acceptanceStatus: string; acceptanceRemarks: string | null } }) =>
       apiRequest("PATCH", `/api/stores/grns/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      invalidateGrnAndIndentViews();
       toast({ title: "Acceptance status updated" });
       setEditingAcceptance(false);
     },
@@ -742,7 +772,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       invoiceNo: grn.invoiceNo || "",
       invoiceDate: grn.invoiceDate || "",
       siteId: grn.siteId ? String(grn.siteId) : "",
-      indentRef: grn.indentRef || "",
+      indentRef: getLinkedIndentLabel(grn) || "",
       remarks: grn.remarks || "",
       acceptanceStatus: grn.acceptanceStatus || "accepted",
       acceptanceRemarks: grn.acceptanceRemarks || "",
@@ -762,19 +792,36 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     setIndentOverride(false);
     setIndentComboSearch("");
     setSelectedId(null);
-    navigate("/stores/grns");
+    const query = buildGrnListQuery();
+    navigate(`/stores/grns${query ? `?${query}` : ""}`);
     setShowForm(true);
   }
 
   function openDetail(grn: GrnWithItems) {
+    try { sessionStorage.setItem(grnListScrollKey, String(window.scrollY)); } catch {}
     setSelectedId(grn.id);
-    navigate(`/stores/grns/${grn.id}`);
+    const query = buildGrnListQuery();
+    navigate(`/stores/grns/${grn.id}${query ? `?${query}` : ""}`);
     setShowForm(false);
   }
 
   function closeDetail() {
     setSelectedId(null);
-    navigate("/stores/grns");
+    const query = buildGrnListQuery();
+    navigate(`/stores/grns${query ? `?${query}` : ""}`);
+  }
+
+  function getLinkedIndentLabel(grn: GrnWithItems): string | null {
+    if (grn.linkedIndentNo) return grn.linkedIndentNo;
+    if (grn.indentRef && !/^PI-\d+$/i.test(grn.indentRef)) return grn.indentRef;
+    return null;
+  }
+
+  function getLinkedIndentHref(grn: GrnWithItems): string | null {
+    if (grn.linkedIndentId == null) return null;
+    const listQuery = buildGrnListQuery();
+    const listReturnTo = `/stores/grns${listQuery ? `?${listQuery}` : ""}`;
+    return `/plant/purchase-indents?indentId=${grn.linkedIndentId}&returnTo=${encodeURIComponent(listReturnTo)}&context=stores`;
   }
 
   function cancelForm() {
@@ -782,7 +829,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     setEditingDraftId(null);
     setEditingDraftNumber("");
     setStagedGrnPhotos([]);
-    if (isNew) navigate(searchParams.get("returnTo") || "/stores/grns");
+    if (isNew) navigate(returnTo);
   }
 
   return (
@@ -815,12 +862,12 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               </p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {staleGrns.map(g => (
-                  <button
+                    <button
                     key={g.id}
                     onClick={() => {
                       setStaleAlertDismissed(false);
                       setStatusMode("");
-                      setSelectedId(g.id);
+                      openDetail(g);
                     }}
                     className="inline-flex items-center gap-1 text-sm font-mono bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-600 rounded px-1.5 py-0.5 hover:bg-amber-200 dark:hover:bg-amber-800/40 transition-colors"
                     data-testid={`button-stale-grn-${g.id}`}
@@ -844,6 +891,11 @@ export default function StoresGrn({ isNew, detailId }: Props) {
         {selectedGrn && (
           <Card className="border-green-300 dark:border-green-800 shadow-md">
             <CardContent className="p-5 space-y-4">
+              <div className="flex justify-end">
+                <Button variant="ghost" size="sm" onClick={closeDetail} data-testid="button-back-grn-history">
+                  <ChevronLeft className="w-4 h-4 mr-1" /> Back to GRN History
+                </Button>
+              </div>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -866,8 +918,16 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     {/* Site badge — only when a site is actually set */}
                     {selectedGrn.siteId && (() => { const s = sites.find(x => x.id === selectedGrn.siteId); return s ? <Badge variant="outline" className="text-[12px] border-amber-400 text-amber-700 dark:text-amber-400 entity-name">{s.name}</Badge> : null; })()}
                     {/* Secondary PI reference chip */}
-                    {selectedGrn.indentRef && (
-                      <Badge variant="outline" className="text-[12px] border-violet-400 text-violet-700 dark:text-violet-400">Linked PI: {selectedGrn.indentRef}</Badge>
+                    {getLinkedIndentLabel(selectedGrn) && (
+                      getLinkedIndentHref(selectedGrn)
+                        ? <Link href={getLinkedIndentHref(selectedGrn)!}>
+                            <Badge variant="outline" className="cursor-pointer text-[12px] border-violet-400 text-violet-700 dark:text-violet-400">
+                              Linked PI: {getLinkedIndentLabel(selectedGrn)}
+                            </Badge>
+                          </Link>
+                        : <Badge variant="outline" className="text-[12px] border-violet-400 text-violet-700 dark:text-violet-400">
+                            Linked PI: {getLinkedIndentLabel(selectedGrn)}
+                          </Badge>
                     )}
                   </div>
                   <p className="text-base font-semibold mt-1">{selectedGrn.supplier}</p>
@@ -891,7 +951,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                         <p className="font-medium">Admin override applied</p>
                         <p className="text-xs">{selectedGrn.selfApprovalOverrideReason}</p>
                         {selectedGrn.selfApprovalOverriddenAt && (
-                          <p className="text-xs text-muted-foreground">{format(new Date(selectedGrn.selfApprovalOverriddenAt), "dd MMM yyyy, HH:mm")}</p>
+                          <p className="text-xs text-muted-foreground">{formatPiTimestamp(selectedGrn.selfApprovalOverriddenAt)}</p>
                         )}
                       </div>
                     </div>
@@ -981,9 +1041,9 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       <p className="text-sm text-muted-foreground">
                         This receipt is fully linked to Purchase Indent items. Finalising will record the stock receipt against each PI item.
                       </p>
-                      {selectedGrn.indentRef && (
+                      {getLinkedIndentLabel(selectedGrn) && (
                         <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-[12px] border-violet-400 text-violet-700 dark:text-violet-400">{selectedGrn.indentRef}</Badge>
+                          <Badge variant="outline" className="text-[12px] border-violet-400 text-violet-700 dark:text-violet-400">{getLinkedIndentLabel(selectedGrn)}</Badge>
                           <span className="text-sm text-muted-foreground">{selectedGrn.items.length} item{selectedGrn.items.length !== 1 ? "s" : ""} linked</span>
                         </div>
                       )}
@@ -993,7 +1053,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                           className="gap-1 h-7 text-sm bg-green-600 hover:bg-green-700 text-white"
                           disabled={finaliseMutation.isPending}
                           data-testid="button-confirm-finalise"
-                          onClick={() => finaliseMutation.mutate({ id: selectedGrn.id, indentRef: selectedGrn.indentRef })}
+                          onClick={() => finaliseMutation.mutate({ id: selectedGrn.id, indentRef: getLinkedIndentLabel(selectedGrn) })}
                         >
                           {finaliseMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                           Finalise GRN
@@ -1149,7 +1209,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             toast({ title: "Indent not approved", description: "Tick the override checkbox to proceed.", variant: "destructive" });
                             return;
                           }
-                          finaliseMutation.mutate({ id: selectedGrn.id, indentRef: committedRef });
+                          finaliseMutation.mutate({ id: selectedGrn.id, indentRef: committedRef || getLinkedIndentLabel(selectedGrn) });
                         }}
                       >
                         {finaliseMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
@@ -1260,7 +1320,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                           data-testid="button-finalise-grn"
                           disabled={!!(selectedGrn.sourcePiIndentId && selectedGrn.createdByUserId && user && selectedGrn.createdByUserId === user.id && !user.isOwner)}
                           onClick={() => {
-                            setDraftFinaliseIndentRef(selectedGrn.indentRef || "");
+                            setDraftFinaliseIndentRef(getLinkedIndentLabel(selectedGrn) || "");
                             setDraftFinaliseOverride(false);
                             setFinalisingDraft(true);
                           }}
@@ -1603,7 +1663,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                                 <span className="font-semibold">{selectedPI.indentNo}</span>
                                 {getStatusBadgeGrn(selectedPI.status)}
                                 <span className="text-muted-foreground">{selectedPI.items.length} item{selectedPI.items.length !== 1 ? "s" : ""}</span>
-                                {selectedPI.date && <span className="text-muted-foreground">· {selectedPI.date}</span>}
+                                {selectedPI.date && <span className="text-muted-foreground">· {format(new Date(selectedPI.date + "T00:00:00"), "dd-MMM-yyyy")}</span>}
                                 {selectedPI.raisedBy && <span className="text-muted-foreground">by {selectedPI.raisedBy}</span>}
                               </div>
                               {selectedPI.items.slice(0, 3).map((it, i) => (
@@ -1979,7 +2039,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               </div>
               <div className="flex items-center gap-2">
                 <Label className="text-sm text-muted-foreground">Indent</Label>
-                <Input className="h-8 w-36 text-sm" placeholder="PI-YYYY-NNN" value={indentFilter} onChange={e => setIndentFilter(e.target.value)} data-testid="input-indent-filter" />
+                <Input className="h-8 w-44 text-sm" placeholder="HLC/PI/…/0005" value={indentFilter} onChange={e => setIndentFilter(e.target.value)} data-testid="input-indent-filter" />
               </div>
               <div className="flex items-center gap-2">
                 <Label className="text-sm text-muted-foreground">Supplier</Label>
@@ -2051,12 +2111,16 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             {/* Site destination — only shown when a site is actually set */}
                             {grn.siteId && (() => { const s = sites.find(x => x.id === grn.siteId); return s ? <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 entity-name">{s.name}</span> : null; })()}
                             {/* Linked PI — full reference as a clickable link */}
-                            {grn.indentRef && (
-                              <Link href={`/plant/purchase-indents?indentRef=${encodeURIComponent(grn.indentRef)}&context=stores`} onClick={e => e.stopPropagation()}>
-                                <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-800/60 transition-colors cursor-pointer">
-                                  Linked PI: {grn.indentRef}
-                                </span>
-                              </Link>
+                            {getLinkedIndentLabel(grn) && (
+                              getLinkedIndentHref(grn)
+                                ? <Link href={getLinkedIndentHref(grn)!} onClick={e => e.stopPropagation()}>
+                                    <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-800/60 transition-colors cursor-pointer">
+                                      Linked PI: {getLinkedIndentLabel(grn)}
+                                    </span>
+                                  </Link>
+                                : <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400">
+                                    Linked PI: {getLinkedIndentLabel(grn)}
+                                  </span>
                             )}
                           </div>
                           <div className="text-sm font-medium mt-1">{grn.supplier}</div>
@@ -2076,7 +2140,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             <div className="mt-1.5 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded px-2 py-1 space-y-0.5">
                               <div>
                                 <span className="font-semibold">Cancelled</span>
-                                {grn.cancelledAt ? ` on ${format(new Date(grn.cancelledAt), "dd MMM yyyy, HH:mm")}` : ""}
+                                {grn.cancelledAt ? ` on ${formatPiTimestamp(grn.cancelledAt)}` : ""}
                                 {grn.cancelledBy && userNameMap.get(grn.cancelledBy) ? ` by ${userNameMap.get(grn.cancelledBy)}` : ""}
                               </div>
                               {grn.cancellationReason && (

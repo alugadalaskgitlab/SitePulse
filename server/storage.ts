@@ -1293,7 +1293,7 @@ export interface IStorage {
   getStoreItems(includeInactive?: boolean): Promise<StoreItem[]>;
   ensureStoreCancellationColumns(): Promise<void>;
   getStoreItemsWithBalance(): Promise<Array<StoreItem & { balance: number }>>;
-  cancelStoreGrn(id: number, userId: number, reason: string): Promise<StoreGrn | undefined>;
+  cancelStoreGrn(id: number, userId: number, reason: string, isOwner?: boolean): Promise<StoreGrn | undefined>;
   cancelStoreIssue(id: number, userId: number, reason: string): Promise<StoreIssue | undefined>;
   createStoreItem(data: InsertStoreItem): Promise<StoreItem>;
   updateStoreItem(id: number, data: Partial<InsertStoreItem>): Promise<StoreItem | undefined>;
@@ -1321,6 +1321,7 @@ export interface IStorage {
   getStoreStockSummary(): Promise<StoreStockBalance[]>;
   getStoreItemLedger(itemId: number, filters?: { dateFrom?: string; dateTo?: string }): Promise<StoreLedgerEntry[]>;
   generateStoreDocNumber(type: 'GRN' | 'ISS', category?: string): Promise<string>;
+  generatePurchaseOrderNumber(tx: any, at?: Date): Promise<string>;
   generateMaterialReceiptNumber(catCode: string): Promise<string>;
   generateReceiptNoForMaterial(materialId: number): Promise<string>;
 
@@ -2699,6 +2700,34 @@ async function lockBoqItemForRecipeWrite(tx: any, boqItemId: number, manualEdit:
   if (manualEdit && item.recipeManualOverride !== true) {
     await tx.update(boqItems).set({ recipeManualOverride: true }).where(eq(boqItems.id, boqItemId));
   }
+}
+
+function effectivePiStatusFromReceipts(status: string, items: any[]): string {
+  const eligible = items.filter(item =>
+    Number(item.approvedQty ?? item.qty) > 0 &&
+    !["REJECTED", "CANCELLED", "NOT_PURCHASED"].includes(String(item.purchaseStatus ?? "").toUpperCase())
+  );
+  if (eligible.length === 0) return status;
+  const isStoreReceiptItem = (item: any) =>
+    item.procurementRoute === "stores" || item.catalogProcurementRoute === "stores" ||
+    item.linkedGrnId != null || item.grnHasHistory === true;
+  const storeItems = eligible.filter(item => isStoreReceiptItem(item) && (
+    Number(item.totalPurchasedQty ?? 0) > 0 || item.linkedGrnId != null ||
+    item.grnHasHistory === true || Number(item.grnReceivedQty ?? 0) > 0 ||
+    String(item.purchaseStatus ?? "").toUpperCase() === "PURCHASED"
+  ));
+  if (storeItems.length === 0) return status;
+  const allEligibleComplete = eligible.every(item => {
+    if (isStoreReceiptItem(item)) {
+      return Number(item.grnReceivedQty ?? 0) >= Number(item.approvedQty ?? item.qty);
+    }
+    const state = String(item.purchaseStatus ?? "").toUpperCase();
+    return ["PURCHASED", "PARTIAL", "SERVICE_COMPLETED", "SERVICE_PARTLY_COMPLETED"].includes(state) &&
+      !(state === "PARTIAL" && Number(item.totalAcceptedQty ?? 0) < Number(item.orderedQty ?? item.approvedQty ?? item.qty));
+  });
+  if (allEligibleComplete) return "completed";
+  if (storeItems.some(item => Number(item.grnReceivedQty ?? 0) > 0)) return "partially_received";
+  return "awaiting_delivery";
 }
 
 export class DatabaseStorage implements IStorage {
@@ -15742,7 +15771,9 @@ export class DatabaseStorage implements IStorage {
     let conditions: any[] = [];
     if (filters?.dateFrom) conditions.push(gte(purchaseIndents.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(purchaseIndents.date, filters.dateTo));
-    if (filters?.status) {
+    // Receipt completion is derived below from live GRNs, so a "completed"
+    // filter must include older indents whose stored status was never updated.
+    if (filters?.status && filters.status !== "completed") {
       // "pending" filter = legacy "pending" status + new "stores_check" with no storesStatus
       if (filters.status === "pending") {
         conditions.push(
@@ -15784,13 +15815,62 @@ export class DatabaseStorage implements IStorage {
         return { ...withCatalog, ...reconcileDeliveryEvidence(await this._getPiDeliveryEvidence(db, item.id), item.uom) };
       })),
     })));
+    const progressByItem = await this.getStoreGrnProgressByIndentItem(enrichedIndents.flatMap(indent => indent.items.map(item => item.id)));
+    const withReceiptProgress = enrichedIndents.map(indent => {
+      const items = indent.items.map(item => ({
+        ...item,
+        ...progressByItem.get(item.id),
+      }));
+      return { ...indent, items, status: effectivePiStatusFromReceipts(indent.status, items) };
+    });
+    const filteredByStatus = filters?.status
+      ? withReceiptProgress.filter(indent => indent.status === filters.status)
+      : withReceiptProgress;
     if (filters?.priority) {
-      return (enrichedIndents as PurchaseIndentWithItems[]).filter(indent =>
+      return (filteredByStatus as PurchaseIndentWithItems[]).filter(indent =>
         indent.items.some(item => item.priority === filters.priority)
       );
     }
 
-    return enrichedIndents as PurchaseIndentWithItems[];
+    return filteredByStatus as PurchaseIndentWithItems[];
+  }
+
+  private async getStoreGrnProgressByIndentItem(itemIds: number[]): Promise<Map<number, {
+    grnReceivedQty: number;
+    grnHasHistory: boolean;
+    grnDocuments: { id: number; grnNumber: string; status: string }[];
+  }>> {
+    const ids = Array.from(new Set(itemIds.filter(Number.isInteger)));
+    const result = new Map<number, { grnReceivedQty: number; grnHasHistory: boolean; grnDocuments: { id: number; grnNumber: string; status: string }[] }>();
+    if (ids.length === 0) return result;
+    const rows = await db.select({
+      indentItemId: sql<number>`COALESCE(${storeGrnItems.indentItemId}, ${storeGrnItems.sourcePiItemId})`,
+      grnId: storeGrns.id,
+      grnNumber: storeGrns.grnNumber,
+      status: storeGrns.status,
+      isCancelled: storeGrns.isCancelled,
+      qty: storeGrnItems.qty,
+    }).from(storeGrnItems)
+      .innerJoin(storeGrns, eq(storeGrnItems.grnId, storeGrns.id))
+      .where(inArray(sql<number>`COALESCE(${storeGrnItems.indentItemId}, ${storeGrnItems.sourcePiItemId})`, ids))
+      .orderBy(storeGrns.id);
+    for (const row of rows) {
+      const itemId = Number(row.indentItemId);
+      if (!Number.isInteger(itemId)) continue;
+      if (!result.has(itemId)) result.set(itemId, { grnReceivedQty: 0, grnHasHistory: false, grnDocuments: [] });
+      const progress = result.get(itemId)!;
+      progress.grnHasHistory = true;
+      const cancelled = row.isCancelled === true || row.isCancelled === 1;
+      if (cancelled) continue;
+      if (row.status === "finalized") progress.grnReceivedQty += Number(row.qty) || 0;
+      if (row.status === "draft" || row.status === "finalized") {
+        const grnId = Number(row.grnId);
+        if (!progress.grnDocuments.some(grn => grn.id === grnId)) {
+          progress.grnDocuments.push({ id: grnId, grnNumber: row.grnNumber, status: row.status });
+        }
+      }
+    }
+    return result;
   }
 
   async getPurchaseIndent(id: number): Promise<PurchaseIndentWithItems | undefined> {
@@ -16030,9 +16110,25 @@ export class DatabaseStorage implements IStorage {
       for (const grn of grns.filter(g => g.id === item.linkedGrnId || grnLinks.some(l => l.grnId === g.id && (l.sourcePiItemId === item.id || l.indentItemId === item.id)))) {
       if (grn.status === "finalized") {
         const finalization = grnAudits.find(a => a.transactionId === grn.id && ["finalized", "finalize", "finalize_override", "approved"].includes(a.action));
-        receiptEvents.push({ id: `grn-${grn.id}-${item.id}`, itemId: item.id,
-          at: finalization?.createdAt, actor: finalization?.userName,
-          note: `GRN ${grn.grnNumber} · receipt date ${grn.date}${grn.isCancelled ? " · subsequently cancelled" : ""}` });
+        const lines = grnLinks.filter(link => link.grnId === grn.id &&
+          (link.sourcePiItemId === item.id || link.indentItemId === item.id));
+        const line = lines[0];
+        const receiptQty = lines.reduce((sum, current) => sum + Number(current.qty ?? 0), 0);
+        // A receipt event needs an actual finalization audit timestamp and
+        // actor. Legacy status alone is not enough to fabricate either fact.
+        if (finalization?.createdAt && finalization?.userName) {
+          receiptEvents.push({ id: `grn-${grn.id}-${item.id}`, label: "Received", itemId: item.id,
+            at: finalization.createdAt, actor: finalization.userName,
+            note: `GRN ${grn.grnNumber} · ${receiptQty || ""} ${line?.uom ?? ""}${grn.isCancelled ? " · subsequently cancelled" : ""}`.trim() });
+        }
+        if (grn.isCancelled) {
+          const cancellation = grnAudits.find(a => a.transactionId === grn.id && a.action === "cancel");
+          if (cancellation?.createdAt && cancellation?.userName) {
+            receiptEvents.push({ id: `grn-cancel-${grn.id}-${item.id}`, label: "Cancelled", itemId: item.id,
+              at: cancellation.createdAt, actor: cancellation.userName,
+              note: `GRN ${grn.grnNumber}${cancellation.reason ? ` · ${cancellation.reason}` : ""}` });
+          }
+        }
       }
       }
       if (item.linkedReceiptId && !transactions.some(t => t.indentItemId === item.id && ["bulk_receipt", "delivery_receipt"].includes(t.transactionType))) {
@@ -16059,11 +16155,20 @@ export class DatabaseStorage implements IStorage {
     }
     const timeline = buildPiTimeline({ ...indent, unlockedByName, items: deliveryItems }, transactions, audits, receiptEvents);
     const linkedVendorNames = await currentVendorNamesByIds(deliveryItems.map((item: any) => item.vendorId));
-    return { ...indent, items: deliveryItems.map((item: any) => ({
+    const progressByItem = await this.getStoreGrnProgressByIndentItem(deliveryItems.map((item: any) => item.id));
+    const itemsWithReceiptProgress = deliveryItems.map((item: any) => ({
       ...item,
+      ...progressByItem.get(item.id),
       linkedVendorName: item.vendorId == null ? null : linkedVendorNames.get(Number(item.vendorId)) ?? null,
       timeline: timeline.filter(e => e.itemId === item.id),
-    })), timeline, unlockedByName } as PurchaseIndentWithItems | undefined;
+    }));
+    return {
+      ...indent,
+      status: effectivePiStatusFromReceipts(indent.status, itemsWithReceiptProgress),
+      items: itemsWithReceiptProgress,
+      timeline,
+      unlockedByName,
+    } as PurchaseIndentWithItems | undefined;
   }
 
   private async purchaseIndentRouteCorrectionRows(tx: any, itemIds?: number[]): Promise<PurchaseIndentRouteCorrection[]> {
@@ -16602,6 +16707,9 @@ export class DatabaseStorage implements IStorage {
     actionBy: string,
     userId?: number
   ): Promise<{ txnIdsByItemId: Record<number, number>; grnIdsByItemId: Record<number, number>; routeWarnings: { itemId: number; message: string }[] }> {
+    if (new Set(items.map(item => item.itemId)).size !== items.length) {
+      throw Object.assign(new Error("A purchase action may be submitted only once per indent item."), { code: "PURCHASER_ACTION_EXISTS" });
+    }
     const txnIdsByItemId: Record<number, number> = {};
     const grnIdsByItemId: Record<number, number> = {};
 
@@ -16641,6 +16749,30 @@ export class DatabaseStorage implements IStorage {
           ?? (item.reasonCode === "ordered" ? "ordered"
             : item.reasonCode === "not_available" ? "not_available"
             : "already_purchased");
+        if (actionType === "already_purchased" || actionType === "ordered") {
+          const [priorAction] = await tx.select({ id: piItemTransactions.id })
+            .from(piItemTransactions)
+            .where(and(
+              eq(piItemTransactions.indentItemId, item.itemId),
+              eq(piItemTransactions.transactionType, "purchaser_action"),
+            ))
+            .limit(1);
+          if (priorAction) {
+            const [existingGrn] = await tx.select({ id: storeGrns.id, grnNumber: storeGrns.grnNumber })
+              .from(storeGrnItems)
+              .innerJoin(storeGrns, eq(storeGrnItems.grnId, storeGrns.id))
+              .where(and(
+                or(eq(storeGrns.isCancelled, false), isNull(storeGrns.isCancelled)),
+                or(eq(storeGrnItems.indentItemId, item.itemId), eq(storeGrnItems.sourcePiItemId, item.itemId)),
+              ))
+              .orderBy(desc(storeGrns.id))
+              .limit(1);
+            const message = existingGrn
+              ? `Purchase action already recorded. GRN ${existingGrn.grnNumber} created. Open it from the indent or GRN history.`
+              : "Purchase action already recorded for this indent item. Refresh the indent to see its current next step.";
+            throw Object.assign(new Error(message), { code: "PURCHASER_ACTION_EXISTS" });
+          }
+        }
         if (actionType === "ordered"
             && (parentIndent?.piType === "material" || dbRoute === "material" || dbRoute === "bulk_plant")) {
           await this.writePurchaseIndentDestination(tx, indentId, item.itemId, item.receivingLocation, item.receivingSiteId, userId ?? 0, actionBy, item.qty);
@@ -16671,6 +16803,7 @@ export class DatabaseStorage implements IStorage {
         }
 
         if (actionType === "ordered") {
+          const submittedOrderNo = item.orderNo?.trim() || await this.generatePurchaseOrderNumber(tx);
           // ── ORDERED PATH: record order, do NOT create GRN, do NOT bump totalPurchasedQty ──
           const [txRow] = await tx.insert(piItemTransactions).values({
             indentId,
@@ -16698,7 +16831,7 @@ export class DatabaseStorage implements IStorage {
               expectedDelivery: item.expectedDeliveryDate ?? null,
               purchasedBy: actionBy.toUpperCase(),
               purchasedByUserId: userId ?? null,
-              orderNo: item.orderNo ?? null,
+              orderNo: submittedOrderNo,
               orderedByUserId: userId ?? null,
               orderedByName: item.orderedByName ?? null,
             })
@@ -16831,6 +16964,10 @@ export class DatabaseStorage implements IStorage {
             .where(eq(purchaseIndentItems.id, item.itemId));
         } catch (err) {
           console.error(`submitPurchaserAction: auto-GRN creation failed for item ${item.itemId} (non-fatal):`, err);
+          routeWarnings.push({
+            itemId: item.itemId,
+            message: `The purchase action was recorded, but its draft GRN could not be created: ${err instanceof Error ? err.message : "unknown error"}. Open the indent and create the receipt from its linked item.`,
+          });
         }
       }
     }
@@ -16868,12 +17005,22 @@ export class DatabaseStorage implements IStorage {
     const [indent] = await db.select({ piType: purchaseIndents.piType })
       .from(purchaseIndents).where(eq(purchaseIndents.id, indentId)).limit(1);
     const allItems = await db.select({
+      id: purchaseIndentItems.id,
+      materialId: purchaseIndentItems.materialId,
+      procurementRoute: purchaseIndentItems.procurementRoute,
       approvedQty: purchaseIndentItems.approvedQty,
       purchaseStatus: purchaseIndentItems.purchaseStatus,
       totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
+      totalPurchasedQty: purchaseIndentItems.totalPurchasedQty,
+      linkedGrnId: purchaseIndentItems.linkedGrnId,
       orderedQty: purchaseIndentItems.orderedQty,
     }).from(purchaseIndentItems).where(eq(purchaseIndentItems.indentId, indentId));
 
+    const routeIds = Array.from(new Set(allItems.map(item => item.materialId).filter((id): id is number => id != null)));
+    const catalogRoutes = routeIds.length ? await db.select({ id: plantMaterials.id, route: plantMaterials.procurementRoute })
+      .from(plantMaterials).where(inArray(plantMaterials.id, routeIds)) : [];
+    const catalogRouteById = new Map(catalogRoutes.map(row => [row.id, row.route]));
+    const receiptProgress = await this.getStoreGrnProgressByIndentItem(allItems.map(item => item.id));
     const activeItems = allItems.filter(i => (i.approvedQty ?? 0) > 0);
     if (activeItems.length === 0) return "purchaser_actioned";
 
@@ -16882,6 +17029,13 @@ export class DatabaseStorage implements IStorage {
     // All items terminal?
     const allTerminal = activeItems.every(i => {
       const s = (i.purchaseStatus ?? "").toUpperCase();
+      const isStoreRoute = i.procurementRoute === "stores" ||
+        (i.materialId != null && catalogRouteById.get(i.materialId) === "stores") ||
+        i.linkedGrnId != null || receiptProgress.get(i.id)?.grnHasHistory === true;
+      if (isStoreRoute && (Number(i.totalPurchasedQty ?? 0) > 0 || i.linkedGrnId != null ||
+        receiptProgress.get(i.id)?.grnHasHistory === true || s === "PURCHASED")) {
+        return Number(receiptProgress.get(i.id)?.grnReceivedQty ?? 0) >= Number(i.approvedQty);
+      }
       if (s === "ORDERED") return false;
       if (s === "PARTIAL" && i.orderedQty && i.totalAcceptedQty != null && i.totalAcceptedQty < i.orderedQty) return false;
       return ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED", "SERVICE_COMPLETED", "SERVICE_PARTLY_COMPLETED"].includes(s);
@@ -16910,6 +17064,9 @@ export class DatabaseStorage implements IStorage {
     actionBy: string
   ): Promise<StoreGrnWithItems> {
     const today = new Date().toISOString().split("T")[0];
+    const [purchaseIndent] = await db.select({ indentNo: purchaseIndents.indentNo })
+      .from(purchaseIndents).where(eq(purchaseIndents.id, indentId)).limit(1);
+    if (!purchaseIndent) throw new Error("Purchase indent no longer exists; refresh and try again.");
 
     // Find or create a store_item for each PI item (match by name, case-insensitive)
     const grnItemsData: Omit<InsertStoreGrnItem, "grnId">[] = [];
@@ -16958,7 +17115,7 @@ export class DatabaseStorage implements IStorage {
       supplier: vendor.toUpperCase(),
       status: "draft",
       acceptanceStatus: "accepted",
-      indentRef: `PI-${indentId}`,
+      indentRef: purchaseIndent.indentNo,
       createdByUserId,
       sourcePiIndentId: indentId,
     }).returning();
@@ -17671,6 +17828,7 @@ export class DatabaseStorage implements IStorage {
   private async checkAndCompleteIndent(indentId: number): Promise<void> {
     const [header] = await db.select({ piType: purchaseIndents.piType }).from(purchaseIndents).where(eq(purchaseIndents.id, indentId));
     const allItems = await db.select({
+      id: purchaseIndentItems.id,
       qty: purchaseIndentItems.qty,
       qtyPurchased: purchaseIndentItems.qtyPurchased,
       deliveredQty: purchaseIndentItems.deliveredQty,
@@ -17678,12 +17836,27 @@ export class DatabaseStorage implements IStorage {
       approvedQty: purchaseIndentItems.approvedQty,
       purchaseStatus: purchaseIndentItems.purchaseStatus,
       totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
+      totalPurchasedQty: purchaseIndentItems.totalPurchasedQty,
+      linkedGrnId: purchaseIndentItems.linkedGrnId,
+      materialId: purchaseIndentItems.materialId,
       orderedQty: purchaseIndentItems.orderedQty,
     }).from(purchaseIndentItems).where(eq(purchaseIndentItems.indentId, indentId));
+    const routeIds = Array.from(new Set(allItems.map(item => item.materialId).filter((id): id is number => id != null)));
+    const catalogRoutes = routeIds.length ? await db.select({ id: plantMaterials.id, route: plantMaterials.procurementRoute })
+      .from(plantMaterials).where(inArray(plantMaterials.id, routeIds)) : [];
+    const catalogRouteById = new Map(catalogRoutes.map(row => [row.id, row.route]));
+    const receiptProgress = await this.getStoreGrnProgressByIndentItem(allItems.map(item => item.id));
 
     const allTerminal = allItems.every(item => {
       // Manager-rejected items (approvedQty === 0) are treated as terminal — no procurement needed
       if (item.approvedQty != null && item.approvedQty <= 0) return true;
+      const isStoreRoute = item.procurementRoute === "stores" ||
+        (item.materialId != null && catalogRouteById.get(item.materialId) === "stores") ||
+        item.linkedGrnId != null || receiptProgress.get(item.id)?.grnHasHistory === true;
+      if (isStoreRoute && (Number(item.totalPurchasedQty ?? 0) > 0 || item.linkedGrnId != null ||
+        receiptProgress.get(item.id)?.grnHasHistory === true || String(item.purchaseStatus ?? "").toUpperCase() === "PURCHASED")) {
+        return Number(receiptProgress.get(item.id)?.grnReceivedQty ?? 0) >= Number(item.approvedQty ?? item.qty);
+      }
       if ((header?.piType === "material" || ["material", "bulk_plant"].includes(item.procurementRoute ?? "")) && !["NOT_PURCHASED", "CANCELLED"].includes(item.purchaseStatus ?? "")) {
         return item.deliveredQty >= (item.qtyPurchased || item.orderedQty || item.qty);
       }
@@ -28849,6 +29022,31 @@ export class DatabaseStorage implements IStorage {
     return `${fullPrefix}/${String(seq).padStart(4, '0')}`;
   }
 
+  async generatePurchaseOrderNumber(tx: any, at = new Date()): Promise<string> {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit",
+    }).formatToParts(at);
+    const year = Number(parts.find(part => part.type === "year")?.value);
+    const month = Number(parts.find(part => part.type === "month")?.value);
+    const start = month >= 4 ? year : year - 1;
+    const end = start + 1;
+    const fy = `${String(start).slice(-2)}-${String(end).slice(-2)}`;
+    const prefix = `HLC/PO/${fy}`;
+    // One transaction-scoped lock covers both storage locations so parallel
+    // PO creates and indent order actions share a single sequence.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(721904221)`);
+    const rows = await tx.execute(sql`
+      SELECT order_no FROM purchase_orders WHERE order_no LIKE ${`${prefix}/%`}
+      UNION ALL
+      SELECT order_no FROM purchase_indent_items WHERE order_no LIKE ${`${prefix}/%`}
+    `);
+    const maxSequence = (rows.rows as any[]).reduce((max, row) => {
+      const value = Number(String(row.order_no ?? "").split("/").at(-1));
+      return Number.isSafeInteger(value) ? Math.max(max, value) : max;
+    }, 0);
+    return `${prefix}/${String(maxSequence + 1).padStart(4, "0")}`;
+  }
+
   async generateMaterialReceiptNumber(catCode: string): Promise<string> {
     const now = new Date();
     const month = now.getMonth() + 1;
@@ -28893,7 +29091,7 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql`ALTER TABLE store_issues ADD COLUMN IF NOT EXISTS cancellation_reason text`);
   }
 
-  async cancelStoreGrn(id: number, userId: number, reason: string): Promise<StoreGrn | undefined> {
+  async cancelStoreGrn(id: number, userId: number, reason: string, isOwner = false): Promise<StoreGrn | undefined> {
     return await db.transaction(async (tx) => {
       const [existing] = await tx.select().from(storeGrns).where(eq(storeGrns.id, id));
       if (!existing) return undefined;
@@ -28904,17 +29102,20 @@ export class DatabaseStorage implements IStorage {
       // Inspect linked purchase-indent items and block if any parent indent is closed
       const linkedIndentItems = await tx
         .select({
-          indentItemId: storeGrnItems.indentItemId,
+          indentItemId: sql<number>`COALESCE(${storeGrnItems.indentItemId}, ${storeGrnItems.sourcePiItemId})`,
           indentId: purchaseIndentItems.indentId,
           indentStatus: purchaseIndents.status,
           indentRef: purchaseIndents.indentNo,
         })
         .from(storeGrnItems)
-        .innerJoin(purchaseIndentItems, eq(storeGrnItems.indentItemId, purchaseIndentItems.id))
+        .innerJoin(purchaseIndentItems, eq(
+          purchaseIndentItems.id,
+          sql`COALESCE(${storeGrnItems.indentItemId}, ${storeGrnItems.sourcePiItemId})`,
+        ))
         .innerJoin(purchaseIndents, eq(purchaseIndentItems.indentId, purchaseIndents.id))
-        .where(and(eq(storeGrnItems.grnId, id), isNotNull(storeGrnItems.indentItemId)));
+        .where(eq(storeGrnItems.grnId, id));
 
-      const closedIndents = linkedIndentItems.filter(li => li.indentStatus === "closed");
+      const closedIndents = isOwner ? [] : linkedIndentItems.filter(li => li.indentStatus === "closed");
       if (closedIndents.length > 0) {
         const refs = [...new Set(closedIndents.map(li => li.indentRef ?? `#${li.indentId}`))].join(", ");
         throw Object.assign(
@@ -28929,7 +29130,9 @@ export class DatabaseStorage implements IStorage {
         .returning();
 
       // Write explicit cancellation audit log entry
-      const [actor] = await tx.select({ fullName: users.fullName, role: users.role })
+      // The users table has no legacy role column. Selecting users.role leaves
+      // an undefined field in Drizzle's selection tree and crashes preparation.
+      const [actor] = await tx.select({ fullName: users.fullName })
         .from(users).where(eq(users.id, userId));
       const linkedNote = linkedIndentItems.length > 0
         ? ` Affected indent items: [${linkedIndentItems.map(li => `indentItem #${li.indentItemId}`).join(", ")}].`
@@ -28940,7 +29143,7 @@ export class DatabaseStorage implements IStorage {
         action: "cancel",
         userId,
         userName: actor?.fullName ?? `User #${userId}`,
-        userRole: actor?.role ?? null,
+        userRole: null,
         reason,
         stockImpact: `GRN ${grn.grnNumber ?? String(id)} cancelled; quantities excluded from stock totals.${linkedNote}`,
       });
@@ -29033,7 +29236,11 @@ export class DatabaseStorage implements IStorage {
       total: sql<number>`COALESCE(SUM(${storeGrnItems.qty}), 0)`,
     })
       .from(storeGrnItems)
-      .innerJoin(storeGrns, and(eq(storeGrnItems.grnId, storeGrns.id), eq(storeGrns.isCancelled, false), ne(storeGrns.status, "draft")))
+      .innerJoin(storeGrns, and(
+        eq(storeGrnItems.grnId, storeGrns.id),
+        or(eq(storeGrns.isCancelled, false), isNull(storeGrns.isCancelled)),
+        eq(storeGrns.status, "finalized"),
+      ))
       .groupBy(storeGrnItems.itemId);
 
     // Exclude cancelled issues from issued totals
@@ -29104,7 +29311,26 @@ export class DatabaseStorage implements IStorage {
       .from(storeGrnItems)
       .leftJoin(storeItems, eq(storeGrnItems.itemId, storeItems.id))
       .where(eq(storeGrnItems.grnId, grn.id));
-    return { ...grn, items: items as (StoreGrnItem & { itemName: string; category: string })[] };
+    let linkedIndentNo: string | null = null;
+    let linkedIndentId: number | null = grn.sourcePiIndentId ?? null;
+    if (grn.sourcePiIndentId != null) {
+      const [linked] = await db.select({ indentNo: purchaseIndents.indentNo })
+        .from(purchaseIndents).where(eq(purchaseIndents.id, grn.sourcePiIndentId)).limit(1);
+      linkedIndentNo = linked?.indentNo ?? null;
+    }
+    if (!linkedIndentNo) {
+      const itemIds = Array.from(new Set(items.flatMap(item => [item.indentItemId, item.sourcePiItemId])
+        .filter((id): id is number => id != null)));
+      if (itemIds.length) {
+        const [linked] = await db.select({ id: purchaseIndents.id, indentNo: purchaseIndents.indentNo })
+          .from(purchaseIndentItems)
+          .innerJoin(purchaseIndents, eq(purchaseIndentItems.indentId, purchaseIndents.id))
+          .where(inArray(purchaseIndentItems.id, itemIds)).limit(1);
+        linkedIndentId = linked?.id ?? null;
+        linkedIndentNo = linked?.indentNo ?? null;
+      }
+    }
+    return { ...grn, linkedIndentNo, linkedIndentId, items: items as (StoreGrnItem & { itemName: string; category: string })[] };
   }
 
   async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string; awaitingPi?: boolean; piSourced?: boolean; showCancelled?: boolean }): Promise<StoreGrnWithItems[]> {
@@ -29112,11 +29338,22 @@ export class DatabaseStorage implements IStorage {
     const conds: any[] = [];
     // showCancelled=true → show only cancelled; default → show only active
     if (filters?.showCancelled) conds.push(eq(storeGrns.isCancelled, true));
-    else conds.push(eq(storeGrns.isCancelled, false));
+    else conds.push(or(eq(storeGrns.isCancelled, false), isNull(storeGrns.isCancelled)));
     if (filters?.dateFrom) conds.push(gte(storeGrns.date, filters.dateFrom));
     if (filters?.dateTo) conds.push(lte(storeGrns.date, filters.dateTo));
     if (filters?.supplier) conds.push(ilike(storeGrns.supplier, `%${filters.supplier}%`));
-    if (filters?.indentRef) conds.push(ilike(storeGrns.indentRef, `%${filters.indentRef}%`));
+    if (filters?.indentRef) {
+      const pattern = `%${filters.indentRef}%`;
+      conds.push(or(
+        ilike(storeGrns.indentRef, pattern),
+        exists(db.select({ one: sql`1` }).from(purchaseIndents)
+          .where(and(eq(purchaseIndents.id, storeGrns.sourcePiIndentId!), ilike(purchaseIndents.indentNo, pattern)))),
+        exists(db.select({ one: sql`1` }).from(storeGrnItems)
+          .innerJoin(purchaseIndentItems, eq(purchaseIndentItems.id, sql`COALESCE(${storeGrnItems.indentItemId}, ${storeGrnItems.sourcePiItemId})`))
+          .innerJoin(purchaseIndents, eq(purchaseIndents.id, purchaseIndentItems.indentId))
+          .where(and(eq(storeGrnItems.grnId, storeGrns.id), ilike(purchaseIndents.indentNo, pattern))))
+      )!);
+    }
     if (filters?.siteId) conds.push(eq(storeGrns.siteId, filters.siteId));
     if (filters?.acceptanceStatus) conds.push(eq(storeGrns.acceptanceStatus, filters.acceptanceStatus));
     if (filters?.status) conds.push(eq(storeGrns.status, filters.status));
@@ -29154,6 +29391,7 @@ export class DatabaseStorage implements IStorage {
     const cutoff = new Date(Date.now() - thresholdHours * 60 * 60 * 1000);
     const conds: any[] = [
       eq(storeGrns.status, "draft"),
+      or(eq(storeGrns.isCancelled, false), isNull(storeGrns.isCancelled)),
       or(isNull(storeGrns.indentRef), eq(storeGrns.indentRef, "")),
       sql`${storeGrns.createdAt} < ${cutoff.toISOString()}`,
     ];
@@ -29168,7 +29406,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getRecentGrnSuppliers(limit = 5, permittedSiteIds?: number[]): Promise<string[]> {
-    const conds = [ne(storeGrns.status, "draft"), ne(storeGrns.supplier, "—"), eq(storeGrns.isCancelled, false)];
+    const conds = [eq(storeGrns.status, "finalized"), ne(storeGrns.supplier, "—"),
+      or(eq(storeGrns.isCancelled, false), isNull(storeGrns.isCancelled))];
     if (permittedSiteIds !== undefined) {
       if (permittedSiteIds.length === 0) return [];
       conds.push(inArray(storeGrns.siteId, permittedSiteIds));
@@ -29197,7 +29436,8 @@ export class DatabaseStorage implements IStorage {
     // Join grn_items → grns, filter by itemId, count occurrences, rank most-frequent first
     const conds: any[] = [
       inArray(storeGrnItems.itemId, itemIds),
-      ne(storeGrns.status, "draft"),
+      eq(storeGrns.status, "finalized"),
+      or(eq(storeGrns.isCancelled, false), isNull(storeGrns.isCancelled)),
       ne(storeGrns.supplier, "—"),
       ne(storeGrns.supplier, ""),
     ];
@@ -29222,7 +29462,7 @@ export class DatabaseStorage implements IStorage {
       })
       .from(storeGrnItems)
       .innerJoin(storeGrns, eq(storeGrnItems.grnId, storeGrns.id))
-      .where(ne(storeGrns.status, "draft"))
+      .where(and(eq(storeGrns.status, "finalized"), or(eq(storeGrns.isCancelled, false), isNull(storeGrns.isCancelled))))
       .orderBy(storeGrnItems.itemId, desc(storeGrns.id));
     // Re-sort by most-recent grn then take top N unique item ids
     const sorted = rows.sort((a, b) => b.grnId - a.grnId);
@@ -29261,14 +29501,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getStoreGrnCountsByIndentRef(): Promise<Record<string, number>> {
-    const rows = await db
-      .select({ indentRef: storeGrns.indentRef, count: sql<number>`count(*)::int` })
-      .from(storeGrns)
-      .where(sql`${storeGrns.indentRef} is not null and ${storeGrns.indentRef} <> ''`)
-      .groupBy(storeGrns.indentRef);
+    const rows = await db.execute(sql`
+      WITH grn_indent_names AS (
+        SELECT DISTINCT
+          g.id AS grn_id,
+          COALESCE(pi_source.indent_no, pi_line.indent_no, g.indent_ref) AS indent_ref
+        FROM store_grns g
+        LEFT JOIN purchase_indents pi_source ON pi_source.id = g.source_pi_indent_id
+        LEFT JOIN store_grn_items gi ON gi.grn_id = g.id
+        LEFT JOIN purchase_indent_items pii ON pii.id = COALESCE(gi.indent_item_id, gi.source_pi_item_id)
+        LEFT JOIN purchase_indents pi_line ON pi_line.id = pii.indent_id
+      )
+      SELECT indent_ref, COUNT(DISTINCT grn_id)::int AS count
+      FROM grn_indent_names
+      WHERE indent_ref IS NOT NULL AND indent_ref <> ''
+        AND EXISTS (SELECT 1 FROM store_grns active_grn
+          WHERE active_grn.id = grn_indent_names.grn_id
+            AND (active_grn.is_cancelled = false OR active_grn.is_cancelled IS NULL))
+      GROUP BY indent_ref
+    `);
     const result: Record<string, number> = {};
-    for (const r of rows) {
-      if (r.indentRef) result[r.indentRef] = r.count;
+    for (const r of rows.rows as any[]) {
+      if (r.indent_ref) result[String(r.indent_ref)] = Number(r.count) || 0;
     }
     return result;
   }
@@ -29286,11 +29540,20 @@ export class DatabaseStorage implements IStorage {
         COALESCE(SUM(gi.qty), 0) AS received_qty
       FROM purchase_indent_items pii
       JOIN purchase_indents pi ON pi.id = pii.indent_id
-      LEFT JOIN store_grn_items gi ON gi.indent_item_id = pii.id
-        AND gi.grn_id IN (SELECT id FROM store_grns WHERE (is_cancelled = false OR is_cancelled IS NULL) AND status != 'draft')
+      LEFT JOIN plant_materials pm ON pm.id = pii.material_id
+      LEFT JOIN store_grn_items gi ON COALESCE(gi.indent_item_id, gi.source_pi_item_id) = pii.id
+        AND gi.grn_id IN (SELECT id FROM store_grns WHERE (is_cancelled = false OR is_cancelled IS NULL) AND status = 'finalized')
       WHERE
         (pii.purchase_status IS NULL OR UPPER(pii.purchase_status) NOT IN ('REJECTED','CANCELLED','NOT_PURCHASED'))
         AND COALESCE(pii.approved_qty, pii.qty) > 0
+        AND (
+          LOWER(COALESCE(pii.procurement_route, '')) = 'stores'
+          OR LOWER(COALESCE(pm.procurement_route, '')) = 'stores'
+          OR EXISTS (
+            SELECT 1 FROM store_grn_items linked_item
+            WHERE COALESCE(linked_item.indent_item_id, linked_item.source_pi_item_id) = pii.id
+          )
+        )
       GROUP BY pi.indent_no, pii.id, approved_qty
     `);
 
@@ -29327,8 +29590,8 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.execute(sql`
       SELECT pii.id AS indent_item_id, COALESCE(SUM(gi.qty), 0) AS received_qty
       FROM purchase_indent_items pii
-      LEFT JOIN store_grn_items gi ON gi.indent_item_id = pii.id
-        AND gi.grn_id IN (SELECT id FROM store_grns WHERE (is_cancelled = false OR is_cancelled IS NULL) AND status != 'draft')
+      LEFT JOIN store_grn_items gi ON COALESCE(gi.indent_item_id, gi.source_pi_item_id) = pii.id
+        AND gi.grn_id IN (SELECT id FROM store_grns WHERE (is_cancelled = false OR is_cancelled IS NULL) AND status = 'finalized')
       WHERE pii.indent_id = ${indentId}
       GROUP BY pii.id
     `);
@@ -29342,6 +29605,7 @@ export class DatabaseStorage implements IStorage {
   async checkGrnOverReceipt(items: { indentItemId: number; qty: number }[]): Promise<string[]> {
     if (items.length === 0) return [];
     const indentItemIds = items.map(it => it.indentItemId);
+    const indentItemIdList = sql.join(indentItemIds.map(id => sql`${id}`), sql`, `);
     const rows = await db.execute(sql`
       SELECT
         pii.id AS indent_item_id,
@@ -29349,9 +29613,9 @@ export class DatabaseStorage implements IStorage {
         COALESCE(pii.approved_qty, pii.qty) AS approved_qty,
         COALESCE(SUM(gi.qty), 0) AS received_qty
       FROM purchase_indent_items pii
-      LEFT JOIN store_grn_items gi ON gi.indent_item_id = pii.id
-        AND gi.grn_id IN (SELECT id FROM store_grns WHERE (is_cancelled = false OR is_cancelled IS NULL) AND status != 'draft')
-      WHERE pii.id = ANY(${indentItemIds}::int[])
+      LEFT JOIN store_grn_items gi ON COALESCE(gi.indent_item_id, gi.source_pi_item_id) = pii.id
+        AND gi.grn_id IN (SELECT id FROM store_grns WHERE (is_cancelled = false OR is_cancelled IS NULL) AND status = 'finalized')
+      WHERE pii.id IN (${indentItemIdList})
       GROUP BY pii.id, pii.description, approved_qty
     `);
     // Aggregate incoming quantities by indentItemId so multiple lines for the same
@@ -29563,7 +29827,7 @@ export class DatabaseStorage implements IStorage {
       SELECT gi.item_id, COALESCE(SUM(gi.qty), 0) AS total_in
       FROM store_grn_items gi
       JOIN store_grns g ON g.id = gi.grn_id
-      WHERE g.status != 'draft' AND NOT COALESCE(g.is_cancelled, false)
+      WHERE g.status = 'finalized' AND NOT COALESCE(g.is_cancelled, false)
       GROUP BY gi.item_id
     `);
     const issueTotals = await db.execute(sql`
@@ -29605,8 +29869,8 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(storeGrns, eq(storeGrnItems.grnId, storeGrns.id))
       .where(and(
         eq(storeGrnItems.itemId, itemId),
-        ne(storeGrns.status, 'draft'),
-        eq(storeGrns.isCancelled, false),
+        eq(storeGrns.status, 'finalized'),
+        or(eq(storeGrns.isCancelled, false), isNull(storeGrns.isCancelled)),
         ...(filters?.dateFrom ? [gte(storeGrns.date, filters.dateFrom)] : []),
         ...(filters?.dateTo ? [lte(storeGrns.date, filters.dateTo)] : []),
       ));

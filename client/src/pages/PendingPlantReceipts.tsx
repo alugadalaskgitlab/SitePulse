@@ -5,7 +5,8 @@ import {
   CheckCircle2, XCircle, AlertTriangle, ArrowLeft, Inbox, MapPin, User, Calendar, Package, Filter,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
+import { resolveInternalReturnTo } from "@/lib/procurementNavigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,6 +67,9 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function PendingPlantReceipts() {
   const [, navigate] = useLocation();
+  const search = useSearch();
+  const requestedReturnTo = new URLSearchParams(search).get("returnTo");
+  const returnTo = resolveInternalReturnTo(requestedReturnTo, "/stores/hub");
   const { toast } = useToast();
   const { user, featureCan } = useAuth();
   const canVerify = featureCan("plant_receipts", "verify");
@@ -128,7 +132,7 @@ export default function PendingPlantReceipts() {
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/stores/hub")} data-testid="button-back">
+        <Button variant="ghost" size="sm" onClick={() => navigate(returnTo)} data-testid="button-back">
           <ArrowLeft className="w-4 h-4 mr-1" /> Back to Stores Hub
         </Button>
       </div>

@@ -3394,6 +3394,8 @@ export type StoreIssueItem = typeof storeIssueItems.$inferSelect;
 export type InsertStoreIssueItem = z.infer<typeof insertStoreIssueItemSchema>;
 
 export type StoreGrnWithItems = StoreGrn & {
+  linkedIndentNo?: string | null;
+  linkedIndentId?: number | null;
   items: (StoreGrnItem & { itemName: string; category: string })[];
 };
 export type StoreIssueWithItems = StoreIssue & {

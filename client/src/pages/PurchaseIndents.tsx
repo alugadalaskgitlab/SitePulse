@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, type ComponentType } from "react"
 import { deliveryProgress, DestinationFields, PurchaseIndentDeliveryPanel } from "@/components/purchase-indent-delivery";
 import { isBulkPiDeliveryItem } from "@shared/purchaseIndentDelivery";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
+import { purchaseIndentReturnPath } from "@/lib/procurementNavigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useUpload } from "@/hooks/use-upload";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch, useLocation } from "wouter";
-import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, LockOpen, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList, Package, Printer, Warehouse, Camera, Image as ImageIcon } from "lucide-react";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -544,7 +544,7 @@ function piEvents(indent: PurchaseIndentWithItems): PiEvent[] {
 function PiItemEvents({ item }: { item: any }) {
   return <div className="text-xs text-muted-foreground space-y-1 mt-2" data-testid={`pi-item-events-${item.id}`}>
     {(item.timeline ?? []).map((event: PiEvent) => <p key={event.id}>
-      {event.label}: {formatPiTimestamp(event.at)} · {event.actor || "Person not recorded"}
+      {event.label}{event.at ? `: ${formatPiTimestamp(event.at)}` : ""}{event.actor ? ` · ${event.actor}` : ""}
     </p>)}
     {item.liveStockQty != null && <p>Live stock: {item.liveStockQty} {item.uom}</p>}
     {item.liveStockNote && <p>{item.liveStockNote}</p>}
@@ -567,7 +567,7 @@ function IndentAuditTrail({ indent }: { indent: PurchaseIndentWithItems }) {
   const events: AuditEvent[] = piEvents(indent).map(event => ({
     icon: event.label === "Indent Raised" ? FileText : event.label === "Rejected" ? XCircle : ClipboardCheck,
     label: `${event.label}${event.itemDescription ? ` · ${event.itemDescription}` : ""}`,
-    actor: event.actor || "Person not recorded", timestamp: formatPiTimestamp(event.at), note: event.note,
+    actor: event.actor || null, timestamp: event.at ? formatPiTimestamp(event.at) : null, note: event.note,
     colorClass: /Rejected|Cancelled/.test(event.label)
       ? "text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700"
       : /Bypass|Unlocked/.test(event.label)
@@ -642,11 +642,29 @@ export default function PurchaseIndents() {
   const canApprovePurchaseOrder = featureCan("purchase_orders", "approve");
   const canDelete = featureCan("purchase_indent", "cancel");
   const canForceClose = currentUser?.isOwner === true;
-  const { getPlantBackLink } = useOrigin();
-  const backLink = getPlantBackLink({ defaultTab: "operations" });
-
   const searchString = useSearch();
   const [, navigate] = useLocation();
+  const indentSearchParams = new URLSearchParams(searchString);
+  const requestedReturnTo = indentSearchParams.get("returnTo");
+  const originContext = indentSearchParams.get("context");
+  const originTab = indentSearchParams.get("tab");
+  const isPortalOrigin = indentSearchParams.get("origin") === "portal";
+  const backLink = purchaseIndentReturnPath({
+    returnTo: requestedReturnTo,
+    context: originContext,
+    origin: isPortalOrigin ? "portal" : null,
+    tab: originTab,
+  });
+  const purchaseIndentReturnTo = backLink;
+  const purchaseIndentSidebarContext = originContext ?? (isPortalOrigin ? null : originTab === "operations" ? "hmp" : "finance");
+  useEffect(() => {
+    if (requestedReturnTo || originContext || isPortalOrigin || originTab) return;
+    const params = new URLSearchParams(searchString);
+    params.set("context", "finance");
+    navigate(`/plant/purchase-indents?${params.toString()}`, { replace: true });
+  }, []); // A direct/unknown entry belongs to Procurement & Billing.
+  const purchaseIndentContextUrl = (indentId: number) =>
+    `/plant/purchase-indents?indentId=${indentId}&returnTo=${encodeURIComponent(purchaseIndentReturnTo)}${purchaseIndentSidebarContext ? `&context=${encodeURIComponent(purchaseIndentSidebarContext)}` : ""}`;
   const fromIrnId = (() => {
     const sp = new URLSearchParams(searchString);
     const v = sp.get("fromIrnId");
@@ -2172,7 +2190,7 @@ export default function PurchaseIndents() {
     // Print uses the same evidence projection as the on-screen timeline.
     const auditEvents = piEvents(indent).map(event => ({
       label: `${event.label}${event.itemDescription ? ` · ${event.itemDescription}` : ""}`,
-      actor: event.actor || "Person not recorded", timestamp: formatPiTimestamp(event.at), note: event.note,
+      actor: event.actor || "", timestamp: event.at ? formatPiTimestamp(event.at) : "", note: event.note,
     }));
     const itemRows = indent.items.map((item, i) => {
       const approvedCell = item.approvedQty != null ? `${item.approvedQty} ${esc(item.uom)}` : "—";
@@ -2191,8 +2209,8 @@ export default function PurchaseIndents() {
     const auditRows = auditEvents.map(ev => `
       <tr style="border-bottom:1px solid #e5e7eb;">
         <td style="padding:6px 8px;font-weight:600;">${esc(ev.label)}</td>
-        <td style="padding:6px 8px;">${esc(ev.actor) || "—"}</td>
-        <td style="padding:6px 8px;">${esc(ev.timestamp) || "—"}</td>
+        <td style="padding:6px 8px;">${esc(ev.actor)}</td>
+        <td style="padding:6px 8px;">${esc(ev.timestamp)}</td>
         <td style="padding:6px 8px;font-style:italic;color:#6b7280;">${esc(ev.note)}</td>
       </tr>`).join("");
 
@@ -2321,7 +2339,13 @@ export default function PurchaseIndents() {
   };
 
   const getItemPurchaseCount = (items: PurchaseIndentItem[]) => {
-    const purchased = items.filter(i => (i.purchaseStatus || "").toLowerCase() === "purchased").length;
+    const purchased = items.filter(i => {
+      const row = i as any;
+      const hasGrnFlow = row.linkedGrnId != null || row.grnHasHistory || row.grnDocuments?.length > 0;
+      return hasGrnFlow
+        ? Number(row.grnReceivedQty ?? 0) >= Number(i.approvedQty ?? i.qty)
+        : (i.purchaseStatus || "").toLowerCase() === "purchased";
+    }).length;
     return { purchased, total: items.length };
   };
 
@@ -2753,6 +2777,14 @@ export default function PurchaseIndents() {
                 const totalAmt = getTotalAmount(indent.items);
                 const priorities = Array.from(new Set(indent.items.map(i => i.priority)));
                 const purposes = Array.from(new Set(indent.items.map(i => i.purpose)));
+                const draftGrn = indent.items.flatMap(item => (item as any).grnDocuments ?? [])
+                  .find((grn: any) => grn.status === "draft");
+                const waitingItem = indent.items.find(item =>
+                  ((item as any).procurementRoute === "stores" || (item as any).catalogProcurementRoute === "stores" ||
+                    (item as any).linkedGrnId != null || (item as any).grnHasHistory) &&
+                  Number((item as any).grnReceivedQty ?? 0) < Number(item.approvedQty ?? item.qty) &&
+                  (Number((item as any).totalPurchasedQty ?? 0) > 0 || (item as any).linkedGrnId != null || (item as any).grnHasHistory)
+                );
 
                 return (
                   <Card
@@ -2872,12 +2904,28 @@ export default function PurchaseIndents() {
                             {indent.status === "approved" && purchased === 0 && (
                               <p className="text-sm text-emerald-600 mt-0.5">READY TO PURCHASE</p>
                             )}
+                            {draftGrn && waitingItem && (
+                              <Link href={`/stores/grns/${draftGrn.id}?returnTo=${encodeURIComponent(purchaseIndentContextUrl(indent.id))}&context=stores`}>
+                                <span
+                                  className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700 dark:text-amber-300"
+                                  data-testid={`text-next-step-grn-${indent.id}`}
+                                >
+                                  Waiting for delivery → Receive material
+                                </span>
+                              </Link>
+                            )}
+                            {!draftGrn && indent.status === "approved" && purchased === 0 && canCreate && (
+                              <Button size="sm" variant="outline" className="mt-1" data-testid={`button-next-purchase-${indent.id}`}
+                                onClick={e => { e.stopPropagation(); setSelectedIndentId(indent.id); setView("purchase"); }}>
+                                Next: Purchase
+                              </Button>
+                            )}
                             {canViewStores && indentGrnCounts && indentGrnCounts[indent.indentNo] ? (
                               (() => {
                                 const count = indentGrnCounts[indent.indentNo];
                                 const fullyReceived = indentFulfilmentStatus?.[indent.indentNo] === true;
                                 return (
-                                  <Link href={`/stores/grns?indentRef=${encodeURIComponent(indent.indentNo)}`}>
+                                  <Link href={`/stores/grns?indentRef=${encodeURIComponent(indent.indentNo)}&returnTo=${encodeURIComponent(purchaseIndentContextUrl(indent.id))}`}>
                                     <span
                                       className={`mt-1 inline-flex items-center gap-1 text-[12px] font-semibold px-1.5 py-0.5 rounded-full border cursor-pointer transition-colors ${
                                         fullyReceived
@@ -2900,7 +2948,7 @@ export default function PurchaseIndents() {
                                 );
                               })()
                             ) : canViewStores && indentGrnCounts && (indent.status === "approved" || indent.status === "completed") ? (
-                              <Link href={`/stores/grns/new?indentRef=${encodeURIComponent(indent.indentNo)}`}>
+                              <Link href={`/stores/grns/new?indentRef=${encodeURIComponent(indent.indentNo)}&returnTo=${encodeURIComponent(purchaseIndentContextUrl(indent.id))}`}>
                                 <span
                                   className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold px-1.5 py-0.5 rounded-full border bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors"
                                   data-testid={`badge-no-grn-${indent.id}`}
@@ -3519,6 +3567,32 @@ export default function PurchaseIndents() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {(() => {
+                    const draftGrn = selectedIndent.items.flatMap(item => (item as any).grnDocuments ?? [])
+                      .find((grn: any) => grn.status === "draft");
+                    if (selectedIndent.status === "completed") {
+                      return <p className="text-sm font-semibold text-emerald-700" data-testid="text-indent-next-step">Next step: Completed</p>;
+                    }
+                    if (draftGrn && ["awaiting_delivery", "partially_received", "purchaser_actioned"].includes(selectedIndent.status)) {
+                      return (
+                        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                          <p className="text-sm font-semibold text-amber-800" data-testid="text-indent-next-step">Next step: Waiting for delivery → Receive material</p>
+                          <Link href={`/stores/grns/${draftGrn.id}?returnTo=${encodeURIComponent(purchaseIndentContextUrl(selectedIndent.id))}&context=stores`}>
+                            <Button size="sm" variant="outline" data-testid="button-indent-next-receive">Open GRN {draftGrn.grnNumber}</Button>
+                          </Link>
+                        </div>
+                      );
+                    }
+                    if (selectedIndent.status === "approved" && canCreate) {
+                      return (
+                        <div className="flex items-center justify-between gap-3 rounded-md border border-violet-200 bg-violet-50 px-3 py-2">
+                          <p className="text-sm font-semibold text-violet-800" data-testid="text-indent-next-step">Next step: Purchase</p>
+                          <Button size="sm" onClick={() => setView("purchase")} data-testid="button-indent-next-purchase">Next: Purchase</Button>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div>
                       <p className="text-sm font-semibold text-muted-foreground uppercase">DATE</p>
@@ -3996,8 +4070,17 @@ export default function PurchaseIndents() {
                     <div className="bg-white/10 border border-white/15 rounded-lg px-3 py-2.5 flex items-center gap-2.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0" />
                       <p className="text-sm"><strong>Approved</strong>{" "}
-                        <span className="text-teal-200">· {selectedIndent.approvedBy}{selectedIndent.approvedAt ? ` · ${selectedIndent.approvedAt}` : ""}</span>
+                        <span className="text-teal-200">· {selectedIndent.approvedBy}{selectedIndent.approvedAt ? ` · ${formatPiTimestamp(selectedIndent.approvedAt)}` : ""}</span>
                       </p>
+                    </div>
+                  )}
+                  {selectedIndent.status === "approved" && canCreate && (
+                    <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-white/20 bg-white/10 px-3 py-2"
+                      data-testid="text-procurement-next-step">
+                      <p className="text-sm font-semibold">Next: Purchase</p>
+                      <Button size="sm" variant="outline" className="text-[#0F5F64]"
+                        onClick={() => document.getElementById("purchase-action-card")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                        data-testid="button-procurement-next-purchase">Next: Purchase</Button>
                     </div>
                   )}
                 </div>
@@ -4042,7 +4125,7 @@ export default function PurchaseIndents() {
 
               {/* ── Unified Purchase Action Card (all PI types and routes) ── */}
               {["approved", "purchaser_actioned", "awaiting_delivery", "partially_received"].includes(selectedIndent.status) && canCreate && (
-                <Card className="border-violet-200 dark:border-violet-800">
+                <Card id="purchase-action-card" className="border-violet-200 dark:border-violet-800">
                   <CardHeader className="py-3 px-4 bg-violet-50 dark:bg-violet-900/20 rounded-t-lg">
                     <CardTitle className="text-sm font-semibold text-violet-800 dark:text-violet-200 flex items-center gap-2">
                       <ClipboardList className="w-4 h-4" />
@@ -4349,7 +4432,11 @@ export default function PurchaseIndents() {
                               {tx.qty > 0 && <span className="text-muted-foreground">{tx.qty} {relItem.uom}</span>}
                               {tx.rate != null && <span className="text-muted-foreground">@₹{tx.rate}</span>}
                               {tx.vendor && <span className="font-medium">{tx.vendor}</span>}
-                              <span className="w-full text-xs text-muted-foreground">{formatPiTimestamp(tx.createdAt)} · {tx.createdBy || "Person not recorded"}</span>
+                              <span className="w-full text-xs text-muted-foreground">
+                                {tx.createdAt ? formatPiTimestamp(tx.createdAt) : ""}
+                                {tx.createdAt && tx.createdBy ? " · " : ""}
+                                {tx.createdBy || ""}
+                              </span>
                             </div>
                           );
                         })}
@@ -4430,8 +4517,15 @@ export default function PurchaseIndents() {
                               <span className="font-mono text-sm font-bold text-emerald-700 dark:text-emerald-400 shrink-0">{grn.grnNumber}</span>
                               <span className="text-sm text-gray-600 dark:text-gray-400 shrink-0">{format(new Date(grn.date + "T00:00:00"), "dd MMM yyyy")}</span>
                               <span className="w-full text-xs text-muted-foreground">
-                                {(() => { const event = piEvents(selectedIndent).find(e => e.id.startsWith(`grn-${grn.id}-`));
-                                  return `${formatPiTimestamp(event?.at)} · ${event?.actor || "Person not recorded"}`; })()}
+                                {(() => {
+                                  const event = piEvents(selectedIndent).find(e => e.id.startsWith(`grn-${grn.id}-`));
+                                  if (!event) return null;
+                                  return <>
+                                    {event.at && <span>{formatPiTimestamp(event.at)}</span>}
+                                    {event.at && event.actor ? " · " : ""}
+                                    {event.actor && <span>{event.actor}</span>}
+                                  </>;
+                                })()}
                               </span>
                               <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{grn.supplier}</span>
                             </div>
@@ -4483,9 +4577,17 @@ export default function PurchaseIndents() {
                       const ps = (item.purchaseStatus || "").toLowerCase();
                       const approvedQty = item.approvedQty ?? item.qty;
                       const isRejected = approvedQty === 0;
-                      const isPurchased = ps === "purchased";
+                      const grnReceivedQty = Number((item as any).grnReceivedQty ?? 0);
+                      const grnDocuments = ((item as any).grnDocuments ?? []) as { id: number; grnNumber: string; status: string }[];
+                      const hasGrnFlow = (item as any).linkedGrnId != null || (item as any).grnHasHistory === true ||
+                        grnDocuments.length > 0 || (Number((item as any).totalPurchasedQty ?? 0) > 0 &&
+                          ((item as any).procurementRoute === "stores" || (item as any).catalogProcurementRoute === "stores"));
+                      const awaitingStoreReceipt = hasGrnFlow && grnReceivedQty < approvedQty;
+                      const isPurchased = !awaitingStoreReceipt &&
+                        (ps === "purchased" || hasGrnFlow) &&
+                        (!hasGrnFlow || grnReceivedQty >= approvedQty);
                       // PARTIAL = partial delivery received, more still in-flight — same card as ordered
-                      const isOrdered = ps === "ordered" || ps === "partial";
+                      const isOrdered = ps === "ordered" || ps === "partial" || awaitingStoreReceipt;
                       const isCancelled = ps === "cancelled";
                       const isPending = !isRejected && !isPurchased && !isOrdered && !isCancelled;
                       const canCancel = canCancelItem(item.purchaseStatus);
@@ -4607,8 +4709,8 @@ export default function PurchaseIndents() {
                       }
 
                       if (isOrdered) {
-                        const isPartialDelivery = ps === "partial";
-                        const deliveredSoFar = (item as any).totalAcceptedQty ?? 0;
+                        const isPartialDelivery = ps === "partial" || (awaitingStoreReceipt && grnReceivedQty > 0);
+                        const deliveredSoFar = hasGrnFlow ? grnReceivedQty : ((item as any).totalAcceptedQty ?? 0);
                         return (
                           <div key={item.id} className={`border rounded-xl p-4 ${isPartialDelivery ? "border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30" : "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30"}`} data-testid={`card-procure-item-${item.id}`}>
                             <div className="flex justify-between items-start mb-1.5">
@@ -4626,9 +4728,24 @@ export default function PurchaseIndents() {
                             <div className={`border rounded-lg overflow-hidden ${isPartialDelivery ? "bg-amber-100 dark:bg-amber-900/40 border-amber-200 dark:border-amber-700" : "bg-blue-100 dark:bg-blue-900/40 border-blue-200 dark:border-blue-800"}`}>
                               <div className={`flex items-center gap-2 px-3 py-2 border-b ${isPartialDelivery ? "border-amber-200 dark:border-amber-700 bg-amber-200/60 dark:bg-amber-900/60" : "border-blue-200 dark:border-blue-800 bg-blue-200/60 dark:bg-blue-900/60"}`}>
                                 <ClipboardList className={`w-4 h-4 ${isPartialDelivery ? "text-amber-600" : "text-blue-600"}`} />
-                                <span className={`font-semibold text-sm ${isPartialDelivery ? "text-amber-800 dark:text-amber-200" : "text-blue-800 dark:text-blue-200"}`}>{isPartialDelivery ? "Partial Delivery — Balance Due" : "Order Placed"}</span>
+                                <span className={`font-semibold text-sm ${isPartialDelivery ? "text-amber-800 dark:text-amber-200" : "text-blue-800 dark:text-blue-200"}`}>
+                                  {awaitingStoreReceipt ? "Waiting for delivery" : isPartialDelivery ? "Partial Delivery — Balance Due" : "Order Placed"}
+                                </span>
                               </div>
                               <div className="px-3 py-2.5 space-y-1.5 text-sm">
+                                {hasGrnFlow && (
+                                  <p className="font-medium" data-testid={`text-grn-received-progress-${item.id}`}>
+                                    Received {grnReceivedQty} of {approvedQty} {item.uom}. {Math.max(0, approvedQty - grnReceivedQty)} {item.uom} pending.
+                                  </p>
+                                )}
+                                {grnDocuments.map(grn => (
+                                  <Link key={grn.id} href={`/stores/grns/${grn.id}?returnTo=${encodeURIComponent(purchaseIndentContextUrl(selectedIndent.id))}&context=stores`}>
+                                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 dark:text-blue-300 underline"
+                                      data-testid={`link-indent-grn-${item.id}-${grn.id}`}>
+                                      {grn.status === "draft" ? "Waiting for delivery" : "Receipt"} · GRN {grn.grnNumber} · Open
+                                    </span>
+                                  </Link>
+                                ))}
                                 {(item.vendor || (item as any).linkedVendorName) && (
                                   <div className="flex justify-between">
                                     <span className="text-gray-500">Vendor</span>

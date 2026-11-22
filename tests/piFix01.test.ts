@@ -66,6 +66,13 @@ it("recovers legacy header times from audit without duplicating an undated place
   expect(events).toHaveLength(2);
   expect(events.every(e => e.at != null)).toBe(true);
 });
+it("does not invent ordered or received history from quantities without event records", () => {
+  const events = buildPiTimeline({
+    status: "approved",
+    items: [{ id: 3, qty: 60, approvedQty: 60, qtyPurchased: 60, deliveredQty: 60 }],
+  });
+  expect(events.some(e => ["Ordered", "Received"].includes(e.label))).toBe(false);
+});
 it("retains receipt history even when the legacy receipt pointer is absent", () => {
   const events = buildPiTimeline({ status: "completed", items: [{ id: 1, history: [{
     id: 10, action: "DELIVERY_PARTIAL", actionAt: "2026-10-03 03:00:00", actionBy: "Receiver",
