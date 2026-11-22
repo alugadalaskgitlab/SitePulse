@@ -19,7 +19,7 @@ The app restarted successfully; startup readiness reported `ready: true` and che
 - `npm run build`: **passed**.
 - The full test workflow reported **5,855 passed, 9 failed, 3 skipped**. The failures were in `programmeBarLinkage030A.test.ts` (8) and `dieselStockGuard06mB.test.ts` (1); they concern DPR link/staff validation, not the plant-day or DispatchPro paths. No baseline comparison was run.
 - `npm run check` could not complete because the TypeScript process ran out of memory.
-- DispatchPro requests and callbacks were tested with mocks. `SITEPULSE_SHARED_SECRET` is not configured yet; no remote DispatchPro request was made. The base URL is the supplied DispatchPro URL.
+- DispatchPro requests and callbacks were tested with mocks. After the Owner added the shared secret securely, a read-only site lookup returned **2 valid site choices**. No dispatch was sent or changed remotely. The base URL is the supplied DispatchPro URL; the secret value is not recorded here.
 
 ## Screenshots
 

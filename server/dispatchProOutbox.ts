@@ -51,11 +51,18 @@ export async function getDispatchProSites(): Promise<DispatchSite[]> {
         : Array.isArray(body?.data)
           ? body.data
           : [];
-  return rows
-    .filter((row: any) => row && (typeof row.id === "string" || typeof row.id === "number") && typeof row.name === "string")
-    .map((row: any) => ({ id: String(row.id), name: row.name.trim() }))
-    .filter((row: DispatchSite) => row.id && row.name)
-    .sort((a: DispatchSite, b: DispatchSite) => a.name.localeCompare(b.name));
+  const sites = new Map<string, DispatchSite>();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const id = row.id ?? row.siteId;
+    const name = row.name ?? row.siteName ?? row.siteCode;
+    if ((typeof id !== "string" && typeof id !== "number") || typeof name !== "string") continue;
+    const normalized = { id: String(id).trim(), name: name.trim() };
+    if (normalized.id && normalized.name && !sites.has(normalized.id)) {
+      sites.set(normalized.id, normalized);
+    }
+  }
+  return [...sites.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function dispatchPayload(dispatch: DispatchRecord, siteId: string, mixType: string) {

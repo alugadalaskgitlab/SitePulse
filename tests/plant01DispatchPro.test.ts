@@ -88,7 +88,11 @@ describe("PLANT-01 DispatchPro integration", () => {
   it("loads linked site choices using the shared-key header", async () => {
     const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
       expect(new Headers(init?.headers).get("X-SitePulse-Key")).toBe("test-only-sitepulse-key");
-      return new Response(JSON.stringify({ sites: [{ id: 12, name: "Alladurg PWD Road" }, { id: "13", name: "Plant Yard" }] }), { status: 200 });
+      return new Response(JSON.stringify([
+        { partyId: 1, siteId: 12, siteName: "Alladurg PWD Road", mixType: "BC" },
+        { partyId: 2, siteId: "12", siteName: "Alladurg PWD Road", mixType: "WMM" },
+        { siteId: 13, siteCode: "YARD", siteName: "Plant Yard" },
+      ]), { status: 200 });
     });
     vi.stubGlobal("fetch", fetchMock);
 
