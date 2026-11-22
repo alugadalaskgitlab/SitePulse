@@ -6,6 +6,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import PurchaseIndents from "@/pages/PurchaseIndents";
 
+const { toastSpy } = vi.hoisted(() => ({ toastSpy: vi.fn() }));
 vi.mock("@/lib/auth-context", () => ({
   useAuth: () => ({
     isAdmin: true, isOwner: true, isAuthenticated: true,
@@ -15,10 +16,14 @@ vi.mock("@/lib/auth-context", () => ({
 }));
 vi.mock("@/lib/featureFlags", () => ({ useFeatureFlags: () => ({ companyName: "Synthetic", licensedModules: [], rmcEnabled: true }) }));
 vi.mock("@/hooks/use-origin", () => ({ useOrigin: () => ({ getPlantBackLink: () => "/plant/operations" }) }));
-vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: toastSpy }) }));
 vi.mock("@/hooks/use-persisted-filters", async () => await import("./fixtures/pi01/mock-persisted-filters"));
 
 let calls: Array<{ method: string; path: string; body?: any }>;
+let plantMaterialList: any[];
+let materialCreateStatus: number;
+let materialCreateBody: any;
+let createdMaterial: any;
 const orderedItem = {
   id: 101, indentId: 1, description: "WMM", spec: null, partNo: null,
   qty: 1500, uom: "MT", purpose: "SITE", priority: "normal", materialId: null,
@@ -40,6 +45,11 @@ let fixtureIndent: typeof indent;
 beforeEach(() => {
   queryClient.clear();
   calls = [];
+  toastSpy.mockClear();
+  plantMaterialList = [];
+  materialCreateStatus = 201;
+  materialCreateBody = null;
+  createdMaterial = { id: 77, name: "SYNTHETIC NEW MATERIAL", category: "Electricals", defaultUom: "METERS", isActive: 1 };
   fixtureIndent = structuredClone(indent);
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -52,6 +62,15 @@ beforeEach(() => {
     if (path === "/api/purchase-indents" && method === "GET") value = [fixtureIndent];
     else if (path === "/api/purchase-indents/1") value = method === "PUT" ? { ...fixtureIndent, remarks: body.remarks } : fixtureIndent;
     else if (path === "/api/sites") value = [{ id: 11, name: "ALLADURG", isActive: true }];
+    else if (path === "/api/plant-module/materials" && method === "GET") value = plantMaterialList;
+    else if (path === "/api/plant-module/materials" && method === "POST") {
+      if (materialCreateStatus >= 400) {
+        return new Response(JSON.stringify(materialCreateBody), { status: materialCreateStatus, headers: { "Content-Type": "application/json" } });
+      }
+      createdMaterial = { ...createdMaterial, ...body };
+      plantMaterialList = [...plantMaterialList, createdMaterial];
+      return new Response(JSON.stringify(createdMaterial), { status: materialCreateStatus, headers: { "Content-Type": "application/json" } });
+    }
     else if (method !== "GET") throw new Error(`Unexpected synthetic write: ${method} ${path}`);
     return new Response(JSON.stringify(value), { status: 200, headers: { "Content-Type": "application/json" } });
   }));
@@ -68,6 +87,12 @@ async function submit() {
   fireEvent.click(screen.getByTestId("button-submit-indent"));
   await waitFor(() => expect(calls.some(call => call.method === "PUT")).toBe(true));
   return calls.find(call => call.method === "PUT")!.body;
+}
+async function openNewMaterialDialogFromIndent(name: string) {
+  await openEdit();
+  fireEvent.change(screen.getByTestId("input-item-desc-0"), { target: { value: name } });
+  fireEvent.mouseDown(await screen.findByTestId("option-add-new-store-item"));
+  await screen.findByTestId("button-save-new-store-item");
 }
 
 describe("PI-01 B1 existing item identities through the actual edit form", () => {
@@ -114,5 +139,67 @@ describe("PI-01 B1 existing item identities through the actual edit form", () =>
     fireEvent.change(dateInput, { target: { value: "" } });
     const payload = await submit();
     expect(payload.items[0]).not.toHaveProperty("requiredBy");
+  });
+
+  it("creates and links a material from the purchase-indent item form without sending isActive", async () => {
+    await openNewMaterialDialogFromIndent("POWER CABLE 35 SQ MM");
+    fireEvent.click(screen.getByTestId("button-save-new-store-item"));
+
+    await waitFor(() => expect(calls.some(call => call.method === "POST" && call.path === "/api/plant-module/materials")).toBe(true));
+    const createCall = calls.find(call => call.method === "POST" && call.path === "/api/plant-module/materials")!;
+    expect(createCall.body).toMatchObject({ name: "POWER CABLE 35 SQ MM", category: "Aggregate", defaultUom: "MT" });
+    expect(createCall.body).not.toHaveProperty("isActive");
+
+    const updateBody = await submit();
+    expect(updateBody.items[0]).toMatchObject({ description: "POWER CABLE 35 SQ MM", materialId: 77 });
+  });
+
+  it("creates and links a new material from the GRN dialog as a plant-material line", async () => {
+    fixtureIndent.items[0].purchaseStatus = "purchased";
+    fixtureIndent.items[0].qtyPurchased = 600;
+    render(<QueryClientProvider client={queryClient}><PurchaseIndents /></QueryClientProvider>);
+    fireEvent.click(await screen.findByTestId("card-indent-1"));
+    fireEvent.click(await screen.findByTestId("button-create-grn"));
+    const search = await screen.findByTestId("input-grn-item-search-0");
+    fireEvent.focus(search);
+    fireEvent.mouseDown(await screen.findByTestId("button-grn-add-catalogue-0"));
+    await screen.findByTestId("button-save-new-store-item");
+    fireEvent.click(screen.getByTestId("button-save-new-store-item"));
+
+    await waitFor(() => expect(calls.some(call => call.method === "POST" && call.path === "/api/plant-module/materials")).toBe(true));
+    const createCall = calls.find(call => call.method === "POST" && call.path === "/api/plant-module/materials")!;
+    expect(createCall.body).toMatchObject({ name: "WMM", category: "Spares", defaultUom: "MT" });
+    expect(createCall.body).not.toHaveProperty("isActive");
+    expect(await screen.findByTestId("badge-linked-0")).toBeInTheDocument();
+  });
+
+  it("shows strict-schema validation details returned by the server", async () => {
+    materialCreateStatus = 400;
+    materialCreateBody = {
+      message: "Invalid request body",
+      errors: { formErrors: [], fieldErrors: { defaultUom: ["Unit is required"] } },
+    };
+    await openNewMaterialDialogFromIndent("INVALID MATERIAL");
+    fireEvent.click(screen.getByTestId("button-save-new-store-item"));
+
+    await waitFor(() => expect(toastSpy).toHaveBeenCalled());
+    expect(toastSpy.mock.calls.at(-1)?.[0]).toMatchObject({
+      title: "Error adding material",
+      description: "defaultUom: Unit is required",
+      variant: "destructive",
+    });
+  });
+
+  it("shows a clear pick-from-list message for server duplicate-name errors", async () => {
+    materialCreateStatus = 409;
+    materialCreateBody = { message: "Material name already exists" };
+    await openNewMaterialDialogFromIndent("DUPLICATE MATERIAL");
+    fireEvent.click(screen.getByTestId("button-save-new-store-item"));
+
+    await waitFor(() => expect(toastSpy).toHaveBeenCalled());
+    expect(toastSpy.mock.calls.at(-1)?.[0]).toMatchObject({
+      title: "A material with this name already exists — pick it from the list",
+      variant: "destructive",
+    });
   });
 });

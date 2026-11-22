@@ -18,6 +18,7 @@ import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { parseApiError } from "@/lib/apiError";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
@@ -32,6 +33,32 @@ import { PurchaseOrderWorkflow } from "@/components/purchase-order-workflow";
 import { vendorIdentityDisplayName } from "@shared/vendorIdentityDisplay";
 
 type StoreItem = { id: number; name: string; uom: string; category: string };
+
+function materialCreateErrorMessage(error: unknown): string {
+  const parsed = parseApiError(error);
+  if (parsed.message !== "Invalid request body" || !(error instanceof Error)) {
+    return parsed.message || "Could not add material.";
+  }
+
+  // The shared API error parser returns the server's message. For strict-body
+  // validation responses, also surface the field/form details returned beside it.
+  try {
+    const body = JSON.parse(error.message.replace(/^\d{3}:\s*/, ""));
+    const validation = body?.errors;
+    if (validation) {
+      const details = [
+        ...(Array.isArray(validation.formErrors) ? validation.formErrors : []),
+        ...Object.entries(validation.fieldErrors || {}).flatMap(([field, messages]) =>
+          Array.isArray(messages) ? messages.map(message => `${field}: ${message}`) : [],
+        ),
+      ].filter((message): message is string => typeof message === "string");
+      if (details.length) return details.join("; ");
+    }
+  } catch {
+    // Keep the server message if its body is not JSON.
+  }
+  return parsed.message;
+}
 
 type RouteCorrectionRow = {
   itemId: number;
@@ -903,7 +930,7 @@ export default function PurchaseIndents() {
         // Link the new catalogue item directly into the GRN line
         setGrnLines(prev => prev.map((l, i) => i === addStoreItemTargetIdx ? {
           ...l,
-          storeItemId: String(newItem.id),
+          storeItemId: `pm:${newItem.id}`,
           itemSearch: newItem.name,
           uom: (newItem.defaultUom || l.uom || "NOS").toUpperCase(),
           autoLinked: false,
@@ -923,7 +950,14 @@ export default function PurchaseIndents() {
       setAddStoreItemTargetIdx(null);
       setAddStoreItemFromGrn(false);
     },
-    onError: () => toast({ title: "Error adding material", variant: "destructive" }),
+    onError: (error: unknown) => {
+      const message = materialCreateErrorMessage(error);
+      if (/(?:material|name).*(?:already exists|duplicate)|(?:already exists|duplicate).*(?:material|name)/i.test(message)) {
+        toast({ title: "A material with this name already exists — pick it from the list", variant: "destructive" });
+      } else {
+        toast({ title: "Error adding material", description: message, variant: "destructive" });
+      }
+    },
   });
 
   const [reportFilterDateFrom, setReportFilterDateFrom] = useState("");
@@ -5674,7 +5708,7 @@ export default function PurchaseIndents() {
                 type="button"
                 size="sm"
                 disabled={!addStoreItemForm.name.trim() || addStoreItemMutation.isPending}
-                onClick={() => addStoreItemMutation.mutate({ name: addStoreItemForm.name.trim(), category: addStoreItemForm.category, defaultUom: addStoreItemForm.uom, isActive: 1 })}
+                onClick={() => addStoreItemMutation.mutate({ name: addStoreItemForm.name.trim(), category: addStoreItemForm.category, defaultUom: addStoreItemForm.uom })}
                 data-testid="button-save-new-store-item"
               >
                 {addStoreItemMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save as New Item"}

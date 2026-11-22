@@ -71,3 +71,13 @@ Screenshots are 402 pixels wide. The day-card screenshot uses browser-only sampl
 
 1. Start and end of day opening readings: [08-start-day-opening-readings.jpg](plant01-screenshots/08-start-day-opening-readings.jpg)
 2. First-truck party and mix fields: [09-first-truck-party-mix.jpg](plant01-screenshots/09-first-truck-party-mix.jpg)
+
+## HOTFIX-MAT-01 — material creation from purchase indent and GRN
+
+- Removed `isActive` from the Purchase Indent material-create request. The material schema remains strict, and new materials use the existing active default.
+- Material-create errors now show the server message and validation details. Duplicate-name errors show: “A material with this name already exists — pick it from the list.”
+- Fixed the GRN dialog’s new-material link to use the plant-material ID format expected by its selection and receipt flow.
+- Checked all client POST/PATCH callers of `/api/plant-module/materials`. `Plant.tsx` already sends only fields allowed by the strict create/update schemas; no change was needed there. No other mutation callers were found.
+- Focused Purchase Indent tests: **10 passed**. They cover creation/linking from both dialogs, validation feedback and duplicate-name feedback.
+- Full suite: **5,882 passed, 3 skipped, 0 failed** (483 files passed; 2 skipped).
+- `npm run build`: **passed**. No schema or data changes were made; tests used mocked fixtures. Production was not accessed, and nothing was published.
