@@ -6,7 +6,7 @@ import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -139,6 +139,12 @@ export default function PlantDispatches() {
   const [moreDetailsOpen, setMoreDetailsOpen] = useState(false);
   const [dispatchDefaultsAvailable, setDispatchDefaultsAvailable] = useState(false);
   const [primaryFieldsExpanded, setPrimaryFieldsExpanded] = useState(false);
+  const [partyChangeConfirmation, setPartyChangeConfirmation] = useState<{
+    newPartyId: string;
+    lastPartyId: string;
+    previousSelectionPartyId: string;
+    previousSelectionMixId: string;
+  } | null>(null);
   
   // Tolerance constant (±10%)
   const TOLERANCE_PERCENT = 10;
@@ -208,6 +214,27 @@ export default function PlantDispatches() {
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
   });
+
+  const dispatchesForPartyDefaults = useMemo(() => {
+    const byId = new Map<number, TruckDispatch>();
+    for (const dispatch of dispatches || []) byId.set(dispatch.id, dispatch);
+    if (lastSavedDispatch) byId.set(lastSavedDispatch.id, lastSavedDispatch);
+    return [...byId.values()];
+  }, [dispatches, lastSavedDispatch]);
+
+  const latestDispatchForDate = useCallback((targetDate: string) => {
+    return dispatchesForPartyDefaults
+      .filter(dispatch =>
+        dispatch.date === targetDate &&
+        (filterPlantName === "all" || dispatch.plantName === filterPlantName) &&
+        (!editingDispatch || dispatch.id !== editingDispatch.id)
+      )
+      .slice()
+      .sort((a, b) =>
+        (b.time || "").localeCompare(a.time || "") ||
+        b.id - a.id
+      )[0] || null;
+  }, [dispatchesForPartyDefaults, editingDispatch, filterPlantName]);
 
   // Fetch plant settings so we can resolve plantId → plantName from URL params
   const { data: plantSettingsList } = useQuery<PlantSettings[]>({
@@ -419,16 +446,14 @@ export default function PlantDispatches() {
     setMoreDetailsOpen(false);
     setDispatchDefaultsAvailable(false);
     setPrimaryFieldsExpanded(false);
+    setPartyChangeConfirmation(null);
   };
 
   const openNewDispatchDialog = () => {
     resetForm();
     const now = new Date();
     const day = format(now, "yyyy-MM-dd");
-    const latestToday = (dispatches || [])
-      .filter(d => d.date === day && (filterPlantName === "all" || d.plantName === filterPlantName))
-      .slice()
-      .sort((a, b) => (b.time || "").localeCompare(a.time || ""))[0];
+    const latestToday = latestDispatchForDate(day);
     setDate(day);
     setTime(format(now, "HH:mm"));
     if (latestToday) {
@@ -546,6 +571,51 @@ export default function PlantDispatches() {
     || primaryFieldsExpanded;
   const dispatchPartyName = parties?.find(party => String(party.id) === partyId)?.name || "Choose party/job";
   const dispatchMixName = templates?.find(template => String(template.id) === mixTemplateId)?.name || "Choose mix";
+  const selectedParty = parties?.find(party => String(party.id) === partyId);
+  const selectedPartyAlertStatus = selectedParty
+    ? selectedParty.dispatchProSiteId?.trim()
+      ? "Alerts to site: on"
+      : "Not linked — no site alert"
+    : "Select a party to see site-alert status";
+
+  const applyPartySelection = (nextPartyId: string) => {
+    setPartyId(nextPartyId);
+    setDeliveryLocation("");
+    if (mixTemplateId && templates) {
+      const template = templates.find(item => item.id === Number(mixTemplateId));
+      if (template && template.partyId != null && template.partyId !== Number(nextPartyId)) {
+        setMixTemplateId("");
+      }
+    }
+  };
+
+  const handlePartySelection = (nextPartyId: string) => {
+    const previousDispatch = !editingDispatch ? latestDispatchForDate(date) : null;
+    if (previousDispatch && String(previousDispatch.partyId) !== nextPartyId) {
+      setPartyId(nextPartyId);
+      setPartyChangeConfirmation({
+        newPartyId: nextPartyId,
+        lastPartyId: String(previousDispatch.partyId),
+        previousSelectionPartyId: partyId,
+        previousSelectionMixId: mixTemplateId,
+      });
+      return;
+    }
+    applyPartySelection(nextPartyId);
+  };
+
+  const cancelPartyChange = () => {
+    if (partyChangeConfirmation) {
+      setPartyId(partyChangeConfirmation.previousSelectionPartyId);
+      setMixTemplateId(partyChangeConfirmation.previousSelectionMixId);
+    }
+    setPartyChangeConfirmation(null);
+  };
+
+  const confirmPartyChange = () => {
+    if (partyChangeConfirmation) applyPartySelection(partyChangeConfirmation.newPartyId);
+    setPartyChangeConfirmation(null);
+  };
 
   const handleSubmit = () => {
     if (!partyId || !mixTemplateId || !truckNumber || !loadWeight) return;
@@ -1023,6 +1093,31 @@ export default function PlantDispatches() {
             <DialogHeader>
               <DialogTitle>{editingDispatch ? "Edit dispatch" : "Record production dispatch"}</DialogTitle>
             </DialogHeader>
+            <div className="rounded-md border bg-muted/20 p-3" data-testid="text-dispatch-defaults">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xl font-bold leading-tight" data-testid="text-dispatch-party-name">
+                    {dispatchPartyName}
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground" data-testid="text-dispatch-mix-tank">
+                    {dispatchMixName} · Bitumen tank {bitumenTankNumber}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground" data-testid="text-party-alert-status">
+                    {selectedPartyAlertStatus}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => setPrimaryFieldsExpanded(true)}
+                  data-testid="button-change-dispatch-party-mix"
+                >
+                  Change
+                </Button>
+              </div>
+            </div>
             {!editingDispatch && lastSavedDispatch && (() => {
               const saved = dispatches?.find(dispatch => dispatch.id === lastSavedDispatch.id) || lastSavedDispatch;
               return (
@@ -1056,21 +1151,20 @@ export default function PlantDispatches() {
                 <div className="space-y-4 rounded-md border p-3" data-testid="section-dispatch-party-mix">
                   <div>
                     <Label>Party/job <span className="text-destructive">*</span></Label>
-                    <Select value={partyId} onValueChange={(v) => {
-                      setPartyId(v);
-                      setDeliveryLocation("");
-                      if (mixTemplateId && templates) {
-                        const tpl = templates.find(t => t.id === parseInt(mixTemplateId));
-                        const pid = parseInt(v);
-                        if (tpl && tpl.partyId != null && tpl.partyId !== pid) setMixTemplateId("");
-                      }
-                    }}>
+                    <Select value={partyId} onValueChange={handlePartySelection}>
                       <SelectTrigger data-testid="select-dispatch-party" aria-required="true">
                         <SelectValue placeholder="Select party" />
                       </SelectTrigger>
                       <SelectContent>
                         {parties?.map((party) => (
-                          <SelectItem key={party.id} value={String(party.id)} className="entity-name">{party.name}</SelectItem>
+                          <SelectItem key={party.id} value={String(party.id)} className="entity-name" data-testid={`option-dispatch-party-${party.id}`}>
+                            <div className="flex min-w-0 flex-col">
+                              <span>{party.name}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {party.dispatchProSiteId?.trim() ? "Alerts to site: on" : "Not linked — no site alert"}
+                              </span>
+                            </div>
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1118,22 +1212,7 @@ export default function PlantDispatches() {
                     </Button>
                   )}
                 </div>
-              ) : (
-                <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm" data-testid="text-dispatch-defaults">
-                  <span className="min-w-0 truncate">
-                    {dispatchPartyName} · {dispatchMixName} · Bitumen tank {bitumenTankNumber}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setPrimaryFieldsExpanded(true)}
-                    data-testid="button-change-dispatch-party-mix"
-                  >
-                    Change
-                  </Button>
-                </div>
-              )}
+              ) : null}
               <Button
                 type="button"
                 variant="outline"
@@ -1939,6 +2018,35 @@ export default function PlantDispatches() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={partyChangeConfirmation !== null} onOpenChange={(open) => { if (!open) cancelPartyChange(); }}>
+        <DialogContent className="max-w-md" data-testid="dialog-party-change-confirmation">
+          <DialogHeader>
+            <DialogTitle>Confirm party for this truck</DialogTitle>
+          </DialogHeader>
+          {partyChangeConfirmation && (
+            <DialogDescription className="text-sm" data-testid="text-party-change-confirmation">
+              This truck is for{" "}
+              <span className="font-semibold">
+                {parties?.find(party => String(party.id) === partyChangeConfirmation.newPartyId)?.name || "the selected party"}
+              </span>
+              , the last truck was for{" "}
+              <span className="font-semibold">
+                {parties?.find(party => String(party.id) === partyChangeConfirmation.lastPartyId)?.name || "another party"}
+              </span>
+              . Continue?
+            </DialogDescription>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={cancelPartyChange} data-testid="button-party-change-go-back">
+              Go back
+            </Button>
+            <Button onClick={confirmPartyChange} data-testid="button-party-change-confirm">
+              Yes, this party
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Owner-stock shortage confirmation — operator must explicitly OK borrowing from HLC */}
       <Dialog open={!!shortageInfo} onOpenChange={(o) => { if (!o) cancelHlcBorrow(); }}>
