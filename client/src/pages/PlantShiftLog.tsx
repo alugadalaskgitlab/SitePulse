@@ -47,6 +47,8 @@ export default function PlantShiftLog() {
   const { defaultPlantName } = useFeatureFlags();
   const { featureCan } = useAuth();
   const canVerify = featureCan("hmp_rmc", "verify");
+  const canAddPlantReceipt = featureCan("plant_receipts", "add");
+  const canEditPlantDay = featureCan("hmp_rmc", "add") || featureCan("hmp_rmc", "edit");
   const { isFromPortal, appendPlantContext, getPlantBackLink } = useOrigin();
   const [, params] = useRoute("/plant/shift-log/:date");
   const [currentLocation] = useLocation();
@@ -71,6 +73,8 @@ export default function PlantShiftLog() {
   const [operatorName, setOperatorName] = useState("");
   const [supervisorName, setSupervisorName] = useState("");
   const [remarks, setRemarks] = useState("");
+  const [closeReason, setCloseReason] = useState("");
+  const [moreDetailsOpen, setMoreDetailsOpen] = useState(false);
 
   const [bitumenTank1Temp, setBitumenTank1Temp] = useState("");
   const [bitumenTank2Temp, setBitumenTank2Temp] = useState("");
@@ -110,6 +114,15 @@ export default function PlantShiftLog() {
 
   const [manpower, setManpower] = useState<ManpowerRow[]>([]);
   const [idleEvents, setIdleEvents] = useState<IdleRow[]>([]);
+  const [dgReadings, setDgReadings] = useState<Array<{
+    equipmentId: number;
+    equipmentName: string;
+    openingReading: string;
+    closingReading: string;
+    openingDiesel: string;
+    closingDiesel: string;
+    prefillFrom?: string | null;
+  }>>([]);
 
   // Manpower modal
   const [mpDialogOpen, setMpDialogOpen] = useState(false);
@@ -321,6 +334,7 @@ export default function PlantShiftLog() {
     setPlantStartTime(""); setPlantStopTime("");
     setWeather(""); setAmbientTemp("");
     setOperatorName(""); setSupervisorName(""); setRemarks("");
+    setCloseReason(""); setMoreDetailsOpen(false);
     setBitumenTank1Temp(""); setBitumenTank2Temp("");
     setBitumenTank1OpeningDip(""); setBitumenTank1ClosingDip("");
     setBitumenTank2OpeningDip(""); setBitumenTank2ClosingDip("");
@@ -352,6 +366,7 @@ export default function PlantShiftLog() {
     setOperatorName(log.operatorName || "");
     setSupervisorName(log.supervisorName || "");
     setRemarks(log.remarks || "");
+    setCloseReason((log as any).closeReason || "");
     setBitumenTank1Temp(log.bitumenTank1Temp?.toString() || "");
     setBitumenTank2Temp(log.bitumenTank2Temp?.toString() || "");
     setBitumenTank1OpeningDip(log.bitumenTank1OpeningDip?.toString() || "");
@@ -398,7 +413,7 @@ export default function PlantShiftLog() {
 
   type ShiftLogFormData = {
     shiftCode: string; plantStartTime: string; plantStopTime: string;
-    weather: string; ambientTemp: string; operatorName: string; supervisorName: string; remarks: string;
+    weather: string; ambientTemp: string; operatorName: string; supervisorName: string; remarks: string; closeReason: string;
     bitumenTank1Temp: string; bitumenTank2Temp: string;
     bitumenTank1OpeningDip: string; bitumenTank1ClosingDip: string;
     bitumenTank2OpeningDip: string; bitumenTank2ClosingDip: string;
@@ -419,6 +434,7 @@ export default function PlantShiftLog() {
     if (d.operatorName !== undefined) setOperatorName(d.operatorName);
     if (d.supervisorName !== undefined) setSupervisorName(d.supervisorName);
     if (d.remarks !== undefined) setRemarks(d.remarks);
+    if (d.closeReason !== undefined) setCloseReason(d.closeReason);
     if (d.bitumenTank1Temp !== undefined) setBitumenTank1Temp(d.bitumenTank1Temp);
     if (d.bitumenTank2Temp !== undefined) setBitumenTank2Temp(d.bitumenTank2Temp);
     if (d.bitumenTank1OpeningDip !== undefined) setBitumenTank1OpeningDip(d.bitumenTank1OpeningDip);
@@ -443,7 +459,7 @@ export default function PlantShiftLog() {
 
   const formData = useMemo<ShiftLogFormData>(() => ({
     shiftCode, plantStartTime, plantStopTime, weather, ambientTemp,
-    operatorName, supervisorName, remarks,
+    operatorName, supervisorName, remarks, closeReason,
     bitumenTank1Temp, bitumenTank2Temp,
     bitumenTank1OpeningDip, bitumenTank1ClosingDip,
     bitumenTank2OpeningDip, bitumenTank2ClosingDip,
@@ -454,7 +470,7 @@ export default function PlantShiftLog() {
     dryerFedFrom, boilerRunsDuringProduction, noMainPlantOps,
     manpower, idleEvents,
   }), [shiftCode, plantStartTime, plantStopTime, weather, ambientTemp,
-    operatorName, supervisorName, remarks,
+    operatorName, supervisorName, remarks, closeReason,
     bitumenTank1Temp, bitumenTank2Temp,
     bitumenTank1OpeningDip, bitumenTank1ClosingDip,
     bitumenTank2OpeningDip, bitumenTank2ClosingDip,
@@ -568,6 +584,38 @@ export default function PlantShiftLog() {
       return res.json();
     },
   });
+  const { data: dgServerRows } = useQuery<Array<{
+    equipmentId: number;
+    equipmentName: string;
+    usage: any;
+    openingMeterPrefill: number | null;
+    openingDieselPrefill: number | null;
+    prefillFrom: string | null;
+  }>>({
+    queryKey: ["/api/plant-module/shift-logs/dg-readings", date, plantName],
+    enabled: viewMode === "edit" && !!date && !!plantName,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/plant-module/shift-logs/${encodeURIComponent(date)}/dg-readings?plant=${encodeURIComponent(plantName)}`,
+        { credentials: "include" },
+      );
+      if (!response.ok) throw new Error("Could not load DG readings.");
+      return response.json();
+    },
+  });
+  useEffect(() => {
+    if (!dgServerRows) return;
+    setDgReadings(dgServerRows.map(({ equipmentId, equipmentName, usage, openingMeterPrefill, openingDieselPrefill, prefillFrom }) => ({
+      equipmentId,
+      equipmentName,
+      openingReading: (usage?.openingReading ?? openingMeterPrefill) == null ? "" : String(usage?.openingReading ?? openingMeterPrefill),
+      closingReading: usage?.closingReading == null ? "" : String(usage.closingReading),
+      openingDiesel: (usage?.openingDiesel ?? openingDieselPrefill) == null ? "" : String(usage?.openingDiesel ?? openingDieselPrefill),
+      closingDiesel: usage?.dieselBalanceInTank == null ? "" : String(usage.dieselBalanceInTank),
+      prefillFrom,
+    })));
+  }, [dgServerRows]);
   const numOrNullSafe = (s: string) => (s.trim() === "" ? null : parseFloat(s));
   const dipHint = (cm: string) => {
     if (cm.trim() === "") return null;
@@ -600,6 +648,25 @@ export default function PlantShiftLog() {
   const incompleteManpower = manpower.filter(
     m => m.name?.trim() && (!m.contractorName?.trim() || !m.category || !m.gender)
   );
+  const missingClosingReadings = useMemo(() => {
+    const missing: string[] = [];
+    if (!bitumenTank1ClosingDip.trim()) missing.push("Bitumen tank 1 closing dip");
+    if (!bitumenTank2ClosingDip.trim()) missing.push("Bitumen tank 2 closing dip");
+    if (boilerRunsDuringProduction && !ldoTank1ClosingMeter.trim()) missing.push("Boiler fuel meter closing reading");
+    if (!ldoTank2ClosingMeter.trim()) missing.push("Dryer fuel meter closing reading");
+    for (const dg of dgReadings) {
+      if (!dg.closingReading.trim()) missing.push(`${dg.equipmentName} closing hour meter`);
+      if (!dg.closingDiesel.trim()) missing.push(`${dg.equipmentName} closing diesel level`);
+    }
+    return missing;
+  }, [
+    bitumenTank1ClosingDip,
+    bitumenTank2ClosingDip,
+    boilerRunsDuringProduction,
+    ldoTank1ClosingMeter,
+    ldoTank2ClosingMeter,
+    dgReadings,
+  ]);
 
   const saveMutation = useMutation({
     mutationFn: async (extra?: { pin?: string; effectiveDryerFedFrom?: "TANK_1" | "TANK_2" }) => {
@@ -621,6 +688,7 @@ export default function PlantShiftLog() {
         operatorName: operatorName || null,
         supervisorName: supervisorName || null,
         remarks: remarks || null,
+        closeReason: closeReason.trim() || null,
         bitumenTank1Temp: numOrNull(bitumenTank1Temp),
         bitumenTank2Temp: numOrNull(bitumenTank2Temp),
         bitumenTank1OpeningDip: numOrNull(bitumenTank1OpeningDip),
@@ -681,12 +749,34 @@ export default function PlantShiftLog() {
       return res.json();
     },
     onSuccess: async (data: any) => {
+      try {
+        await apiRequest("POST", `/api/plant-module/shift-logs/${encodeURIComponent(date)}/dg-readings`, {
+          plantName,
+          readings: dgReadings.map(reading => ({
+            equipmentId: reading.equipmentId,
+            openingReading: reading.openingReading.trim() === "" ? null : Number(reading.openingReading),
+            closingReading: reading.closingReading.trim() === "" ? null : Number(reading.closingReading),
+            openingDiesel: reading.openingDiesel.trim() === "" ? null : Number(reading.openingDiesel),
+            closingDiesel: reading.closingDiesel.trim() === "" ? null : Number(reading.closingDiesel),
+          })),
+        });
+      } catch (error: any) {
+        setSavedId(data.id);
+        toast({
+          title: "Shift log saved, but DG readings need attention",
+          description: error?.message || "Retry saving the DG readings.",
+          variant: "destructive",
+        });
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/dg-readings", date, plantName] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-flow-readings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-dip-readings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/reconciliation", date, plantName] });
       // Clear the draft now that data is safely on the server.
       clearDraft();
       setSavedId(data.id);
@@ -697,13 +787,14 @@ export default function PlantShiftLog() {
         try {
           await apiRequest("POST", `/api/plant-module/shift-logs/${data.id}/finalize`, { finalizedBy: "operator" });
           finalized = true;
+          queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/reconciliation", date, plantName] });
         } catch { /* the saved log remains pending verification */ }
       }
       setIsFinalized(finalized ? 1 : 0);
       toast({
         title: finalized ? "Shift log saved" : "Shift log saved — pending verification",
       });
-      goBackToList();
+      if (!canVerify) goBackToList();
       // Cross-check: warn if any heating session for the same date+plant has a
       // different dryerFedFrom (non-blocking — stock routing is unchanged).
       // Fire-and-forget so list navigation is not delayed.
@@ -750,6 +841,19 @@ export default function PlantShiftLog() {
     },
   });
 
+  const handleSaveShiftLog = (extra?: { effectiveDryerFedFrom?: "TANK_1" | "TANK_2" }) => {
+    if (canVerify && missingClosingReadings.length > 0 && !closeReason.trim()) {
+      toast({
+        title: "Reason required to close with missing readings",
+        description: `Missing: ${missingClosingReadings.join(", ")}. Enter a reason before closing the day.`,
+        variant: "destructive",
+      });
+      setMoreDetailsOpen(true);
+      return;
+    }
+    saveMutation.mutate(extra);
+  };
+
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDryerMissing, setConfirmDryerMissing] = useState(false);
 
@@ -791,6 +895,19 @@ export default function PlantShiftLog() {
       );
       if (!res.ok) return [];
       return res.json();
+    },
+  });
+
+  const { data: reconciliationData, isLoading: reconciliationLoading, error: reconciliationError } = useQuery<any>({
+    queryKey: ["/api/plant-module/shift-logs/reconciliation", date, plantName],
+    enabled: viewMode === "edit" && !!date && canVerify,
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/plant-module/shift-logs/${encodeURIComponent(date)}/reconciliation?plant=${encodeURIComponent(plantName)}`,
+        { credentials: "include" },
+      );
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).message || "Could not load reconciliation.");
+      return response.json();
     },
   });
 
@@ -1310,7 +1427,7 @@ export default function PlantShiftLog() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            <CardTitle>Header</CardTitle>
+          <CardTitle>Start and end of day</CardTitle>
             <div className="flex items-center gap-2 rounded border border-dashed border-orange-300 bg-orange-50/40 dark:bg-orange-950/20 px-3 py-2">
               <Switch
                 id="no-main-plant-ops"
@@ -1339,21 +1456,104 @@ export default function PlantShiftLog() {
           <div><Label>{noMainPlantOps ? "Shift start" : "Plant start"}</Label><Input type="time" value={plantStartTime} onChange={e => setPlantStartTime(e.target.value)} data-testid="input-plant-start" /></div>
           <div><Label>{noMainPlantOps ? "Shift end" : "Plant stop"}</Label><Input type="time" value={plantStopTime} onChange={e => setPlantStopTime(e.target.value)} data-testid="input-plant-stop" /></div>
           <div><Label>Operator</Label><Input value={operatorName} onChange={e => setOperatorName(e.target.value)} data-testid="input-operator" /></div>
-          <div><Label>Supervisor</Label><Input value={supervisorName} onChange={e => setSupervisorName(e.target.value)} data-testid="input-supervisor" /></div>
-          <div><Label>Weather</Label>
-            <Select value={weather} onValueChange={setWeather}>
-              <SelectTrigger data-testid="select-weather"><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Sunny">Sunny</SelectItem>
-                <SelectItem value="Cloudy">Cloudy</SelectItem>
-                <SelectItem value="Rain">Rain</SelectItem>
-                <SelectItem value="Hot">Hot</SelectItem>
-                <SelectItem value="Cold">Cold</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div><Label>Ambient temp °C</Label><Input type="number" step="0.1" value={ambientTemp} onChange={e => setAmbientTemp(e.target.value)} data-testid="input-ambient-temp" /></div>
           <div><Label>Plant</Label><Input value={plantName} onChange={e => setPlantName(e.target.value)} data-testid="input-plant-name" /></div>
+          <details
+            className="col-span-2 md:col-span-4 rounded-md border px-3 py-2"
+            open={moreDetailsOpen}
+            onToggle={(event) => setMoreDetailsOpen((event.currentTarget as HTMLDetailsElement).open)}
+            data-testid="details-shift-more"
+          >
+            <summary className="cursor-pointer text-sm font-medium">More details</summary>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3">
+              <div><Label>Supervisor</Label><Input value={supervisorName} onChange={e => setSupervisorName(e.target.value)} data-testid="input-supervisor" /></div>
+              <div><Label>Weather</Label>
+                <Select value={weather} onValueChange={setWeather}>
+                  <SelectTrigger data-testid="select-weather"><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Sunny">Sunny</SelectItem>
+                    <SelectItem value="Cloudy">Cloudy</SelectItem>
+                    <SelectItem value="Rain">Rain</SelectItem>
+                    <SelectItem value="Hot">Hot</SelectItem>
+                    <SelectItem value="Cold">Cold</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div><Label>Ambient temperature °C</Label><Input type="number" step="0.1" value={ambientTemp} onChange={e => setAmbientTemp(e.target.value)} data-testid="input-ambient-temp" /></div>
+            </div>
+          </details>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Quick plant actions">
+        {canAddPlantReceipt && (
+          <Link href={`/plant/material-receipts?autoOpen=1&date=${encodeURIComponent(date)}&plant=${encodeURIComponent(plantName)}`}>
+            <Button type="button" variant="outline" className="h-auto min-h-12 w-full whitespace-normal py-2 text-center" data-testid="button-quick-tanker-received">
+              Tanker received
+            </Button>
+          </Link>
+        )}
+        {canEditPlantDay && (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto min-h-12 whitespace-normal py-2 text-center"
+            onClick={() => document.getElementById("plant-idle-events")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            data-testid="button-quick-plant-stopped"
+          >
+            Plant stopped
+          </Button>
+        )}
+        {canEditPlantDay && (
+          <Link href={`/plant/heating-sessions/${encodeURIComponent(date)}?plant=${encodeURIComponent(plantName)}`}>
+            <Button type="button" variant="outline" className="h-auto min-h-12 w-full whitespace-normal py-2 text-center" data-testid="button-quick-preheat">
+              Night / day preheat
+            </Button>
+          </Link>
+        )}
+        {canEditPlantDay && (
+          <Link href={`/plant/equipment-usage?date=${encodeURIComponent(date)}&plant=${encodeURIComponent(plantName)}`}>
+            <Button type="button" variant="outline" className="h-auto min-h-12 w-full whitespace-normal py-2 text-center" data-testid="button-quick-dg-readings">
+              DG hour meter and diesel
+            </Button>
+          </Link>
+        )}
+      </div>
+
+      <Card data-testid="card-dg-readings">
+        <CardHeader><CardTitle>DG hour meter and diesel level</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          {dgReadings.length === 0 && (
+            <p className="text-sm text-muted-foreground">No active generator equipment is linked to this plant.</p>
+          )}
+          {dgReadings.map((reading, index) => (
+            <div key={reading.equipmentId} className="rounded-md border p-3">
+              <p className="mb-3 font-medium">{reading.equipmentName}</p>
+              {reading.prefillFrom && <p className="mb-2 text-xs text-muted-foreground">Opening values prefilled from {reading.prefillFrom}.</p>}
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  ["openingReading", "Opening hour meter"],
+                  ["closingReading", "Closing hour meter"],
+                  ["openingDiesel", "Opening diesel level (L)"],
+                  ["closingDiesel", "Closing diesel level (L)"],
+                ] as const).map(([field, label]) => (
+                  <div key={field}>
+                    <Label htmlFor={`dg-${reading.equipmentId}-${field}`}>{label}</Label>
+                    <Input
+                      id={`dg-${reading.equipmentId}-${field}`}
+                      type="number"
+                      min="0"
+                      step={field.includes("Reading") ? "0.1" : "0.1"}
+                      value={reading[field]}
+                      onChange={event => setDgReadings(current => current.map((row, rowIndex) =>
+                        rowIndex === index ? { ...row, [field]: event.target.value } : row
+                      ))}
+                      data-testid={`input-dg-${reading.equipmentId}-${field}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </CardContent>
       </Card>
 
@@ -1364,7 +1564,7 @@ export default function PlantShiftLog() {
           <CardTitle>Bitumen Tanks (Theoretical)</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div><Label>Bitumen tank 1 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank1Temp} onChange={e => setBitumenTank1Temp(e.target.value)} data-testid="input-bitumen-t1-temp" /></div>
+          {moreDetailsOpen && <div><Label>Bitumen tank 1 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank1Temp} onChange={e => setBitumenTank1Temp(e.target.value)} data-testid="input-bitumen-t1-temp" /></div>}
           <div>
             <Label>Bitumen tank 1 — opening dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank1OpeningDip} onChange={e => { setBitumenTank1OpeningDip(e.target.value); setAutoFillBitumenT1Source(""); autoFilledBitumenT1Ref.current = null; }} data-testid="input-bitumen-t1-open" />
@@ -1385,7 +1585,7 @@ export default function PlantShiftLog() {
             )}
           </div>
           <div />
-          <div><Label>Bitumen tank 2 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank2Temp} onChange={e => setBitumenTank2Temp(e.target.value)} data-testid="input-bitumen-t2-temp" /></div>
+          {moreDetailsOpen && <div><Label>Bitumen tank 2 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank2Temp} onChange={e => setBitumenTank2Temp(e.target.value)} data-testid="input-bitumen-t2-temp" /></div>}
           <div>
             <Label>Bitumen tank 2 — opening dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank2OpeningDip} onChange={e => { setBitumenTank2OpeningDip(e.target.value); setAutoFillBitumenT2Source(""); autoFilledBitumenT2Ref.current = null; }} data-testid="input-bitumen-t2-open" />
@@ -1502,8 +1702,8 @@ export default function PlantShiftLog() {
           <div><Label>Dryer fuel consumed (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{ldoTotal.t2?.toFixed(2) ?? "—"}</div></div>
           <div><Label>Total LDO (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold" data-testid="text-ldo-total">{ldoTotal.total ? ldoTotal.total.toFixed(2) : "—"}</div></div>
 
-          {/* Task #344 — LDO dip-stick readings */}
-          <div className="col-span-2 md:col-span-4 border-t pt-3 mt-1">
+          {/* Optional LDO dip-stick readings remain available in More details. */}
+          {moreDetailsOpen && <div className="col-span-2 md:col-span-4 border-t pt-3 mt-1">
             <p className="text-sm font-medium text-muted-foreground mb-2">LDO Tank Dip-Stick Readings</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
@@ -1571,7 +1771,7 @@ export default function PlantShiftLog() {
                 );
               })()}
             </div>
-          </div>
+          </div>}
 
           {/* Task #325/#372 — live LDO efficiency stats strip. Updates as the
               operator types closing readings, changes plant start/stop times,
@@ -1703,7 +1903,7 @@ export default function PlantShiftLog() {
         </CardContent>
       </Card>
 
-      <Card>
+      {moreDetailsOpen && <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Manpower ({manpower.length})</CardTitle>
@@ -1744,9 +1944,9 @@ export default function PlantShiftLog() {
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card>}
 
-      {!noMainPlantOps && <Card>
+      <Card id="plant-idle-events">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Idle Events ({idleEvents.length})</CardTitle>
@@ -1790,7 +1990,7 @@ export default function PlantShiftLog() {
             </div>
           )}
         </CardContent>
-      </Card>}
+      </Card>
 
       {/* Manpower modal */}
       <Dialog open={mpDialogOpen} onOpenChange={setMpDialogOpen}>
@@ -1857,6 +2057,99 @@ export default function PlantShiftLog() {
         </DialogContent>
       </Dialog>
 
+      {canVerify && (
+        <Card data-testid="card-end-of-day-reconciliation">
+          <CardHeader><CardTitle>End-of-day reconciliation</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            {reconciliationLoading && <p className="text-sm text-muted-foreground">Loading reconciliation…</p>}
+            {reconciliationError && <p className="text-sm text-destructive">Reconciliation could not be loaded.</p>}
+            {reconciliationData?.reconciliation && (() => {
+              const report = reconciliationData.reconciliation;
+              const bitumen = report.bitumen || {};
+              const ldo = report.ldo || {};
+              const number = (value: unknown, digits = 2) =>
+                value == null || !Number.isFinite(Number(value)) ? "—" : Number(value).toFixed(digits);
+              return (
+                <>
+                  <div>
+                    <h3 className="font-medium">Bitumen (MT)</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Opening {number(bitumen.openingMT, 3)} + received {number(bitumen.receivedMT, 3)} − closing {number(bitumen.closingMT, 3)} = actual {number(bitumen.actualUsedMT, 3)}
+                    </p>
+                    <p className="text-sm">Theoretical {number(bitumen.theoreticalMT, 3)} · Difference {number(bitumen.differenceMT, 3)} MT</p>
+                  </div>
+                  <div>
+                    <h3 className="font-medium">LDO (L)</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Boiler {number(ldo.boilerLitres, 1)} L · Dryer {number(ldo.dryerLitres, 1)} L · Heating sessions {number(ldo.heatingSessionLitres, 1)} L
+                    </p>
+                    <p className="text-sm">
+                      Theoretical {number(ldo.theoreticalLitres, 1)} L · Difference {number(ldo.differenceLitres, 1)} L · {number(ldo.litresPerMT, 3)} L/MT
+                    </p>
+                  </div>
+                  {Array.isArray(report.generators) && report.generators.length > 0 && (
+                    <div>
+                      <h3 className="font-medium">DG</h3>
+                      <div className="space-y-1">
+                        {report.generators.map((generator: any) => (
+                          <p key={generator.id} className="text-sm">
+                            {generator.generatorName}: {number(generator.hoursRun, 2)} hours · {number(generator.consumed, 1)} L · {number(generator.lPerHr, 2)} L/hour
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {Array.isArray(report.byPartyAndMix) && report.byPartyAndMix.length > 0 && (
+                    <div>
+                      <h3 className="font-medium">Trucks by party/job and mix</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead><tr className="border-b text-left"><th className="py-1 pr-3">Party/job</th><th className="py-1 pr-3">Mix</th><th className="py-1 pr-3">Trucks</th><th className="py-1 text-right">MT</th></tr></thead>
+                          <tbody>
+                            {report.byPartyAndMix.map((row: any, index: number) => (
+                              <tr key={`${row.partyName}-${row.mixName}-${index}`} className="border-b last:border-0">
+                                <td className="py-1 pr-3">{row.partyName}</td><td className="py-1 pr-3">{row.mixName}</td>
+                                <td className="py-1 pr-3">{row.loads}</td><td className="py-1 text-right">{number(row.mt, 3)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  {Array.isArray(report.missingReadings) && report.missingReadings.length > 0 && (
+                    <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:bg-amber-950/20" data-testid="list-missing-plant-readings">
+                      <h3 className="font-medium">Missing readings</h3>
+                      <ul className="list-disc pl-5 text-sm">
+                        {report.missingReadings.map((item: string) => <li key={item}>{item}</li>)}
+                      </ul>
+                      {report.closeReason && <p className="mt-2 text-sm">Close reason: {report.closeReason}</p>}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+            {canVerify && missingClosingReadings.length > 0 && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:bg-amber-950/20">
+                <p className="font-medium">Missing closing readings</p>
+                <ul className="list-disc pl-5 text-sm">
+                  {missingClosingReadings.map(item => <li key={item}>{item}</li>)}
+                </ul>
+                <Label htmlFor="plant-close-reason" className="mt-2 block">Reason for closing without these readings</Label>
+                <Textarea
+                  id="plant-close-reason"
+                  rows={2}
+                  value={closeReason}
+                  onChange={event => setCloseReason(event.target.value)}
+                  placeholder="Required to close the day"
+                  data-testid="input-plant-close-reason"
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader><CardTitle>Remarks (End-of-Day)</CardTitle></CardHeader>
         <CardContent>
@@ -1876,14 +2169,14 @@ export default function PlantShiftLog() {
             if (!noMainPlantOps && dryerFedFrom === null) {
               setConfirmDryerMissing(true);
             } else {
-              saveMutation.mutate(undefined);
+              handleSaveShiftLog();
             }
           }}
           disabled={saveMutation.isPending}
           data-testid="button-save"
         >
           {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
-          Save & Close
+          {canVerify ? "Close day" : "Save shift log"}
         </Button>
       </div>
       </>}
@@ -1928,7 +2221,7 @@ export default function PlantShiftLog() {
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-dryer-missing-cancel">Go back and select</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => { setConfirmDryerMissing(false); saveMutation.mutate({ effectiveDryerFedFrom: "TANK_2" }); }}
+              onClick={() => { setConfirmDryerMissing(false); handleSaveShiftLog({ effectiveDryerFedFrom: "TANK_2" }); }}
               data-testid="button-dryer-missing-confirm"
             >
               Proceed with Tank 2

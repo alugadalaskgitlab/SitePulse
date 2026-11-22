@@ -143,6 +143,8 @@ export default function PlantMaterialReceipts() {
     const params = new URLSearchParams(searchString);
     if (!params.get("autoOpen")) return null;
     return {
+      date: params.get("date") ?? "",
+      plantName: params.get("plant") ?? "",
       piRef: params.get("piRef") ?? "",
       piItemId: params.get("piItemId") ? parseInt(params.get("piItemId")!, 10) : null,
       materialId: params.get("materialId") ?? "",
@@ -229,6 +231,7 @@ export default function PlantMaterialReceipts() {
   
   // Form state
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [receiptPlantName, setReceiptPlantName] = useState("");
   const [time, setTime] = useState(format(new Date(), "HH:mm"));
   const [partyId, setPartyId] = useState<string>("");
   const [materialId, setMaterialId] = useState<string>("");
@@ -375,6 +378,8 @@ export default function PlantMaterialReceipts() {
   useEffect(() => {
     if (autoOpenParams && !autoOpenDone && !editingReceipt) {
       setAutoOpenDone(true);
+      if (autoOpenParams.date) setDate(autoOpenParams.date);
+      if (autoOpenParams.plantName) setReceiptPlantName(autoOpenParams.plantName);
       if (autoOpenParams.materialId) setMaterialId(autoOpenParams.materialId);
       if (autoOpenParams.piRef) { setIndentRef(autoOpenParams.piRef); setIndentLockedFromPi(true); }
       if (autoOpenParams.piItemId) setSelectedPendingPiItemId(autoOpenParams.piItemId);
@@ -792,6 +797,7 @@ export default function PlantMaterialReceipts() {
     const now = new Date();
     setStagedPhotos([]);
     setDate(format(now, "yyyy-MM-dd"));
+    setReceiptPlantName("");
     setTime(format(now, "HH:mm"));
     setPartyId("");
     setMaterialId("");
@@ -943,7 +949,7 @@ export default function PlantMaterialReceipts() {
       const data = {
         date,
         time,
-        plantName: defaultPlantName,
+        plantName: receiptPlantName || defaultPlantName,
         partyId: parseInt(partyId),
         isPlantCommon: 0,
         materialId: parseInt(materialId),

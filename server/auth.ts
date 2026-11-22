@@ -568,6 +568,8 @@ export const PUBLIC_API_PATHS = new Set<string>([
   "/api/auth/me",
   "/api/auth/logout",
   "/api/auth/device-status",
+  // DispatchPro reports truck arrival/unloading with its shared integration key.
+  "/api/integrations/dispatchpro/status",
   // Feature flags — read before the user is authenticated.
   "/api/config",
   // Estimator portal — separate auth.

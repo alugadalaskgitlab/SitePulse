@@ -613,6 +613,7 @@ export type InsertPlantSettings = z.infer<typeof insertPlantSettingsSchema>;
 export const parties = pgTable("parties", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  dispatchProSiteId: text("dispatchpro_site_id"),
   notes: text("notes"),
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
@@ -806,12 +807,42 @@ export const truckDispatches = pgTable("truck_dispatches", {
   adjustedAt: timestamp("adjusted_at"), // When actual was changed from theoretical
   ownerName: text("owner_name"),
   driverName: text("driver_name"),
+  driverMobile: text("driver_mobile"),
   transportEquipmentId: integer("transport_equipment_id"), // FK to equipment_master for truck/tipper
   notes: text("notes"),
   plantName: text("plant_name").notNull().default("Main Plant"),
+  dispatchProId: text("dispatchpro_id"),
+  dispatchProChallanNo: text("dispatchpro_challan_no"),
+  dispatchProStatus: text("dispatchpro_status"),
+  dispatchProSyncStatus: text("dispatchpro_sync_status"),
+  dispatchProArrivedAt: timestamp("dispatchpro_arrived_at"),
+  dispatchProArrivedByName: text("dispatchpro_arrived_by_name"),
+  dispatchProLeftAt: timestamp("dispatchpro_left_at"),
+  dispatchProLeftByName: text("dispatchpro_left_by_name"),
+  dispatchProLastError: text("dispatchpro_last_error"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("truck_dispatches_date_idx").on(table.date),
+}));
+
+export const dispatchProOutbox = pgTable("dispatchpro_outbox", {
+  id: serial("id").primaryKey(),
+  dispatchId: integer("dispatch_id").notNull(),
+  externalRef: text("external_ref").notNull(),
+  operation: text("operation").notNull(), // create | patch | cancel
+  payload: jsonb("payload").notNull(),
+  status: text("status").notNull().default("pending"), // pending | sending | retry | sent | failed
+  attemptCount: integer("attempt_count").notNull().default(0),
+  nextAttemptAt: timestamp("next_attempt_at").notNull().defaultNow(),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => ({
+  dueIdx: index("dispatchpro_outbox_due_idx").on(table.status, table.nextAttemptAt, table.id),
+  dispatchIdx: index("dispatchpro_outbox_dispatch_idx").on(table.dispatchId, table.id),
+  externalRefIdx: index("dispatchpro_outbox_external_ref_idx").on(table.externalRef),
 }));
 
 // Equipment Usage Entry (with meter readings and diesel tank tracking)
@@ -1645,6 +1676,7 @@ export const SHIFT_IDLE_REASONS = [
   "Electrical",
   "Motor Tripping",
   "No Demand",
+  "No Truck",
   "Power Failure",
   "Rain",
   "Other",
@@ -1696,6 +1728,7 @@ export const plantShiftLogs = pgTable("plant_shift_logs", {
   operatorName: text("operator_name"),
   supervisorName: text("supervisor_name"),
   remarks: text("remarks"),
+  closeReason: text("close_reason"),
   isFinalized: integer("is_finalized").notNull().default(0),
   finalizedBy: text("finalized_by"),
   finalizedAt: timestamp("finalized_at"),

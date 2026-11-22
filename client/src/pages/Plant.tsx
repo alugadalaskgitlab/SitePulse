@@ -2482,7 +2482,7 @@ export function SitesMasterSection() {
 
 export function PartyMaster() {
   const { toast } = useToast();
-  const { sectionCan, featureCan } = useAuth();
+  const { sectionCan, featureCan, user } = useAuth();
   const canEdit = sectionCan("master_parties", "edit");
   const canCreate = sectionCan("master_parties", "create");
   const canDelete = featureCan("masters", "cancel");
@@ -2491,6 +2491,7 @@ export function PartyMaster() {
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
+  const [dispatchProSiteId, setDispatchProSiteId] = useState("");
 
   const exportToExcel = (data: Party[]) => {
     const ws = XLSX.utils.json_to_sheet(data.map(p => ({ Name: p.name, Notes: p.notes || "" })));
@@ -2508,8 +2509,18 @@ export function PartyMaster() {
     queryKey: ["/api/plant-module/parties"],
   });
 
+  const dispatchProSitesQuery = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: ["/api/plant-module/dispatchpro/sites"],
+    enabled: !!user?.isOwner,
+    queryFn: async () => {
+      const response = await fetch("/api/plant-module/dispatchpro/sites", { credentials: "include" });
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).message || "Could not load DispatchPro sites.");
+      return response.json();
+    },
+  });
+
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; notes?: string }) =>
+    mutationFn: (data: { name: string; notes?: string; dispatchProSiteId?: string | null }) =>
       apiRequest("POST", "/api/plant-module/parties", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/parties"] });
@@ -2527,7 +2538,7 @@ export function PartyMaster() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { name: string; notes?: string } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { name: string; notes?: string; dispatchProSiteId?: string | null } }) =>
       apiRequest("PATCH", `/api/plant-module/parties/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/parties"] });
@@ -2563,15 +2574,27 @@ export function PartyMaster() {
   const resetForm = () => {
     setName("");
     setNotes("");
+    setDispatchProSiteId("");
     setEditingParty(null);
   };
 
   const handleSubmit = () => {
     if (!name.trim()) return;
     if (editingParty) {
-      updateMutation.mutate({ id: editingParty.id, data: { name, notes } });
+      updateMutation.mutate({
+        id: editingParty.id,
+        data: {
+          name,
+          notes,
+          ...(user?.isOwner ? { dispatchProSiteId: dispatchProSiteId || null } : {}),
+        },
+      });
     } else {
-      createMutation.mutate({ name, notes });
+      createMutation.mutate({
+        name,
+        notes,
+        ...(user?.isOwner && dispatchProSiteId ? { dispatchProSiteId } : {}),
+      });
     }
   };
 
@@ -2579,6 +2602,7 @@ export function PartyMaster() {
     setEditingParty(party);
     setName(party.name);
     setNotes(party.notes || "");
+    setDispatchProSiteId(party.dispatchProSiteId || "");
     setDialogOpen(true);
   };
 
@@ -2633,6 +2657,31 @@ export function PartyMaster() {
                   data-testid="input-party-notes"
                 />
               </div>
+              {user?.isOwner && (
+                <div>
+                  <Label htmlFor="party-dispatchpro-site">DispatchPro site</Label>
+                  <select
+                    id="party-dispatchpro-site"
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={dispatchProSiteId}
+                    onChange={(event) => setDispatchProSiteId(event.target.value)}
+                    disabled={dispatchProSitesQuery.isLoading || dispatchProSitesQuery.isError}
+                    data-testid="select-party-dispatchpro-site"
+                  >
+                    <option value="">Not linked</option>
+                    {(dispatchProSitesQuery.data || []).map((site) => (
+                      <option key={site.id} value={site.id}>{site.name}</option>
+                    ))}
+                  </select>
+                  {dispatchProSitesQuery.isError && (
+                    <p className="mt-1 text-xs text-destructive">
+                      {dispatchProSitesQuery.error instanceof Error
+                        ? dispatchProSitesQuery.error.message
+                        : "Could not load DispatchPro sites."}
+                    </p>
+                  )}
+                </div>
+              )}
               <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-save-party">
                 {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingParty ? "Update" : "Create"}
               </Button>

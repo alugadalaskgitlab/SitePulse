@@ -6,8 +6,9 @@ import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
+import { formatPersonName } from "@shared/personName";
 import { cn } from "@/lib/utils";
 import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterType, PlantSettings } from "@shared/schema";
 
@@ -40,6 +42,7 @@ export default function PlantDispatches() {
   const canExport = sectionCan("plant_production", "export");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [lastSavedDispatch, setLastSavedDispatch] = useState<TruckDispatch | null>(null);
   const [editingDispatch, setEditingDispatch] = useState<TruckDispatch | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -124,13 +127,16 @@ export default function PlantDispatches() {
   const [deliveryLocation, setDeliveryLocation] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [driverName, setDriverName] = useState("");
+  const [driverMobile, setDriverMobile] = useState("");
   const [actualBitumenPercent, setActualBitumenPercent] = useState("");
   const [actualLdoLiters, setActualLdoLiters] = useState("");
+  const [actualAdjustmentReason, setActualAdjustmentReason] = useState("");
   const [bitumenTankNumber, setBitumenTankNumber] = useState("1");
   const [ldoTankNumber, setLdoTankNumber] = useState("1");
   const [transportEquipmentId, setTransportEquipmentId] = useState<number | null>(null);
   const [truckComboOpen, setTruckComboOpen] = useState(false);
   const [overrideTolerance, setOverrideTolerance] = useState(false);
+  const [moreDetailsOpen, setMoreDetailsOpen] = useState(false);
   
   // Tolerance constant (±10%)
   const TOLERANCE_PERCENT = 10;
@@ -145,6 +151,7 @@ export default function PlantDispatches() {
     deliveryLocation: string;
     ownerName: string;
     driverName: string;
+    driverMobile: string;
     actualBitumenPercent: string;
     actualLdoLiters: string;
     bitumenTankNumber: string;
@@ -152,8 +159,8 @@ export default function PlantDispatches() {
   }
 
   const formData = useMemo<DispatchFormData>(() => ({
-    date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, actualBitumenPercent, actualLdoLiters, bitumenTankNumber, ldoTankNumber
-  }), [date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, actualBitumenPercent, actualLdoLiters, bitumenTankNumber, ldoTankNumber]);
+    date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, driverMobile, actualBitumenPercent, actualLdoLiters, bitumenTankNumber, ldoTankNumber
+  }), [date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, driverMobile, actualBitumenPercent, actualLdoLiters, bitumenTankNumber, ldoTankNumber]);
 
   const handleRestoreDraft = useCallback((data: DispatchFormData) => {
     setDate(data.date);
@@ -165,6 +172,7 @@ export default function PlantDispatches() {
     setDeliveryLocation(data.deliveryLocation);
     setOwnerName(data.ownerName || "");
     setDriverName(data.driverName || "");
+    setDriverMobile(data.driverMobile || "");
     setActualBitumenPercent(data.actualBitumenPercent);
     setActualLdoLiters(data.actualLdoLiters || "");
     setBitumenTankNumber(data.bitumenTankNumber || "1");
@@ -192,6 +200,7 @@ export default function PlantDispatches() {
 
   const { data: dispatches, isLoading } = useQuery<TruckDispatch[]>({
     queryKey: ["/api/plant-module/dispatches"],
+    refetchInterval: 15_000,
   });
 
   const { data: parties } = useQuery<Party[]>({
@@ -314,8 +323,25 @@ export default function PlantDispatches() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/dispatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
-      setDialogOpen(false);
-      resetForm();
+      const savedDispatch = (result as any).dispatch as TruckDispatch | undefined;
+      if (savedDispatch?.id) {
+        setLastSavedDispatch(savedDispatch);
+        resetForm();
+        const now = new Date();
+        const today = format(now, "yyyy-MM-dd");
+        setDate(today);
+        setTime(format(now, "HH:mm"));
+        if (savedDispatch.date === today) {
+          setPartyId(String(savedDispatch.partyId));
+          setMixTemplateId(String(savedDispatch.mixTemplateId));
+          setDeliveryLocation(savedDispatch.deliveryLocation || "");
+          setBitumenTankNumber(String(savedDispatch.bitumenTankNumber || 1));
+          setLdoTankNumber(String(savedDispatch.ldoTankNumber || 1));
+        }
+        setDialogOpen(true);
+      } else {
+        setDialogOpen(false);
+      }
       toast({ title: "Dispatch recorded successfully" });
     },
   });
@@ -358,6 +384,15 @@ export default function PlantDispatches() {
     },
   });
 
+  const retryDispatchProMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("POST", `/api/plant-module/dispatches/${id}/dispatchpro/retry`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/dispatches"] });
+      toast({ title: "DispatchPro retry queued" });
+    },
+    onError: (error: Error) => toast({ title: "Retry could not be queued", description: error.message, variant: "destructive" }),
+  });
+
   const resetForm = () => {
     setDate(format(new Date(), "yyyy-MM-dd"));
     setTime(format(new Date(), "HH:mm"));
@@ -368,13 +403,36 @@ export default function PlantDispatches() {
     setDeliveryLocation("");
     setOwnerName("");
     setDriverName("");
+    setDriverMobile("");
     setActualBitumenPercent("");
     setActualLdoLiters("");
+    setActualAdjustmentReason("");
     setBitumenTankNumber("1");
     setLdoTankNumber("1");
     setTransportEquipmentId(null);
     setEditingDispatch(null);
     setOverrideTolerance(false);
+    setMoreDetailsOpen(false);
+  };
+
+  const openNewDispatchDialog = () => {
+    resetForm();
+    const now = new Date();
+    const day = format(now, "yyyy-MM-dd");
+    const latestToday = (dispatches || [])
+      .filter(d => d.date === day && (filterPlantName === "all" || d.plantName === filterPlantName))
+      .slice()
+      .sort((a, b) => (b.time || "").localeCompare(a.time || ""))[0];
+    setDate(day);
+    setTime(format(now, "HH:mm"));
+    if (latestToday) {
+      setPartyId(String(latestToday.partyId));
+      setMixTemplateId(String(latestToday.mixTemplateId));
+      setDeliveryLocation(latestToday.deliveryLocation || "");
+      setBitumenTankNumber(String(latestToday.bitumenTankNumber || 1));
+      setLdoTankNumber(String(latestToday.ldoTankNumber || 1));
+    }
+    setDialogOpen(true);
   };
 
   const openEditDialog = (dispatch: TruckDispatch) => {
@@ -388,12 +446,15 @@ export default function PlantDispatches() {
     setDeliveryLocation(dispatch.deliveryLocation || "");
     setOwnerName(dispatch.ownerName || "");
     setDriverName(dispatch.driverName || "");
-    setActualBitumenPercent(dispatch.actualBitumenPercent ? String(dispatch.actualBitumenPercent) : "");
+    setDriverMobile((dispatch as any).driverMobile || "");
+    setActualBitumenPercent(dispatch.actualBitumenPercent != null ? String(dispatch.actualBitumenPercent) : "");
     setActualLdoLiters(dispatch.actualLdoQty != null ? String(dispatch.actualLdoQty) : "");
+    setActualAdjustmentReason("");
     setBitumenTankNumber(dispatch.bitumenTankNumber ? String(dispatch.bitumenTankNumber) : "1");
     setLdoTankNumber(dispatch.ldoTankNumber ? String(dispatch.ldoTankNumber) : "1");
     setTransportEquipmentId(dispatch.transportEquipmentId || null);
     setOverrideTolerance(false);
+    setMoreDetailsOpen(true);
     setDialogOpen(true);
   };
 
@@ -451,6 +512,11 @@ export default function PlantDispatches() {
     
     return result;
   }, [theoreticalValues, actualBitumenPercent, actualLdoLiters, loadWeight, TOLERANCE_PERCENT]);
+
+  const actualConsumptionChanged = !!editingDispatch && (
+    (actualBitumenPercent ? Number(actualBitumenPercent) : null) !== (editingDispatch.actualBitumenPercent ?? null) ||
+    (actualLdoLiters ? Number(actualLdoLiters) : null) !== (editingDispatch.actualLdoQty ?? null)
+  );
   
   // Check if values exceed tolerance (block submission unless admin override is active)
   const hasToleranceViolation = validationStatus.bitumen === "error" || validationStatus.ldo === "error";
@@ -466,6 +532,22 @@ export default function PlantDispatches() {
 
   const handleSubmit = () => {
     if (!partyId || !mixTemplateId || !truckNumber || !loadWeight) return;
+
+    const nextActualBitumenPercent = actualBitumenPercent ? Number(actualBitumenPercent) : null;
+    const nextActualLdoQty = actualLdoLiters ? Number(actualLdoLiters) : null;
+    const actualConsumptionChanged = !!editingDispatch && (
+      nextActualBitumenPercent !== (editingDispatch.actualBitumenPercent ?? null) ||
+      nextActualLdoQty !== (editingDispatch.actualLdoQty ?? null)
+    );
+    if (actualConsumptionChanged && !actualAdjustmentReason.trim()) {
+      toast({
+        title: "Reason required",
+        description: "Enter a reason for changing actual bitumen or LDO.",
+        variant: "destructive",
+      });
+      setMoreDetailsOpen(true);
+      return;
+    }
     
     // Block submission if actual values exceed tolerance
     if (hasToleranceError) {
@@ -493,8 +575,10 @@ export default function PlantDispatches() {
           deliveryLocation,
           ownerName: ownerName || null,
           driverName: driverName || null,
+          driverMobile: driverMobile || null,
           actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
           actualLdoQty,
+          adjustmentReason: actualConsumptionChanged ? actualAdjustmentReason.trim() : undefined,
           adjustedBy: authenticatedRole,
           bitumenTankNumber: parseInt(bitumenTankNumber) || 1,
           ldoTankNumber: parseInt(ldoTankNumber) || 1,
@@ -513,6 +597,7 @@ export default function PlantDispatches() {
         deliveryLocation,
         ownerName: ownerName || null,
         driverName: driverName || null,
+        driverMobile: driverMobile || null,
         actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
         actualLdoQty,
         bitumenTankNumber: parseInt(bitumenTankNumber) || 1,
@@ -552,7 +637,12 @@ export default function PlantDispatches() {
   const handlePrintClick = () => handlePrint();
 
   const selectedTemplate = templates?.find(t => t.id === parseInt(mixTemplateId));
-  const uniqueVehicles = Array.from(new Set(dispatches?.map(d => d.truckNumber) || [])).sort();
+  const uniqueVehicles = Array.from(new Set(
+    (dispatches || [])
+      .slice()
+      .sort((a, b) => b.date.localeCompare(a.date) || (b.time || "").localeCompare(a.time || ""))
+      .map(d => d.truckNumber)
+  ));
   const uniqueOwners = Array.from(new Set(dispatches?.map(d => d.ownerName).filter(Boolean) || [])).sort() as string[];
 
   // Filter dispatches
@@ -591,6 +681,19 @@ export default function PlantDispatches() {
     };
   }, [filteredDispatches]);
 
+  const statementMixTotals = useMemo(() => {
+    const totals = new Map<string, { mix: string; loads: number; mt: number }>();
+    for (const dispatch of filteredDispatches) {
+      const template = templates?.find(t => t.id === dispatch.mixTemplateId);
+      const mix = template?.name || template?.mixType || "Unknown mix";
+      const current = totals.get(mix) || { mix, loads: 0, mt: 0 };
+      current.loads += 1;
+      current.mt += Number(dispatch.loadWeight) || 0;
+      totals.set(mix, current);
+    }
+    return Array.from(totals.values()).sort((a, b) => a.mix.localeCompare(b.mix));
+  }, [filteredDispatches, templates]);
+
   // Group filtered dispatches by date
   const groupedDispatches = filteredDispatches.reduce((acc, dispatch) => {
     const dateKey = dispatch.date;
@@ -617,7 +720,8 @@ export default function PlantDispatches() {
     const vehicleFilter = filterVehicle !== "all" ? filterVehicle.replace(/\s+/g, '') : "";
     const ownerFilter = filterOwner !== "all" ? filterOwner.replace(/\s+/g, '') : "";
     const filters = [partyFilter, mixTypeFilter, vehicleFilter, ownerFilter].filter(Boolean).join("_");
-    return `SiteLog_Plant_Dispatches_${fromDate}_to_${toDate}${filters ? "_" + filters : ""}_${timestamp}.${extension}`;
+    const prefix = filterPartyId !== "all" ? "SitePulse_Party_Statement" : "SiteLog_Plant_Dispatches";
+    return `${prefix}_${fromDate}_to_${toDate}${filters ? "_" + filters : ""}_${timestamp}.${extension}`;
   };
 
   // Universal download function that works on all devices including iPad
@@ -641,20 +745,26 @@ export default function PlantDispatches() {
         return {
           Date: d.date,
           Time: d.time || "",
+          Challan: d.dispatchProChallanNo || "",
           Party: getPartyName(d.partyId),
           Site: d.deliveryLocation || "",
-          "Mix Type": template?.mixType || "",
+          Mix: template?.name || template?.mixType || "",
           "Load (MT)": d.loadWeight,
           Vehicle: d.truckNumber,
-          Owner: d.ownerName || "",
           Driver: d.driverName || "",
-          "Bitumen (MT)": d.theoreticalBitumenQty?.toFixed(3) || "0",
-          "LDO (L)": d.theoreticalLdoQty?.toFixed(3) || "0",
+          "Driver mobile": d.driverMobile || "",
+          "Arrived at": d.dispatchProArrivedAt ? format(new Date(d.dispatchProArrivedAt), "dd MMM yyyy HH:mm") : "",
+          "Arrived by": d.dispatchProArrivedByName || "",
+          "Unloaded at": d.dispatchProLeftAt ? format(new Date(d.dispatchProLeftAt), "dd MMM yyyy HH:mm") : "",
+          "Unloaded by": d.dispatchProLeftByName || "",
         };
       });
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Dispatches");
+      XLSX.utils.book_append_sheet(wb, ws, filterPartyId !== "all" ? "Party statement" : "Dispatches");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+        statementMixTotals.map(row => ({ Mix: row.mix, Loads: row.loads, "Total (MT)": Number(row.mt.toFixed(3)) }))
+      ), "Totals by mix");
       
       const filename = buildFilename("xlsx");
       
@@ -694,11 +804,12 @@ export default function PlantDispatches() {
     try {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       doc.setFontSize(16);
-      doc.text("Plant Production and Dispatches Report", 14, 15);
+      doc.text(filterPartyId !== "all" ? "Party daily statement" : "Plant production and dispatches report", 14, 15);
       doc.setFontSize(10);
       doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
+      if (filterPartyId !== "all") doc.text(`Party: ${formatPersonName(getPartyName(Number(filterPartyId)))}`, 14, 28);
       if (filterDateFrom || filterDateTo) {
-        doc.text(`Date Range: ${filterDateFrom || "Start"} to ${filterDateTo || "End"}`, 14, 28);
+        doc.text(`Date range: ${filterDateFrom || "Start"} to ${filterDateTo || "End"}`, 14, filterPartyId !== "all" ? 34 : 28);
       }
       
       const tableData = filteredDispatches.map(d => {
@@ -706,25 +817,33 @@ export default function PlantDispatches() {
         return [
           d.date,
           d.time || "-",
-          getPartyName(d.partyId),
-          d.deliveryLocation || "-",
-          template?.mixType || "-",
-          `${d.loadWeight}`,
+          d.dispatchProChallanNo || "-",
           d.truckNumber,
-          d.ownerName || "-",
-          d.driverName || "-",
-          d.theoreticalBitumenQty?.toFixed(3) || "0",
-          d.theoreticalLdoQty?.toFixed(3) || "0",
+          formatPersonName(getPartyName(d.partyId)),
+          template?.name || template?.mixType || "-",
+          `${d.loadWeight} MT`,
+          d.dispatchProArrivedAt ? format(new Date(d.dispatchProArrivedAt), "dd MMM HH:mm") : "-",
+          d.dispatchProLeftAt ? format(new Date(d.dispatchProLeftAt), "dd MMM HH:mm") : "-",
         ];
       });
       
       autoTable(doc, {
-        startY: filterDateFrom || filterDateTo ? 34 : 28,
-        head: [["Date", "Time", "Party", "Site", "Mix", "Load", "Vehicle", "Owner", "Driver", "Bitumen", "LDO"]],
+        startY: filterDateFrom || filterDateTo ? (filterPartyId !== "all" ? 40 : 34) : (filterPartyId !== "all" ? 34 : 28),
+        head: [["Date", "Time", "Challan", "Vehicle", "Party/job", "Mix", "Load", "Arrived", "Unloaded"]],
         body: tableData,
-        theme: "striped",
-        headStyles: { fillColor: [59, 130, 246] },
-        styles: { fontSize: 8 },
+        theme: "grid",
+        headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineColor: [80, 80, 80], lineWidth: 0.2 },
+        styles: { fontSize: 7, textColor: [0, 0, 0], lineColor: [160, 160, 160], lineWidth: 0.1, cellPadding: 1.2 },
+        margin: { left: 14, right: 14 },
+      });
+      const summaryTop = ((doc as any).lastAutoTable?.finalY || 40) + 7;
+      autoTable(doc, {
+        startY: summaryTop,
+        head: [["Totals by mix", "Loads", "Total MT"]],
+        body: statementMixTotals.map(row => [row.mix, String(row.loads), row.mt.toFixed(3)]),
+        theme: "grid",
+        headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineColor: [80, 80, 80], lineWidth: 0.2 },
+        styles: { fontSize: 8, textColor: [0, 0, 0], lineColor: [160, 160, 160], lineWidth: 0.1 },
         margin: { left: 14, right: 14 },
       });
       
@@ -762,6 +881,10 @@ export default function PlantDispatches() {
   };
 
   const handlePrint = () => {
+    const statementTitle = filterPartyId !== "all" ? "Party daily statement" : "Plant production and dispatches report";
+    const mixTotalsRows = statementMixTotals.map(row => `
+      <tr><td>${row.mix}</td><td>${row.loads}</td><td>${row.mt.toFixed(3)}</td></tr>
+    `).join("");
     const printContent = `
       <!DOCTYPE html>
       <html>
@@ -790,7 +913,8 @@ export default function PlantDispatches() {
             <h2 style="margin: 0; font-size: 14px; font-weight: bold;">${companyName}</h2>
           </div>
           <div class="header">
-            <h1>Plant production and dispatches report</h1>
+            <h1>${statementTitle}</h1>
+            ${filterPartyId !== "all" ? `<p class="date">Party: ${formatPersonName(getPartyName(Number(filterPartyId)))}</p>` : ""}
             <p class="date">Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}${filterDateFrom || filterDateTo ? ` | Range: ${filterDateFrom || "Start"} to ${filterDateTo || "End"}` : ""}</p>
           </div>
           <table>
@@ -798,15 +922,13 @@ export default function PlantDispatches() {
               <tr>
                 <th>Date</th>
                 <th>Time</th>
-                <th>Party</th>
-                <th>Site</th>
+                <th>Challan</th>
+                <th>Vehicle</th>
+                <th>Party / job</th>
                 <th>Mix</th>
                 <th>Load (MT)</th>
-                <th>Vehicle</th>
-                <th>Owner</th>
-                <th>Driver</th>
-                <th>Bitumen</th>
-                <th>LDO</th>
+                <th>Arrived</th>
+                <th>Unloaded</th>
               </tr>
             </thead>
             <tbody>
@@ -816,18 +938,21 @@ export default function PlantDispatches() {
                 <tr>
                   <td>${d.date}</td>
                   <td>${d.time || '-'}</td>
-                  <td>${getPartyName(d.partyId)}</td>
-                  <td>${d.deliveryLocation || '-'}</td>
-                  <td>${template?.mixType || '-'}</td>
-                  <td>${d.loadWeight}</td>
+                  <td>${d.dispatchProChallanNo || '-'}</td>
                   <td>${d.truckNumber}</td>
-                  <td>${d.ownerName || '-'}</td>
-                  <td>${d.driverName || '-'}</td>
-                  <td>${d.theoreticalBitumenQty?.toFixed(3) || '0'}</td>
-                  <td>${d.theoreticalLdoQty?.toFixed(3) || '0'}</td>
+                <td>${formatPersonName(getPartyName(d.partyId))}</td>
+                  <td>${template?.name || template?.mixType || '-'}</td>
+                  <td>${d.loadWeight}</td>
+                  <td>${d.dispatchProArrivedAt ? format(new Date(d.dispatchProArrivedAt), "dd MMM HH:mm") : '-'}</td>
+                  <td>${d.dispatchProLeftAt ? format(new Date(d.dispatchProLeftAt), "dd MMM HH:mm") : '-'}</td>
                 </tr>
               `}).join('')}
             </tbody>
+          </table>
+          <h2 style="font-size:12px;margin:16px 0 6px">Totals by mix</h2>
+          <table>
+            <thead><tr><th>Mix</th><th>Loads</th><th>Total (MT)</th></tr></thead>
+            <tbody>${mixTotalsRows}</tbody>
           </table>
         <script>window.onload=function(){setTimeout(function(){window.print();},300);}</script>
         </body>
@@ -873,16 +998,35 @@ export default function PlantDispatches() {
         </div>
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
           {canCreate && (
-            <DialogTrigger asChild>
-              <Button className="gap-2" data-testid="button-add-dispatch">
-                <Plus className="w-4 h-4" /> New Dispatch
-              </Button>
-            </DialogTrigger>
+            <Button className="gap-2" onClick={openNewDispatchDialog} data-testid="button-add-dispatch">
+              <Plus className="w-4 h-4" /> New Dispatch
+            </Button>
           )}
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingDispatch ? "Edit dispatch" : "Record production dispatch"}</DialogTitle>
             </DialogHeader>
+            {!editingDispatch && lastSavedDispatch && (() => {
+              const saved = dispatches?.find(dispatch => dispatch.id === lastSavedDispatch.id) || lastSavedDispatch;
+              return (
+                <div className="rounded-md border px-3 py-2 text-sm" role="status" data-testid="text-last-saved-dispatch">
+                  <span className="font-medium">Last saved:</span> {saved.truckNumber} · {saved.loadWeight} MT
+                  {" · "}
+                  {saved.dispatchProSyncStatus === "sent"
+                    ? `Sent${saved.dispatchProChallanNo ? ` · challan ${saved.dispatchProChallanNo}` : ""}`
+                    : saved.dispatchProSyncStatus === "waiting"
+                      ? `Waiting to send${saved.dispatchProLastError ? ` · ${saved.dispatchProLastError}` : ""}`
+                      : saved.dispatchProSyncStatus === "not_updated"
+                        ? "Not updated in DispatchPro"
+                        : saved.dispatchProSyncStatus === "not_sent"
+                          ? "Not sent to DispatchPro"
+                          : "DispatchPro not linked"}
+                  {saved.dispatchProStatus && <> · {saved.dispatchProStatus}</>}
+                  {saved.dispatchProArrivedAt && <> · Arrived {format(new Date(saved.dispatchProArrivedAt), "dd MMM HH:mm")}{saved.dispatchProArrivedByName ? ` by ${saved.dispatchProArrivedByName}` : ""}</>}
+                  {saved.dispatchProLeftAt && <> · Left {format(new Date(saved.dispatchProLeftAt), "dd MMM HH:mm")}{saved.dispatchProLeftByName ? ` by ${saved.dispatchProLeftByName}` : ""}</>}
+                </div>
+              );
+            })()}
             {hasDraft && !editingDispatch && (
               <DraftRestoreBanner
                 draftAge={draftAge}
@@ -891,74 +1035,93 @@ export default function PlantDispatches() {
               />
             )}
             <div className="space-y-4 pt-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Date</Label>
-                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-dispatch-date" />
-                </div>
-                <div>
-                  <Label>Time</Label>
-                  <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} data-testid="input-dispatch-time" />
-                </div>
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-between"
+                aria-expanded={moreDetailsOpen}
+                onClick={() => setMoreDetailsOpen(open => !open)}
+                data-testid="button-dispatch-more-details"
+              >
+                {moreDetailsOpen ? "Hide more details" : "More details"}
+                <span aria-hidden="true">{moreDetailsOpen ? "−" : "+"}</span>
+              </Button>
+              {!moreDetailsOpen && (
+                <p className="text-xs text-muted-foreground" data-testid="text-dispatch-defaults">
+                  {partyId ? parties?.find(party => String(party.id) === partyId)?.name : "Choose party/job in More details"}
+                  {" · "}
+                  {mixTemplateId ? templates?.find(template => String(template.id) === mixTemplateId)?.name : "Choose mix in More details"}
+                  {" · "}
+                  Bitumen tank {bitumenTankNumber}
+                </p>
+              )}
+              {moreDetailsOpen && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Date</Label>
+                      <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-dispatch-date" />
+                    </div>
+                    <div>
+                      <Label>Time</Label>
+                      <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} data-testid="input-dispatch-time" />
+                    </div>
+                  </div>
 
-              <div>
-                <Label>Party/Job</Label>
-                <Select value={partyId} onValueChange={(v) => {
-                  setPartyId(v);
-                  setDeliveryLocation("");
-                  // Clear template if it doesn't belong to the new party or shared pool
-                  if (mixTemplateId && templates) {
-                    const tpl = templates.find(t => t.id === parseInt(mixTemplateId));
-                    const pid = parseInt(v);
-                    if (tpl && tpl.partyId != null && tpl.partyId !== pid) {
-                      setMixTemplateId("");
-                    }
-                  }
-                }}>
-                  <SelectTrigger data-testid="select-dispatch-party">
-                    <SelectValue placeholder="Select party" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {parties?.map((party) => (
-                      <SelectItem key={party.id} value={String(party.id)} className="entity-name">{party.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  <div>
+                    <Label>Party/job</Label>
+                    <Select value={partyId} onValueChange={(v) => {
+                      setPartyId(v);
+                      setDeliveryLocation("");
+                      if (mixTemplateId && templates) {
+                        const tpl = templates.find(t => t.id === parseInt(mixTemplateId));
+                        const pid = parseInt(v);
+                        if (tpl && tpl.partyId != null && tpl.partyId !== pid) setMixTemplateId("");
+                      }
+                    }}>
+                      <SelectTrigger data-testid="select-dispatch-party">
+                        <SelectValue placeholder="Select party" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {parties?.map((party) => (
+                          <SelectItem key={party.id} value={String(party.id)} className="entity-name">{party.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-              <div>
-                <Label>Mix template</Label>
-                <Select
-                  value={mixTemplateId}
-                  onValueChange={(val) => {
-                    // Clear stale actual values when the template is changed
-                    // during an edit so they aren't validated against the old
-                    // template's theoretical values on submit.
-                    if (editingDispatch && val !== mixTemplateId) {
-                      setActualBitumenPercent("");
-                      setActualLdoLiters("");
-                    }
-                    setMixTemplateId(val);
-                  }}
-                >
-                  <SelectTrigger data-testid="select-mix-template">
-                    <SelectValue placeholder="Select mix template" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredTemplates.map((template) => (
-                      <SelectItem key={template.id} value={String(template.id)}>
-                        {template.name} ({template.mixType} - {template.bitumenPercent}%)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedTemplate && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Theoretical Bitumen: {selectedTemplate.bitumenPercent}%
-                  </p>
-                )}
-              </div>
+                  <div>
+                    <Label>Mix template</Label>
+                    <Select
+                      value={mixTemplateId}
+                      onValueChange={(val) => {
+                        if (editingDispatch && val !== mixTemplateId) {
+                          setActualBitumenPercent("");
+                          setActualLdoLiters("");
+                          setActualAdjustmentReason("");
+                        }
+                        setMixTemplateId(val);
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-mix-template">
+                        <SelectValue placeholder="Select mix template" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredTemplates.map((template) => (
+                          <SelectItem key={template.id} value={String(template.id)}>
+                            {template.name} ({template.mixType} - {template.bitumenPercent}%)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedTemplate && (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Theoretical bitumen: {selectedTemplate.bitumenPercent}%
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
 
               <div>
                 <Label>Truck / Vehicle</Label>
@@ -1002,6 +1165,25 @@ export default function PlantDispatches() {
                             "Type a truck number or search equipment..."
                           )}
                         </CommandEmpty>
+                        {uniqueVehicles.length > 0 && (
+                          <CommandGroup heading="Recent trip vehicles">
+                            {uniqueVehicles.slice(0, 10).map((vehicle) => (
+                              <CommandItem
+                                key={`recent-${vehicle}`}
+                                value={`recent ${vehicle}`}
+                                onSelect={() => {
+                                  setTruckNumber(vehicle);
+                                  const equipment = equipmentList?.find(item => item.registrationNumber === vehicle);
+                                  setTransportEquipmentId(equipment?.id ?? null);
+                                  if (equipment?.vendorName && !ownerName) setOwnerName(equipment.vendorName);
+                                  setTruckComboOpen(false);
+                                }}
+                              >
+                                {vehicle}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        )}
                         <CommandGroup heading="Equipment Master">
                           {(equipmentList || [])
                             .filter(eq => eq.isActive === 1)
@@ -1052,6 +1234,8 @@ export default function PlantDispatches() {
                 <Input type="number" step="0.1" value={loadWeight} onChange={(e) => setLoadWeight(e.target.value)} placeholder="e.g., 20.5" data-testid="input-load-weight" />
               </div>
 
+              {moreDetailsOpen && (
+                <>
               <div>
                 <Label>Delivery site (optional)</Label>
                 <Select value={deliveryLocation || "__none__"} onValueChange={(v) => setDeliveryLocation(v === "__none__" ? "" : v)}>
@@ -1150,6 +1334,16 @@ export default function PlantDispatches() {
                   <Input value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="Driver name" data-testid="input-driver-name" />
                 </div>
               </div>
+              <div>
+                <Label>Driver mobile (optional)</Label>
+                <Input
+                  type="tel"
+                  value={driverMobile}
+                  onChange={(e) => setDriverMobile(e.target.value)}
+                  placeholder="Driver mobile"
+                  data-testid="input-driver-mobile"
+                />
+              </div>
 
               {/* Theoretical Values Display */}
               {theoreticalValues && (
@@ -1162,8 +1356,8 @@ export default function PlantDispatches() {
                 </div>
               )}
 
-              {/* Actual LDO override — accessible for both new and edit dispatches */}
-              <div>
+              {/* Actual usage remains visible only to an engineer/Owner editing an existing dispatch. */}
+              {editingDispatch && canOverrideTolerance && <div>
                 <div className="flex items-center justify-between mb-1">
                   <Label>
                     Actual LDO (Liters){" "}
@@ -1196,7 +1390,7 @@ export default function PlantDispatches() {
                     Leave blank to use theoretical: <span className="font-mono">{theoreticalValues.ldoQty.toFixed(1)} L</span>
                   </p>
                 ) : null}
-              </div>
+              </div>}
 
               {/* Verification permission can override LDO tolerance on new dispatches */}
               {!editingDispatch && validationStatus.ldo === "error" && canOverrideTolerance && (
@@ -1219,7 +1413,7 @@ export default function PlantDispatches() {
                 </div>
               )}
 
-              {editingDispatch && (
+              {editingDispatch && canOverrideTolerance && (
                 <div className={`p-3 rounded-lg border ${hasToleranceError ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'}`}>
                   <div className="flex items-center gap-2 mb-3">
                     <Lock className="w-4 h-4 text-amber-600" />
@@ -1251,6 +1445,18 @@ export default function PlantDispatches() {
                   <p className="text-sm text-muted-foreground mt-2">
                     Tolerance: ±{TOLERANCE_PERCENT}% from theoretical. Stock deduction uses theoretical values. Adjustments are logged for audit.
                   </p>
+                  {actualConsumptionChanged && (
+                    <div className="mt-3">
+                      <Label htmlFor="dispatch-adjustment-reason">Reason for actual consumption change</Label>
+                      <Textarea
+                        id="dispatch-adjustment-reason"
+                        value={actualAdjustmentReason}
+                        onChange={(event) => setActualAdjustmentReason(event.target.value)}
+                        placeholder="Required when changing actual bitumen or LDO"
+                        data-testid="input-dispatch-adjustment-reason"
+                      />
+                    </div>
+                  )}
 
                   {hasToleranceViolation && canOverrideTolerance && (
                     <div className="mt-3 p-2 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-300 dark:border-orange-700">
@@ -1273,6 +1479,8 @@ export default function PlantDispatches() {
                   )}
                 </div>
               )}
+                </>
+              )}
 
               <div className="space-y-1.5">
                 <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !partyId || !mixTemplateId || !truckNumber || !loadWeight || hasToleranceError} data-testid="button-save-dispatch">
@@ -1289,10 +1497,10 @@ export default function PlantDispatches() {
       {canExport && (
         <div className="flex flex-wrap items-center gap-2 p-4 rounded-lg bg-muted/50">
           <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!filteredDispatches.length} data-testid="button-export-excel">
-            <Download className="w-4 h-4" /> Export Excel
+            <Download className="w-4 h-4" /> {filterPartyId !== "all" ? "Statement Excel" : "Export Excel"}
           </Button>
           <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!filteredDispatches.length} data-testid="button-export-pdf">
-            <Download className="w-4 h-4" /> Export PDF
+            <Download className="w-4 h-4" /> {filterPartyId !== "all" ? "Statement PDF" : "Export PDF"}
           </Button>
           <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
             <Printer className="w-4 h-4" /> Print
@@ -1523,6 +1731,21 @@ export default function PlantDispatches() {
                                 <span className="font-medium">{dispatch.loadWeight} MT</span>
                                 <Badge variant="outline" className="text-sm">{template?.mixType || "-"}</Badge>
                                 <span className="text-sm text-muted-foreground">{getPartyName(dispatch.partyId)}</span>
+                                {dispatch.dispatchProSyncStatus === "sent" && (
+                                  <span className="text-xs text-muted-foreground">
+                                    Sent{dispatch.dispatchProChallanNo ? ` · challan ${dispatch.dispatchProChallanNo}` : ""}
+                                  </span>
+                                )}
+                                {dispatch.dispatchProSyncStatus === "waiting" && (
+                                  <span className="text-xs text-muted-foreground">
+                                    Waiting to send{dispatch.dispatchProLastError ? ` · ${dispatch.dispatchProLastError}` : ""}
+                                  </span>
+                                )}
+                                {(dispatch.dispatchProSyncStatus === "not_sent" || dispatch.dispatchProSyncStatus === "not_updated") && (
+                                  <span className="text-xs text-destructive">
+                                    {dispatch.dispatchProSyncStatus === "not_updated" ? "Not updated in DispatchPro" : "Not sent"}
+                                  </span>
+                                )}
                                 {dispatch.ownerName && <span className="text-sm text-muted-foreground">{dispatch.ownerName}</span>}
                                 {dispatch.time && <span className="text-sm text-muted-foreground">{dispatch.time}</span>}
                                 {((dispatch.bitumenVariancePercent != null && Number(dispatch.bitumenVariancePercent) !== 0) ||
@@ -1592,6 +1815,57 @@ export default function PlantDispatches() {
                                 <span className="text-muted-foreground text-sm block">Driver</span>
                                 <span className="font-medium" data-testid={`text-driver-${dispatch.id}`}>{dispatch.driverName || "-"}</span>
                               </div>
+                              {(() => {
+                                const partyLinked = !!parties?.find(p => p.id === dispatch.partyId)?.dispatchProSiteId;
+                                const status = dispatch.dispatchProSyncStatus;
+                                if (!partyLinked && !status) return null;
+                                const readableTime = (value: string | Date | null | undefined) => {
+                                  if (!value) return "—";
+                                  const dateValue = new Date(value);
+                                  return Number.isNaN(dateValue.getTime()) ? "—" : format(dateValue, "dd MMM yyyy HH:mm");
+                                };
+                                return (
+                                  <div className="col-span-2">
+                                    <span className="text-muted-foreground text-sm block">DispatchPro</span>
+                                    <span className="font-medium">
+                                      {status === "sent"
+                                        ? `Sent${dispatch.dispatchProChallanNo ? ` · challan ${dispatch.dispatchProChallanNo}` : ""}`
+                                        : status === "waiting"
+                                          ? "Waiting to send"
+                                          : status === "not_sent"
+                                            ? "Not sent — retry"
+                                            : status === "not_updated"
+                                              ? "Not updated in DispatchPro"
+                                              : "Not sent"}
+                                    </span>
+                                    {(status === "not_sent" || status === "not_updated") && canOverrideTolerance && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="ml-2 h-7"
+                                        onClick={() => retryDispatchProMutation.mutate(dispatch.id)}
+                                        disabled={retryDispatchProMutation.isPending}
+                                        data-testid={`button-dispatchpro-retry-${dispatch.id}`}
+                                      >
+                                        Retry
+                                      </Button>
+                                    )}
+                                    {dispatch.dispatchProLastError && (
+                                      <p className="mt-1 text-xs text-destructive">{dispatch.dispatchProLastError}</p>
+                                    )}
+                                    {dispatch.dispatchProArrivedAt && (
+                                      <p className="mt-1 text-xs text-muted-foreground">
+                                        Arrived {readableTime(dispatch.dispatchProArrivedAt)}{dispatch.dispatchProArrivedByName ? ` · ${dispatch.dispatchProArrivedByName}` : ""}
+                                      </p>
+                                    )}
+                                    {dispatch.dispatchProLeftAt && (
+                                      <p className="text-xs text-muted-foreground">
+                                        Unloaded {readableTime(dispatch.dispatchProLeftAt)}{dispatch.dispatchProLeftByName ? ` · ${dispatch.dispatchProLeftByName}` : ""}
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                               <div>
                                 <span className="text-muted-foreground text-sm block">Bitumen (MT)</span>
                                 <span className="font-medium">{dispatch.theoreticalBitumenQty?.toFixed(3) || "0"}</span>

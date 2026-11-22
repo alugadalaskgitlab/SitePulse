@@ -97,6 +97,13 @@ import { arrangementTripRatesSchema } from "@shared/arrangementTripRates";
 import { appendArrangementStatusChange, arrangementStatusAsOf, hasRecordedArrangementStatusChange, isValidArrangementEffectiveDate } from "@shared/arrangementStatusHistory";
 import { computeDieselReceiptState } from "@shared/dieselReceiptStatus";
 import {
+  dispatchProKeyMatches,
+  enqueueDispatchProCancellation,
+  enqueueDispatchProChange,
+  getDispatchProSites,
+  retryDispatchProChange,
+} from "./dispatchProOutbox";
+import {
   materialNeedsCftEquivalent,
   materialPlanQuantity,
   materialTonnesToCft,
@@ -320,7 +327,12 @@ function verifyRoleCookie(val: string | undefined): 'admin' | 'manager' | null {
 }
 
 const partyCreateBodySchema = insertPartySchema
-  .pick({ name: true, notes: true })
+  .pick({ name: true, notes: true, dispatchProSiteId: true })
+  .strict();
+
+const partyUpdateBodySchema = insertPartySchema
+  .pick({ name: true, notes: true, dispatchProSiteId: true })
+  .partial()
   .strict();
 
 const plantMaterialCreateBodySchema = insertPlantMaterialSchema
@@ -385,6 +397,7 @@ const truckDispatchCreateBodySchema = insertTruckDispatchSchema
     ldoTankNumber: true,
     ownerName: true,
     driverName: true,
+    driverMobile: true,
     transportEquipmentId: true,
   })
   .extend({
@@ -4858,6 +4871,9 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "master_parties")) return;
       const input = parseCreateBody(partyCreateBodySchema, req.body, res);
       if (input === null) return;
+      if (input.dispatchProSiteId !== undefined && !req.authUser?.isOwner) {
+        return res.status(403).json({ message: "Only the Owner can link a party to DispatchPro." });
+      }
       const party = await storage.createParty(input);
       res.status(201).json(party);
     } catch (err) {
@@ -4868,7 +4884,12 @@ export async function registerRoutes(
   app.patch("/api/plant-module/parties/:id", async (req, res) => {
     try {
       if (!assertEdit(req, res, "master_parties")) return;
-      const party = await storage.updateParty(Number(req.params.id), req.body);
+      const parsed = partyUpdateBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid party update." });
+      if (parsed.data.dispatchProSiteId !== undefined && !req.authUser?.isOwner) {
+        return res.status(403).json({ message: "Only the Owner can link a party to DispatchPro." });
+      }
+      const party = await storage.updateParty(Number(req.params.id), parsed.data);
       if (!party) return res.status(404).json({ message: "Party not found" });
       res.json(party);
     } catch (err) {
@@ -4884,6 +4905,15 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete party" });
+    }
+  });
+
+  app.get("/api/plant-module/dispatchpro/sites", async (req, res) => {
+    if (!req.authUser?.isOwner) return res.status(403).json({ message: "Owner access required." });
+    try {
+      res.json(await getDispatchProSites());
+    } catch (err: any) {
+      res.status(503).json({ message: err?.message || "Could not load DispatchPro sites." });
     }
   });
 
@@ -6440,6 +6470,58 @@ export async function registerRoutes(
   });
 
   // Truck Dispatches
+  const dispatchProStatusRate = new Map<string, { windowStart: number; hits: number }>();
+  app.post("/api/integrations/dispatchpro/status", async (req, res) => {
+    const now = Date.now();
+    const remoteAddress = req.ip || req.socket.remoteAddress || "unknown";
+    const bucket = dispatchProStatusRate.get(remoteAddress);
+    if (bucket && now - bucket.windowStart < 60_000 && bucket.hits >= 60) {
+      return res.status(429).json({ message: "Too many status updates. Try again shortly." });
+    }
+    if (!bucket || now - bucket.windowStart >= 60_000) {
+      dispatchProStatusRate.set(remoteAddress, { windowStart: now, hits: 1 });
+    } else {
+      bucket.hits += 1;
+    }
+    if (dispatchProStatusRate.size > 1000) {
+      dispatchProStatusRate.forEach((entry, address) => {
+        if (now - entry.windowStart >= 60_000) dispatchProStatusRate.delete(address);
+      });
+    }
+
+    if (!dispatchProKeyMatches(req.get("X-SitePulse-Key"))) {
+      return res.status(401).json({ message: "Invalid integration key." });
+    }
+    const input = z.object({
+      externalRef: z.string().regex(/^SP-\d+$/),
+      challanNo: z.string().trim().min(1).max(100),
+      status: z.enum(["ARRIVED", "LEFT"]),
+      at: z.string().datetime({ offset: true }),
+      byName: z.string().trim().min(1).max(150),
+    }).safeParse(req.body);
+    if (!input.success) return res.status(400).json({ message: "Invalid DispatchPro status payload." });
+    const dispatchId = Number(input.data.externalRef.slice(3));
+    const [existing] = await db.select().from(truckDispatchesTable)
+      .where(eq(truckDispatchesTable.id, dispatchId)).limit(1);
+    if (!existing || `SP-${existing.id}` !== input.data.externalRef) {
+      return res.status(404).json({ message: "Dispatch not found." });
+    }
+    const at = new Date(input.data.at);
+    const status = existing.dispatchProStatus === "LEFT" ? "LEFT" : input.data.status;
+    const [updated] = await db.update(truckDispatchesTable).set({
+      dispatchProChallanNo: input.data.challanNo,
+      dispatchProStatus: status,
+      ...(input.data.status === "ARRIVED" ? {
+        dispatchProArrivedAt: sql`COALESCE(${truckDispatchesTable.dispatchProArrivedAt}, ${at})`,
+        dispatchProArrivedByName: sql`COALESCE(${truckDispatchesTable.dispatchProArrivedByName}, ${input.data.byName})`,
+      } : {
+        dispatchProLeftAt: sql`COALESCE(${truckDispatchesTable.dispatchProLeftAt}, ${at})`,
+        dispatchProLeftByName: sql`COALESCE(${truckDispatchesTable.dispatchProLeftByName}, ${input.data.byName})`,
+      }),
+    }).where(eq(truckDispatchesTable.id, dispatchId)).returning();
+    return res.json({ success: true, dispatchId: updated.id, status: updated.dispatchProStatus });
+  });
+
   app.get("/api/plant-module/dispatches", async (req, res) => {
     try {
       const filters = {
@@ -6469,6 +6551,15 @@ export async function registerRoutes(
       });
       sendPushToSection("plant_production", "Dispatch Recorded", `${dispatch.loadWeight} MT dispatched on ${dispatch.date}`, "/plant").catch(() => {});
 
+      try {
+        const queued = await enqueueDispatchProChange(dispatch.id, "create");
+        if (queued.queued) dispatch.dispatchProSyncStatus = "waiting";
+      } catch {
+        await db.update(truckDispatchesTable).set({
+          dispatchProSyncStatus: "not_sent",
+          dispatchProLastError: "Could not queue the DispatchPro send. Retry from the dispatch list.",
+        }).where(eq(truckDispatchesTable.id, dispatch.id)).catch(() => {});
+      }
       res.status(201).json(result);
     } catch (err) {
       // Owner-stock shortage — surface to the client as 409 so the UI can
@@ -6486,7 +6577,7 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "plant_production")) return;
       const id = parseInt(req.params.id);
-      const { adjustedBy, overrideTolerance, ...dispatchData } = req.body;
+      const { adjustedBy, overrideTolerance, adjustmentReason, ...dispatchData } = req.body;
       
       // Server-side tolerance validation for actual consumption values.
       //
@@ -6517,6 +6608,48 @@ export async function registerRoutes(
       const allDispatches = await storage.getTruckDispatches({});
       const currentDispatch = allDispatches.find(d => d.id === id);
       const templates = await storage.getMixTemplates();
+
+      const nextActualBitumen = dispatchData.actualBitumenPercent !== undefined
+        ? dispatchData.actualBitumenPercent ?? null
+        : currentDispatch?.actualBitumenPercent ?? null;
+      const nextActualLdo = dispatchData.actualLdoQty !== undefined
+        ? dispatchData.actualLdoQty ?? null
+        : currentDispatch?.actualLdoQty ?? null;
+      const actualValuesChanged = !!currentDispatch && (
+        nextActualBitumen !== (currentDispatch.actualBitumenPercent ?? null) ||
+        nextActualLdo !== (currentDispatch.actualLdoQty ?? null)
+      );
+      if (actualValuesChanged) {
+        if (!canOverrideTolerance) {
+          return res.status(403).json({ message: "HMP/RMC verification permission is required to change actual consumption." });
+        }
+        if (typeof adjustmentReason !== "string" || !adjustmentReason.trim()) {
+          return res.status(400).json({ message: "A reason is required when changing actual consumption." });
+        }
+        const existingWarning: unknown[] = (() => {
+          try {
+            const parsed = JSON.parse(currentDispatch.shortageWarning || "[]");
+            return Array.isArray(parsed) ? parsed : [parsed];
+          } catch {
+            return [];
+          }
+        })();
+        existingWarning.push({
+          type: "actual_consumption_adjustment",
+          adjustedBy: req.authUser?.email ?? "manager",
+          adjustedAt: new Date().toISOString(),
+          reason: adjustmentReason.trim(),
+          before: {
+            bitumenPercent: currentDispatch.actualBitumenPercent ?? null,
+            ldoLiters: currentDispatch.actualLdoQty ?? null,
+          },
+          after: {
+            bitumenPercent: nextActualBitumen,
+            ldoLiters: nextActualLdo,
+          },
+        });
+        dispatchData.shortageWarning = JSON.stringify(existingWarning);
+      }
 
       if (!isAdminOverride && (dispatchData.actualBitumenPercent != null || dispatchData.actualLdoQty != null)) {
         if (currentDispatch) {
@@ -6592,7 +6725,10 @@ export async function registerRoutes(
         }
         if (actuallyOutOfTolerance) {
           const existingWarning: unknown[] = (() => {
-            try { return JSON.parse(currentDispatch.shortageWarning || "[]"); } catch { return []; }
+            try {
+              const parsed = JSON.parse(dispatchData.shortageWarning ?? currentDispatch.shortageWarning ?? "[]");
+              return Array.isArray(parsed) ? parsed : [parsed];
+            } catch { return []; }
           })();
           existingWarning.push(overrideNote);
           dispatchData.shortageWarning = JSON.stringify(existingWarning);
@@ -6602,6 +6738,22 @@ export async function registerRoutes(
       const updated = await storage.updateTruckDispatch(id, dispatchData, adjustedBy || "operator");
       if (!updated) {
         return res.status(404).json({ message: "Dispatch not found" });
+      }
+      const dispatchProChanged =
+        (dispatchData.truckNumber !== undefined && dispatchData.truckNumber !== currentDispatch?.truckNumber) ||
+        (dispatchData.loadWeight !== undefined && Number(dispatchData.loadWeight) !== Number(currentDispatch?.loadWeight)) ||
+        (dispatchData.driverName !== undefined && dispatchData.driverName !== currentDispatch?.driverName) ||
+        (dispatchData.driverMobile !== undefined && dispatchData.driverMobile !== (currentDispatch as any)?.driverMobile);
+      if (dispatchProChanged && currentDispatch) {
+        try {
+          const queued = await enqueueDispatchProChange(id, "patch");
+          if (queued.queued) updated.dispatchProSyncStatus = "waiting";
+        } catch {
+          await db.update(truckDispatchesTable).set({
+            dispatchProSyncStatus: "not_updated",
+            dispatchProLastError: "Could not queue the DispatchPro update. Retry from the dispatch list.",
+          }).where(eq(truckDispatchesTable.id, id)).catch(() => {});
+        }
       }
       sendPushToSection("plant_production", "Dispatch Updated", `Dispatch #${id} updated`, "/plant").catch(() => {});
       res.json(updated);
@@ -6616,15 +6768,37 @@ export async function registerRoutes(
     try {
       if (!assertFeatureAction(req, res, "hmp_rmc", "cancel")) return;
       const id = parseInt(req.params.id);
+      const allDispatches = await storage.getTruckDispatches({});
+      const beforeDelete = allDispatches.find(row => row.id === id);
       const deleted = await storage.deleteTruckDispatch(id);
       if (!deleted) {
         return res.status(404).json({ message: "Dispatch not found" });
+      }
+      if (beforeDelete) {
+        try {
+          await enqueueDispatchProCancellation(beforeDelete);
+        } catch {
+          console.error(`[DispatchPro] Could not queue cancellation for dispatch #${id}.`);
+        }
       }
       sendPushToSection("plant_production", "Dispatch Deleted", `Dispatch #${id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
     } catch (err) {
       console.error("Delete dispatch error:", err);
       res.status(500).json({ message: "Failed to delete dispatch" });
+    }
+  });
+
+  app.post("/api/plant-module/dispatches/:id/dispatchpro/retry", async (req, res) => {
+    if (!assertFeatureAction(req, res, "hmp_rmc", "verify")) return;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid dispatch id." });
+    try {
+      const retried = await retryDispatchProChange(id);
+      if (!retried) return res.status(404).json({ message: "No failed DispatchPro send is available to retry." });
+      res.json({ queued: true });
+    } catch {
+      res.status(500).json({ message: "Could not queue DispatchPro retry." });
     }
   });
 
@@ -9088,6 +9262,118 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/plant-module/shift-logs/:date/dg-readings", async (req, res) => {
+    try {
+      if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
+      const plantName = String(req.query.plant || await storage.getDefaultPlantName());
+      if (!await assertReportPlant(req, res, plantName)) return;
+      const previousDate = new Date(`${req.params.date}T00:00:00.000Z`);
+      previousDate.setUTCDate(previousDate.getUTCDate() - 1);
+      const priorDate = previousDate.toISOString().slice(0, 10);
+      const [equipment, usage, priorUsage] = await Promise.all([
+        storage.getEquipmentMaster(false),
+        storage.getEquipmentUsage({ dateFrom: req.params.date, dateTo: req.params.date }),
+        storage.getEquipmentUsage({ dateFrom: priorDate, dateTo: priorDate }),
+      ]);
+      const generators = equipment.filter((item: any) =>
+        item.isActive !== 0 && /generator|(^|\b)dg(\b|$)/i.test(`${item.equipmentType || ""} ${item.name || ""}`) &&
+        (!item.plantName || item.plantName.toLowerCase() === plantName.toLowerCase())
+      );
+      const rows = generators.map((item: any) => {
+        const matches = usage.filter((row: any) =>
+          row.equipmentId === item.id && String(row.plantName || "").toLowerCase() === plantName.toLowerCase()
+        );
+        const current = matches.sort((a: any, b: any) => b.id - a.id)[0] || null;
+        const priorRows = priorUsage
+          .filter((row: any) => row.equipmentId === item.id && String(row.plantName || "").toLowerCase() === plantName.toLowerCase())
+          .sort((a: any, b: any) => b.id - a.id);
+        const priorMeter = priorRows.find((row: any) => row.closingReading != null) || null;
+        const priorDiesel = priorRows.find((row: any) => row.dieselBalanceConfirmed && row.dieselBalanceInTank != null) || null;
+        return {
+          equipmentId: item.id,
+          equipmentName: item.name,
+          usage: current,
+          openingMeterPrefill: current?.openingReading ?? priorMeter?.closingReading ?? null,
+          openingDieselPrefill: current?.openingDiesel ?? priorDiesel?.dieselBalanceInTank ?? null,
+          prefillFrom: current?.openingReading == null && priorMeter
+            ? `previous closing · ${priorMeter.date}`
+            : current?.openingDiesel == null && priorDiesel
+              ? `previous closing · ${priorDiesel.date}`
+              : null,
+        };
+      });
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Could not load DG readings." });
+    }
+  });
+
+  app.post("/api/plant-module/shift-logs/:date/dg-readings", async (req, res) => {
+    try {
+      const plantName = String(req.body?.plantName || await storage.getDefaultPlantName()).trim();
+      if (!await assertReportPlant(req, res, plantName)) return;
+      const date = String(req.params.date || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ message: "Enter a valid DG reading date." });
+      const readings = Array.isArray(req.body?.readings) ? req.body.readings : [];
+      if (readings.length > 20) return res.status(400).json({ message: "Too many DG readings." });
+      const [equipment, existingRows] = await Promise.all([
+        storage.getEquipmentMaster(false),
+        storage.getEquipmentUsage({ dateFrom: date, dateTo: date }),
+      ]);
+      const generatorById = new Map<number, any>(equipment
+        .filter((item: any) => item.isActive !== 0 && /generator|(^|\b)dg(\b|$)/i.test(`${item.equipmentType || ""} ${item.name || ""}`))
+        .map((item: any) => [Number(item.id), item]));
+      const saved = [];
+      for (const raw of readings) {
+        const equipmentId = Number(raw?.equipmentId);
+        const generator = generatorById.get(equipmentId);
+        if (!generator || (generator.plantName && generator.plantName.toLowerCase() !== plantName.toLowerCase())) {
+          return res.status(400).json({ message: `Equipment ${equipmentId} is not an active generator for this plant.` });
+        }
+        const numberOrUndefined = (value: unknown, field: string) => {
+          if (value == null || value === "") return undefined;
+          const number = Number(value);
+          if (!Number.isFinite(number) || number < 0) throw new Error(`${field} must be a non-negative number.`);
+          return number;
+        };
+        const input = {
+          openingReading: numberOrUndefined(raw.openingReading, "Opening hour meter"),
+          closingReading: numberOrUndefined(raw.closingReading, "Closing hour meter"),
+          openingDiesel: numberOrUndefined(raw.openingDiesel, "Opening diesel level"),
+          dieselBalanceInTank: numberOrUndefined(raw.closingDiesel, "Closing diesel level"),
+          dieselBalanceConfirmed: raw.closingDiesel != null && raw.closingDiesel !== "",
+        };
+        if (input.openingReading == null && input.closingReading == null && input.openingDiesel == null && input.dieselBalanceInTank == null) continue;
+        const matches = existingRows.filter((row: any) =>
+          row.equipmentId === equipmentId && String(row.plantName || "").toLowerCase() === plantName.toLowerCase()
+        );
+        if (matches.length > 1) {
+          return res.status(409).json({ message: `More than one DG usage row exists for ${generator.name} on ${date}; resolve it in Equipment Usage first.` });
+        }
+        if (matches[0]) {
+          if (!assertEdit(req, res, "plant_shift_logs")) return;
+          const updated = await storage.updateEquipmentUsage(matches[0].id, input);
+          if (!updated) throw new Error(`DG usage row for ${generator.name} was not updated.`);
+          saved.push(updated);
+        } else {
+          if (!assertCreate(req, res, "plant_shift_logs")) return;
+          const created = await storage.createEquipmentUsage({
+            date,
+            equipmentId,
+            plantName,
+            entryType: "time_meter",
+            dieselIssued: 0,
+            ...input,
+          } as any);
+          saved.push(created);
+        }
+      }
+      res.json({ saved });
+    } catch (err: any) {
+      res.status(400).json({ message: err?.message || "Could not save DG readings." });
+    }
+  });
+
   app.post("/api/plant-module/shift-logs/:id/finalize", async (req, res) => {
     try {
       if (!assertFeatureAction(req, res, "hmp_rmc", "verify")) return;
@@ -9096,6 +9382,34 @@ export async function registerRoutes(
       const existing = await storage.getPlantShiftLog(id);
       if (!existing) return res.status(404).json({ message: "Shift log not found" });
       if (!await assertReportPlant(req, res, existing.plantName || await storage.getDefaultPlantName())) return;
+      const missingClosingReadings = [
+        ...(existing.bitumenTank1ClosingDip == null ? ["Bitumen tank 1 closing dip"] : []),
+        ...(existing.bitumenTank2ClosingDip == null ? ["Bitumen tank 2 closing dip"] : []),
+        ...(existing.ldoTank2ClosingMeter == null ? ["Dryer fuel meter closing reading"] : []),
+        ...(existing.boilerRunsDuringProduction && existing.ldoTank1ClosingMeter == null ? ["Boiler fuel meter closing reading"] : []),
+      ];
+      const [plantEquipment, dayUsage] = await Promise.all([
+        storage.getEquipmentMaster(false),
+        storage.getEquipmentUsage({ dateFrom: existing.date, dateTo: existing.date }),
+      ]);
+      const generators = plantEquipment.filter((item: any) =>
+        item.isActive !== 0 && /generator|(^|\b)dg(\b|$)/i.test(`${item.equipmentType || ""} ${item.name || ""}`) &&
+        (!item.plantName || item.plantName.toLowerCase() === String(existing.plantName || "").toLowerCase())
+      );
+      for (const generator of generators) {
+        const rows = dayUsage.filter((row: any) =>
+          row.equipmentId === generator.id && String(row.plantName || "").toLowerCase() === String(existing.plantName || "").toLowerCase()
+        );
+        const row = rows.sort((a: any, b: any) => b.id - a.id)[0];
+        if (row?.closingReading == null) missingClosingReadings.push(`${generator.name} closing hour meter`);
+        if (row?.dieselBalanceInTank == null || row?.dieselBalanceConfirmed !== true) missingClosingReadings.push(`${generator.name} closing diesel level`);
+      }
+      if (missingClosingReadings.length > 0 && !existing.closeReason?.trim()) {
+        return res.status(400).json({
+          message: `A reason is required to close with missing readings: ${missingClosingReadings.join(", ")}.`,
+          missingReadings: missingClosingReadings,
+        });
+      }
       const updated = await storage.finalizePlantShiftLog(id, finalizedBy);
       if (!updated) return res.status(404).json({ message: "Shift log not found" });
       res.json(updated);
@@ -9145,6 +9459,23 @@ export async function registerRoutes(
   // ============================================
   // DAILY PLANT REPORT (management consolidated view)
   // ============================================
+
+  app.get("/api/plant-module/shift-logs/:date/reconciliation", async (req, res) => {
+    if (!assertFeatureAction(req, res, "hmp_rmc", "verify")) return;
+    try {
+      const plantName = (req.query.plant as string) || await storage.getDefaultPlantName();
+      if (!await assertReportPlant(req, res, plantName)) return;
+      const summary = await storage.getDailyPlantSummary(req.params.date, plantName);
+      res.json({
+        date: req.params.date,
+        plantName,
+        production: (summary as any).production,
+        reconciliation: (summary as any).reconciliation,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Could not build plant reconciliation." });
+    }
+  });
 
   app.get("/api/plant-module/daily-reports/:date", async (req, res) => {
     try {

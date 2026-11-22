@@ -1,4 +1,9 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
+import {
+  calculateFuelMetrics,
+  calculateGeneratorLitresPerHour,
+  calculatePhysicalBitumenReconciliation,
+} from "../shared/plantDayReconciliation";
 import { effectiveMaterialBulkDensity, withEffectiveMaterialDensity } from "../shared/compactedLoose";
 import {
   buildScopeProgrammeAlignment,
@@ -25827,6 +25832,43 @@ export class DatabaseStorage implements IStorage {
     }));
     const totalDieselIssued = equipment.reduce((s, e) => s + (e.dieselIssued || 0), 0);
 
+    const missingReadings: string[] = [];
+    if (!shift) {
+      missingReadings.push("Plant shift log");
+    } else {
+      if (shift.bitumenTank1ClosingDip == null) missingReadings.push("Bitumen tank 1 closing dip");
+      if (shift.bitumenTank2ClosingDip == null) missingReadings.push("Bitumen tank 2 closing dip");
+      if (shift.ldoTank2ClosingMeter == null) missingReadings.push("Dryer fuel meter closing reading");
+      if (shift.boilerRunsDuringProduction && shift.ldoTank1ClosingMeter == null) missingReadings.push("Boiler fuel meter closing reading");
+    }
+    const bitumenMaterial = allMaterials.find(material => /bitumen/i.test(material.name));
+    const bitumenReceiptRows = bitumenMaterial
+      ? receipts.filter(receipt => receipt.materialId === bitumenMaterial.id)
+      : [];
+    const dipWeight = (tankNumber: number, readingType: "opening" | "closing") => {
+      const row = bitumenDips.find(reading => reading.tankNumber === tankNumber && reading.readingType === readingType);
+      return row?.weightKg == null ? null : Number(row.weightKg);
+    };
+    const physicalBitumen = calculatePhysicalBitumenReconciliation({
+      openingTankKg: [dipWeight(1, "opening"), dipWeight(2, "opening")],
+      receiptLines: bitumenReceiptRows.map(receipt => ({ quantity: receipt.quantity, uom: receipt.uom })),
+      closingTankKg: [dipWeight(1, "closing"), dipWeight(2, "closing")],
+      theoreticalMT,
+    });
+    missingReadings.push(...physicalBitumen.missing);
+
+    const partyMixMap = new Map<string, { partyName: string; mixName: string; loads: number; mt: number }>();
+    for (const dispatch of dispatches) {
+      const partyName = partyById.get(dispatch.partyId)?.name || `Party #${dispatch.partyId}`;
+      const mix = mixById.get(dispatch.mixTemplateId);
+      const mixName = mix?.name || mix?.mixType || `Mix #${dispatch.mixTemplateId}`;
+      const key = `${partyName}||${mixName}`;
+      const row = partyMixMap.get(key) || { partyName, mixName, loads: 0, mt: 0 };
+      row.loads += 1;
+      row.mt += Number(dispatch.loadWeight) || 0;
+      partyMixMap.set(key, row);
+    }
+
     // DG derived efficiency: computed from equipment_usage rows for DG-type
     // equipment (opening + issued − closing over hours), then compared against
     // recorded generator_logs.efficiency. Per task spec the derived figure
@@ -25861,9 +25903,9 @@ export class DatabaseStorage implements IStorage {
       const opening = usage?.opening ?? g.openingDiesel ?? null;
       const issued = usage?.issued ?? g.dieselIssued ?? 0;
       const closing = usage?.closing ?? g.closingDiesel ?? null;
-      const hrs = usage?.hours || g.hoursRun || null;
+      const hrs = usage?.hours ?? g.hoursRun ?? null;
       const consumed = usage?.consumed ?? ((opening != null && closing != null) ? Math.max(0, opening + issued - closing) : null);
-      const lPerHr = (consumed != null && hrs && hrs > 0) ? Math.round((consumed / hrs) * 100) / 100 : null;
+      const lPerHr = calculateGeneratorLitresPerHour(consumed, hrs);
       return {
         id: g.id, generatorName: g.generatorName, hoursRun: hrs,
         opening, issued, closing, consumed, lPerHr,
@@ -25872,6 +25914,10 @@ export class DatabaseStorage implements IStorage {
         sourceHeatingSessionId: g.sourceHeatingSessionId ?? null,
       };
     });
+    for (const generator of generatorSummary) {
+      if (generator.hoursRun == null) missingReadings.push(`DG ${generator.generatorName} hour meter`);
+      if (generator.opening == null || generator.closing == null) missingReadings.push(`DG ${generator.generatorName} diesel level`);
+    }
     const generatorTotalDieselConsumed = generatorSummary.reduce((s, g) => s + (g.consumed || 0), 0);
 
     const boilerHeating = await this._getBoilerHeatingSummary(date, plantName, shift, totalProductionMT, ldoConsumedT1, ldoFlows);
@@ -25888,7 +25934,11 @@ export class DatabaseStorage implements IStorage {
       ? (boilerHeating?.sessionsLdoT1L ?? null)
       : ldoConsumedT1;
     const reconciliationT1ShiftL = t1PrimarySource === "sessions" ? ldoConsumedT1 : null;
-    const effectiveTotalL = (effectiveT1L || 0) + (ldoConsumedT2 || 0);
+    const hasAnyMeasuredLdo = effectiveT1L != null || ldoConsumedT2 != null;
+    const effectiveTotalL = hasAnyMeasuredLdo
+      ? (effectiveT1L ?? 0) + (ldoConsumedT2 ?? 0)
+      : null;
+    const ldoFuelMetrics = calculateFuelMetrics(effectiveTotalL, theoreticalLdoL, totalProductionMT);
     // When the plant log has no start/stop times (runningHours is null) but the
     // primary source is heating sessions, fall back to the total session hours so
     // that L / Hour (combined) can still be computed from measured session data.
@@ -25897,9 +25947,9 @@ export class DatabaseStorage implements IStorage {
       : (t1PrimarySource === "sessions" && boilerHeating && boilerHeating.totalHours > 0
           ? boilerHeating.totalHours
           : null);
-    const effectiveLPerHour = (hoursForLPerHour && hoursForLPerHour > 0 && effectiveTotalL > 0)
+    const effectiveLPerHour = (hoursForLPerHour && hoursForLPerHour > 0 && effectiveTotalL != null && effectiveTotalL > 0)
       ? Math.round((effectiveTotalL / hoursForLPerHour) * 100) / 100 : null;
-    const effectiveLPerMT = (totalProductionMT > 0 && effectiveTotalL > 0)
+    const effectiveLPerMT = (totalProductionMT > 0 && effectiveTotalL != null && effectiveTotalL > 0)
       ? Math.round((effectiveTotalL / totalProductionMT) * 1000) / 1000 : null;
     const effectiveBoilerLPerMT = (totalProductionMT > 0 && (effectiveT1L || 0) > 0)
       ? Math.round(((effectiveT1L as number) / totalProductionMT) * 1000) / 1000 : null;
@@ -25958,6 +26008,30 @@ export class DatabaseStorage implements IStorage {
         actualLdoL,
         byMix: productionByMix,
       },
+      reconciliation: {
+        bitumen: {
+          openingMT: physicalBitumen.openingMT,
+          receivedMT: physicalBitumen.receivedMT,
+          closingMT: physicalBitumen.closingMT,
+          actualUsedMT: physicalBitumen.actualUsedMT,
+          theoreticalMT: physicalBitumen.theoreticalMT,
+          differenceMT: physicalBitumen.differenceMT,
+        },
+        ldo: {
+          boilerLitres: effectiveT1L,
+          dryerLitres: ldoConsumedT2,
+          heatingSessionLitres: boilerHeating?.sessionsLdoT1L ?? null,
+          theoreticalLitres: Number(theoreticalLdoL.toFixed(1)),
+          differenceLitres: ldoFuelMetrics.differenceLitres,
+          litresPerMT: ldoFuelMetrics.litresPerMT,
+        },
+        generators: generatorSummary,
+        byPartyAndMix: Array.from(partyMixMap.values()).sort((a, b) =>
+          a.partyName.localeCompare(b.partyName) || a.mixName.localeCompare(b.mixName)
+        ),
+        missingReadings: Array.from(new Set(missingReadings)),
+        closeReason: shift?.closeReason ?? null,
+      },
       dispatches: dispatchList,
       receipts: { byMaterial: receiptsSummary, totalLines: receipts.length },
       runningHours,
@@ -25965,7 +26039,7 @@ export class DatabaseStorage implements IStorage {
       ldo: {
         consumedT1L: effectiveT1L,
         consumedT2L: ldoConsumedT2,
-        consumedTotalL: effectiveTotalL || null,
+        consumedTotalL: effectiveTotalL,
         lPerHour: effectiveLPerHour,
         lPerMT: effectiveLPerMT,
         dryerLPerMT,

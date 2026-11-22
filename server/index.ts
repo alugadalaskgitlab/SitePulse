@@ -7,6 +7,7 @@ import { initPush, sendPushToAudience } from "./push";
 import { storage } from "./storage";
 import { pool } from "./db";
 import { verifyStartupReadiness } from "./startupReadiness";
+import { startDispatchProOutboxWorker } from "./dispatchProOutbox";
 
 const app = express();
 const httpServer = createServer(app);
@@ -58,6 +59,7 @@ app.use((req, res, next) => {
   setEarthworkSchemaReady(true);
   initPush();
   await registerRoutes(httpServer, app);
+  startDispatchProOutboxWorker();
   // Development-only review suggestions. This does not confirm mappings or write recipes.
   if (process.env.NODE_ENV === "development") {
     void autoMapAllUnmappedItems()
