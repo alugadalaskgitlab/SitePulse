@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Download, ExternalLink, FileText, X } from "lucide-react";
 import type { Attachment } from "@shared/schema";
 import {
@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { isInstalledAppMode, type InAppDocumentPreviewRequest } from "@/lib/installedApp";
 
 /**
  * The viewer owns one history entry while it is open. This is deliberately
@@ -54,6 +55,25 @@ export function getSafeAttachmentObjectPath(objectPath: string): string | null {
   }
 }
 
+export function getSafeInAppDocumentUrl(documentUrl: string): string | null {
+  try {
+    const baseOrigin = typeof window === "undefined" ? "http://localhost" : window.location.origin;
+    const url = new URL(documentUrl, baseOrigin);
+    if (
+      url.origin !== baseOrigin ||
+      !url.pathname.startsWith("/") ||
+      url.username ||
+      url.password ||
+      !(url.pathname.startsWith("/objects/") || url.pathname.startsWith("/api/"))
+    ) {
+      return null;
+    }
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
+}
+
 function isPdfAttachment(attachment: Attachment): boolean {
   return (
     attachment.mimeType?.toLowerCase() === "application/pdf" ||
@@ -67,20 +87,23 @@ function isImageAttachment(attachment: Attachment): boolean {
 
 export function AttachmentViewer({
   attachment,
+  documentPreview = null,
   onClose,
 }: {
   attachment: Attachment | null;
+  documentPreview?: InAppDocumentPreviewRequest | null;
   onClose: () => void;
 }) {
   const tokenRef = useRef(`attachment-viewer-${++nextViewerToken}`);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const ownsHistoryEntryRef = useRef(false);
   const pendingTraversalRef = useRef(false);
   const onCloseRef = useRef(onClose);
   const isOpenRef = useRef(attachment !== null);
   onCloseRef.current = onClose;
-  isOpenRef.current = attachment !== null;
+  isOpenRef.current = attachment !== null || documentPreview !== null;
 
-  const isOpen = attachment !== null;
+  const isOpen = attachment !== null || documentPreview !== null;
 
   const closeViewer = useCallback(() => {
     if (!ownsHistoryEntryRef.current) {
@@ -200,11 +223,32 @@ export function AttachmentViewer({
     };
   }, [isOpen]);
 
-  const title = attachment?.caption || attachment?.fileName || "Attachment";
+  const htmlBlobUrl = useMemo(() => {
+    if (!documentPreview?.html) return null;
+    return URL.createObjectURL(new Blob([documentPreview.html], { type: "text/html;charset=utf-8" }));
+  }, [documentPreview?.html]);
+  useEffect(() => () => {
+    if (htmlBlobUrl) URL.revokeObjectURL(htmlBlobUrl);
+  }, [htmlBlobUrl]);
+
+  const title = attachment?.caption || documentPreview?.title || attachment?.fileName || "Attachment";
+  const fileName = attachment?.fileName || documentPreview?.fileName || "document.pdf";
   const safeObjectPath = attachment ? getSafeAttachmentObjectPath(attachment.objectPath) : null;
+  const safeDocumentPath = documentPreview?.html
+    ? htmlBlobUrl
+    : documentPreview?.url
+      ? getSafeInAppDocumentUrl(documentPreview.url)
+      : null;
+  const safePreviewPath = attachment ? safeObjectPath : safeDocumentPath;
   const isImage = attachment ? safeObjectPath !== null && isImageAttachment(attachment) : false;
-  const isPdf = attachment ? safeObjectPath !== null && isPdfAttachment(attachment) : false;
-  const isUnsafePath = attachment !== null && safeObjectPath === null;
+  const isPdf = attachment
+    ? safeObjectPath !== null && isPdfAttachment(attachment)
+    : !!documentPreview?.url && safeDocumentPath !== null;
+  const isHtmlDocument = !!documentPreview?.html && safeDocumentPath !== null;
+  const isUnsafePath = attachment !== null
+    ? safeObjectPath === null
+    : documentPreview !== null && safeDocumentPath === null;
+  const installedApp = isInstalledAppMode();
 
   return (
     <Dialog
@@ -218,36 +262,63 @@ export function AttachmentViewer({
         data-testid="attachment-viewer"
       >
         <DialogHeader className="shrink-0 pr-8 text-left">
-          <DialogTitle className="truncate">{title}</DialogTitle>
-          <DialogDescription className="truncate">
-            {attachment?.fileName}
-          </DialogDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <DialogTitle className="truncate">{title}</DialogTitle>
+              <DialogDescription className="truncate">{fileName}</DialogDescription>
+            </div>
+            <button
+              type="button"
+              onClick={closeViewer}
+              className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent"
+              data-testid="button-close-attachment-viewer-top"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+              Close
+            </button>
+          </div>
         </DialogHeader>
 
-        {attachment && (
-          <div className="min-h-0 flex-1 overflow-auto rounded-md bg-slate-950/95 p-1 sm:p-3">
+        {isOpen && (
+          <div
+            className="min-h-0 flex-1 overflow-auto rounded-md bg-slate-950/95 p-1 sm:p-3"
+            style={{ touchAction: "pan-x pan-y pinch-zoom" }}
+          >
             {isImage && (
               <div className="flex min-h-full items-center justify-center">
                 <img
-                  src={safeObjectPath ?? undefined}
+                  src={safePreviewPath ?? undefined}
                   alt={title}
-                  className="max-h-[calc(100dvh-10rem)] max-w-full object-contain"
-                  data-testid={`viewer-image-${attachment.id}`}
+                  className="h-auto max-h-[calc(100dvh-10rem)] w-full max-w-full object-contain"
+                  style={{ touchAction: "pan-x pan-y pinch-zoom" }}
+                  data-testid={`viewer-image-${attachment?.id ?? "document"}`}
                 />
               </div>
             )}
 
             {isPdf && (
               <iframe
-                src={safeObjectPath ?? undefined}
-                title={`PDF preview of ${attachment.fileName}`}
-                className="h-full min-h-[50vh] w-full rounded bg-white"
+                ref={iframeRef}
+                src={safePreviewPath ?? undefined}
+                title={`PDF preview of ${fileName}`}
+                className="h-full min-h-0 w-full rounded bg-white"
                 sandbox="allow-same-origin"
-                data-testid={`viewer-pdf-${attachment.id}`}
+                data-testid={attachment ? `viewer-pdf-${attachment.id}` : "viewer-pdf-document"}
               />
             )}
 
-            {!isImage && !isPdf && (
+            {isHtmlDocument && (
+              <iframe
+                ref={iframeRef}
+                src={safePreviewPath ?? undefined}
+                title={title}
+                className="h-full min-h-0 w-full rounded bg-white"
+                sandbox="allow-same-origin"
+                data-testid="viewer-html-document"
+              />
+            )}
+
+            {!isImage && !isPdf && !isHtmlDocument && (
               <div className="flex min-h-full flex-col items-center justify-center gap-3 bg-background p-6 text-center">
                 <FileText className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
                 <p className="text-sm font-medium">
@@ -258,18 +329,30 @@ export function AttachmentViewer({
                 <p className="max-w-md text-xs text-muted-foreground">
                   {isUnsafePath
                     ? "The attachment can only be opened from an approved object-storage path."
-                    : "Open the file in a new tab or download it to view the attachment."}
+                    : installedApp
+                      ? "Download the file to view the attachment."
+                      : "Open the file in a new tab or download it to view the attachment."}
                 </p>
               </div>
             )}
           </div>
         )}
 
-        {attachment && (
+        {isOpen && (
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            {safeObjectPath && (isPdf || (!isImage && !isPdf)) && (
+            {documentPreview?.printable && (
+              <button
+                type="button"
+                onClick={() => iframeRef.current?.contentWindow?.print()}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent"
+                data-testid="button-print-in-app-document"
+              >
+                Print
+              </button>
+            )}
+            {safePreviewPath && !installedApp && (isPdf || (!isImage && !isPdf)) && (
               <a
-                href={safeObjectPath}
+                href={safePreviewPath}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent"
@@ -278,14 +361,17 @@ export function AttachmentViewer({
                 Open in new tab
               </a>
             )}
-            <a
-              href={safeObjectPath}
-              download={attachment.fileName}
-              className="inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent"
-            >
-              <Download className="h-4 w-4" aria-hidden="true" />
-              Download
-            </a>
+            {safePreviewPath && (
+              <a
+                href={safePreviewPath}
+                download={fileName}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent"
+                data-testid="button-download-attachment"
+              >
+                <Download className="h-4 w-4" aria-hidden="true" />
+                Download
+              </a>
+            )}
             <button
               type="button"
               onClick={closeViewer}

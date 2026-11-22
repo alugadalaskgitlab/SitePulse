@@ -2,6 +2,7 @@ import { useState } from "react";
 import { formatPiTimestamp } from "@shared/piTimeline";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { InstalledDocumentLink } from "@/components/InstalledDocumentLink";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -177,7 +178,7 @@ export function PurchaseOrderWorkflow({ indentId, itemId, canRaise, allowNew, ca
               </>}
               {order?.status === "approved" && <>
                 <Button variant="outline" onClick={onPreview} data-testid={`button-po-preview-${itemId}`}>Preview approved PDF</Button>
-                <a href={`${url}.pdf`} className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground" data-testid="button-po-download">Download PO (PDF)</a>
+                <InstalledDocumentLink href={`${url}.pdf`} browserTarget="_self" fileName={`purchase-order-${order?.orderNo || "purchase-order"}.pdf`} title="Purchase order PDF" className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground" data-testid="button-po-download">Download PO (PDF)</InstalledDocumentLink>
               </>}
             </div>
           </div>}

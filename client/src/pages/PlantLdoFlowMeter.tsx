@@ -16,6 +16,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { openPrintableHtmlOrPreview } from "@/lib/installedApp";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { normalizeWeightUnit } from "@shared/stockUnits";
@@ -1085,8 +1086,7 @@ export default function PlantLdoFlowMeter() {
       <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Dryer Src</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Source</th><th>Notes</th></tr>
       ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← Boiler tank" : ""}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${getReadingSourceLabel(r)}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(printContent); w.document.close(); w.print(); }
+    openPrintableHtmlOrPreview(printContent, "LDO flow meter readings", `ldo-flow-readings-${format(new Date(), "yyyyMMdd")}.html`);
   }
 
   const dialogTitle = editingReading

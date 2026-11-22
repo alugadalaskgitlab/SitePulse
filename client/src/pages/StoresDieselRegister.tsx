@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ExternalLink, FileText, Fuel, ReceiptText } from "lucide-react";
 import { useLocation } from "wouter";
 import { HubShell } from "@/components/HubShell";
+import { InstalledDocumentLink } from "@/components/InstalledDocumentLink";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
@@ -102,7 +103,7 @@ function RequirementRow({
             <div><p className="text-xs uppercase text-slate-500">Supplier</p><p className="font-medium">{requirement.supplier || "—"}</p></div>
             <div><p className="text-xs uppercase text-slate-500">Bill</p><p className="font-medium">{requirement.billNo || "—"}</p></div>
             <div><p className="text-xs uppercase text-slate-500">Purchase document</p>
-              {purchaseDocuments.length ? purchaseDocuments.map(a => <a key={a.id} href={a.objectPath} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-blue-700 hover:underline mr-3"><FileText className="w-3 h-3" />{a.fileName}</a>) : <p className="font-medium">{attachmentCount && !attachments.length ? "Loading document…" : "—"}</p>}
+              {purchaseDocuments.length ? purchaseDocuments.map(a => <InstalledDocumentLink key={a.id} href={a.objectPath} fileName={a.fileName} className="inline-flex items-center gap-1 text-blue-700 hover:underline mr-3"><FileText className="w-3 h-3" />{a.fileName}</InstalledDocumentLink>) : <p className="font-medium">{attachmentCount && !attachments.length ? "Loading document…" : "—"}</p>}
             </div>
             <div><p className="text-xs uppercase text-slate-500">Document status</p><p className={attachmentCount ? "font-medium text-emerald-700" : "font-medium text-amber-700"}>{documentStatus}</p></div>
             <div><p className="text-xs uppercase text-slate-500">Stock status</p><p className="font-medium">{stockStatus}</p></div>

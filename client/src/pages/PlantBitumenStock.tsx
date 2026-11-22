@@ -15,6 +15,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { openPrintableHtmlOrPreview } from "@/lib/installedApp";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
@@ -758,8 +759,7 @@ export default function PlantBitumenStock() {
       <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Depth(cm)</th><th>Volume(L)</th><th>Weight(MT)</th><th>Usable(MT)</th><th>Type</th><th>Source</th><th>Notes</th></tr>
       ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>Tank ${r.tankNumber}</td><td>${r.depthCm}</td><td>${r.volumeLiters.toFixed(3)}</td><td>${(r.weightKg / 1000).toFixed(3)}</td><td>${(getUsableVolume(r.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)}</td><td>${r.readingType}</td><td>${SOURCE_LABELS[classifyReadingSource(r)]}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(printContent); w.document.close(); w.print(); }
+    openPrintableHtmlOrPreview(printContent, "Bitumen dip readings", `bitumen-dip-readings-${format(new Date(), "yyyyMMdd")}.html`);
   }
 
   function TankIndicator({ label, reading, tankNum }: { label: string; reading: BitumenDipReading | null; tankNum: number }) {

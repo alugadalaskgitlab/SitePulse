@@ -25,6 +25,7 @@ import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 import { convertStockQuantity, stockUnitForMaterial } from "@shared/stockUnits";
 import { displayName } from "@shared/displayName";
+import { openPrintableHtmlOrPreview } from "@/lib/installedApp";
 
 type StockBalanceAsOf = {
   materialId: number;
@@ -2410,9 +2411,7 @@ export default function PlantStock() {
                       <td style="text-align:right;font-weight:${isMismatch ? 'bold' : 'normal'};color:${isMismatch ? (r.delta! > 0 ? '#b45309' : '#dc2626') : 'inherit'}">${escapeHtml(deltaStr)}</td>
                     </tr>`;
                   }).join('');
-                  const w = window.open('', '_blank');
-                  if (!w) return;
-                  w.document.write(`<!DOCTYPE html><html><head><title>${escapeHtml(companyShortName)} Borrow Reconciliation &#8212; ${escapeHtml(partyName)}</title>
+                  const printHtml = `<!DOCTYPE html><html><head><title>${escapeHtml(companyShortName)} Borrow Reconciliation &#8212; ${escapeHtml(partyName)}</title>
                     <style>body{font-family:sans-serif;padding:20px;font-size:11px}
                     h1{margin-bottom:2px;font-size:16px}h2{margin-bottom:4px;font-size:13px}p{margin:2px 0}
                     table{width:100%;border-collapse:collapse;margin-top:12px}
@@ -2439,9 +2438,8 @@ export default function PlantStock() {
                     </tr></tfoot>
                     </table>
                     <p class="note">* Delta = Party Statement Borrowed &#8722; ${escapeHtml(companyShortName)} Ledger Dispatched. Positive = party owes more than ${escapeHtml(companyShortName)} ledger shows; Negative = ${escapeHtml(companyShortName)} ledger over-charges.</p>
-                    </body></html>`);
-                  w.document.close();
-                  w.print();
+                    </body></html>`;
+                  openPrintableHtmlOrPreview(printHtml, `${companyShortName} Borrow Reconciliation`, `borrow-reconciliation-${partyName}.html`);
                 };
 
                 const handlePdfRecon = () => {
@@ -2741,9 +2739,7 @@ export default function PlantStock() {
                       <td>${e.notes || '-'}</td>
                     </tr>`;
                   }).join('');
-                  const w = window.open('', '_blank');
-                  if (!w) return;
-                  w.document.write(`<!DOCTYPE html><html><head><title>Party Statement — ${partyName}</title>
+                  const printHtml = `<!DOCTYPE html><html><head><title>Party Statement — ${partyName}</title>
                     <style>body{font-family:sans-serif;padding:20px;font-size:11px}
                     h1{margin-bottom:2px;font-size:16px}h2{margin-bottom:4px;font-size:13px}p{margin:2px 0}
                     .summary{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:16px 0}
@@ -2787,9 +2783,8 @@ export default function PlantStock() {
                     </tr></tfoot>
                     </table>
                     <p class="note">* Template Qty = full material consumption per dispatch as per mix template. From Own Stock = supplied from party's own inventory. Borrowed from ${companyShortName} = balance covered by ${companyShortName}. Outstanding = total borrowed − replenished to ${companyShortName}.</p>
-                    </body></html>`);
-                  w.document.close();
-                  w.print();
+                    </body></html>`;
+                  openPrintableHtmlOrPreview(printHtml, `Party Statement — ${partyName}`, `party-statement-${partyName}.html`);
                 };
 
                 const handlePdfStmt = () => {

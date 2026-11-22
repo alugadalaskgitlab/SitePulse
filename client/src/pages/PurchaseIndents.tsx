@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { parseApiError } from "@/lib/apiError";
+import { openPrintableHtmlOrPreview } from "@/lib/installedApp";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
@@ -2276,12 +2277,7 @@ export default function PurchaseIndents() {
 </body>
 </html>`;
 
-    const win = window.open("", "_blank", "width=900,height=700,noopener,noreferrer");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 400);
+    openPrintableHtmlOrPreview(html, `Purchase Indent ${indent.indentNo}`, `purchase-indent-${indent.indentNo}.html`, "width=900,height=700,noopener,noreferrer");
   };
 
   const handleSubmitStoresVerify = () => {

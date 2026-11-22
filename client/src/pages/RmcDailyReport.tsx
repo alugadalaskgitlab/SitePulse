@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiRequest } from "@/lib/queryClient";
+import { openDocumentOrPreview } from "@/lib/installedApp";
 import { CheckCircle, XCircle } from "lucide-react";
 import type { RmcBatchRecordWithDesign, RmcCubeTest } from "@shared/schema";
 
@@ -86,7 +87,7 @@ export default function RmcDailyReport() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => window.open(`/api/rmc/daily-report/pdf?date=${date}${plantParam}`, "_blank")}
+                onClick={() => openDocumentOrPreview(`/api/rmc/daily-report/pdf?date=${date}${plantParam}`, `rmc-daily-report-${date}.pdf`, "RMC daily report")}
                 data-testid="btn-download-pdf"
               >
                 <Download className="w-4 h-4 mr-2" />Download PDF

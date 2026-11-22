@@ -1,4 +1,5 @@
 import { getSafeAttachmentObjectPath } from "@/components/AttachmentViewer";
+import { InstalledDocumentLink } from "@/components/InstalledDocumentLink";
 import { DPR_SITE_ACTIVITY_TYPE_LABELS, formatDprChainage } from "@shared/dprSiteActivities";
 import type { DprSiteActivity } from "@/components/DprSiteActivitiesEditor";
 
@@ -62,7 +63,7 @@ export function DprSiteActivitiesReadOnly({ activities = [] }: { activities?: Dp
                 )}
                 {staffNames.length > 0 && <p className="mt-1 text-sm"><span className="font-medium">Who did it:</span> {staffNames.join(", ")}</p>}
                 {safeObjectPath && activity.fileName && <p className="mt-2 text-sm">
-                  <a className="underline print:no-underline" href={safeObjectPath} target="_blank" rel="noreferrer">{activity.fileName}</a>
+                  <InstalledDocumentLink className="underline print:no-underline" href={safeObjectPath} fileName={activity.fileName}>{activity.fileName}</InstalledDocumentLink>
                 </p>}
               </article>
             );

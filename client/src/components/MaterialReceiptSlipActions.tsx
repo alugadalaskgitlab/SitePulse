@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Eye, MessageCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { buildMaterialReceiptSlipPdf, materialReceiptSlipCaption, materialReceiptSlipFilename } from "@/lib/materialReceiptSlipPdf";
 import type { MaterialReceiptSlipCompany, MaterialReceiptSlipData } from "@/lib/materialReceiptSlipTypes";
@@ -19,8 +19,11 @@ export function MaterialReceiptSlipActions({
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [loadingAction, setLoadingAction] = useState<"view" | "send" | null>(null);
-  const [hasShared, setHasShared] = useState(false);
+  const [hasShared, setHasShared] = useState(Boolean(record.slipSharedAt));
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setHasShared(Boolean(record.slipSharedAt));
+  }, [record.id, record.slipSharedAt]);
   useEffect(() => () => {
     if (pdfUrl) URL.revokeObjectURL(pdfUrl);
   }, [pdfUrl]);
@@ -105,36 +108,82 @@ export function MaterialReceiptSlipActions({
       setLoadingAction(null);
     }
   };
+
+  const closePreview = () => {
+    setOpen(false);
+    if (pdfUrl) {
+      URL.revokeObjectURL(pdfUrl);
+      setPdfUrl(null);
+    }
+  };
+
+  const renderPdfDialog = () => open ? (
+    <Dialog open={open} onOpenChange={(nextOpen) => {
+      if (nextOpen) setOpen(true);
+      else closePreview();
+    }}>
+      <DialogContent className="flex h-[92dvh] w-[96vw] max-w-5xl flex-col gap-3 p-3 sm:p-4" data-testid={`dialog-receipt-pdf-${record.kind}-${record.id}`}>
+        <DialogHeader className="flex-row items-center justify-between gap-3 pr-8">
+          <div>
+            <DialogTitle>Receipt PDF</DialogTitle>
+            <DialogDescription className="sr-only">Preview the receipt PDF and choose whether to send it.</DialogDescription>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={closePreview} data-testid="button-close-receipt-pdf-top">Close</Button>
+        </DialogHeader>
+        {pdfUrl && <iframe src={pdfUrl} title="Material receipt PDF" className="min-h-0 flex-1 rounded border" />}
+        <DialogFooter className="shrink-0">
+          <Button type="button" variant="outline" onClick={closePreview} data-testid="button-close-receipt-pdf">Close</Button>
+          <Button type="button" onClick={() => void run("send")} disabled={loadingAction !== null}>
+            {hasShared || Boolean(record.slipSharedAt) ? "Send again" : sendLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  ) : null;
+
   if (mode === "row") {
-    if (!record.slipSendTrackingEnabled) return null;
     const sharedAt = record.slipSharedAt ? new Date(record.slipSharedAt) : null;
     const validSharedAt = sharedAt && !Number.isNaN(sharedAt.getTime()) ? sharedAt : null;
     const editedAt = record.latestEditAt ? new Date(record.latestEditAt) : null;
     const revised = !!(validSharedAt && editedAt && editedAt.getTime() > validSharedAt.getTime());
-    if (validSharedAt && !revised) {
-      const sentLabel = new Intl.DateTimeFormat("en-IN", {
-        day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false,
-      }).format(validSharedAt);
-      return <span className="whitespace-nowrap text-xs text-muted-foreground" data-testid={`receipt-slip-status-${record.kind}-${record.id}`}>✓ Sent {sentLabel}</span>;
-    }
-    if (record.slipSendWindowOpen) {
-      const text = revised ? "Send revised" : "Send";
-      return (
-        <Button
+    const sentLabel = validSharedAt ? new Intl.DateTimeFormat("en-IN", {
+      day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+    }).format(validSharedAt) : null;
+    return <>
+      <div className="flex flex-wrap items-center gap-2" data-testid={`receipt-slip-row-actions-${record.kind}-${record.id}`}>
+        {record.slipSendTrackingEnabled && (
+          validSharedAt && !revised ? (
+            <span className="whitespace-nowrap text-xs text-muted-foreground" data-testid={`receipt-slip-status-${record.kind}-${record.id}`}>✓ Sent {sentLabel}</span>
+          ) : record.slipSendWindowOpen ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto whitespace-nowrap p-0 text-xs text-primary underline-offset-4 hover:underline"
+              onClick={(event) => { event.stopPropagation(); void run("send"); }}
+              disabled={loadingAction !== null}
+              data-testid={`button-receipt-send-${record.kind}-${record.id}`}
+            >
+              {loadingAction === "send" ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <MessageCircle className="mr-1 h-3 w-3" />}
+              {revised ? "Send revised" : "Send"}
+            </Button>
+          ) : (
+            <span className="whitespace-nowrap text-xs text-muted-foreground" data-testid={`receipt-slip-status-${record.kind}-${record.id}`}>Not sent</span>
+          )
+        )}
+        <button
           type="button"
-          variant="ghost"
-          size="sm"
-          className="h-auto whitespace-nowrap p-0 text-xs text-primary underline-offset-4 hover:underline"
-          onClick={(event) => { event.stopPropagation(); void run("send"); }}
+          className="whitespace-nowrap text-xs text-primary underline underline-offset-4"
+          onClick={(event) => { event.stopPropagation(); void run("view"); }}
           disabled={loadingAction !== null}
-          data-testid={`button-receipt-send-${record.kind}-${record.id}`}
+          data-testid={`button-receipt-view-${record.kind}-${record.id}`}
         >
-          {loadingAction === "send" ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <MessageCircle className="mr-1 h-3 w-3" />}
-          {text}
-        </Button>
-      );
-    }
-    return <span className="whitespace-nowrap text-xs text-muted-foreground" data-testid={`receipt-slip-status-${record.kind}-${record.id}`}>Not sent</span>;
+          {loadingAction === "view" ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : null}
+          View
+        </button>
+      </div>
+      {renderPdfDialog()}
+    </>;
   }
 
   return <>
@@ -174,22 +223,6 @@ export function MaterialReceiptSlipActions({
         View receipt
       </button>
     </div>
-    {open && <Dialog open={open} onOpenChange={(nextOpen) => {
-      setOpen(nextOpen);
-      if (!nextOpen && pdfUrl) {
-        URL.revokeObjectURL(pdfUrl);
-        setPdfUrl(null);
-      }
-    }}>
-      <DialogContent className="flex h-[92vh] w-[96vw] max-w-5xl flex-col p-4" data-testid={`dialog-receipt-pdf-${record.kind}-${record.id}`}>
-        <DialogHeader><DialogTitle>Receipt PDF</DialogTitle></DialogHeader>
-        {pdfUrl && <iframe src={pdfUrl} title="Material receipt PDF" className="min-h-0 flex-1 rounded border" />}
-        <DialogFooter>
-          <Button type="button" onClick={() => void run("send")} disabled={loadingAction !== null}>
-            {hasShared ? "Send again" : sendLabel}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>}
+    {renderPdfDialog()}
   </>;
 }

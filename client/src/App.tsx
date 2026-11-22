@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from "@/lib/auth-context";
 import RequireAuth from "@/components/RequireAuth";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { AppErrorBoundary, AppUpdateNotice } from "@/components/AppRecovery";
+import { DocumentPreviewHost } from "@/components/DocumentPreviewHost";
 import type { SectionKey } from "@shared/permissions";
 import type { FeatureAction, FeatureId } from "@shared/featureAccess";
 import { HubShell } from "@/components/HubShell";
@@ -532,6 +533,7 @@ function App() {
       <AuthProvider>
         <Toaster />
         <AppUpdateNotice />
+        <DocumentPreviewHost />
         {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
         <AppErrorBoundary>
           <Router />

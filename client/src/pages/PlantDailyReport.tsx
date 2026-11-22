@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { ReportExportGate } from "@/components/ReportExportGate";
+import { InstalledDocumentLink } from "@/components/InstalledDocumentLink";
 import { Link, useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useOrigin } from "@/hooks/use-origin";
@@ -208,9 +209,9 @@ export default function PlantDailyReport() {
           <Link href={appendPlantContext("/plant/daily-reports", { defaultTab: "reports" })}>
             <Button variant="outline" size="sm" data-testid="button-browse-all-dates"><History className="w-4 h-4 mr-1" />Browse all dates</Button>
           </Link>
-          <ReportExportGate sections={["plant_daily_reports"]}><a href={`/api/plant-module/daily-reports/${date}/pdf?plant=${encodeURIComponent(plantName)}`} target="_blank" rel="noreferrer">
+          <ReportExportGate sections={["plant_daily_reports"]}><InstalledDocumentLink href={`/api/plant-module/daily-reports/${date}/pdf?plant=${encodeURIComponent(plantName)}`} fileName={`plant-daily-report-${date}.pdf`} title="Plant daily report">
             <Button variant="default" size="sm" data-testid="button-download-pdf"><Download className="w-4 h-4 mr-1" />PDF</Button>
-          </a></ReportExportGate>
+          </InstalledDocumentLink></ReportExportGate>
         </div>
       </div>
 

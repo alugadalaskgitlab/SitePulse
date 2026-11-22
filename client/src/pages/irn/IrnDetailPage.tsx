@@ -21,6 +21,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { InternalRequisitionWithItems, InternalRequisitionItem, IrnAuditLog, StoreIssueWithItems } from "@shared/schema";
 import { normalizeWeightUnit } from "@shared/stockUnits";
+import { openDocumentOrPreview } from "@/lib/installedApp";
 
 type StoresAction = "issue" | "procure" | "split";
 
@@ -1118,7 +1119,7 @@ export default function IrnDetailPage() {
                               </div>
                               <Button
                                 variant="outline" size="sm"
-                                onClick={() => window.open(`/api/irn/${irn.id}/issue-voucher?voucherId=${v.id}`, "_blank")}
+                                onClick={() => openDocumentOrPreview(`/api/irn/${irn.id}/issue-voucher?voucherId=${v.id}`, `${v.issueNumber || `issue-voucher-${v.id}`}.pdf`, "Issue voucher")}
                                 className="gap-1.5 text-sm h-7 border-gray-300"
                                 data-testid={`button-print-voucher-${v.id}`}
                               >

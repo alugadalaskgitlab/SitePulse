@@ -108,6 +108,41 @@ describe("receipt slip actions", () => {
     expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
   });
 
+  it("shows View beside row status and opens the receipt PDF dialog with Close and resend actions", async () => {
+    buildPdfMock.mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" }));
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:row-receipt") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+    render(
+      <MaterialReceiptSlipActions
+        record={{ ...record, slipSendTrackingEnabled: true, slipSendWindowOpen: false, slipSharedAt: "2026-11-01T04:00:00.000Z" }}
+        company={company}
+        mode="row"
+      />,
+    );
+
+    expect(screen.getByText(/✓ Sent/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+
+    expect(await screen.findByTestId("dialog-receipt-pdf-plant-64")).toBeTruthy();
+    expect(screen.getByTitle("Material receipt PDF")).toBeTruthy();
+    expect(screen.getByTestId("button-close-receipt-pdf-top")).toBeTruthy();
+    expect(screen.getByTestId("button-close-receipt-pdf")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send again" })).toBeTruthy();
+    fireEvent.click(screen.getByTestId("button-close-receipt-pdf-top"));
+    await waitFor(() => expect(screen.queryByTestId("dialog-receipt-pdf-plant-64")).toBeNull());
+  });
+
+  it("shows View for an unsent row and for rows without send tracking", () => {
+    const { rerender } = render(
+      <MaterialReceiptSlipActions record={{ ...record, slipSendTrackingEnabled: true, slipSendWindowOpen: false }} company={company} mode="row" />,
+    );
+    expect(screen.getByText("Not sent")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View" })).toBeTruthy();
+
+    rerender(<MaterialReceiptSlipActions record={record} company={company} mode="row" />);
+    expect(screen.getByRole("button", { name: "View" })).toBeTruthy();
+  });
+
   it("does not mark a receipt shared when native sharing is cancelled", async () => {
     buildPdfMock.mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" }));
     const share = vi.fn().mockRejectedValue(new DOMException("Cancelled", "AbortError"));

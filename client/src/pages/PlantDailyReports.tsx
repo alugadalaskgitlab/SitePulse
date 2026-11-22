@@ -110,6 +110,7 @@ type IndexRow = {
 };
 
 import { ReportExportGate } from "@/components/ReportExportGate";
+import { InstalledDocumentLink } from "@/components/InstalledDocumentLink";
 
 export default function PlantDailyReports() {
   const { defaultPlantName } = useFeatureFlags();
@@ -907,11 +908,11 @@ export default function PlantDailyReports() {
                               <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open
                             </Button>
                           </Link>
-                          <ReportExportGate sections={["plant_daily_reports"]}><a href={pdfHref} target="_blank" rel="noreferrer">
+                          <ReportExportGate sections={["plant_daily_reports"]}><InstalledDocumentLink href={pdfHref} fileName={`plant-daily-report-${r.date}.pdf`} title="Plant daily report">
                             <Button variant="outline" size="sm" data-testid={`button-pdf-${rowKey}`}>
                               <Download className="w-3.5 h-3.5 mr-1" /> PDF
                             </Button>
-                          </a></ReportExportGate>
+                          </InstalledDocumentLink></ReportExportGate>
                         </div>
                       </TableCell>
                     </TableRow>

@@ -5,6 +5,7 @@ import { Link } from "wouter";
 import { ArrowLeft, Beaker, Check, FileText, FlaskConical, Printer, RefreshCw, Save, Upload, X } from "lucide-react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceDot, ReferenceLine } from "recharts";
 import { HubShell } from "@/components/HubShell";
+import { InstalledDocumentLink } from "@/components/InstalledDocumentLink";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -672,7 +673,7 @@ export default function LabTests() {
                 <Card><CardHeader><CardTitle className="text-base">Saved calibrations</CardTitle></CardHeader><CardContent className="space-y-2">
                   {(setup?.calibrations ?? []).map((row: any) => <div key={row.id} className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 text-sm last:border-0">
                     <span>{row.equipmentNo} · {row.kind.replaceAll("_", " ")} · calibrated {row.calibratedOn}{row.validUntil ? ` · valid until ${row.validUntil}` : ""}</span>
-                    {row.objectPath && <a className="underline" href={row.objectPath} target="_blank" rel="noreferrer">{row.fileName || "Open certificate"}</a>}
+                    {row.objectPath && <InstalledDocumentLink className="underline" href={row.objectPath} fileName={row.fileName || "certificate"}>{row.fileName || "Open certificate"}</InstalledDocumentLink>}
                   </div>)}
                   {!setup?.calibrations?.length && <p className="text-sm text-muted-foreground">No calibration records for this site.</p>}
                 </CardContent></Card>
@@ -1166,7 +1167,7 @@ function TestDetailDialog({ test, isOwner, canEdit, onClose, onEdit, onRetest, o
       <div className="my-3 flex items-center gap-2">{verdictBadge(test.verdict)}<Badge variant="outline">{test.status}</Badge>{test.retestOfTestId && <span className="text-sm">Retest of #{test.retestOfTestId}</span>}</div>
       <p className="mb-3 text-sm">Site engineer: {displayCaps(test.siteEngineerName) || "—"} · Sampled by: {displayCaps(test.sampledByName) || "—"} · Tested by: {displayCaps(test.testedByName) || "—"}</p>
       <TestResultsTable testType={test.testType} readings={test.readings} results={test.results} />
-      {test.attachments?.map((file: any) => <a key={file.id} href={file.objectPath} target="_blank" rel="noreferrer" className="mt-2 block text-sm underline">{file.fileName}</a>)}
+      {test.attachments?.map((file: any) => <InstalledDocumentLink key={file.id} href={file.objectPath} fileName={file.fileName} className="mt-2 block text-sm underline">{file.fileName}</InstalledDocumentLink>)}
       <details className="mt-3 rounded border p-3">
         <summary className="cursor-pointer font-semibold">Test history</summary>
         {history.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">No history available.</p> : <div className="mt-2 space-y-2">

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
+import { downloadOrOpenInNewTab } from "@/lib/installedApp";
 import { ReportExportGate } from "@/components/ReportExportGate";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { Button } from "@/components/ui/button";
@@ -124,9 +125,9 @@ export default function PlantHeatingTrends() {
   }, [data]);
 
   const exportExcel = () => {
-    window.open(
+    downloadOrOpenInNewTab(
       `/api/plant-module/heating-trends/excel?dateFrom=${dateFrom}&dateTo=${dateTo}&plant=${encodeURIComponent(plant)}`,
-      "_blank"
+      `plant-heating-trends-${dateFrom}-${dateTo}.xlsx`,
     );
   };
 

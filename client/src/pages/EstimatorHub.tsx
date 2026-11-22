@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Flame, Building2, LogOut, Home, ChevronRight, BarChart3, Plus, GitCompare, FileDown } from "lucide-react";
 import { readEstimatorRole, signOutEstimator } from "@/lib/estimatorAuth";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { openDocumentOrPreview } from "@/lib/installedApp";
 
 export default function EstimatorHub() {
   const [, setLocation] = useLocation();
@@ -125,7 +126,7 @@ export default function EstimatorHub() {
               variant="outline"
               size="lg"
               className="gap-2 text-base"
-              onClick={() => window.open('/api/admin/estimator-guide.pdf', '_blank')}
+              onClick={() => openDocumentOrPreview("/api/admin/estimator-guide.pdf", "estimator-guide.pdf", "Estimator guide")}
               data-testid="button-estimator-guide-pdf"
             >
               <FileDown className="w-5 h-5" />
