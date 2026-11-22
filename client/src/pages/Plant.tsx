@@ -1525,8 +1525,12 @@ function TankSlotEditor({
 
 export function PlantTypeConfigSection() {
   const { toast } = useToast();
+  const { isOwner } = useAuth();
   const { data: allSettings = [], isLoading: settingsLoading } = useQuery<PlantSettingsWithSite[]>({
     queryKey: ['/api/plant-module/plant-settings'],
+  });
+  const { data: equipmentMaster = [] } = useQuery<EquipmentMasterType[]>({
+    queryKey: ["/api/plant-module/equipment"],
   });
 
   // ── Edit-type dialog state ──────────────────────────────────────────────────
@@ -1558,6 +1562,9 @@ export function PlantTypeConfigSection() {
   // ── Tank Calibration dialog state ────────────────────────────────────────────
   const [calibrateTarget, setCalibrateTarget] = useState<PlantSettings | null>(null);
   const [calibrateConfig, setCalibrateConfig] = useState<PlantTankConfig>({});
+  const [fuelSettingsTarget, setFuelSettingsTarget] = useState<PlantSettings | null>(null);
+  const [selectedProductionGenerators, setSelectedProductionGenerators] = useState<number[]>([]);
+  const [boilerFuelMeterMode, setBoilerFuelMeterMode] = useState<"working" | "dips_only">("working");
 
   const { data: sitesList = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
   const { data: partiesList = [] } = useQuery<Party[]>({ queryKey: ["/api/parties"] });
@@ -1731,6 +1738,45 @@ export function PlantTypeConfigSection() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const fuelSettingsMutation = useMutation({
+    mutationFn: async () => {
+      if (!fuelSettingsTarget) throw new Error("No plant selected");
+      const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(fuelSettingsTarget.plantName)}`, {
+        plantType: fuelSettingsTarget.plantType ?? "hma",
+        siteId: fuelSettingsTarget.siteId ?? null,
+        primaryPartyId: fuelSettingsTarget.primaryPartyId ?? null,
+        bitumenTank1LitresPerCm: fuelSettingsTarget.bitumenTank1LitresPerCm ?? null,
+        bitumenTank2LitresPerCm: fuelSettingsTarget.bitumenTank2LitresPerCm ?? null,
+        bitumenDensityKgPerL: fuelSettingsTarget.bitumenDensityKgPerL ?? null,
+        tankConfig: fuelSettingsTarget.tankConfig ?? null,
+        dgProductionEquipmentIds: selectedProductionGenerators,
+        boilerFuelMeterMode,
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Could not save plant fuel settings.");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Production fuel settings saved" });
+      setFuelSettingsTarget(null);
+    },
+    onError: (error: any) => toast({ title: "Could not save settings", description: error.message, variant: "destructive" }),
+  });
+
+  const openFuelSettings = (plant: PlantSettings) => {
+    let ids: number[] = [];
+    try {
+      const parsed = JSON.parse(plant.dgProductionEquipmentIds || "[]");
+      if (Array.isArray(parsed)) ids = parsed.map(Number).filter(Number.isInteger);
+    } catch {}
+    setSelectedProductionGenerators(ids);
+    setBoilerFuelMeterMode(plant.boilerFuelMeterMode === "dips_only" ? "dips_only" : "working");
+    setFuelSettingsTarget(plant);
+  };
+
   if (settingsLoading) return null;
 
   const isEmpty = allSettings.length === 0;
@@ -1814,6 +1860,15 @@ export function PlantTypeConfigSection() {
                   <Cylinder className="w-3 h-3 mr-1" />
                   Tanks
                 </Button>
+                {isOwner && <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openFuelSettings(s)}
+                  data-testid={`btn-production-fuel-settings-${s.plantName}`}
+                >
+                  <Fuel className="w-3 h-3 mr-1" />
+                  Fuel settings
+                </Button>}
                 <Button
                   variant="outline"
                   size="sm"
@@ -1891,6 +1946,57 @@ export function PlantTypeConfigSection() {
                 data-testid="btn-save-edit-type"
               >
                 {editTypeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!fuelSettingsTarget} onOpenChange={(open) => { if (!open) setFuelSettingsTarget(null); }}>
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Production fuel settings — {fuelSettingsTarget?.plantName}</DialogTitle>
+            <DialogDescription>Choose the generators used during production and how boiler LDO is measured.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5 py-2">
+            <fieldset className="space-y-2">
+              <legend className="font-medium">DG used during production</legend>
+              {equipmentMaster.filter(item =>
+                item.isActive !== 0 &&
+                /generator|(^|\b)dg(\b|$)/i.test(`${item.equipmentType || ""} ${item.name || ""}`) &&
+                (!item.plantName || item.plantName.toLowerCase() === fuelSettingsTarget?.plantName.toLowerCase())
+              ).map(item => (
+                <label key={item.id} className="flex items-center gap-3 rounded border p-3">
+                  <Checkbox
+                    checked={selectedProductionGenerators.includes(item.id)}
+                    onCheckedChange={(checked) => setSelectedProductionGenerators(current =>
+                      checked ? [...new Set([...current, item.id])] : current.filter(id => id !== item.id)
+                    )}
+                    data-testid={`checkbox-production-generator-${item.id}`}
+                  />
+                  <span>{item.name}</span>
+                </label>
+              ))}
+              {!equipmentMaster.some(item =>
+                item.isActive !== 0 &&
+                /generator|(^|\b)dg(\b|$)/i.test(`${item.equipmentType || ""} ${item.name || ""}`) &&
+                (!item.plantName || item.plantName.toLowerCase() === fuelSettingsTarget?.plantName.toLowerCase())
+              ) && <p className="text-sm text-muted-foreground">No active generator is tagged to this plant or shared with it in Equipment Master.</p>}
+            </fieldset>
+            <div className="space-y-2">
+              <Label>Boiler fuel meter</Label>
+              <Select value={boilerFuelMeterMode} onValueChange={(value) => setBoilerFuelMeterMode(value as "working" | "dips_only")}>
+                <SelectTrigger data-testid="select-boiler-fuel-meter-mode"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="working">Working (use meter readings)</SelectItem>
+                  <SelectItem value="dips_only">Not working (use Tank 1 dips)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setFuelSettingsTarget(null)}>Cancel</Button>
+              <Button onClick={() => fuelSettingsMutation.mutate()} disabled={fuelSettingsMutation.isPending} data-testid="button-save-production-fuel-settings">
+                {fuelSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save settings"}
               </Button>
             </div>
           </div>

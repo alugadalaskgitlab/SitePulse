@@ -595,6 +595,11 @@ export const plantSettings = pgTable("plant_settings", {
   bitumenTank2LitresPerCm: real("bitumen_tank2_litres_per_cm"),
   bitumenDensityKgPerL: real("bitumen_density_kg_per_l"),
   tankConfig: text("tank_config"), // JSON: PlantTankConfig (see shared/tank-calibration.ts)
+  // PLANT-03: explicit generators that run during production. NULL/empty means
+  // none are selected; this never guesses from the equipment master.
+  dgProductionEquipmentIds: text("dg_production_equipment_ids"),
+  // "working" preserves the existing boiler-meter workflow by default.
+  boilerFuelMeterMode: text("boiler_fuel_meter_mode").notNull().default("working"),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   plantNameUq: uniqueIndex("plant_settings_plant_name_uq").on(table.plantName),
@@ -1924,7 +1929,7 @@ export const HEATING_SESSION_TYPES = ["NIGHT_PREHEAT", "DAY_MAINTENANCE"] as con
 // is shown to the user it must come from this map.
 export const HEATING_SESSION_TYPE_LABELS: Record<typeof HEATING_SESSION_TYPES[number], string> = {
   NIGHT_PREHEAT: "Night pre-heat (before production)",
-  DAY_MAINTENANCE: "Daytime run (during production)",
+  DAY_MAINTENANCE: "Daytime run (outside production)",
 };
 export function heatingSessionTypeLabel(t: string | null | undefined): string {
   if (!t) return "—";

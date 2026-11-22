@@ -193,6 +193,16 @@ export function HeatingSessionDialog({
     queryKey: ["/api/plant-module/generators"],
     enabled: open,
   });
+  const { data: plantSettings } = useQuery<{ boilerFuelMeterMode?: "working" | "dips_only" | null }>({
+    queryKey: ["/api/plant-module/plant-settings", form.plantName],
+    enabled: open && !!form.plantName,
+    queryFn: async () => {
+      const response = await fetch(`/api/plant-module/plant-settings/${encodeURIComponent(form.plantName)}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load plant settings.");
+      return response.json();
+    },
+  });
+  const boilerDipsOnly = plantSettings?.boilerFuelMeterMode === "dips_only";
 
   const generatorOptionsForDate = useMemo(
     () => (dgCandidates || []).filter(g =>
@@ -323,6 +333,14 @@ export function HeatingSessionDialog({
 
   const dur = durationHrs(form.startTime, form.endTime);
   const ldoConsumed = (() => {
+    if (boilerDipsOnly) {
+      const openingDip = parseFloat(form.ldoTank1OpeningDip);
+      const closingDip = parseFloat(form.ldoTank1ClosingDip);
+      if (Number.isFinite(openingDip) && Number.isFinite(closingDip)) {
+        return Math.max(0, getLdoVolumeAtDepth(1, openingDip) - getLdoVolumeAtDepth(1, closingDip));
+      }
+      return null;
+    }
     const o = parseFloat(form.ldoTank1OpeningMeter), c = parseFloat(form.ldoTank1ClosingMeter);
     if (isNaN(o) || isNaN(c)) return null;
     return Math.max(0, c - o);
@@ -370,8 +388,8 @@ export function HeatingSessionDialog({
       bitumenTank1TempEnd: numOrNull(form.bitumenTank1TempEnd),
       bitumenTank2TempStart: numOrNull(form.bitumenTank2TempStart),
       bitumenTank2TempEnd: numOrNull(form.bitumenTank2TempEnd),
-      ldoTank1OpeningMeter: ldoOpen,
-      ldoTank1ClosingMeter: ldoClose,
+      ldoTank1OpeningMeter: boilerDipsOnly ? undefined : ldoOpen,
+      ldoTank1ClosingMeter: boilerDipsOnly ? undefined : ldoClose,
       ldoTank1OpeningDip: numOrNull(form.ldoTank1OpeningDip),
       ldoTank1ClosingDip: numOrNull(form.ldoTank1ClosingDip),
       ldoTank2OpeningDip: numOrNull(form.ldoTank2OpeningDip),
@@ -392,6 +410,10 @@ export function HeatingSessionDialog({
       remarks: form.remarks || null,
       editedBy: "operator",
     };
+    if (boilerDipsOnly) {
+      delete payload.ldoTank1OpeningMeter;
+      delete payload.ldoTank1ClosingMeter;
+    }
     if (form.id) payload.id = form.id;
     return payload;
   };
@@ -553,7 +575,7 @@ export function HeatingSessionDialog({
             </CardContent>
           </Card>
 
-          <Card>
+          {!boilerDipsOnly && <Card>
             <CardHeader className="py-3">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <CardTitle className="text-base">Boiler Fuel Meter</CardTitle>
@@ -595,11 +617,11 @@ export function HeatingSessionDialog({
               <div><Label>Total consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
               <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
             </CardContent>
-          </Card>
+          </Card>}
 
           {/* LDO Tank Dip-Stick Readings */}
           <Card>
-            <CardHeader className="py-3"><CardTitle className="text-base">LDO Tank Dip-Stick Readings</CardTitle></CardHeader>
+            <CardHeader className="py-3"><CardTitle className="text-base">{boilerDipsOnly ? "LDO Tank 1 dips — boiler meter not used" : "LDO Tank Dip-Stick Readings"}</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
                 <Label>Tank 1 — opening dip (cm)</Label>
@@ -635,6 +657,10 @@ export function HeatingSessionDialog({
                   : <p className="text-sm text-muted-foreground mt-1">Dip-stick at session end, in cm</p>
                 }
               </div>
+              {boilerDipsOnly && <>
+                <div><Label>Tank 1 consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(1) ?? "—"}</div></div>
+                <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
+              </>}
               <div>
                 <Label>Tank 2 — opening dip (cm)</Label>
                 <Input

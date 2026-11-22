@@ -78,6 +78,21 @@ import { equipmentHireTermsError } from "@shared/equipmentMasterRules";
 import { equipmentMaster as hireIdentityEquipment } from "@shared/schema";
 import { vendors as billingIdentityVendors } from "@shared/schema";
 import { siteMaterialTrips } from "@shared/schema";
+
+function dispatchProPublicReason(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (/expected\s+string|null.*string|invalid.*string/i.test(value)) return "DispatchPro refused a blank field. Retry after the DispatchPro update.";
+  if (/timeout|network|fetch|ECONN|socket/i.test(value)) return "Could not reach DispatchPro. Try again.";
+  if (/auth|token|credential|unauthor/i.test(value)) return "DispatchPro connection needs attention.";
+  return "Could not send to DispatchPro. Try again.";
+}
+
+function dispatchWithPublicError<T extends { dispatchProLastError?: string | null }>(dispatch: T): T {
+  return {
+    ...dispatch,
+    dispatchProLastError: dispatchProPublicReason(dispatch.dispatchProLastError),
+  };
+}
 import { buildPurchaseOrderPdf } from "./purchase-order-pdf";
 import { isNull, isNotNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc, desc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -6530,7 +6545,7 @@ export async function registerRoutes(
         dateTo: req.query.dateTo as string | undefined,
       };
       const dispatches = await storage.getTruckDispatches(filters);
-      res.json(dispatches);
+      res.json(dispatches.map(dispatchWithPublicError));
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch truck dispatches" });
     }
@@ -6560,7 +6575,7 @@ export async function registerRoutes(
           dispatchProLastError: "Could not queue the DispatchPro send. Retry from the dispatch list.",
         }).where(eq(truckDispatchesTable.id, dispatch.id)).catch(() => {});
       }
-      res.status(201).json(result);
+      res.status(201).json({ ...result, dispatch: dispatchWithPublicError(dispatch) });
     } catch (err) {
       // Owner-stock shortage — surface to the client as 409 so the UI can
       // ask the operator for explicit consent before borrowing from HLC.
@@ -6756,7 +6771,7 @@ export async function registerRoutes(
         }
       }
       sendPushToSection("plant_production", "Dispatch Updated", `Dispatch #${id} updated`, "/plant").catch(() => {});
-      res.json(updated);
+      res.json(dispatchWithPublicError(updated));
     } catch (err) {
       if (handleInsufficientPlantStock(err, res)) return;
       console.error("Update dispatch error:", err);
@@ -9069,6 +9084,8 @@ export async function registerRoutes(
           bitumenTank1LitresPerCm: null,
           bitumenTank2LitresPerCm: null,
           bitumenDensityKgPerL: null,
+          dgProductionEquipmentIds: null,
+          boilerFuelMeterMode: "working",
         });
       }
       res.json(row);
@@ -9080,9 +9097,40 @@ export async function registerRoutes(
   app.put("/api/plant-module/plant-settings/:plantName", async (req, res) => {
     try {
       if (!assertFeatureAction(req, res, "hmp_rmc", "edit")) return;
+      const hasOwnerOnlySetting =
+        Object.prototype.hasOwnProperty.call(req.body || {}, "dgProductionEquipmentIds") ||
+        Object.prototype.hasOwnProperty.call(req.body || {}, "boilerFuelMeterMode");
+      if (hasOwnerOnlySetting && !req.authUser?.isOwner) {
+        return res.status(403).json({ message: "Only the Owner can change production fuel settings." });
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(req.body || {}, "boilerFuelMeterMode") &&
+        req.body.boilerFuelMeterMode !== "working" &&
+        req.body.boilerFuelMeterMode !== "dips_only"
+      ) {
+        return res.status(400).json({ message: "Choose Working or Not working (use Tank 1 dips)." });
+      }
       const plantName = decodeURIComponent(req.params.plantName).trim();
       if (!plantName) return res.status(400).json({ message: "plantName is required" });
-      const parsed = insertPlantSettingsSchema.parse({
+      let dgProductionEquipmentIds: string | undefined;
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, "dgProductionEquipmentIds")) {
+        const rawIds = req.body?.dgProductionEquipmentIds;
+        if (!Array.isArray(rawIds) || rawIds.some((id: unknown) => !Number.isInteger(Number(id)) || Number(id) <= 0)) {
+          return res.status(400).json({ message: "Choose valid generator equipment." });
+        }
+        const ids = [...new Set(rawIds.map(Number))];
+        const equipment = await storage.getEquipmentMaster(false);
+        const validIds = new Set(equipment
+          .filter((item: any) => item.isActive !== 0 &&
+            /generator|(^|\b)dg(\b|$)/i.test(`${item.equipmentType || ""} ${item.name || ""}`) &&
+            (!item.plantName || item.plantName.toLowerCase() === plantName.toLowerCase()))
+          .map((item: any) => Number(item.id)));
+        if (ids.some((id: number) => !validIds.has(id))) {
+          return res.status(400).json({ message: "Choose only active generators assigned to this plant or shared with it." });
+        }
+        dgProductionEquipmentIds = JSON.stringify(ids);
+      }
+      const input: Record<string, unknown> = {
         plantName,
         plantType: req.body?.plantType ?? "hma",
         siteId: req.body?.siteId ?? null,
@@ -9091,7 +9139,12 @@ export async function registerRoutes(
         bitumenTank2LitresPerCm: req.body?.bitumenTank2LitresPerCm ?? null,
         bitumenDensityKgPerL: req.body?.bitumenDensityKgPerL ?? null,
         tankConfig: req.body?.tankConfig ?? null,
-      } as any);
+      };
+      if (dgProductionEquipmentIds !== undefined) input.dgProductionEquipmentIds = dgProductionEquipmentIds;
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, "boilerFuelMeterMode")) {
+        input.boilerFuelMeterMode = req.body.boilerFuelMeterMode;
+      }
+      const parsed = insertPlantSettingsSchema.parse(input as any);
       const saved = await storage.upsertPlantSettings(parsed);
       res.json(saved);
     } catch (err: any) {
@@ -9157,6 +9210,42 @@ export async function registerRoutes(
       res.json(permitted === null ? logs : logs.filter(l => permitted.has(l.plantName || defaultPlantName)));
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to fetch shift logs" });
+    }
+  });
+
+  app.get("/api/plant-module/shift-logs/previous-before/:date", async (req, res) => {
+    try {
+      if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
+      const plantName = String(req.query.plant || await storage.getDefaultPlantName());
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) return res.status(400).json({ message: "Enter a valid date." });
+      if (!await assertReportPlant(req, res, plantName)) return;
+      const previous = await storage.getLatestPlantShiftLogBefore(req.params.date, plantName);
+      res.json(previous ?? null);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Could not load the previous shift log." });
+    }
+  });
+
+  app.get("/api/plant-module/shift-logs/:date/dips-only-inputs", async (req, res) => {
+    try {
+      if (!assertFeatureAction(req, res, "hmp_rmc", "view")) return;
+      const plantName = String(req.query.plant || await storage.getDefaultPlantName());
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) return res.status(400).json({ message: "Enter a valid date." });
+      if (!await assertReportPlant(req, res, plantName)) return;
+      const rows = await storage.getLdoFlowReadings({
+        dateFrom: req.params.date,
+        dateTo: req.params.date,
+        tankNumber: 1,
+        readingType: "receipt",
+        plantName,
+      });
+      const receiptLitres = rows.reduce((total: number, row: any) =>
+        total + (row.sourceMaterialIssueId == null ? Number(row.quantityLiters || 0) : 0), 0);
+      const transferLitres = rows.reduce((total: number, row: any) =>
+        total + (row.sourceMaterialIssueId != null ? Number(row.quantityLiters || 0) : 0), 0);
+      res.json({ receiptLitres, transferLitres });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Could not load Tank 1 fuel receipts." });
     }
   });
 
@@ -9275,8 +9364,16 @@ export async function registerRoutes(
         storage.getEquipmentUsage({ dateFrom: req.params.date, dateTo: req.params.date }),
         storage.getEquipmentUsage({ dateFrom: priorDate, dateTo: priorDate }),
       ]);
+      const settings = await storage.getPlantSettings(plantName);
+      let configuredIds: number[] = [];
+      try {
+        const configured = JSON.parse(settings?.dgProductionEquipmentIds || "[]");
+        if (Array.isArray(configured)) configuredIds = configured.map(Number).filter(Number.isInteger);
+      } catch {}
+      const selectedIds = new Set(configuredIds);
       const generators = equipment.filter((item: any) =>
         item.isActive !== 0 && /generator|(^|\b)dg(\b|$)/i.test(`${item.equipmentType || ""} ${item.name || ""}`) &&
+        selectedIds.has(Number(item.id)) &&
         (!item.plantName || item.plantName.toLowerCase() === plantName.toLowerCase())
       );
       const rows = generators.map((item: any) => {
@@ -9316,6 +9413,16 @@ export async function registerRoutes(
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ message: "Enter a valid DG reading date." });
       const readings = Array.isArray(req.body?.readings) ? req.body.readings : [];
       if (readings.length > 20) return res.status(400).json({ message: "Too many DG readings." });
+      const settings = await storage.getPlantSettings(plantName);
+      let configuredIds: number[] = [];
+      try {
+        const configured = JSON.parse(settings?.dgProductionEquipmentIds || "[]");
+        if (Array.isArray(configured)) configuredIds = configured.map(Number).filter(Number.isInteger);
+      } catch {}
+      const selectedIds = new Set(configuredIds);
+      if (readings.some((raw: any) => !selectedIds.has(Number(raw?.equipmentId)))) {
+        return res.status(400).json({ message: "Choose only generators selected in Plant Settings." });
+      }
       const [equipment, existingRows] = await Promise.all([
         storage.getEquipmentMaster(false),
         storage.getEquipmentUsage({ dateFrom: date, dateTo: date }),
@@ -9382,11 +9489,21 @@ export async function registerRoutes(
       const existing = await storage.getPlantShiftLog(id);
       if (!existing) return res.status(404).json({ message: "Shift log not found" });
       if (!await assertReportPlant(req, res, existing.plantName || await storage.getDefaultPlantName())) return;
+      const existingSettings = await storage.getPlantSettings(existing.plantName || await storage.getDefaultPlantName());
+      let configuredIds: number[] = [];
+      try {
+        const configured = JSON.parse(existingSettings?.dgProductionEquipmentIds || "[]");
+        if (Array.isArray(configured)) configuredIds = configured.map(Number).filter(Number.isInteger);
+      } catch {}
+      const selectedIds = new Set(configuredIds);
+      const dipsOnly = existingSettings?.boilerFuelMeterMode === "dips_only";
       const missingClosingReadings = [
         ...(existing.bitumenTank1ClosingDip == null ? ["Bitumen tank 1 closing dip"] : []),
         ...(existing.bitumenTank2ClosingDip == null ? ["Bitumen tank 2 closing dip"] : []),
         ...(existing.ldoTank2ClosingMeter == null ? ["Dryer fuel meter closing reading"] : []),
-        ...(existing.boilerRunsDuringProduction && existing.ldoTank1ClosingMeter == null ? ["Boiler fuel meter closing reading"] : []),
+        ...(dipsOnly && existing.ldoTank1OpeningDip == null ? ["LDO tank 1 opening dip"] : []),
+        ...(dipsOnly && existing.ldoTank1ClosingDip == null ? ["LDO tank 1 closing dip"] : []),
+        ...(!dipsOnly && existing.boilerRunsDuringProduction && existing.ldoTank1ClosingMeter == null ? ["Boiler fuel meter closing reading"] : []),
       ];
       const [plantEquipment, dayUsage] = await Promise.all([
         storage.getEquipmentMaster(false),
@@ -9394,6 +9511,7 @@ export async function registerRoutes(
       ]);
       const generators = plantEquipment.filter((item: any) =>
         item.isActive !== 0 && /generator|(^|\b)dg(\b|$)/i.test(`${item.equipmentType || ""} ${item.name || ""}`) &&
+        selectedIds.has(Number(item.id)) &&
         (!item.plantName || item.plantName.toLowerCase() === String(existing.plantName || "").toLowerCase())
       );
       for (const generator of generators) {

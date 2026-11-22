@@ -49,6 +49,16 @@ export default function PlantHeatingMismatch() {
   const search = typeof window !== "undefined" ? window.location.search : "";
   const sp = new URLSearchParams(search);
   const plant = sp.get("plant") || defaultPlantName;
+  const { data: plantSettings } = useQuery<{ boilerFuelMeterMode?: "working" | "dips_only" | null }>({
+    queryKey: ["/api/plant-module/plant-settings", plant],
+    enabled: !!plant,
+    queryFn: async () => {
+      const response = await fetch(`/api/plant-module/plant-settings/${encodeURIComponent(plant)}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load plant settings.");
+      return response.json();
+    },
+  });
+  const boilerDipsOnly = plantSettings?.boilerFuelMeterMode === "dips_only";
 
   // Trends → mismatch is a "reports" tab navigation; preserve that on the
   // back-link so closing the page returns to the same tab.
@@ -107,9 +117,10 @@ export default function PlantHeatingMismatch() {
   const deltaL = anyShiftHasMeter || sessions.length > 0
     ? Math.round((sessionsTotalL - shiftTotalL) * 10) / 10
     : null;
-  const isFlagged = deltaL != null && Math.abs(deltaL) > MISMATCH_THRESHOLD_L;
+  const isFlagged = !boilerDipsOnly && deltaL != null && Math.abs(deltaL) > MISMATCH_THRESHOLD_L;
 
   const verdict = (() => {
+    if (boilerDipsOnly) return "Boiler meter not used — dips only";
     if (deltaL == null) {
       return "No heating sessions and no shift-meter readings logged for this date.";
     }
@@ -224,17 +235,16 @@ export default function PlantHeatingMismatch() {
             <Card>
               <CardContent className="p-4">
                 <div className="text-sm text-muted-foreground flex items-center gap-1">
-                  <GaugeCircle className="w-3 h-3" /> Shift-meter total
+                  <GaugeCircle className="w-3 h-3" /> {boilerDipsOnly ? "Boiler meter" : "Shift-meter total"}
                 </div>
                 <div
                   className="text-2xl font-bold"
                   data-testid="kpi-shift-total"
                 >
-                  {anyShiftHasMeter ? `${fmt(shiftTotalL)} L` : "—"}
+                  {boilerDipsOnly ? "Not used — dips only" : anyShiftHasMeter ? `${fmt(shiftTotalL)} L` : "—"}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {shiftLogs.length} shift log{shiftLogs.length === 1 ? "" : "s"}
-                  {shiftLogs.length > 0 && !anyShiftHasMeter && " · no meter readings"}
+                  {boilerDipsOnly ? "No boiler-meter comparison" : `${shiftLogs.length} shift log${shiftLogs.length === 1 ? "" : "s"}${shiftLogs.length > 0 && !anyShiftHasMeter ? " · no meter readings" : ""}`}
                 </div>
               </CardContent>
             </Card>
@@ -244,18 +254,18 @@ export default function PlantHeatingMismatch() {
             >
               <CardContent className="p-4">
                 <div className="text-sm text-muted-foreground flex items-center gap-1">
-                  <GitCompare className="w-3 h-3" /> Δ (sessions − shift)
+                  <GitCompare className="w-3 h-3" /> {boilerDipsOnly ? "Comparison" : "Δ (sessions − shift)"}
                 </div>
                 <div
                   className={`text-2xl font-bold ${isFlagged ? "text-destructive" : ""}`}
                   data-testid="text-delta-l"
                 >
-                  {deltaL == null
+                  {boilerDipsOnly || deltaL == null
                     ? "—"
                     : `${deltaL > 0 ? "+" : ""}${fmt(deltaL)} L`}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  Tolerance: ±{MISMATCH_THRESHOLD_L} L
+                  {boilerDipsOnly ? "Not applicable" : `Tolerance: ±${MISMATCH_THRESHOLD_L} L`}
                 </div>
               </CardContent>
             </Card>

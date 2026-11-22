@@ -115,6 +115,7 @@ function buildDaySummaries(
   allShiftLogs: PlantShiftLog[],
   allLedgerRows: LdoFlowReading[],
   plant: string,
+  boilerDipsOnly = false,
 ): DaySummary[] {
   return dates.map(date => {
     const sessions = allSessions.filter(
@@ -139,14 +140,14 @@ function buildDaySummaries(
       const c = shiftConsumed(sh);
       return s + (c == null ? 0 : c);
     }, 0);
-    const anyShiftHasMeter = shiftLogs.some(sh => shiftConsumed(sh) != null);
+    const anyShiftHasMeter = !boilerDipsOnly && shiftLogs.some(sh => shiftConsumed(sh) != null);
     const ledgerTotalL = ledgerRows.reduce((s, r) => {
       const c = ldoLedgerConsumed(r);
       return s + (c == null ? 0 : c);
     }, 0);
 
     const deltaSessionsVsShift =
-      sessions.length > 0 || anyShiftHasMeter
+      !boilerDipsOnly && (sessions.length > 0 || anyShiftHasMeter)
         ? Math.round((sessionsTotalL - shiftTotalL) * 10) / 10
         : null;
     const deltaSessionsVsLedger =
@@ -154,11 +155,11 @@ function buildDaySummaries(
         ? Math.round((sessionsTotalL - ledgerTotalL) * 10) / 10
         : null;
     const deltaShiftVsLedger =
-      anyShiftHasMeter || ledgerRows.length > 0
+      !boilerDipsOnly && (anyShiftHasMeter || ledgerRows.length > 0)
         ? Math.round((shiftTotalL - ledgerTotalL) * 10) / 10
         : null;
 
-    const hasMismatch = [deltaSessionsVsShift, deltaSessionsVsLedger, deltaShiftVsLedger].some(
+    const hasMismatch = !boilerDipsOnly && [deltaSessionsVsShift, deltaSessionsVsLedger, deltaShiftVsLedger].some(
       d => d != null && Math.abs(d) > MISMATCH_THRESHOLD_L,
     );
 
@@ -786,6 +787,16 @@ export default function PlantLdoMismatch() {
   const searchString = useSearch();
   const sp = new URLSearchParams(searchString);
   const plant = sp.get("plant") || defaultPlantName;
+  const { data: plantSettings } = useQuery<{ boilerFuelMeterMode?: "working" | "dips_only" | null }>({
+    queryKey: ["/api/plant-module/plant-settings", plant],
+    enabled: !!plant,
+    queryFn: async () => {
+      const response = await fetch(`/api/plant-module/plant-settings/${encodeURIComponent(plant)}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load plant settings.");
+      return response.json();
+    },
+  });
+  const boilerDipsOnly = plantSettings?.boilerFuelMeterMode === "dips_only";
 
   const LS_KEY_FROM = "ldo-mismatch-dateFrom";
   const LS_KEY_TO = "ldo-mismatch-dateTo";
@@ -929,8 +940,9 @@ export default function PlantLdoMismatch() {
         shiftLogsQuery.data || [],
         ldoReadingsQuery.data || [],
         plant,
+        boilerDipsOnly,
       ),
-    [dates, sessionsQuery.data, shiftLogsQuery.data, ldoReadingsQuery.data, plant],
+    [dates, sessionsQuery.data, shiftLogsQuery.data, ldoReadingsQuery.data, plant, boilerDipsOnly],
   );
 
   const rangeTotals = useMemo(() => {
@@ -1516,6 +1528,14 @@ export default function PlantLdoMismatch() {
         </CardContent>
       </Card>
 
+      {boilerDipsOnly && (
+        <Card data-testid="notice-boiler-meter-not-used-dips-only">
+          <CardContent className="p-4 text-sm font-medium">
+            Boiler meter not used — dips only
+          </CardContent>
+        </Card>
+      )}
+
       {!effectiveDateFrom ? (
         <Card>
           <CardContent className="p-6 text-sm text-muted-foreground">
@@ -1577,17 +1597,19 @@ export default function PlantLdoMismatch() {
             <Card>
               <CardContent className="p-4">
                 <div className="text-sm text-muted-foreground flex items-center gap-1">
-                  <GaugeCircle className="w-3 h-3" /> Shift-meter total
+                  <GaugeCircle className="w-3 h-3" /> {boilerDipsOnly ? "Boiler meter" : "Shift-meter total"}
                 </div>
                 <div className="text-2xl font-bold" data-testid="kpi-shift-total">
-                  {rangeTotals.anyShiftHasMeter ? `${fmt(rangeTotals.shiftTotalL)} L` : "—"}
+                  {boilerDipsOnly ? "Not used — dips only" : rangeTotals.anyShiftHasMeter ? `${fmt(rangeTotals.shiftTotalL)} L` : "—"}
                 </div>
                 <div className="text-sm text-muted-foreground">
+                  {boilerDipsOnly ? "Meter comparisons are not used for this plant" : <>
                   {daySummaries.reduce((s, d) => s + d.shiftLogs.length, 0)} shift log
                   {daySummaries.reduce((s, d) => s + d.shiftLogs.length, 0) === 1 ? "" : "s"}
                   {!rangeTotals.anyShiftHasMeter &&
                     daySummaries.some(d => d.shiftLogs.length > 0) &&
                     " · no meter readings"}
+                  </>}
                 </div>
               </CardContent>
             </Card>
@@ -1649,13 +1671,17 @@ export default function PlantLdoMismatch() {
                     className={`text-2xl font-bold ${deltaClass(delta)}`}
                     data-testid={testId}
                   >
-                    {delta == null ? "—" : `${delta > 0 ? "+" : ""}${fmt(delta)} L`}
+                    {boilerDipsOnly && (label === "Sessions vs Shift Meter" || label === "Shift Meter vs LDO Ledger")
+                      ? "Not used — dips only"
+                      : delta == null ? "—" : `${delta > 0 ? "+" : ""}${fmt(delta)} L`}
                   </div>
                   <div className="text-sm text-muted-foreground">
                     {label}
                   </div>
                   <div className="text-sm text-muted-foreground italic mt-0.5">
-                    {hint} · Tolerance: ±{MISMATCH_THRESHOLD_L} L
+                    {boilerDipsOnly && (label === "Sessions vs Shift Meter" || label === "Shift Meter vs LDO Ledger")
+                      ? "Boiler meter not used — dips only"
+                      : `${hint} · Tolerance: ±${MISMATCH_THRESHOLD_L} L`}
                   </div>
                 </CardContent>
               </Card>

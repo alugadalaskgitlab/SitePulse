@@ -1763,6 +1763,7 @@ export interface IStorage {
 
   // Plant Shift Log + Daily Plant Report
   getPlantShiftLogs(filters?: { dateFrom?: string; dateTo?: string }): Promise<PlantShiftLog[]>;
+  getLatestPlantShiftLogBefore(date: string, plantName: string): Promise<PlantShiftLog | undefined>;
   getPlantShiftLog(id: number): Promise<PlantShiftLogWithDetails | undefined>;
   getPlantShiftLogByDate(date: string, _shiftCodeIgnored?: string, plantName?: string): Promise<PlantShiftLogWithDetails | undefined>;
   upsertPlantShiftLog(input: UpsertPlantShiftLogInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<PlantShiftLogWithDetails & { divergenceWarnings: string[] }>;
@@ -5994,6 +5995,8 @@ export class DatabaseStorage implements IStorage {
       tankConfig: (input as any).tankConfig ?? null,
       primaryPartyId: (input as any).primaryPartyId ?? null,
       ...(input.plantType !== undefined ? { plantType: input.plantType } : {}),
+      ...(input.dgProductionEquipmentIds !== undefined ? { dgProductionEquipmentIds: input.dgProductionEquipmentIds } : {}),
+      ...(input.boilerFuelMeterMode !== undefined ? { boilerFuelMeterMode: input.boilerFuelMeterMode } : {}),
       siteId: input.siteId ?? null,
       updatedAt: new Date(),
     };
@@ -6031,6 +6034,8 @@ export class DatabaseStorage implements IStorage {
         bitumenTank2LitresPerCm: existing.bitumenTank2LitresPerCm,
         bitumenDensityKgPerL: existing.bitumenDensityKgPerL,
         tankConfig: existing.tankConfig,
+        dgProductionEquipmentIds: existing.dgProductionEquipmentIds,
+        boilerFuelMeterMode: existing.boilerFuelMeterMode,
         updatedAt: new Date(),
       }).returning();
       await tx.delete(plantSettings).where(eq(plantSettings.plantName, oldName));
@@ -25182,6 +25187,14 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(plantShiftLogs.date), desc(plantShiftLogs.shiftCode));
   }
 
+  async getLatestPlantShiftLogBefore(date: string, plantName: string): Promise<PlantShiftLog | undefined> {
+    const [row] = await db.select().from(plantShiftLogs)
+      .where(and(lt(plantShiftLogs.date, date), eq(plantShiftLogs.plantName, plantName)))
+      .orderBy(desc(plantShiftLogs.date), desc(plantShiftLogs.id))
+      .limit(1);
+    return row;
+  }
+
   async getPlantShiftLogByDate(date: string, _shiftCodeIgnored?: string, plantName: string = "Main Plant"): Promise<PlantShiftLogWithDetails | undefined> {
     const [header] = await db.select().from(plantShiftLogs)
       .where(and(eq(plantShiftLogs.date, date), eq(plantShiftLogs.plantName, plantName)))
@@ -25787,6 +25800,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDailyPlantSummary(date: string, plantName: string = "Main Plant"): Promise<unknown> {
+    const plantSettings = await this.getPlantSettings(plantName);
+    const boilerDipsOnly = plantSettings?.boilerFuelMeterMode === "dips_only";
     // Pick the relevant log for this (date, plant) regardless of shift code.
     // Preference order: FULL → DAY → NIGHT → first available.
     const allShifts = await db.select().from(plantShiftLogs)
@@ -25867,7 +25882,7 @@ export class DatabaseStorage implements IStorage {
     }
     const presentSources = [t1Source, t2Source].filter((s): s is "shift_meter" | "dip_fallback" => s !== null);
     const uniqueSources = Array.from(new Set(presentSources));
-    const ldoSource: "shift_meter" | "dip_fallback" | "mixed" =
+    let ldoSource: "shift_meter" | "dip_fallback" | "mixed" | "dips_only" =
       uniqueSources.length === 0 ? "shift_meter" :
       uniqueSources.length === 1 ? uniqueSources[0] : "mixed";
     const ldoConsumedTotalL = (ldoConsumedT1 || 0) + (ldoConsumedT2 || 0);
@@ -26012,7 +26027,12 @@ export class DatabaseStorage implements IStorage {
       if (shift.bitumenTank1ClosingDip == null) missingReadings.push("Bitumen tank 1 closing dip");
       if (shift.bitumenTank2ClosingDip == null) missingReadings.push("Bitumen tank 2 closing dip");
       if (shift.ldoTank2ClosingMeter == null) missingReadings.push("Dryer fuel meter closing reading");
-      if (shift.boilerRunsDuringProduction && shift.ldoTank1ClosingMeter == null) missingReadings.push("Boiler fuel meter closing reading");
+      if (boilerDipsOnly) {
+        if (shift.ldoTank1OpeningDip == null) missingReadings.push("LDO tank 1 opening dip");
+        if (shift.ldoTank1ClosingDip == null) missingReadings.push("LDO tank 1 closing dip");
+      } else if (shift.boilerRunsDuringProduction && shift.ldoTank1ClosingMeter == null) {
+        missingReadings.push("Boiler fuel meter closing reading");
+      }
     }
     const bitumenMaterial = allMaterials.find(material => /bitumen/i.test(material.name));
     const bitumenReceiptRows = bitumenMaterial
@@ -26095,15 +26115,79 @@ export class DatabaseStorage implements IStorage {
 
     const boilerHeating = await this._getBoilerHeatingSummary(date, plantName, shift, totalProductionMT, ldoConsumedT1, ldoFlows);
 
+    let dipsOnlyTank1UsedL: number | null = null;
+    let dipsOnlyBoilerProductionL: number | null = null;
+    let dipsOnlyReceiptLitres = 0;
+    let dipsOnlyTransferLitres = 0;
+    let dipsOnlyCheck = false;
+    if (boilerDipsOnly) {
+      const tank1Receipts = ldoFlows.filter(row =>
+        Number(row.tankNumber) === 1 &&
+        String(row.readingType).toLowerCase() === "receipt",
+      );
+      dipsOnlyReceiptLitres = tank1Receipts
+        .filter(row => row.sourceMaterialIssueId == null)
+        .reduce((sum, row) => sum + Number(row.quantityLiters || 0), 0);
+      dipsOnlyTransferLitres = tank1Receipts
+        .filter(row => row.sourceMaterialIssueId != null)
+        .reduce((sum, row) => sum + Number(row.quantityLiters || 0), 0);
+      const openingDipLitres = shift?.ldoTank1OpeningDip == null
+        ? null
+        : getLdoVolumeAtDepth(1, shift.ldoTank1OpeningDip);
+      const closingDipLitres = shift?.ldoTank1ClosingDip == null
+        ? null
+        : getLdoVolumeAtDepth(1, shift.ldoTank1ClosingDip);
+      if (openingDipLitres != null && closingDipLitres != null) {
+        dipsOnlyTank1UsedL = openingDipLitres - closingDipLitres + dipsOnlyReceiptLitres + dipsOnlyTransferLitres;
+      }
+      const dryerMeterLitres =
+        shift?.ldoTank2OpeningMeter != null && shift?.ldoTank2ClosingMeter != null
+          ? Math.max(0, shift.ldoTank2ClosingMeter - shift.ldoTank2OpeningMeter)
+          : null;
+      const preheatLitres = Number(boilerHeating?.sessionsLdoT1L || 0);
+      const beforeFloor = dipsOnlyTank1UsedL == null || dryerMeterLitres == null
+        ? null
+        : dipsOnlyTank1UsedL - dryerMeterLitres - preheatLitres;
+      dipsOnlyCheck = beforeFloor != null && beforeFloor < 0;
+      dipsOnlyBoilerProductionL = beforeFloor == null ? null : Math.max(0, beforeFloor);
+      ldoConsumedT1 = dipsOnlyBoilerProductionL == null
+        ? null
+        : dipsOnlyBoilerProductionL + preheatLitres;
+      ldoConsumedT2 = dryerMeterLitres;
+      t1Source = "dip_fallback";
+      t2Source = dryerMeterLitres == null ? null : "shift_meter";
+      ldoSource = "dips_only";
+      if (boilerHeating) {
+        boilerHeating.boilerDuringProductionL = dipsOnlyBoilerProductionL;
+        boilerHeating.totalBoilerLdoL = dipsOnlyBoilerProductionL == null
+          ? null
+          : dipsOnlyBoilerProductionL + preheatLitres;
+        boilerHeating.shiftLogT1L = null;
+        boilerHeating.mismatchL = null;
+        boilerHeating.reconciliation = {
+          ...boilerHeating.reconciliation,
+          sessionsVsShiftL: null,
+          sessionsVsLedgerL: null,
+          shiftVsLedgerL: null,
+          anyMismatch: false,
+          mismatches: [],
+        };
+      }
+    }
+
     // Primary-source rule: when heating sessions exist for the day, sessions
     // are the source of truth for Tank-1 LDO. The shift-log Tank-1 value is
     // demoted to a reconciliation field. This prevents double-counting and
     // keeps the report aligned with the operator's actual boiler runs.
     const t1PrimarySource: "sessions" | "shift_meter" | "dip_fallback" =
-      (boilerHeating && boilerHeating.sessionCount > 0)
+      boilerDipsOnly
+        ? "dip_fallback"
+        : (boilerHeating && boilerHeating.sessionCount > 0)
         ? "sessions"
         : (t1Source ?? "shift_meter");
-    const effectiveT1L = t1PrimarySource === "sessions"
+    const effectiveT1L = boilerDipsOnly
+      ? ldoConsumedT1
+      : t1PrimarySource === "sessions"
       ? (boilerHeating?.sessionsLdoT1L ?? null)
       : ldoConsumedT1;
     const reconciliationT1ShiftL = t1PrimarySource === "sessions" ? ldoConsumedT1 : null;
@@ -26124,8 +26208,11 @@ export class DatabaseStorage implements IStorage {
       ? Math.round((effectiveTotalL / hoursForLPerHour) * 100) / 100 : null;
     const effectiveLPerMT = (totalProductionMT > 0 && effectiveTotalL != null && effectiveTotalL > 0)
       ? Math.round((effectiveTotalL / totalProductionMT) * 1000) / 1000 : null;
-    const effectiveBoilerLPerMT = (totalProductionMT > 0 && (effectiveT1L || 0) > 0)
-      ? Math.round(((effectiveT1L as number) / totalProductionMT) * 1000) / 1000 : null;
+    const effectiveBoilerNumerator = boilerDipsOnly
+      ? dipsOnlyBoilerProductionL
+      : effectiveT1L;
+    const effectiveBoilerLPerMT = (totalProductionMT > 0 && (effectiveBoilerNumerator || 0) > 0)
+      ? Math.round(((effectiveBoilerNumerator as number) / totalProductionMT) * 1000) / 1000 : null;
 
     // Per-tank stock-deducted view: dryer-meter litres are attributed to
     // whichever tank the operator pointed the dryer at. Boiler meter always
@@ -26191,7 +26278,7 @@ export class DatabaseStorage implements IStorage {
           differenceMT: physicalBitumen.differenceMT,
         },
         ldo: {
-          boilerLitres: effectiveT1L,
+          boilerLitres: boilerDipsOnly ? dipsOnlyBoilerProductionL : effectiveT1L,
           dryerLitres: ldoConsumedT2,
           heatingSessionLitres: boilerHeating?.sessionsLdoT1L ?? null,
           theoreticalLitres: Number(theoreticalLdoL.toFixed(1)),
@@ -26218,6 +26305,11 @@ export class DatabaseStorage implements IStorage {
         dryerLPerMT,
         boilerLPerMT: effectiveBoilerLPerMT,
         source: ldoSource,
+        boilerMeterMode: boilerDipsOnly ? "dips_only" : "working",
+        dipsOnlyTank1UsedL,
+        dipsOnlyReceiptLitres,
+        dipsOnlyTransferLitres,
+        dipsOnlyCheck,
         primarySourceT1: t1PrimarySource,
         reconciliationT1ShiftL,
         dryerFedFrom: dryerFedFromShift,

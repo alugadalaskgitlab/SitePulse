@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
-import { useLocation, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -30,6 +30,69 @@ import { format } from "date-fns";
 import { formatPersonName } from "@shared/personName";
 import { cn } from "@/lib/utils";
 import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterType, PlantSettings } from "@shared/schema";
+
+function dispatchProPlainReason(value: string | null | undefined): string {
+  if (!value) return "Required dispatch details are missing.";
+  if (/expected\s+string|null.*string|invalid.*string/i.test(value)) return "DispatchPro refused a blank field. Retry after the DispatchPro update.";
+  if (/timeout|network|fetch|ECONN|socket/i.test(value)) return "Could not reach DispatchPro. Try again.";
+  if (/auth|token|credential|unauthor/i.test(value)) return "DispatchPro connection needs attention.";
+  return "Could not send to DispatchPro. Try again.";
+}
+
+function dispatchProSentText(dispatch: TruckDispatch): string {
+  const parts = [`DispatchPro challan ${dispatch.dispatchProChallanNo || "—"}`];
+  if (dispatch.dispatchProArrivedAt) parts.push(`Arrived ${format(new Date(dispatch.dispatchProArrivedAt), "dd MMM HH:mm")}`);
+  if (dispatch.dispatchProLeftAt) parts.push(`Unloaded ${format(new Date(dispatch.dispatchProLeftAt), "dd MMM HH:mm")}`);
+  return parts.join(" · ");
+}
+
+function istDateLabel(value: string): string {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+}
+
+function istDateTimeLabel(value: string | Date | null | undefined): string {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function dispatchDateTime(date: string, time: string | null | undefined): number | null {
+  if (!date || !time) return null;
+  const match = time.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const timestamp = new Date(`${date}T${match[1].padStart(2, "0")}:${match[2]}:00+05:30`).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function durationLabel(start: number | null, end: string | Date | null | undefined): string {
+  if (start == null || !end) return "";
+  const endMs = end instanceof Date ? end.getTime() : new Date(end).getTime();
+  if (!Number.isFinite(endMs) || endMs < start) return "";
+  const minutes = Math.floor((endMs - start) / 60_000);
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+function dispatchPlainStatus(dispatch: TruckDispatch): string {
+  if (dispatch.dispatchProLeftAt) return "Unloaded";
+  if (dispatch.dispatchProArrivedAt) return "Arrived";
+  return dispatch.dispatchProSyncStatus === "sent" ? "Sent" : "Not sent to DispatchPro";
+}
 
 export default function PlantDispatches() {
   const { toast } = useToast();
@@ -795,20 +858,22 @@ export default function PlantDispatches() {
   const getPartyName = (id: number | null) => id ? parties?.find(p => p.id === id)?.name || "Unknown" : "Unknown";
   const getTemplateName = (id: number | null) => id ? templates?.find(t => t.id === id)?.name || "Unknown" : "Unknown";
 
-  // Build filename with date range and filters
+  const exportDateRange = (() => {
+    const dates = filteredDispatches.map(row => row.date).filter(Boolean).sort();
+    return {
+      from: filterDateFrom || dates[0] || "all",
+      to: filterDateTo || dates[dates.length - 1] || "all",
+    };
+  })();
+  const exportPartyName = filterPartyId !== "all"
+    ? getPartyName(Number(filterPartyId))
+    : "ALL PARTIES";
+  const exportPrintedOn = istDateTimeLabel(new Date());
+
+  // Filenames follow the same naming rule for both the dispatch log and party statement.
   const buildFilename = (extension: string) => {
-    const timestamp = format(new Date(), "yyyyMMdd_HHmm");
-    const fromDate = filterDateFrom || "All";
-    const toDate = filterDateTo || "All";
-    const partyFilter = filterPartyId !== "all" 
-      ? parties?.find(p => p.id === parseInt(filterPartyId))?.name?.replace(/\s+/g, '') || ""
-      : "";
-    const mixTypeFilter = filterMixType !== "all" ? filterMixType : "";
-    const vehicleFilter = filterVehicle !== "all" ? filterVehicle.replace(/\s+/g, '') : "";
-    const ownerFilter = filterOwner !== "all" ? filterOwner.replace(/\s+/g, '') : "";
-    const filters = [partyFilter, mixTypeFilter, vehicleFilter, ownerFilter].filter(Boolean).join("_");
-    const prefix = filterPartyId !== "all" ? "SitePulse_Party_Statement" : "SiteLog_Plant_Dispatches";
-    return `${prefix}_${fromDate}_to_${toDate}${filters ? "_" + filters : ""}_${timestamp}.${extension}`;
+    const safeParty = exportPartyName.trim().replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "") || "PARTY";
+    return `${safeParty}_${exportDateRange.from}_${exportDateRange.to}.${extension}`;
   };
 
   // Universal download function that works on all devices including iPad
@@ -829,29 +894,59 @@ export default function PlantDispatches() {
     try {
       const data = filteredDispatches.map(d => {
         const template = templates?.find(t => t.id === d.mixTemplateId);
+        const dispatchAt = dispatchDateTime(d.date, d.time);
+        const arrival = d.dispatchProArrivedAt || null;
+        const unloaded = d.dispatchProLeftAt || null;
         return {
-          Date: d.date,
-          Time: d.time || "",
+          Date: istDateLabel(d.date),
+          "Dispatch time": d.time || "",
           Challan: d.dispatchProChallanNo || "",
-          Party: getPartyName(d.partyId),
-          Site: d.deliveryLocation || "",
-          Mix: template?.name || template?.mixType || "",
-          "Load (MT)": d.loadWeight,
-          Vehicle: d.truckNumber,
+          Truck: d.truckNumber,
+          Owner: d.ownerName || "",
           Driver: d.driverName || "",
           "Driver mobile": d.driverMobile || "",
-          "Arrived at": d.dispatchProArrivedAt ? format(new Date(d.dispatchProArrivedAt), "dd MMM yyyy HH:mm") : "",
-          "Arrived by": d.dispatchProArrivedByName || "",
-          "Unloaded at": d.dispatchProLeftAt ? format(new Date(d.dispatchProLeftAt), "dd MMM yyyy HH:mm") : "",
-          "Unloaded by": d.dispatchProLeftByName || "",
+          Mix: template?.name || template?.mixType || "",
+          "Load (MT)": Number(d.loadWeight) || 0,
+          Status: dispatchPlainStatus(d),
+          "Arrived at": istDateTimeLabel(arrival),
+          "Received by": d.dispatchProArrivedByName || "",
+          "Unloaded at": istDateTimeLabel(unloaded),
+          "Released by": d.dispatchProLeftByName || "",
+          "Travel time": durationLabel(dispatchAt, arrival),
+          "Time at site": arrival ? durationLabel(new Date(arrival).getTime(), unloaded) : "",
+          "Bitumen (MT)": Number(d.theoreticalBitumenQty) || 0,
+          "LDO (L)": Number(d.theoreticalLdoQty) || 0,
         };
       });
-      const ws = XLSX.utils.json_to_sheet(data);
+      const notUnloaded = filteredDispatches.filter(d => !d.dispatchProLeftAt);
+      const mainHeaders = [
+        "Date", "Dispatch time", "Challan", "Truck", "Owner", "Driver", "Driver mobile",
+        "Mix", "Load (MT)", "Status", "Arrived at", "Received by", "Unloaded at",
+        "Released by", "Travel time", "Time at site",
+      ];
+      const ws = XLSX.utils.aoa_to_sheet([
+        [companyName],
+        [filterPartyId !== "all" ? exportPartyName : "Dispatch log — all parties"],
+        [`Date range: ${exportDateRange.from} to ${exportDateRange.to}`],
+        [`Printed on ${exportPrintedOn}`],
+        [],
+        [...mainHeaders, "Bitumen (MT)", "LDO (L)"],
+        ...data.map(row => mainHeaders.map(header => (row as Record<string, unknown>)[header] ?? "").concat([
+          row["Bitumen (MT)"],
+          row["LDO (L)"],
+        ])),
+        [],
+        ["Totals"],
+        ["Trucks", filteredTotals.count],
+        ["Total load (MT)", Number(filteredTotals.loadWeight.toFixed(3))],
+        ["Not yet unloaded", `${notUnloaded.length} trucks · ${notUnloaded.reduce((sum, d) => sum + (Number(d.loadWeight) || 0), 0).toFixed(3)} MT`],
+        [],
+        ["MT by mix"],
+        ["Mix", "Trucks", "MT"],
+        ...statementMixTotals.map(row => [row.mix, row.loads, Number(row.mt.toFixed(3))]),
+      ]);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, filterPartyId !== "all" ? "Party statement" : "Dispatches");
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-        statementMixTotals.map(row => ({ Mix: row.mix, Loads: row.loads, "Total (MT)": Number(row.mt.toFixed(3)) }))
-      ), "Totals by mix");
+      XLSX.utils.book_append_sheet(wb, ws, filterPartyId !== "all" ? "Party statement" : "Dispatch log");
       
       const filename = buildFilename("xlsx");
       
@@ -889,51 +984,93 @@ export default function PlantDispatches() {
 
   const exportToPDF = async () => {
     try {
-      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      doc.setFontSize(16);
-      doc.text(filterPartyId !== "all" ? "Party daily statement" : "Plant production and dispatches report", 14, 15);
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const title = filterPartyId !== "all" ? "Party daily statement" : "Dispatch log";
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text(companyName, 10, 10);
       doc.setFontSize(10);
-      doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
-      if (filterPartyId !== "all") doc.text(`Party: ${formatPersonName(getPartyName(Number(filterPartyId)))}`, 14, 28);
-      if (filterDateFrom || filterDateTo) {
-        doc.text(`Date range: ${filterDateFrom || "Start"} to ${filterDateTo || "End"}`, 14, filterPartyId !== "all" ? 34 : 28);
-      }
-      
+      doc.text(`${title} — ${exportPartyName}`, 10, 16);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text(`Date range: ${exportDateRange.from} to ${exportDateRange.to}`, 10, 21);
+      doc.text(`Printed on ${exportPrintedOn}`, 10, 26);
+
       const tableData = filteredDispatches.map(d => {
         const template = templates?.find(t => t.id === d.mixTemplateId);
+        const dispatchAt = dispatchDateTime(d.date, d.time);
+        const arrival = d.dispatchProArrivedAt || null;
+        const unloaded = d.dispatchProLeftAt || null;
         return [
-          d.date,
-          d.time || "-",
-          d.dispatchProChallanNo || "-",
+          istDateLabel(d.date),
+          d.time || "",
+          d.dispatchProChallanNo || "",
           d.truckNumber,
-          formatPersonName(getPartyName(d.partyId)),
-          template?.name || template?.mixType || "-",
-          `${d.loadWeight} MT`,
-          d.dispatchProArrivedAt ? format(new Date(d.dispatchProArrivedAt), "dd MMM HH:mm") : "-",
-          d.dispatchProLeftAt ? format(new Date(d.dispatchProLeftAt), "dd MMM HH:mm") : "-",
+          d.ownerName || "",
+          d.driverName || "",
+          d.driverMobile || "",
+          template?.name || template?.mixType || "",
+          Number(d.loadWeight) || 0,
+          dispatchPlainStatus(d),
+          istDateTimeLabel(arrival),
+          d.dispatchProArrivedByName || "",
+          istDateTimeLabel(unloaded),
+          d.dispatchProLeftByName || "",
+          durationLabel(dispatchAt, arrival),
+          arrival ? durationLabel(new Date(arrival).getTime(), unloaded) : "",
         ];
       });
-      
+      const headers = [
+        "Date", "Dispatch time", "Challan", "Truck", "Owner", "Driver", "Driver mobile",
+        "Mix", "Load (MT)", "Status", "Arrived at", "Received by", "Unloaded at",
+        "Released by", "Travel time", "Time at site",
+      ];
+      const notUnloaded = filteredDispatches.filter(d => !d.dispatchProLeftAt);
       autoTable(doc, {
-        startY: filterDateFrom || filterDateTo ? (filterPartyId !== "all" ? 40 : 34) : (filterPartyId !== "all" ? 34 : 28),
-        head: [["Date", "Time", "Challan", "Vehicle", "Party/job", "Mix", "Load", "Arrived", "Unloaded"]],
+        startY: 30,
+        head: [headers],
         body: tableData,
         theme: "grid",
-        headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineColor: [80, 80, 80], lineWidth: 0.2 },
-        styles: { fontSize: 7, textColor: [0, 0, 0], lineColor: [160, 160, 160], lineWidth: 0.1, cellPadding: 1.2 },
-        margin: { left: 14, right: 14 },
+        headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineColor: [80, 80, 80], lineWidth: 0.2, fontStyle: "bold" },
+        styles: { fontSize: 5.5, textColor: [0, 0, 0], lineColor: [160, 160, 160], lineWidth: 0.1, cellPadding: 1 },
+        margin: { left: 8, right: 8, bottom: 12 },
+        horizontalPageBreak: false,
+        showHead: "everyPage",
       });
-      const summaryTop = ((doc as any).lastAutoTable?.finalY || 40) + 7;
+      const summaryTop = ((doc as any).lastAutoTable?.finalY || 30) + 5;
       autoTable(doc, {
         startY: summaryTop,
-        head: [["Totals by mix", "Loads", "Total MT"]],
+        head: [["Summary", "Value"]],
+        body: [
+          ["Total trucks", String(filteredTotals.count)],
+          ["Total load (MT)", filteredTotals.loadWeight.toFixed(3)],
+          ["Not yet unloaded", `${notUnloaded.length} trucks · ${notUnloaded.reduce((sum, d) => sum + (Number(d.loadWeight) || 0), 0).toFixed(3)} MT`],
+        ],
+        theme: "grid",
+        headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineColor: [80, 80, 80], lineWidth: 0.2 },
+        styles: { fontSize: 7, textColor: [0, 0, 0], lineColor: [160, 160, 160], lineWidth: 0.1, cellPadding: 1 },
+        margin: { left: 8, right: 8, bottom: 12 },
+        showHead: "everyPage",
+      });
+      autoTable(doc, {
+        startY: ((doc as any).lastAutoTable?.finalY || summaryTop) + 3,
+        head: [["MT by mix", "Trucks", "MT"]],
         body: statementMixTotals.map(row => [row.mix, String(row.loads), row.mt.toFixed(3)]),
         theme: "grid",
         headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineColor: [80, 80, 80], lineWidth: 0.2 },
-        styles: { fontSize: 8, textColor: [0, 0, 0], lineColor: [160, 160, 160], lineWidth: 0.1 },
-        margin: { left: 14, right: 14 },
+        styles: { fontSize: 7, textColor: [0, 0, 0], lineColor: [160, 160, 160], lineWidth: 0.1, cellPadding: 1 },
+        margin: { left: 8, right: 8, bottom: 12 },
+        showHead: "everyPage",
       });
-      
+
+      const pageCount = doc.getNumberOfPages();
+      for (let page = 1; page <= pageCount; page++) {
+        doc.setPage(page);
+        doc.setFontSize(7);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`Page ${page} of ${pageCount}`, doc.internal.pageSize.getWidth() - 8, doc.internal.pageSize.getHeight() - 5, { align: "right" });
+      }
+
       const filename = buildFilename("pdf");
       
       // Try File System Access API for save dialog (Chrome/Edge desktop)
@@ -1125,17 +1262,14 @@ export default function PlantDispatches() {
                   <span className="font-medium">Last saved:</span> {saved.truckNumber} · {saved.loadWeight} MT
                   {" · "}
                   {saved.dispatchProSyncStatus === "sent"
-                    ? `Sent${saved.dispatchProChallanNo ? ` · challan ${saved.dispatchProChallanNo}` : ""}`
+                    ? dispatchProSentText(saved)
                     : saved.dispatchProSyncStatus === "waiting"
-                      ? `Waiting to send${saved.dispatchProLastError ? ` · ${saved.dispatchProLastError}` : ""}`
+                      ? `Not sent to DispatchPro — ${dispatchProPlainReason(saved.dispatchProLastError)}`
                       : saved.dispatchProSyncStatus === "not_updated"
-                        ? "Not updated in DispatchPro"
+                        ? `Not sent to DispatchPro — ${dispatchProPlainReason(saved.dispatchProLastError)}`
                         : saved.dispatchProSyncStatus === "not_sent"
-                          ? "Not sent to DispatchPro"
-                          : "DispatchPro not linked"}
-                  {saved.dispatchProStatus && <> · {saved.dispatchProStatus}</>}
-                  {saved.dispatchProArrivedAt && <> · Arrived {format(new Date(saved.dispatchProArrivedAt), "dd MMM HH:mm")}{saved.dispatchProArrivedByName ? ` by ${saved.dispatchProArrivedByName}` : ""}</>}
-                  {saved.dispatchProLeftAt && <> · Left {format(new Date(saved.dispatchProLeftAt), "dd MMM HH:mm")}{saved.dispatchProLeftByName ? ` by ${saved.dispatchProLeftByName}` : ""}</>}
+                          ? `Not sent to DispatchPro — ${dispatchProPlainReason(saved.dispatchProLastError)}`
+                          : "Party not linked to a DispatchPro site"}
                 </div>
               );
             })()}
@@ -1849,18 +1983,13 @@ export default function PlantDispatches() {
                                 <Badge variant="outline" className="text-sm">{template?.mixType || "-"}</Badge>
                                 <span className="text-sm text-muted-foreground">{getPartyName(dispatch.partyId)}</span>
                                 {dispatch.dispatchProSyncStatus === "sent" && (
-                                  <span className="text-xs text-muted-foreground">
-                                    Sent{dispatch.dispatchProChallanNo ? ` · challan ${dispatch.dispatchProChallanNo}` : ""}
-                                  </span>
+                                  <span className="text-xs text-muted-foreground">{dispatchProSentText(dispatch)}</span>
                                 )}
-                                {dispatch.dispatchProSyncStatus === "waiting" && (
-                                  <span className="text-xs text-muted-foreground">
-                                    Waiting to send{dispatch.dispatchProLastError ? ` · ${dispatch.dispatchProLastError}` : ""}
-                                  </span>
-                                )}
-                                {(dispatch.dispatchProSyncStatus === "not_sent" || dispatch.dispatchProSyncStatus === "not_updated") && (
-                                  <span className="text-xs text-destructive">
-                                    {dispatch.dispatchProSyncStatus === "not_updated" ? "Not updated in DispatchPro" : "Not sent"}
+                                {dispatch.dispatchProSyncStatus !== "sent" && (
+                                  <span className={`text-xs ${dispatch.dispatchProSyncStatus ? "text-destructive" : "text-muted-foreground"}`}>
+                                    {parties?.find(p => p.id === dispatch.partyId)?.dispatchProSiteId?.trim()
+                                      ? `Not sent to DispatchPro — ${dispatchProPlainReason(dispatch.dispatchProLastError)}`
+                                      : "Party not linked to a DispatchPro site"}
                                   </span>
                                 )}
                                 {dispatch.ownerName && <span className="text-sm text-muted-foreground">{dispatch.ownerName}</span>}
@@ -1935,27 +2064,22 @@ export default function PlantDispatches() {
                               {(() => {
                                 const partyLinked = !!parties?.find(p => p.id === dispatch.partyId)?.dispatchProSiteId;
                                 const status = dispatch.dispatchProSyncStatus;
-                                if (!partyLinked && !status) return null;
-                                const readableTime = (value: string | Date | null | undefined) => {
-                                  if (!value) return "—";
-                                  const dateValue = new Date(value);
-                                  return Number.isNaN(dateValue.getTime()) ? "—" : format(dateValue, "dd MMM yyyy HH:mm");
-                                };
                                 return (
                                   <div className="col-span-2">
                                     <span className="text-muted-foreground text-sm block">DispatchPro</span>
-                                    <span className="font-medium">
-                                      {status === "sent"
-                                        ? `Sent${dispatch.dispatchProChallanNo ? ` · challan ${dispatch.dispatchProChallanNo}` : ""}`
-                                        : status === "waiting"
-                                          ? "Waiting to send"
-                                          : status === "not_sent"
-                                            ? "Not sent — retry"
-                                            : status === "not_updated"
-                                              ? "Not updated in DispatchPro"
-                                              : "Not sent"}
-                                    </span>
-                                    {(status === "not_sent" || status === "not_updated") && canOverrideTolerance && (
+                                    {status === "sent" ? (
+                                      <p className="font-medium" data-testid={`text-dispatchpro-sent-${dispatch.id}`}>{dispatchProSentText(dispatch)}</p>
+                                    ) : !partyLinked ? (
+                                      <p className="font-medium">
+                                        Party not linked to a DispatchPro site.
+                                        {user?.isOwner && <> <Link className="underline" href="/masters/section/parties">Link party in Masters</Link></>}
+                                      </p>
+                                    ) : (
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <p className="font-medium text-destructive">
+                                          {status === "waiting" ? "Waiting to send" : "Not sent to DispatchPro"} — {dispatchProPlainReason(dispatch.dispatchProLastError)}
+                                        </p>
+                                        {(status === "not_sent" || status === "not_updated") && canOverrideTolerance && (
                                       <Button
                                         size="sm"
                                         variant="outline"
@@ -1966,19 +2090,8 @@ export default function PlantDispatches() {
                                       >
                                         Retry
                                       </Button>
-                                    )}
-                                    {dispatch.dispatchProLastError && (
-                                      <p className="mt-1 text-xs text-destructive">{dispatch.dispatchProLastError}</p>
-                                    )}
-                                    {dispatch.dispatchProArrivedAt && (
-                                      <p className="mt-1 text-xs text-muted-foreground">
-                                        Arrived {readableTime(dispatch.dispatchProArrivedAt)}{dispatch.dispatchProArrivedByName ? ` · ${dispatch.dispatchProArrivedByName}` : ""}
-                                      </p>
-                                    )}
-                                    {dispatch.dispatchProLeftAt && (
-                                      <p className="text-xs text-muted-foreground">
-                                        Unloaded {readableTime(dispatch.dispatchProLeftAt)}{dispatch.dispatchProLeftByName ? ` · ${dispatch.dispatchProLeftByName}` : ""}
-                                      </p>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
                                 );
