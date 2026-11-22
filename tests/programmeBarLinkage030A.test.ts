@@ -107,6 +107,20 @@ const calls = {
   createdDprs: [] as any[],
 };
 
+// The DPR create route checks whether an active personnel master exists before
+// allowing a legacy free-text engineer. Keep this route fixture deterministic:
+// it models a deployment with no active personnel rows, without reading the
+// developer's database. The programme-link assertions below remain unchanged.
+const personnelFixture = vi.hoisted(() => ({ activeRows: [] as Array<{ id: number }> }));
+vi.mock("../server/db", () => {
+  const query: any = {
+    from: () => query,
+    where: () => query,
+    limit: async () => personnelFixture.activeRows,
+  };
+  return { db: { select: () => query }, pool: {} };
+});
+
 vi.mock("../server/push", () => ({
   sendPushToSection: vi.fn().mockResolvedValue(undefined),
   sendTestPush: vi.fn().mockResolvedValue(undefined),

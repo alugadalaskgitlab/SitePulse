@@ -87,6 +87,10 @@ describe("PLANT-01 operator dispatch entry", () => {
 
     expect(screen.getByTestId("input-truck-number")).toBeTruthy();
     expect(screen.getByTestId("input-load-weight")).toBeTruthy();
+    expect(screen.getByTestId("section-dispatch-party-mix")).toBeTruthy();
+    expect(screen.getByTestId("select-dispatch-party").getAttribute("aria-required")).toBe("true");
+    expect(screen.getByTestId("select-mix-template").getAttribute("aria-required")).toBe("true");
+    expect(screen.getByTestId("button-save-dispatch").hasAttribute("disabled")).toBe(true);
     expect(screen.queryByTestId("input-actual-bitumen")).toBeNull();
     expect(screen.queryByTestId("input-actual-ldo")).toBeNull();
     expect(screen.getByTestId("button-dispatch-more-details")).toBeTruthy();
@@ -112,5 +116,9 @@ describe("PLANT-01 operator dispatch entry", () => {
     expect(screen.getByTestId("text-dispatch-defaults").textContent).toContain("Test Party");
     expect(screen.getByTestId("text-dispatch-defaults").textContent).toContain("BC Mix");
     expect(screen.getByTestId("text-dispatch-defaults").textContent).toContain("Bitumen tank 2");
+    expect(screen.queryByTestId("select-dispatch-party")).toBeNull();
+    fireEvent.click(screen.getByTestId("button-change-dispatch-party-mix"));
+    expect(screen.getByTestId("select-dispatch-party")).toBeTruthy();
+    expect(screen.getByTestId("select-mix-template")).toBeTruthy();
   });
 });

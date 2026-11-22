@@ -137,6 +137,8 @@ export default function PlantDispatches() {
   const [truckComboOpen, setTruckComboOpen] = useState(false);
   const [overrideTolerance, setOverrideTolerance] = useState(false);
   const [moreDetailsOpen, setMoreDetailsOpen] = useState(false);
+  const [dispatchDefaultsAvailable, setDispatchDefaultsAvailable] = useState(false);
+  const [primaryFieldsExpanded, setPrimaryFieldsExpanded] = useState(false);
   
   // Tolerance constant (±10%)
   const TOLERANCE_PERCENT = 10;
@@ -337,6 +339,8 @@ export default function PlantDispatches() {
           setDeliveryLocation(savedDispatch.deliveryLocation || "");
           setBitumenTankNumber(String(savedDispatch.bitumenTankNumber || 1));
           setLdoTankNumber(String(savedDispatch.ldoTankNumber || 1));
+          setDispatchDefaultsAvailable(true);
+          setPrimaryFieldsExpanded(false);
         }
         setDialogOpen(true);
       } else {
@@ -413,6 +417,8 @@ export default function PlantDispatches() {
     setEditingDispatch(null);
     setOverrideTolerance(false);
     setMoreDetailsOpen(false);
+    setDispatchDefaultsAvailable(false);
+    setPrimaryFieldsExpanded(false);
   };
 
   const openNewDispatchDialog = () => {
@@ -431,6 +437,7 @@ export default function PlantDispatches() {
       setDeliveryLocation(latestToday.deliveryLocation || "");
       setBitumenTankNumber(String(latestToday.bitumenTankNumber || 1));
       setLdoTankNumber(String(latestToday.ldoTankNumber || 1));
+      setDispatchDefaultsAvailable(true);
     }
     setDialogOpen(true);
   };
@@ -455,6 +462,8 @@ export default function PlantDispatches() {
     setTransportEquipmentId(dispatch.transportEquipmentId || null);
     setOverrideTolerance(false);
     setMoreDetailsOpen(true);
+    setDispatchDefaultsAvailable(true);
+    setPrimaryFieldsExpanded(true);
     setDialogOpen(true);
   };
 
@@ -529,6 +538,14 @@ export default function PlantDispatches() {
       setOverrideTolerance(false);
     }
   }, [hasToleranceViolation, overrideTolerance]);
+
+  const showPrimaryFields = !!editingDispatch
+    || !dispatchDefaultsAvailable
+    || !partyId
+    || !mixTemplateId
+    || primaryFieldsExpanded;
+  const dispatchPartyName = parties?.find(party => String(party.id) === partyId)?.name || "Choose party/job";
+  const dispatchMixName = templates?.find(template => String(template.id) === mixTemplateId)?.name || "Choose mix";
 
   const handleSubmit = () => {
     if (!partyId || !mixTemplateId || !truckNumber || !loadWeight) return;
@@ -1035,41 +1052,10 @@ export default function PlantDispatches() {
               />
             )}
             <div className="space-y-4 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full justify-between"
-                aria-expanded={moreDetailsOpen}
-                onClick={() => setMoreDetailsOpen(open => !open)}
-                data-testid="button-dispatch-more-details"
-              >
-                {moreDetailsOpen ? "Hide more details" : "More details"}
-                <span aria-hidden="true">{moreDetailsOpen ? "−" : "+"}</span>
-              </Button>
-              {!moreDetailsOpen && (
-                <p className="text-xs text-muted-foreground" data-testid="text-dispatch-defaults">
-                  {partyId ? parties?.find(party => String(party.id) === partyId)?.name : "Choose party/job in More details"}
-                  {" · "}
-                  {mixTemplateId ? templates?.find(template => String(template.id) === mixTemplateId)?.name : "Choose mix in More details"}
-                  {" · "}
-                  Bitumen tank {bitumenTankNumber}
-                </p>
-              )}
-              {moreDetailsOpen && (
-                <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Date</Label>
-                      <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-dispatch-date" />
-                    </div>
-                    <div>
-                      <Label>Time</Label>
-                      <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} data-testid="input-dispatch-time" />
-                    </div>
-                  </div>
-
+              {showPrimaryFields ? (
+                <div className="space-y-4 rounded-md border p-3" data-testid="section-dispatch-party-mix">
                   <div>
-                    <Label>Party/job</Label>
+                    <Label>Party/job <span className="text-destructive">*</span></Label>
                     <Select value={partyId} onValueChange={(v) => {
                       setPartyId(v);
                       setDeliveryLocation("");
@@ -1079,7 +1065,7 @@ export default function PlantDispatches() {
                         if (tpl && tpl.partyId != null && tpl.partyId !== pid) setMixTemplateId("");
                       }
                     }}>
-                      <SelectTrigger data-testid="select-dispatch-party">
+                      <SelectTrigger data-testid="select-dispatch-party" aria-required="true">
                         <SelectValue placeholder="Select party" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1089,9 +1075,8 @@ export default function PlantDispatches() {
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div>
-                    <Label>Mix template</Label>
+                    <Label>Mix template <span className="text-destructive">*</span></Label>
                     <Select
                       value={mixTemplateId}
                       onValueChange={(val) => {
@@ -1103,7 +1088,7 @@ export default function PlantDispatches() {
                         setMixTemplateId(val);
                       }}
                     >
-                      <SelectTrigger data-testid="select-mix-template">
+                      <SelectTrigger data-testid="select-mix-template" aria-required="true">
                         <SelectValue placeholder="Select mix template" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1120,6 +1105,59 @@ export default function PlantDispatches() {
                       </p>
                     )}
                   </div>
+                  {dispatchDefaultsAvailable && primaryFieldsExpanded && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      disabled={!partyId || !mixTemplateId}
+                      onClick={() => setPrimaryFieldsExpanded(false)}
+                      data-testid="button-dispatch-party-mix-done"
+                    >
+                      Done
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm" data-testid="text-dispatch-defaults">
+                  <span className="min-w-0 truncate">
+                    {dispatchPartyName} · {dispatchMixName} · Bitumen tank {bitumenTankNumber}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPrimaryFieldsExpanded(true)}
+                    data-testid="button-change-dispatch-party-mix"
+                  >
+                    Change
+                  </Button>
+                </div>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-between"
+                aria-expanded={moreDetailsOpen}
+                onClick={() => setMoreDetailsOpen(open => !open)}
+                data-testid="button-dispatch-more-details"
+              >
+                {moreDetailsOpen ? "Hide more details" : "More details"}
+                <span aria-hidden="true">{moreDetailsOpen ? "−" : "+"}</span>
+              </Button>
+              {moreDetailsOpen && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Date</Label>
+                      <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-dispatch-date" />
+                    </div>
+                    <div>
+                      <Label>Time</Label>
+                      <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} data-testid="input-dispatch-time" />
+                    </div>
+                  </div>
+
                 </>
               )}
 

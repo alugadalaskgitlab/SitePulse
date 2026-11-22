@@ -49,3 +49,25 @@ The sent-challan row and print view use a browser-only synthetic response (`DP/T
 7. Party daily statement print view: [07-statement-print.jpg](plant01-screenshots/07-statement-print.jpg)
 
 No production database was accessed and nothing was published.
+
+## Follow-up: first-truck fields and day readings
+
+- With no truck entered yet today, **Party/job** and **Mix template** now appear on the truck form as required fields. The Save button stays disabled until both, the vehicle and the load weight are supplied. After a dispatch exists, those choices can be shown in a one-line summary and changed explicitly.
+- The Start and end of day card now contains the opening and closing bitumen dips, dryer and boiler meter readings, and generator hour-meter and diesel readings. Opening values continue to prefill from prior readings. Weather, temperatures and LDO dip-stick readings remain in More details.
+- A new shift log pre-fills Operator from the signed-in user's linked personnel record when available; the operator can edit it.
+
+## Failure investigation and verification
+
+- The nine earlier failures were not caused by PLANT-01 behavior. The same 8 `programmeBarLinkage030A` and 1 `dieselStockGuard06mB` failures reproduced at baseline commit `29881e51` against this development database: the DPR route's active-personnel guard stopped the tests before their intended assertions. The previous zero-failure run used a clean test database without those ambient personnel rows.
+- The two test files now use an explicit empty personnel fixture, preserving their programme-link and diesel-stock assertions while avoiding dependence on development data. No application behavior was changed for this fix.
+- Focused PLANT, programme-link and diesel-guard tests: **124 passed across 6 files**.
+- Full suite: **5,878 passed, 3 skipped, 0 failed** (483 test files passed; 2 skipped).
+- `npm run build`: **passed**. `git diff --check`: **passed**.
+- After restart, startup readiness reported `ready: true` and checked 2,286 columns.
+
+## Follow-up phone screenshots
+
+Screenshots are 402 pixels wide. The day-card screenshot uses browser-only sample readings to illustrate the visible fields; they were not saved. The truck screenshot shows the first-truck form with Party/job and Mix template visible and required. A temporary Owner account used the normal development login flow and was deleted afterward, together with its device and sessions. No plant or dispatch form was submitted, no operational records were changed, and no production database was accessed.
+
+1. Start and end of day opening readings: [08-start-day-opening-readings.jpg](plant01-screenshots/08-start-day-opening-readings.jpg)
+2. First-truck party and mix fields: [09-first-truck-party-mix.jpg](plant01-screenshots/09-first-truck-party-mix.jpg)

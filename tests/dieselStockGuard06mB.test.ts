@@ -20,6 +20,18 @@ import request from "supertest";
 // ---------------------------------------------------------------------------
 const fx: { role: string } = { role: "owner" };
 
+// The create-DPR route checks for existing active personnel before it reaches
+// the mocked storage error. Use an explicit empty personnel fixture so the
+// test does not depend on ambient development database contents.
+vi.mock("../server/db", () => {
+  const query: any = {
+    from: () => query,
+    where: () => query,
+    limit: async () => [],
+  };
+  return { db: { select: () => query }, pool: {} };
+});
+
 vi.mock("../server/push", () => ({
   sendPushToAll: vi.fn().mockResolvedValue(undefined),
   sendTestPush: vi.fn().mockResolvedValue(undefined),

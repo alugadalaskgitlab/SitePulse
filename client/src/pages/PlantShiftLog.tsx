@@ -23,7 +23,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { ToastAction } from "@/components/ui/toast";
 import { Switch } from "@/components/ui/switch";
 import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS, heatingSessionTypeLabel } from "@shared/schema";
-import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession } from "@shared/schema";
+import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession, Personnel } from "@shared/schema";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoVolumeAtDepth, getLdoDeadStockVolume } from "@shared/ldo-dip-chart";
 import DryerSourceFixDialog from "@/components/DryerSourceFixDialog";
@@ -45,7 +45,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 export default function PlantShiftLog() {
   const { toast } = useToast();
   const { defaultPlantName } = useFeatureFlags();
-  const { featureCan } = useAuth();
+  const { featureCan, user } = useAuth();
   const canVerify = featureCan("hmp_rmc", "verify");
   const canAddPlantReceipt = featureCan("plant_receipts", "add");
   const canEditPlantDay = featureCan("hmp_rmc", "add") || featureCan("hmp_rmc", "edit");
@@ -71,6 +71,7 @@ export default function PlantShiftLog() {
   const [weather, setWeather] = useState("");
   const [ambientTemp, setAmbientTemp] = useState("");
   const [operatorName, setOperatorName] = useState("");
+  const operatorPrefillRef = useRef<{ date: string; applied: boolean }>({ date: "", applied: false });
   const [supervisorName, setSupervisorName] = useState("");
   const [remarks, setRemarks] = useState("");
   const [closeReason, setCloseReason] = useState("");
@@ -234,6 +235,16 @@ export default function PlantShiftLog() {
     },
   });
 
+  const { data: personnelList = [] } = useQuery<Personnel[]>({
+    queryKey: ["/api/personnel", "includeInactive"],
+    queryFn: async () => {
+      const response = await fetch("/api/personnel?includeInactive=true", { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load personnel.");
+      return response.json();
+    },
+  });
+  const linkedOperatorName = personnelList.find(person => person.id === user?.personnelId)?.name ?? "";
+
   // List view query: all shift logs in the chosen date range.
   const { data: shiftLogs, isLoading: listLoading } = useQuery<PlantShiftLogRow[]>({
     queryKey: ["/api/plant-module/shift-logs", listDateFrom, listDateTo],
@@ -334,6 +345,7 @@ export default function PlantShiftLog() {
     setPlantStartTime(""); setPlantStopTime("");
     setWeather(""); setAmbientTemp("");
     setOperatorName(""); setSupervisorName(""); setRemarks("");
+    operatorPrefillRef.current = { date, applied: false };
     setCloseReason(""); setMoreDetailsOpen(false);
     setBitumenTank1Temp(""); setBitumenTank2Temp("");
     setBitumenTank1OpeningDip(""); setBitumenTank1ClosingDip("");
@@ -409,7 +421,17 @@ export default function PlantShiftLog() {
     })));
     setIsFinalized(log.isFinalized || 0);
     setPlantName(log.plantName || defaultPlantName);
+    operatorPrefillRef.current = { date: log.date, applied: true };
   }, [defaultPlantName]);
+
+  useEffect(() => {
+    if (operatorPrefillRef.current.date !== date) {
+      operatorPrefillRef.current = { date, applied: false };
+    }
+    if (viewMode !== "edit" || isLoading || existing || !linkedOperatorName || operatorPrefillRef.current.applied) return;
+    if (!operatorName.trim()) setOperatorName(linkedOperatorName);
+    operatorPrefillRef.current.applied = true;
+  }, [date, viewMode, isLoading, existing, linkedOperatorName]);
 
   type ShiftLogFormData = {
     shiftCode: string; plantStartTime: string; plantStopTime: string;
@@ -1424,7 +1446,7 @@ export default function PlantShiftLog() {
         </Card>
       )}
 
-      <Card>
+      <Card data-testid="card-shift-start-end">
         <CardHeader>
           <div className="flex items-center justify-between gap-4 flex-wrap">
           <CardTitle>Start and end of day</CardTitle>
@@ -1441,24 +1463,27 @@ export default function PlantShiftLog() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="input-date" /></div>
-          <div><Label>Shift</Label>
-            <Select value={shiftCode} onValueChange={setShiftCode}>
-              <SelectTrigger data-testid="select-shift"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="DAY">Day</SelectItem>
-                <SelectItem value="NIGHT">Night</SelectItem>
-                <SelectItem value="FULL">Full Day</SelectItem>
-              </SelectContent>
-            </Select>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div><Label>Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="input-date" /></div>
+            <div><Label>Shift</Label>
+              <Select value={shiftCode} onValueChange={setShiftCode}>
+                <SelectTrigger data-testid="select-shift"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DAY">Day</SelectItem>
+                  <SelectItem value="NIGHT">Night</SelectItem>
+                  <SelectItem value="FULL">Full Day</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>{noMainPlantOps ? "Shift start" : "Plant start"}</Label><Input type="time" value={plantStartTime} onChange={e => setPlantStartTime(e.target.value)} data-testid="input-plant-start" /></div>
+            <div><Label>{noMainPlantOps ? "Shift end" : "Plant stop"}</Label><Input type="time" value={plantStopTime} onChange={e => setPlantStopTime(e.target.value)} data-testid="input-plant-stop" /></div>
+            <div><Label>Operator</Label><Input value={operatorName} onChange={e => setOperatorName(e.target.value)} data-testid="input-operator" /></div>
+            <div><Label>Plant</Label><Input value={plantName} onChange={e => setPlantName(e.target.value)} data-testid="input-plant-name" /></div>
           </div>
-          <div><Label>{noMainPlantOps ? "Shift start" : "Plant start"}</Label><Input type="time" value={plantStartTime} onChange={e => setPlantStartTime(e.target.value)} data-testid="input-plant-start" /></div>
-          <div><Label>{noMainPlantOps ? "Shift end" : "Plant stop"}</Label><Input type="time" value={plantStopTime} onChange={e => setPlantStopTime(e.target.value)} data-testid="input-plant-stop" /></div>
-          <div><Label>Operator</Label><Input value={operatorName} onChange={e => setOperatorName(e.target.value)} data-testid="input-operator" /></div>
-          <div><Label>Plant</Label><Input value={plantName} onChange={e => setPlantName(e.target.value)} data-testid="input-plant-name" /></div>
+
           <details
-            className="col-span-2 md:col-span-4 rounded-md border px-3 py-2"
+            className="rounded-md border px-3 py-2"
             open={moreDetailsOpen}
             onToggle={(event) => setMoreDetailsOpen((event.currentTarget as HTMLDetailsElement).open)}
             data-testid="details-shift-more"
@@ -1479,8 +1504,130 @@ export default function PlantShiftLog() {
                 </Select>
               </div>
               <div><Label>Ambient temperature °C</Label><Input type="number" step="0.1" value={ambientTemp} onChange={e => setAmbientTemp(e.target.value)} data-testid="input-ambient-temp" /></div>
+              <div><Label>Bitumen tank 1 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank1Temp} onChange={e => setBitumenTank1Temp(e.target.value)} data-testid="input-bitumen-t1-temp" /></div>
+              <div><Label>Bitumen tank 2 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank2Temp} onChange={e => setBitumenTank2Temp(e.target.value)} data-testid="input-bitumen-t2-temp" /></div>
             </div>
           </details>
+
+          {!noMainPlantOps && <div className="space-y-3 rounded-md border p-3" data-testid="section-opening-readings">
+            <h3 className="font-medium">Opening readings</h3>
+            <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
+              <div
+                ref={dryerFocusRef}
+                className={`flex items-center gap-2 rounded border border-dashed px-3 py-2 transition-all duration-300 ${
+                  dryerHighlighted
+                    ? "border-red-500 bg-red-50/70 dark:bg-red-950/30 ring-2 ring-red-400"
+                    : "border-blue-300 bg-blue-50/40 dark:bg-blue-950/20"
+                }`}
+              >
+                <Label htmlFor="dryer-fed-from" className="text-sm">Which tank feeds the dryer?</Label>
+                <Select value={dryerFedFrom ?? ""} onValueChange={(value) => setDryerFedFrom(value as "TANK_1" | "TANK_2")}>
+                  <SelectTrigger id="dryer-fed-from" className="h-8 w-36" data-testid="select-dryer-fed-from">
+                    <SelectValue placeholder="Select tank…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TANK_1">Boiler tank</SelectItem>
+                    <SelectItem value="TANK_2">Dryer tank</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2 rounded border border-dashed border-amber-300 px-3 py-2">
+                <Switch
+                  id="boiler-runs-during-production"
+                  checked={boilerRunsDuringProduction}
+                  onCheckedChange={(value) => {
+                    setBoilerRunsDuringProduction(!!value);
+                    if (!value) {
+                      setLdoTank1OpeningMeter("");
+                      setLdoTank1ClosingMeter("");
+                      setAutoFillT1Source("");
+                      setAutoFillT1ClosingSource("");
+                      autoFilledT1ValueRef.current = null;
+                      autoFilledT1ClosingValueRef.current = null;
+                    }
+                  }}
+                  data-testid="switch-boiler-runs-during-production"
+                />
+                <Label htmlFor="boiler-runs-during-production" className="text-sm cursor-pointer">
+                  Boiler runs during production
+                </Label>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                { label: "Bitumen tank 1 — opening dip (cm)", value: bitumenTank1OpeningDip, set: setBitumenTank1OpeningDip, testId: "input-bitumen-t1-open", source: autoFillBitumenT1Source, sourceId: "text-autofill-bitumen-t1-open", hintId: "text-bitumen-t1-open-mt", hint: dipHint(bitumenTank1OpeningDip), onEdit: () => { setAutoFillBitumenT1Source(""); autoFilledBitumenT1Ref.current = null; } },
+                { label: "Bitumen tank 2 — opening dip (cm)", value: bitumenTank2OpeningDip, set: setBitumenTank2OpeningDip, testId: "input-bitumen-t2-open", source: autoFillBitumenT2Source, sourceId: "text-autofill-bitumen-t2-open", hintId: "text-bitumen-t2-open-mt", hint: dipHint(bitumenTank2OpeningDip), onEdit: () => { setAutoFillBitumenT2Source(""); autoFilledBitumenT2Ref.current = null; } },
+              ].map(({ label, value, set, testId, source, sourceId, hintId, hint, onEdit }) => (
+                <div key={testId}>
+                  <Label>{label}</Label>
+                  <Input type="number" step="0.1" value={value} onChange={event => { set(event.target.value); onEdit(); }} data-testid={testId} />
+                  {source && <p className="mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid={sourceId}>Auto-filled from {source}</p>}
+                  {hint && <p className="mt-1 text-sm font-medium" data-testid={hintId}>{hint}</p>}
+                </div>
+              ))}
+              <div>
+                <Label>Dryer fuel meter — opening</Label>
+                <Input type="number" step="0.01" value={ldoTank2OpeningMeter} onChange={event => { setLdoTank2OpeningMeter(event.target.value); setAutoFillT2Source(""); }} data-testid="input-ldo-t2-open" />
+                {autoFillT2Source && <p className="mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid="text-autofill-t2">Auto-filled from {autoFillT2Source}</p>}
+              </div>
+              {boilerRunsDuringProduction && <div>
+                <Label>Boiler fuel meter — opening</Label>
+                <Input type="number" step="0.01" value={ldoTank1OpeningMeter} onChange={event => { setLdoTank1OpeningMeter(event.target.value); setAutoFillT1Source(""); }} data-testid="input-ldo-t1-open" />
+                {autoFillT1Source && <p className="mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid="text-autofill-t1">Auto-filled from {autoFillT1Source}</p>}
+              </div>}
+              {dgReadings.length === 0 && <p className="text-sm text-muted-foreground">No active generator equipment is linked to this plant.</p>}
+              {dgReadings.map((reading, index) => <div key={`open-${reading.equipmentId}`} className="rounded border p-2">
+                <p className="mb-2 text-sm font-medium">{reading.equipmentName}</p>
+                {reading.prefillFrom && <p className="mb-2 text-xs text-muted-foreground">Opening values prefilled from {reading.prefillFrom}.</p>}
+                <Label htmlFor={`dg-${reading.equipmentId}-openingReading`}>Opening hour meter</Label>
+                <Input id={`dg-${reading.equipmentId}-openingReading`} type="number" min="0" step="0.1" value={reading.openingReading}
+                  onChange={event => setDgReadings(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, openingReading: event.target.value } : row))}
+                  data-testid={`input-dg-${reading.equipmentId}-openingReading`} />
+                <Label htmlFor={`dg-${reading.equipmentId}-openingDiesel`} className="mt-2 block">Opening diesel level (L)</Label>
+                <Input id={`dg-${reading.equipmentId}-openingDiesel`} type="number" min="0" step="0.1" value={reading.openingDiesel}
+                  onChange={event => setDgReadings(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, openingDiesel: event.target.value } : row))}
+                  data-testid={`input-dg-${reading.equipmentId}-openingDiesel`} />
+              </div>)}
+            </div>
+          </div>}
+
+          <div className="space-y-3 rounded-md border p-3" data-testid="section-closing-readings">
+            <h3 className="font-medium">Closing readings</h3>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {!noMainPlantOps && <>
+                <div>
+                  <Label>Bitumen tank 1 — closing dip (cm)</Label>
+                  <Input type="number" step="0.1" value={bitumenTank1ClosingDip} onChange={event => setBitumenTank1ClosingDip(event.target.value)} data-testid="input-bitumen-t1-close" />
+                  {dipHint(bitumenTank1ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-bitumen-t1-close-mt">{dipHint(bitumenTank1ClosingDip)}</p>}
+                </div>
+                <div>
+                  <Label>Bitumen tank 2 — closing dip (cm)</Label>
+                  <Input type="number" step="0.1" value={bitumenTank2ClosingDip} onChange={event => setBitumenTank2ClosingDip(event.target.value)} data-testid="input-bitumen-t2-close" />
+                  {dipHint(bitumenTank2ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip)}</p>}
+                </div>
+                <div>
+                  <Label>Dryer fuel meter — closing</Label>
+                  <Input type="number" step="0.01" value={ldoTank2ClosingMeter} onChange={event => setLdoTank2ClosingMeter(event.target.value)} data-testid="input-ldo-t2-close" />
+                </div>
+                {boilerRunsDuringProduction && <div>
+                  <Label>Boiler fuel meter — closing</Label>
+                  <Input type="number" step="0.01" value={ldoTank1ClosingMeter} onChange={event => setLdoTank1ClosingMeter(event.target.value)} data-testid="input-ldo-t1-close" />
+                  {autoFillT1ClosingSource && <p className="mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid="text-autofill-t1-close">Auto-filled from {autoFillT1ClosingSource}</p>}
+                </div>}
+              </>}
+              {dgReadings.map((reading, index) => <div key={`close-${reading.equipmentId}`} className="rounded border p-2">
+                <p className="mb-2 text-sm font-medium">{reading.equipmentName}</p>
+                <Label htmlFor={`dg-${reading.equipmentId}-closingReading`}>Closing hour meter</Label>
+                <Input id={`dg-${reading.equipmentId}-closingReading`} type="number" min="0" step="0.1" value={reading.closingReading}
+                  onChange={event => setDgReadings(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, closingReading: event.target.value } : row))}
+                  data-testid={`input-dg-${reading.equipmentId}-closingReading`} />
+                <Label htmlFor={`dg-${reading.equipmentId}-closingDiesel`} className="mt-2 block">Closing diesel level (L)</Label>
+                <Input id={`dg-${reading.equipmentId}-closingDiesel`} type="number" min="0" step="0.1" value={reading.closingDiesel}
+                  onChange={event => setDgReadings(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, closingDiesel: event.target.value } : row))}
+                  data-testid={`input-dg-${reading.equipmentId}-closingDiesel`} />
+              </div>)}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -1519,170 +1666,15 @@ export default function PlantShiftLog() {
         )}
       </div>
 
-      <Card data-testid="card-dg-readings">
-        <CardHeader><CardTitle>DG hour meter and diesel level</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          {dgReadings.length === 0 && (
-            <p className="text-sm text-muted-foreground">No active generator equipment is linked to this plant.</p>
-          )}
-          {dgReadings.map((reading, index) => (
-            <div key={reading.equipmentId} className="rounded-md border p-3">
-              <p className="mb-3 font-medium">{reading.equipmentName}</p>
-              {reading.prefillFrom && <p className="mb-2 text-xs text-muted-foreground">Opening values prefilled from {reading.prefillFrom}.</p>}
-              <div className="grid grid-cols-2 gap-3">
-                {([
-                  ["openingReading", "Opening hour meter"],
-                  ["closingReading", "Closing hour meter"],
-                  ["openingDiesel", "Opening diesel level (L)"],
-                  ["closingDiesel", "Closing diesel level (L)"],
-                ] as const).map(([field, label]) => (
-                  <div key={field}>
-                    <Label htmlFor={`dg-${reading.equipmentId}-${field}`}>{label}</Label>
-                    <Input
-                      id={`dg-${reading.equipmentId}-${field}`}
-                      type="number"
-                      min="0"
-                      step={field.includes("Reading") ? "0.1" : "0.1"}
-                      value={reading[field]}
-                      onChange={event => setDgReadings(current => current.map((row, rowIndex) =>
-                        rowIndex === index ? { ...row, [field]: event.target.value } : row
-                      ))}
-                      data-testid={`input-dg-${reading.equipmentId}-${field}`}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
       {!isLoading && <>
 
       {!noMainPlantOps && <Card>
         <CardHeader>
-          <CardTitle>Bitumen Tanks (Theoretical)</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {moreDetailsOpen && <div><Label>Bitumen tank 1 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank1Temp} onChange={e => setBitumenTank1Temp(e.target.value)} data-testid="input-bitumen-t1-temp" /></div>}
-          <div>
-            <Label>Bitumen tank 1 — opening dip (cm)</Label>
-            <Input type="number" step="0.1" value={bitumenTank1OpeningDip} onChange={e => { setBitumenTank1OpeningDip(e.target.value); setAutoFillBitumenT1Source(""); autoFilledBitumenT1Ref.current = null; }} data-testid="input-bitumen-t1-open" />
-            {autoFillBitumenT1Source && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-bitumen-t1-open">Auto-filled from {autoFillBitumenT1Source}</p>}
-            {dipHint(bitumenTank1OpeningDip) ? (
-              <p className="text-sm font-medium text-foreground mt-1" data-testid="text-bitumen-t1-open-mt">{dipHint(bitumenTank1OpeningDip)}</p>
-            ) : (
-              !autoFillBitumenT1Source && <p className="text-sm text-foreground/60 mt-1">Dip-stick reading at start of shift, in cm</p>
-            )}
-          </div>
-          <div>
-            <Label>Bitumen tank 1 — closing dip (cm)</Label>
-            <Input type="number" step="0.1" value={bitumenTank1ClosingDip} onChange={e => setBitumenTank1ClosingDip(e.target.value)} data-testid="input-bitumen-t1-close" />
-            {dipHint(bitumenTank1ClosingDip) ? (
-              <p className="text-sm font-medium text-foreground mt-1" data-testid="text-bitumen-t1-close-mt">{dipHint(bitumenTank1ClosingDip)}</p>
-            ) : (
-              <p className="text-sm text-foreground/60 mt-1">Dip-stick reading at end of shift, in cm</p>
-            )}
-          </div>
-          <div />
-          {moreDetailsOpen && <div><Label>Bitumen tank 2 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank2Temp} onChange={e => setBitumenTank2Temp(e.target.value)} data-testid="input-bitumen-t2-temp" /></div>}
-          <div>
-            <Label>Bitumen tank 2 — opening dip (cm)</Label>
-            <Input type="number" step="0.1" value={bitumenTank2OpeningDip} onChange={e => { setBitumenTank2OpeningDip(e.target.value); setAutoFillBitumenT2Source(""); autoFilledBitumenT2Ref.current = null; }} data-testid="input-bitumen-t2-open" />
-            {autoFillBitumenT2Source && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-bitumen-t2-open">Auto-filled from {autoFillBitumenT2Source}</p>}
-            {dipHint(bitumenTank2OpeningDip) ? (
-              <p className="text-sm font-medium text-foreground mt-1" data-testid="text-bitumen-t2-open-mt">{dipHint(bitumenTank2OpeningDip)}</p>
-            ) : (
-              !autoFillBitumenT2Source && <p className="text-sm text-foreground/60 mt-1">Dip-stick reading at start of shift, in cm</p>
-            )}
-          </div>
-          <div>
-            <Label>Bitumen tank 2 — closing dip (cm)</Label>
-            <Input type="number" step="0.1" value={bitumenTank2ClosingDip} onChange={e => setBitumenTank2ClosingDip(e.target.value)} data-testid="input-bitumen-t2-close" />
-            {dipHint(bitumenTank2ClosingDip) ? (
-              <p className="text-sm font-medium text-foreground mt-1" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip)}</p>
-            ) : (
-              <p className="text-sm text-foreground/60 mt-1">Dip-stick reading at end of shift, in cm</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>}
-
-      {!noMainPlantOps && <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <CardTitle>LDO Flow Meters</CardTitle>
-              <p className="text-sm text-muted-foreground">Both meters draw from the main LDO tank.</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Routes the dryer-meter consumption to the selected tank. */}
-              <div
-                ref={dryerFocusRef}
-                className={`flex items-center gap-2 rounded border border-dashed px-3 py-2 transition-all duration-300 ${
-                  dryerHighlighted
-                    ? "border-red-500 bg-red-50/70 dark:bg-red-950/30 ring-2 ring-red-400"
-                    : "border-blue-300 bg-blue-50/40 dark:bg-blue-950/20"
-                }`}
-              >
-                <Label htmlFor="dryer-fed-from" className="text-sm">Which tank feeds the dryer?</Label>
-                <Select value={dryerFedFrom ?? ""} onValueChange={(v) => setDryerFedFrom(v as "TANK_1" | "TANK_2")}>
-                  <SelectTrigger id="dryer-fed-from" className={`h-8 w-36 ${dryerFedFrom === null ? "border-amber-400 text-amber-600 dark:text-amber-400" : ""}`} data-testid="select-dryer-fed-from">
-                    <SelectValue placeholder="Select tank…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="TANK_1">Boiler tank</SelectItem>
-                    <SelectItem value="TANK_2">Dryer tank</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {/* Task #254 — Boiler-runs-during-production toggle. When off,
-                  the Boiler Meter inputs below are hidden and contribute 0 to
-                  the daily report's boiler-LDO total (sessions still count). */}
-              <div className="flex items-center gap-2 rounded border border-dashed border-amber-300 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-2">
-                <Switch
-                  id="boiler-runs-during-production"
-                  checked={boilerRunsDuringProduction}
-                  onCheckedChange={(v) => {
-                    setBoilerRunsDuringProduction(!!v);
-                    if (!v) {
-                      // Clearing the inputs avoids stale numbers if the operator
-                      // toggles off after typing — keeps the daily-report total
-                      // honest and matches the "contribute zero" rule.
-                      setLdoTank1OpeningMeter("");
-                      setLdoTank1ClosingMeter("");
-                      setAutoFillT1Source("");
-                      setAutoFillT1ClosingSource("");
-                      autoFilledT1ValueRef.current = null;
-                      autoFilledT1ClosingValueRef.current = null;
-                    }
-                  }}
-                  data-testid="switch-boiler-runs-during-production"
-                />
-                <Label htmlFor="boiler-runs-during-production" className="text-sm cursor-pointer">
-                  Boiler runs during production
-                </Label>
-              </div>
-            </div>
-          </div>
+          <CardTitle>LDO consumption summary</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {boilerRunsDuringProduction ? (
             <>
-              <div>
-                <Label>Boiler fuel meter — opening</Label>
-                <Input type="number" step="0.01" value={ldoTank1OpeningMeter}
-                  onChange={e => { setLdoTank1OpeningMeter(e.target.value); setAutoFillT1Source(""); }}
-                  data-testid="input-ldo-t1-open" />
-                {autoFillT1Source && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1">Auto-filled from {autoFillT1Source}</p>}
-              </div>
-              <div>
-                <Label>Boiler fuel meter — closing</Label>
-                <Input type="number" step="0.01" value={ldoTank1ClosingMeter}
-                  onChange={e => { setLdoTank1ClosingMeter(e.target.value); setAutoFillT1ClosingSource(""); }}
-                  data-testid="input-ldo-t1-close" />
-                {autoFillT1ClosingSource && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1-close">Auto-filled from {autoFillT1ClosingSource}</p>}
-              </div>
               <div><Label>Boiler fuel consumed (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t1-consumed">{ldoTotal.t1?.toFixed(2) ?? "—"}</div></div>
               <div />
             </>
@@ -1691,14 +1683,6 @@ export default function PlantShiftLog() {
               Boiler Meter inputs are hidden — turn on "Boiler runs during production" to record the meter opening/closing for this shift. Heating session LDO is still counted in the Daily Plant Report.
             </div>
           )}
-          <div>
-            <Label>Dryer fuel meter — opening</Label>
-            <Input type="number" step="0.01" value={ldoTank2OpeningMeter}
-              onChange={e => { setLdoTank2OpeningMeter(e.target.value); setAutoFillT2Source(""); }}
-              data-testid="input-ldo-t2-open" />
-            {autoFillT2Source && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t2">Auto-filled from {autoFillT2Source}</p>}
-          </div>
-          <div><Label>Dryer fuel meter — closing</Label><Input type="number" step="0.01" value={ldoTank2ClosingMeter} onChange={e => setLdoTank2ClosingMeter(e.target.value)} data-testid="input-ldo-t2-close" /></div>
           <div><Label>Dryer fuel consumed (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{ldoTotal.t2?.toFixed(2) ?? "—"}</div></div>
           <div><Label>Total LDO (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold" data-testid="text-ldo-total">{ldoTotal.total ? ldoTotal.total.toFixed(2) : "—"}</div></div>
 
