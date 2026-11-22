@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     openingDieselPrefill: 78,
     prefillFrom: "previous closing",
   }],
+  noDgs: [] as any[],
   settings: { dgProductionEquipmentIds: "[5]", boilerFuelMeterMode: "working" as "working" | "dips_only" },
   previous: null as any,
   featureCan: vi.fn(() => true),
@@ -24,7 +25,16 @@ vi.mock("@tanstack/react-query", () => ({
     if (key === "/api/plant-module/plant-settings") return { data: mocks.settings, isLoading: false };
     if (key === "/api/plant-module/shift-logs/previous-before") return { data: mocks.previous, isLoading: false };
     if (key === "/api/plant-module/shift-logs/by-date") return { data: undefined, isLoading: false };
-    if (key === "/api/plant-module/shift-logs/dg-readings") return { data: mocks.dgs, isLoading: false };
+    if (key === "/api/plant-module/shift-logs/dg-readings") {
+      let selected: number[] = [];
+      try {
+        selected = JSON.parse(mocks.settings.dgProductionEquipmentIds || "[]");
+      } catch {}
+      const readings = mocks.dgs.every((row: any) => selected.includes(row.equipmentId))
+        ? mocks.dgs
+        : mocks.noDgs;
+      return { data: readings, isLoading: false };
+    }
     if (key === "/api/plant-module/heating-sessions/dryer-source-mismatches") return { data: [], isLoading: false };
     if (key === "/api/plant-module/heating-sessions") return { data: [], isLoading: false };
     if (key === "/api/plant-module/shift-logs/reconciliation") return { data: {}, isLoading: false };
@@ -157,7 +167,7 @@ describe("PLANT-01 shift readings entry", () => {
   it("carries the previous shift's dryer tank and shows the note", async () => {
     mocks.previous = { dryerFedFrom: "TANK_1" };
     render(<PlantShiftLog />);
-    expect(await screen.findByText("Same as previous day")).toBeInTheDocument();
+    expect(await screen.findByText("Same as previous day")).toBeTruthy();
     expect(screen.getByTestId("select-dryer-fed-from").textContent).toContain("Boiler tank");
   });
 
@@ -166,8 +176,8 @@ describe("PLANT-01 shift readings entry", () => {
     render(<PlantShiftLog />);
     const opening = within(screen.getByTestId("section-opening-readings"));
     const closing = within(screen.getByTestId("section-closing-readings"));
-    expect(opening.getByTestId("input-ldo-dip-t1-open-main")).toBeInTheDocument();
-    expect(closing.getByTestId("input-ldo-dip-t1-close-main")).toBeInTheDocument();
+    expect(opening.getByTestId("input-ldo-dip-t1-open-main").isConnected).toBe(true);
+    expect(closing.getByTestId("input-ldo-dip-t1-close-main").isConnected).toBe(true);
     expect(opening.queryByTestId("input-ldo-t1-open")).toBeNull();
     expect(closing.queryByTestId("input-ldo-t1-close")).toBeNull();
     expect(screen.queryByTestId("switch-boiler-runs-during-production")).toBeNull();

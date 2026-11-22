@@ -481,15 +481,18 @@ export function HeatingSessionDialog({
       ).then(slRes => {
         if (!slRes.ok) return;
         return slRes.json().then((sl: any) => {
-          if (sl.dryerFedFrom && sl.dryerFedFrom !== saved.dryerFedFrom) {
+          const shiftLogDryerSource = sl.dryerFedFrom === "TANK_1" || sl.dryerFedFrom === "TANK_2"
+            ? sl.dryerFedFrom
+            : null;
+          if (shiftLogDryerSource && shiftLogDryerSource !== saved.dryerFedFrom) {
             const hsLabel = saved.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
-            const slLabel = sl.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
+            const slLabel = shiftLogDryerSource === "TANK_1" ? "Boiler tank" : "Dryer tank";
             const fixTarget: DryerSourceFixTarget = {
               mode: "shift-log",
               recordId: sl.id,
               date: saved.date,
               suggestedValue: saved.dryerFedFrom,
-              currentValue: sl.dryerFedFrom,
+              currentValue: shiftLogDryerSource,
             };
             toast({
               title: "Dryer-source mismatch",

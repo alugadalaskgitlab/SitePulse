@@ -147,6 +147,16 @@ export default function PlantHeatingSessions() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm(today, defaultPlantName));
   const [draftRestored, setDraftRestored] = useState(false);
+  const { data: plantSettings } = useQuery<{ boilerFuelMeterMode?: "working" | "dips_only" | null }>({
+    queryKey: ["/api/plant-module/plant-settings", form.plantName],
+    enabled: dialogOpen && !!form.plantName,
+    queryFn: async () => {
+      const response = await fetch(`/api/plant-module/plant-settings/${encodeURIComponent(form.plantName)}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load plant settings.");
+      return response.json();
+    },
+  });
+  const boilerDipsOnly = plantSettings?.boilerFuelMeterMode === "dips_only";
 
   // Draft recovery: save the new-session form to localStorage whenever any field
   // changes so that navigating away (e.g. to fix a shift-log mismatch) and returning
@@ -440,7 +450,7 @@ export default function PlantHeatingSessions() {
   const autoFilledOpeningRef = useRef<string | null>(null);
   const fetchSeqRef = useRef(0);
   useEffect(() => {
-    if (!dialogOpen || form.id) return;
+    if (!dialogOpen || form.id || boilerDipsOnly) return;
     const isEmpty = !form.ldoTank1OpeningMeter;
     const isAutoFilled = form.ldoTank1OpeningMeter && form.ldoTank1OpeningMeter === autoFilledOpeningRef.current;
     if (!isEmpty && !isAutoFilled) return;
@@ -466,7 +476,7 @@ export default function PlantHeatingSessions() {
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dialogOpen, form.id, form.date, form.startTime, form.plantName]);
+  }, [dialogOpen, form.id, form.date, form.startTime, form.plantName, boilerDipsOnly]);
 
   // Auto-fill Tank-1 and Tank-2 opening dip from the previous session's closing dip.
   const autoFilledDipT1Ref = useRef<string | null>(null);
@@ -509,6 +519,14 @@ export default function PlantHeatingSessions() {
 
   const dur = durationHrs(form.startTime, form.endTime);
   const ldoConsumed = (() => {
+    if (boilerDipsOnly) {
+      const openingDip = numOrNull(form.ldoTank1OpeningDip);
+      const closingDip = numOrNull(form.ldoTank1ClosingDip);
+      if (openingDip == null || closingDip == null) return null;
+      const openingLitres = getLdoVolumeAtDepth(1, openingDip);
+      const closingLitres = getLdoVolumeAtDepth(1, closingDip);
+      return openingLitres == null || closingLitres == null ? null : Math.max(0, openingLitres - closingLitres);
+    }
     const o = parseFloat(form.ldoTank1OpeningMeter), c = parseFloat(form.ldoTank1ClosingMeter);
     if (isNaN(o) || isNaN(c)) return null;
     return Math.max(0, c - o);
@@ -557,8 +575,8 @@ export default function PlantHeatingSessions() {
       bitumenTank1TempEnd: numOrNull(form.bitumenTank1TempEnd),
       bitumenTank2TempStart: numOrNull(form.bitumenTank2TempStart),
       bitumenTank2TempEnd: numOrNull(form.bitumenTank2TempEnd),
-      ldoTank1OpeningMeter: ldoOpen,
-      ldoTank1ClosingMeter: ldoClose,
+      ldoTank1OpeningMeter: boilerDipsOnly && !form.id ? null : ldoOpen,
+      ldoTank1ClosingMeter: boilerDipsOnly && !form.id ? null : ldoClose,
       ldoTank1OpeningDip: numOrNull(form.ldoTank1OpeningDip),
       ldoTank1ClosingDip: numOrNull(form.ldoTank1ClosingDip),
       ldoTank2OpeningDip: numOrNull(form.ldoTank2OpeningDip),
@@ -1463,7 +1481,7 @@ export default function PlantHeatingSessions() {
               )}
             </div>
 
-            <Card>
+            {!boilerDipsOnly && <Card>
               <CardHeader className="py-3"><CardTitle className="text-base">LDO Boiler Meter</CardTitle></CardHeader>
               <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div>
@@ -1481,10 +1499,10 @@ export default function PlantHeatingSessions() {
                 <div><Label>Total consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
                 <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
               </CardContent>
-            </Card>
+            </Card>}
 
             <Card>
-              <CardHeader className="py-3"><CardTitle className="text-base">LDO Tank Dip-Stick Readings</CardTitle></CardHeader>
+              <CardHeader className="py-3"><CardTitle className="text-base">{boilerDipsOnly ? "LDO tank 1 dips — boiler meter not used" : "LDO Tank Dip-Stick Readings"}</CardTitle></CardHeader>
               <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div>
                   <Label>Tank 1 — opening dip (cm)</Label>
@@ -1510,6 +1528,16 @@ export default function PlantHeatingSessions() {
                     return hint ? <p className="text-sm font-medium text-foreground mt-1">{hint}</p> : <p className="text-sm text-muted-foreground mt-1">Dip-stick at session end, in cm</p>;
                   })()}
                 </div>
+                {boilerDipsOnly && <div className="col-span-2 grid grid-cols-2 gap-3 md:col-span-4" data-testid="section-dips-only-session-summary">
+                  <div>
+                    <Label>Litres used</Label>
+                    <div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(1) ?? "—"}</div>
+                  </div>
+                  <div>
+                    <Label>Litres per hour</Label>
+                    <div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div>
+                  </div>
+                </div>}
                 <div>
                   <Label>Tank 2 — opening dip (cm)</Label>
                   <Input type="number" step="0.1" value={form.ldoTank2OpeningDip}

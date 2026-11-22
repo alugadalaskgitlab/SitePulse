@@ -1970,7 +1970,7 @@ export function PlantTypeConfigSection() {
                   <Checkbox
                     checked={selectedProductionGenerators.includes(item.id)}
                     onCheckedChange={(checked) => setSelectedProductionGenerators(current =>
-                      checked ? [...new Set([...current, item.id])] : current.filter(id => id !== item.id)
+                      checked ? (current.includes(item.id) ? current : [...current, item.id]) : current.filter(id => id !== item.id)
                     )}
                     data-testid={`checkbox-production-generator-${item.id}`}
                   />

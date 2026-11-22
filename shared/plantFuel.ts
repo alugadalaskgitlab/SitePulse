@@ -54,3 +54,24 @@ export function parseProductionGeneratorIds(value: string | null | undefined): n
     return [];
   }
 }
+
+export function selectedProductionGeneratorNames(
+  configuredIds: string | null | undefined,
+  equipment: Array<{ id: number; name: string; equipmentType?: string | null; isActive?: number | null }>,
+): Set<string> {
+  const selectedIds = new Set(parseProductionGeneratorIds(configuredIds));
+  return new Set(
+    equipment
+      .filter((row) => selectedIds.has(row.id) &&
+        (row.isActive == null || row.isActive === 1) &&
+        (row.equipmentType || "").toLowerCase() === "generator")
+      .map((row) => row.name),
+  );
+}
+
+export function omitSelectedGeneratorUsage<T extends { equipmentId: number | null }>(
+  rows: T[],
+  selectedGeneratorIds: ReadonlySet<number>,
+): T[] {
+  return rows.filter((row) => row.equipmentId == null || !selectedGeneratorIds.has(row.equipmentId));
+}

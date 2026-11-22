@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
-import { calculateDipsOnlyFuel } from "@shared/plantFuel";
+import {
+  calculateDipsOnlyFuel,
+  omitSelectedGeneratorUsage,
+  selectedProductionGeneratorNames,
+} from "@shared/plantFuel";
 
 describe("PLANT-03 dips-only fuel calculations", () => {
   it("adds a 4,000 L Tank 1 receipt and transfer before splitting dryer, preheat and boiler use", () => {
@@ -37,5 +41,21 @@ describe("PLANT-03 dips-only fuel calculations", () => {
     expect(result.boilerBeforeFloor).toBeLessThan(0);
     expect(result.boilerLitres).toBe(0);
     expect(result.checkDipsOrDryerMeter).toBe(true);
+  });
+
+  it("shows only explicitly selected, generator-tagged equipment and none when selection is empty", () => {
+    const equipment = [
+      { id: 1, name: "600 KVA GENERATOR", equipmentType: "Generator", isActive: 1 },
+      { id: 2, name: "30 KVA GENERATOR", equipmentType: "Generator", isActive: 1 },
+      { id: 3, name: "SOIL COMPACTOR", equipmentType: "Generator", isActive: 0 },
+    ];
+    expect(selectedProductionGeneratorNames(null, equipment)).toEqual(new Set());
+    expect(selectedProductionGeneratorNames("[1]", equipment)).toEqual(new Set(["600 KVA GENERATOR"]));
+    expect(selectedProductionGeneratorNames("[3]", equipment)).toEqual(new Set());
+  });
+
+  it("does not duplicate selected generator usage in the general equipment summary", () => {
+    const usage = [{ equipmentId: 1, hoursOrKmRun: 4 }, { equipmentId: 2, hoursOrKmRun: 2 }];
+    expect(omitSelectedGeneratorUsage(usage, new Set([1]))).toEqual([{ equipmentId: 2, hoursOrKmRun: 2 }]);
   });
 });

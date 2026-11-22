@@ -225,6 +225,11 @@ import {
 } from "@shared/equipmentStatus";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
+import {
+  omitSelectedGeneratorUsage,
+  parseProductionGeneratorIds,
+  selectedProductionGeneratorNames,
+} from "@shared/plantFuel";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { trustedCanonicalBoqName } from "@shared/boqItemName";
 import { typicalSectionsValidationError, type BoqTypicalSection } from "@shared/workingReachValue";
@@ -25839,6 +25844,16 @@ export class DatabaseStorage implements IStorage {
     const partyById = new Map(allParties.map(p => [p.id, p]));
     const matById = new Map(allMaterials.map(m => [m.id, m]));
     const eqpById = new Map(allEquipment.map(e => [e.id, e]));
+    const configuredDgIds = new Set(parseProductionGeneratorIds(plantSettings?.dgProductionEquipmentIds));
+    const selectedDgIds = new Set(
+      allEquipment
+        .filter(e => configuredDgIds.has(e.id) && e.isActive === 1 && (e.equipmentType || "").toLowerCase() === "generator")
+        .map(e => e.id),
+    );
+    const selectedGeneratorNames = selectedProductionGeneratorNames(
+      plantSettings?.dgProductionEquipmentIds,
+      allEquipment,
+    );
 
     // Production
     const totalLoads = dispatches.length;
@@ -25928,7 +25943,7 @@ export class DatabaseStorage implements IStorage {
     // closingDiesel is now persisted as the operator's actual dip when one
     // was entered, so the dip-first fallback below is defensive (kept to
     // protect any historic rows written before that change).
-    const equipmentSummary = equipment.map(e => {
+    const equipmentSummary = omitSelectedGeneratorUsage(equipment, selectedDgIds).map(e => {
       const opening = e.openingDiesel ?? null;
       // Defensive: prefer dieselBalanceInTank for legacy rows where
       // closingDiesel was the norm-derived estimate.
@@ -26066,9 +26081,7 @@ export class DatabaseStorage implements IStorage {
     // equipment (opening + issued − closing over hours), then compared against
     // recorded generator_logs.efficiency. Per task spec the derived figure
     // comes from the equipment-usage tank-balance source of truth.
-    const dgEquipmentIds = new Set(
-      allEquipment.filter(e => (e.equipmentType || "").toLowerCase() === "generator").map(e => e.id)
-    );
+    const dgEquipmentIds = selectedDgIds;
     const dgUsageByName = new Map<string, { consumed: number; hours: number; opening: number | null; issued: number; closing: number | null }>();
     for (const e of equipment) {
       if (!dgEquipmentIds.has(e.equipmentId)) continue;
@@ -26091,7 +26104,7 @@ export class DatabaseStorage implements IStorage {
       dgUsageByName.set(eqp.name, cur);
     }
 
-    const generatorSummary = generators.map(g => {
+    const generatorSummary = generators.filter(g => selectedGeneratorNames.has(g.generatorName)).map(g => {
       const usage = dgUsageByName.get(g.generatorName);
       const opening = usage?.opening ?? g.openingDiesel ?? null;
       const issued = usage?.issued ?? g.dieselIssued ?? 0;
