@@ -14,6 +14,8 @@ import {
   plantSupplyOrderLines,
   plantSupplyOrderMixComponents,
   plantSupplyOrderMixSpecs,
+  plantSupplyOrderMixVersionComponents,
+  plantSupplyOrderMixVersions,
   plantSupplyOrderMaterialScopes,
   plantSupplyOrders,
   roles,
@@ -42,6 +44,7 @@ import {
   type SupplyOrderMix,
 } from "@shared/plantSupplyOrders";
 import { convertStockQuantity, stockUnitForMaterial } from "@shared/stockUnits";
+import { mixVersionAt, supplyDispatchInstant } from "@shared/plantSupplyOrderVersions";
 
 const ALERT_SETTINGS_KEY = "plant_supply_alert_recipients_v1";
 
@@ -312,6 +315,380 @@ export async function createPlantSupplyOrder(input: {
   return getPlantSupplyOrder(created.id);
 }
 
+export type PlantSupplyOrderEditInput = {
+  orderNo: string | null;
+  periodFrom: string;
+  periodTo: string;
+  workName: string | null;
+  division: string | null;
+  mandal: string | null;
+  district: string | null;
+  agreementEstimateRef: string | null;
+  estimateSorYear: string | null;
+  mtPerCumFactor: number;
+  remarks: string | null;
+  lines: Array<{
+    id?: number;
+    mixTemplateId: number;
+    enteredQuantity: number;
+    enteredUnit: "MT" | "cum";
+    plannedMtPerDay: number | null;
+  }>;
+};
+
+function recordSupplyOrderHistory(
+  tx: any,
+  orderId: number,
+  actor: { userId: number; name: string },
+  field: string,
+  oldValue: unknown,
+  newValue: unknown,
+) {
+  if (JSON.stringify(oldValue) === JSON.stringify(newValue)) return Promise.resolve();
+  return tx.insert(auditLogs).values({
+    module: "plant_supply_order",
+    transactionId: orderId,
+    action: "edit",
+    userId: actor.userId,
+    userName: actor.name,
+    userRole: "owner_or_plant_in_charge",
+    oldValues: { field, value: oldValue },
+    newValues: { field, value: newValue },
+  });
+}
+
+export async function editPlantSupplyOrder(
+  orderId: number,
+  input: PlantSupplyOrderEditInput,
+  actor: { userId: number; name: string },
+) {
+  const edited = await db.transaction(async tx => {
+    const [current] = await tx.select().from(plantSupplyOrders)
+      .where(eq(plantSupplyOrders.id, orderId)).limit(1);
+    if (!current) throw new Error("Plant supply order not found.");
+    if (current.status !== "open") throw new Error("Only an open order can be edited.");
+    if (input.periodTo < input.periodFrom) throw new Error("The period end must be on or after the start.");
+    if (!Number.isFinite(input.mtPerCumFactor) || input.mtPerCumFactor <= 0 || input.mtPerCumFactor > 100) {
+      throw new Error("Enter an MT-per-cum factor greater than zero.");
+    }
+    if (!input.lines.length) throw new Error("Keep at least one mix line on the order.");
+
+    const dispatches = await tx.select({
+      id: truckDispatches.id,
+      date: truckDispatches.date,
+      time: truckDispatches.time,
+      mixTemplateId: truckDispatches.mixTemplateId,
+      loadWeight: truckDispatches.loadWeight,
+    }).from(truckDispatches).where(eq(truckDispatches.supplyOrderId, orderId));
+    const outsidePeriod = dispatches.filter(row => row.date < input.periodFrom || row.date > input.periodTo);
+    if (outsidePeriod.length) {
+      const dates = outsidePeriod.map(row => row.date).sort();
+      throw new Error(`${outsidePeriod.length} trucks already linked between ${dates[0]} and ${dates.at(-1)} — period must include them.`);
+    }
+
+    const existingLines = await tx.select().from(plantSupplyOrderLines)
+      .where(eq(plantSupplyOrderLines.orderId, orderId));
+    const existingById = new Map(existingLines.map(line => [line.id, line]));
+    const dispatchedByTemplate = new Map<number, number>();
+    for (const row of dispatches) {
+      dispatchedByTemplate.set(
+        row.mixTemplateId,
+        (dispatchedByTemplate.get(row.mixTemplateId) ?? 0) + finite(row.loadWeight),
+      );
+    }
+    if (new Set(input.lines.map(line => line.mixTemplateId)).size !== input.lines.length) {
+      throw new Error("Each mix can be listed only once.");
+    }
+    const templateIds = input.lines.map(line => line.mixTemplateId);
+    const templates = await tx.select({ id: mixTemplates.id, name: mixTemplates.name })
+      .from(mixTemplates).where(inArray(mixTemplates.id, templateIds));
+    if (templates.length !== templateIds.length) throw new Error("One or more mix templates are unavailable.");
+    const templateName = new Map(templates.map(template => [template.id, template.name]));
+    const submittedExistingIds = new Set<number>();
+    const normalized = input.lines.map(line => {
+      if (!Number.isFinite(line.enteredQuantity) || line.enteredQuantity <= 0) {
+        throw new Error("Each mix line needs an ordered quantity greater than zero.");
+      }
+      if (line.plannedMtPerDay != null && (!Number.isFinite(line.plannedMtPerDay) || line.plannedMtPerDay <= 0)) {
+        throw new Error("Planned MT per day must be greater than zero or left blank.");
+      }
+      if (line.id != null) {
+        const existing = existingById.get(line.id);
+        if (!existing || existing.mixTemplateId !== line.mixTemplateId) {
+          throw new Error("A mix line no longer belongs to this order. Reload the order and try again.");
+        }
+        submittedExistingIds.add(line.id);
+      }
+      const orderedMt = line.enteredUnit === "cum"
+        ? line.enteredQuantity * input.mtPerCumFactor
+        : line.enteredQuantity;
+      const dispatchedMt = dispatchedByTemplate.get(line.mixTemplateId) ?? 0;
+      if (orderedMt + 0.000001 < dispatchedMt) {
+        throw new Error(`${templateName.get(line.mixTemplateId) ?? "This mix"} cannot be reduced below ${dispatchedMt.toFixed(3)} MT already dispatched.`);
+      }
+      return { ...line, orderedMt };
+    });
+
+    for (const existing of existingLines) {
+      if (submittedExistingIds.has(existing.id)) continue;
+      const dispatchedMt = dispatchedByTemplate.get(existing.mixTemplateId) ?? 0;
+      if (dispatchedMt > 0) {
+        throw new Error(`${templateName.get(existing.mixTemplateId) ?? `Mix #${existing.mixTemplateId}`} has dispatches and cannot be removed.`);
+      }
+    }
+
+    const orderFields: Array<[keyof PlantSupplyOrderEditInput, unknown, unknown]> = [
+      ["orderNo", current.orderNo, input.orderNo?.trim() || null],
+      ["periodFrom", current.periodFrom, input.periodFrom],
+      ["periodTo", current.periodTo, input.periodTo],
+      ["workName", current.workName, input.workName?.trim() || null],
+      ["division", current.division, input.division?.trim() || null],
+      ["mandal", current.mandal, input.mandal?.trim() || null],
+      ["district", current.district, input.district?.trim() || null],
+      ["agreementEstimateRef", current.agreementEstimateRef, input.agreementEstimateRef?.trim() || null],
+      ["estimateSorYear", current.estimateSorYear, input.estimateSorYear?.trim() || null],
+      ["mtPerCumFactor", finite(current.mtPerCumFactor), input.mtPerCumFactor],
+      ["remarks", current.remarks, input.remarks?.trim() || null],
+    ];
+    await tx.update(plantSupplyOrders).set({
+      orderNo: input.orderNo?.trim() || null,
+      periodFrom: input.periodFrom,
+      periodTo: input.periodTo,
+      workName: input.workName?.trim() || null,
+      division: input.division?.trim() || null,
+      mandal: input.mandal?.trim() || null,
+      district: input.district?.trim() || null,
+      agreementEstimateRef: input.agreementEstimateRef?.trim() || null,
+      estimateSorYear: input.estimateSorYear?.trim() || null,
+      mtPerCumFactor: String(input.mtPerCumFactor),
+      remarks: input.remarks?.trim() || null,
+      updatedAt: new Date(),
+    }).where(eq(plantSupplyOrders.id, orderId));
+    for (const [field, oldValue, newValue] of orderFields) {
+      await recordSupplyOrderHistory(tx, orderId, actor, String(field), oldValue, newValue);
+    }
+
+    for (const existing of existingLines) {
+      if (!submittedExistingIds.has(existing.id)) {
+        await recordSupplyOrderHistory(tx, orderId, actor, `Mix ${templateName.get(existing.mixTemplateId) ?? existing.mixTemplateId} removed`, {
+          orderedMt: existing.orderedMt,
+          plannedMtPerDay: existing.plannedMtPerDay,
+        }, null);
+        await tx.delete(plantSupplyOrderLines).where(eq(plantSupplyOrderLines.id, existing.id));
+      }
+    }
+    for (const line of normalized) {
+      const enteredQuantity = String(line.enteredQuantity);
+      const plannedMtPerDay = line.plannedMtPerDay == null ? null : String(line.plannedMtPerDay);
+      if (line.id == null) {
+        const [added] = await tx.insert(plantSupplyOrderLines).values({
+          orderId,
+          mixTemplateId: line.mixTemplateId,
+          enteredQuantity,
+          enteredUnit: line.enteredUnit,
+          orderedMt: String(line.orderedMt),
+          plannedMtPerDay,
+          sortOrder: existingLines.length + normalized.indexOf(line),
+        }).returning({ id: plantSupplyOrderLines.id });
+        await recordSupplyOrderHistory(tx, orderId, actor, `Mix ${templateName.get(line.mixTemplateId) ?? line.mixTemplateId} added`, null, {
+          lineId: added?.id,
+          enteredQuantity,
+          enteredUnit: line.enteredUnit,
+          orderedMt: line.orderedMt,
+          plannedMtPerDay,
+        });
+        continue;
+      }
+      const old = existingById.get(line.id)!;
+      await tx.update(plantSupplyOrderLines).set({
+        enteredQuantity,
+        enteredUnit: line.enteredUnit,
+        orderedMt: String(line.orderedMt),
+        plannedMtPerDay,
+      }).where(and(eq(plantSupplyOrderLines.id, line.id), eq(plantSupplyOrderLines.orderId, orderId)));
+      const label = `Mix ${templateName.get(line.mixTemplateId) ?? line.mixTemplateId}`;
+      await recordSupplyOrderHistory(tx, orderId, actor, `${label} ordered quantity`, {
+        enteredQuantity: old.enteredQuantity,
+        enteredUnit: old.enteredUnit,
+        orderedMt: old.orderedMt,
+      }, { enteredQuantity, enteredUnit: line.enteredUnit, orderedMt: line.orderedMt });
+      await recordSupplyOrderHistory(tx, orderId, actor, `${label} planned MT per day`, old.plannedMtPerDay, plannedMtPerDay);
+    }
+    return orderId;
+  });
+  return getPlantSupplyOrder(edited);
+}
+
+export async function changeSupplyOrderMix(
+  orderId: number,
+  lineId: number,
+  input: {
+    bitumenPercent: number;
+    components: Array<{ materialId: number; aggregateSharePercent: number }>;
+    effectiveAt: string;
+    reason: string;
+  },
+  actor: { userId: number; name: string },
+) {
+  const effectiveAt = new Date(input.effectiveAt);
+  if (!Number.isFinite(effectiveAt.getTime())) throw new Error("Choose a valid effective date and time.");
+  const reason = input.reason.trim();
+  if (!reason) throw new Error("Enter a reason for the mix change.");
+  if (!Number.isFinite(input.bitumenPercent) || input.bitumenPercent < 0 || input.bitumenPercent >= 100) {
+    throw new Error("Enter a bitumen percentage from 0 up to, but not including, 100.");
+  }
+  if (!input.components.length || input.components.some(component =>
+    !Number.isInteger(component.materialId) ||
+    !Number.isFinite(component.aggregateSharePercent) ||
+    component.aggregateSharePercent < 0
+  )) throw new Error("Choose valid aggregate materials and shares.");
+  const shareTotal = input.components.reduce((sum, component) => sum + component.aggregateSharePercent, 0);
+  if (Math.abs(shareTotal - 100) > 0.01) {
+    throw new Error(`Aggregate shares must total 100% (currently ${shareTotal.toFixed(2)}%).`);
+  }
+  const versionId = await db.transaction(async tx => {
+    const [order] = await tx.select({ id: plantSupplyOrders.id, status: plantSupplyOrders.status })
+      .from(plantSupplyOrders).where(eq(plantSupplyOrders.id, orderId)).limit(1);
+    if (!order) throw new Error("Plant supply order not found.");
+    if (order.status !== "open") throw new Error("Only an open order's mix can be changed.");
+    const [line] = await tx.select({
+      id: plantSupplyOrderLines.id,
+      mixTemplateId: plantSupplyOrderLines.mixTemplateId,
+      mixName: plantSupplyOrderMixSpecs.mixName,
+      sourceBitumenPercent: plantSupplyOrderMixSpecs.sourceBitumenPercent,
+      baseBitumenPercent: plantSupplyOrderMixSpecs.bitumenPercent,
+      ldoNorm: plantSupplyOrderMixSpecs.ldoNorm,
+      templateName: mixTemplates.name,
+      templateBitumenPercent: mixTemplates.bitumenPercent,
+      templateLdoNorm: mixTemplates.ldoNorm,
+    }).from(plantSupplyOrderLines)
+      .innerJoin(mixTemplates, eq(mixTemplates.id, plantSupplyOrderLines.mixTemplateId))
+      .leftJoin(plantSupplyOrderMixSpecs, eq(plantSupplyOrderMixSpecs.orderLineId, plantSupplyOrderLines.id))
+      .where(and(eq(plantSupplyOrderLines.id, lineId), eq(plantSupplyOrderLines.orderId, orderId)))
+      .limit(1);
+    if (!line) throw new Error("Mix line not found on this order.");
+    const dispatches = await tx.select({
+      date: truckDispatches.date,
+      time: truckDispatches.time,
+    }).from(truckDispatches).where(and(
+      eq(truckDispatches.supplyOrderId, orderId),
+      eq(truckDispatches.mixTemplateId, line.mixTemplateId),
+    ));
+    if (dispatches.length) {
+      const latest = dispatches.reduce((max, row) => {
+        const instant = supplyDispatchInstant(row.date, row.time).getTime();
+        return instant > max ? instant : max;
+      }, Number.NEGATIVE_INFINITY);
+      if (effectiveAt.getTime() < latest) {
+        throw new Error("Effective time cannot be earlier than the latest truck already linked to this mix line.");
+      }
+    }
+    const [latestVersion] = await tx.select({ effectiveAt: plantSupplyOrderMixVersions.effectiveAt })
+      .from(plantSupplyOrderMixVersions)
+      .where(eq(plantSupplyOrderMixVersions.orderLineId, lineId))
+      .orderBy(desc(plantSupplyOrderMixVersions.effectiveAt), desc(plantSupplyOrderMixVersions.id))
+      .limit(1);
+    if (latestVersion && effectiveAt.getTime() <= new Date(latestVersion.effectiveAt).getTime()) {
+      throw new Error("Effective time must be after the previous mix version.");
+    }
+    const materialIds = Array.from(new Set(input.components.map(component => component.materialId)));
+    const materialRows = await tx.select({ id: plantMaterials.id, isActive: plantMaterials.isActive })
+      .from(plantMaterials).where(inArray(plantMaterials.id, materialIds));
+    if (materialRows.length !== materialIds.length || materialRows.some(material => material.isActive !== 1)) {
+      throw new Error("Choose active materials from the material master.");
+    }
+    const [version] = await tx.insert(plantSupplyOrderMixVersions).values({
+      orderLineId: lineId,
+      effectiveAt,
+      mixName: line.mixName ?? `${line.templateName} — order mix`,
+      sourceBitumenPercent: finite(line.sourceBitumenPercent ?? line.templateBitumenPercent),
+      bitumenPercent: input.bitumenPercent,
+      ldoNorm: line.ldoNorm ?? line.templateLdoNorm,
+      reason,
+      createdByUserId: actor.userId,
+      createdByName: actor.name,
+    }).returning({ id: plantSupplyOrderMixVersions.id });
+    if (!version) throw new Error("Could not save the new mix version.");
+    await tx.insert(plantSupplyOrderMixVersionComponents).values(input.components.map((component, index) => ({
+      mixVersionId: version.id,
+      materialId: component.materialId,
+      aggregateSharePercent: component.aggregateSharePercent,
+      sortOrder: index,
+    })));
+    await tx.insert(auditLogs).values({
+      module: "plant_supply_order",
+      transactionId: orderId,
+      action: "edit",
+      userId: actor.userId,
+      userName: actor.name,
+      userRole: "owner_or_plant_in_charge",
+      oldValues: {
+        field: `Mix ${line.mixName ?? line.templateName} version`,
+        effectiveAt: latestVersion?.effectiveAt ?? null,
+      },
+      newValues: {
+        field: `Mix ${line.mixName ?? line.templateName} version`,
+        versionId: version.id,
+        effectiveAt,
+        bitumenPercent: input.bitumenPercent,
+        components: input.components,
+      },
+      reason,
+    });
+    return version.id;
+  });
+  return { versionId, order: await getPlantSupplyOrder(orderId) };
+}
+
+export async function getSupplyOrderMixVersionOrderId(versionId: number): Promise<number | null> {
+  const [row] = await db.select({ orderId: plantSupplyOrderLines.orderId })
+    .from(plantSupplyOrderMixVersions)
+    .innerJoin(plantSupplyOrderLines, eq(plantSupplyOrderLines.id, plantSupplyOrderMixVersions.orderLineId))
+    .where(eq(plantSupplyOrderMixVersions.id, versionId)).limit(1);
+  return row?.orderId ?? null;
+}
+
+export async function removePlantSupplyOrder(
+  orderId: number,
+  actor: { userId: number; name: string },
+) {
+  const detail = await getPlantSupplyOrder(orderId);
+  if (!detail) return false;
+  if (detail.dispatches.length) {
+    throw new Error("An order with linked trucks cannot be removed. Close it instead.");
+  }
+  if (detail.attachments.length || detail.lines.some((line: any) =>
+    line.mixVersions?.some((version: any) => version.attachments?.length)
+  )) {
+    throw new Error("Remove the order's attached files before removing the order.");
+  }
+  await db.transaction(async tx => {
+    const [order] = await tx.select().from(plantSupplyOrders)
+      .where(eq(plantSupplyOrders.id, orderId)).limit(1);
+    if (!order) throw new Error("Plant supply order not found.");
+    const [dispatch] = await tx.select({ id: truckDispatches.id }).from(truckDispatches)
+      .where(eq(truckDispatches.supplyOrderId, orderId)).limit(1);
+    if (dispatch) throw new Error("An order with linked trucks cannot be removed. Close it instead.");
+    await tx.insert(auditLogs).values({
+      module: "plant_supply_order",
+      transactionId: orderId,
+      action: "delete",
+      userId: actor.userId,
+      userName: actor.name,
+      userRole: "owner",
+      oldValues: {
+        orderNo: order.orderNo,
+        partyId: order.partyId,
+        periodFrom: order.periodFrom,
+        periodTo: order.periodTo,
+      },
+      newValues: null,
+    });
+    await tx.delete(plantSupplyOrders).where(eq(plantSupplyOrders.id, orderId));
+  });
+  return true;
+}
+
 export async function listPlantSupplyOrders() {
   const orders = await db.select({ id: plantSupplyOrders.id })
     .from(plantSupplyOrders).orderBy(desc(plantSupplyOrders.createdAt));
@@ -393,7 +770,7 @@ export async function getSupplyOrderLdoAllocations(date: string, plantName = "Ma
   }).filter(row => row.dispatchMt > 0);
 }
 
-export async function getSupplyOrderDispatchContext(partyId: number, date: string) {
+export async function getSupplyOrderDispatchContext(partyId: number, date: string, time = "00:00") {
   const [order] = await db.select({
     id: plantSupplyOrders.id,
     orderNo: plantSupplyOrders.orderNo,
@@ -408,6 +785,7 @@ export async function getSupplyOrderDispatchContext(partyId: number, date: strin
   )).limit(1);
   if (!order) return null;
   const lines = await db.select({
+    orderLineId: plantSupplyOrderLines.id,
     id: plantSupplyOrderLines.id,
     mixTemplateId: plantSupplyOrderLines.mixTemplateId,
     mixName: mixTemplates.name,
@@ -431,17 +809,58 @@ export async function getSupplyOrderDispatchContext(partyId: number, date: strin
         .where(inArray(plantSupplyOrderMixComponents.orderMixId, mixIds))
         .orderBy(asc(plantSupplyOrderMixComponents.sortOrder))
     : [];
+  const orderLineIds = lines.map(line => line.orderLineId);
+  const versions = orderLineIds.length
+    ? await db.select().from(plantSupplyOrderMixVersions)
+      .where(inArray(plantSupplyOrderMixVersions.orderLineId, orderLineIds))
+      .orderBy(asc(plantSupplyOrderMixVersions.effectiveAt), asc(plantSupplyOrderMixVersions.id))
+    : [];
+  const versionIds = versions.map(version => version.id);
+  const versionComponents = versionIds.length
+    ? await db.select({
+        mixVersionId: plantSupplyOrderMixVersionComponents.mixVersionId,
+        materialId: plantSupplyOrderMixVersionComponents.materialId,
+        materialName: plantMaterials.name,
+        aggregateSharePercent: plantSupplyOrderMixVersionComponents.aggregateSharePercent,
+      }).from(plantSupplyOrderMixVersionComponents)
+        .innerJoin(plantMaterials, eq(plantMaterials.id, plantSupplyOrderMixVersionComponents.materialId))
+        .where(inArray(plantSupplyOrderMixVersionComponents.mixVersionId, versionIds))
+        .orderBy(asc(plantSupplyOrderMixVersionComponents.sortOrder), asc(plantSupplyOrderMixVersionComponents.id))
+    : [];
+  const { storage } = await import("./storage");
   return {
     ...order,
-    lines: lines.map(line => ({
-      mixTemplateId: line.mixTemplateId,
-      mixName: line.orderMix?.mixName ?? line.mixName,
-      mixType: line.mixType,
-      bitumenPercent: line.orderMix?.bitumenPercent ?? line.bitumenPercent,
-      sourceBitumenPercent: line.orderMix?.sourceBitumenPercent ?? line.bitumenPercent,
-      ldoNorm: line.orderMix?.ldoNorm ?? line.ldoNorm,
-      isOrderMix: !!line.orderMix,
-      components: components.filter(component => component.orderMixId === line.orderMix?.id),
+    lines: await Promise.all(lines.map(async line => {
+      const lineVersions = versions
+        .filter(version => version.orderLineId === line.orderLineId)
+        .map(version => ({
+          ...version,
+          components: versionComponents.filter(component => component.mixVersionId === version.id),
+        }));
+      const activeVersion = mixVersionAt(lineVersions, date, time);
+      const baseComponents = components.filter(component => component.orderMixId === line.orderMix?.id);
+      const currentMix = activeVersion ?? line.orderMix;
+      const mixVersionId = activeVersion?.id ?? null;
+      const currentComponents = activeVersion
+        ? activeVersion.components
+        : baseComponents;
+      const versionAttachments = activeVersion
+        ? await storage.getAttachments("plant_supply_order_mix_version", activeVersion.id)
+        : [];
+      return {
+        orderLineId: line.orderLineId,
+        mixTemplateId: line.mixTemplateId,
+        mixName: currentMix?.mixName ?? line.mixName,
+        mixType: line.mixType,
+        bitumenPercent: currentMix?.bitumenPercent ?? line.bitumenPercent,
+        sourceBitumenPercent: currentMix?.sourceBitumenPercent ?? line.bitumenPercent,
+        ldoNorm: currentMix?.ldoNorm ?? line.ldoNorm,
+        isOrderMix: !!currentMix,
+        mixVersionId,
+        effectiveAt: activeVersion?.effectiveAt ?? null,
+        components: currentComponents,
+        versionAttachments,
+      };
     })),
   };
 }
@@ -467,6 +886,7 @@ export async function getPlantSupplyOrder(orderId: number) {
     remarks: plantSupplyOrders.remarks,
     status: plantSupplyOrders.status,
     createdAt: plantSupplyOrders.createdAt,
+    createdByName: plantSupplyOrders.createdByName,
   }).from(plantSupplyOrders)
     .innerJoin(parties, eq(parties.id, plantSupplyOrders.partyId))
     .leftJoin(sites, eq(sites.id, plantSupplyOrders.siteId))
@@ -492,7 +912,9 @@ export async function getPlantSupplyOrder(orderId: number) {
     db.select({
       id: truckDispatches.id,
       date: truckDispatches.date,
+      time: truckDispatches.time,
       mixTemplateId: truckDispatches.mixTemplateId,
+      supplyOrderMixVersionId: truckDispatches.supplyOrderMixVersionId,
       loadWeight: truckDispatches.loadWeight,
       plantName: truckDispatches.plantName,
       theoreticalBitumenQty: truckDispatches.theoreticalBitumenQty,
@@ -521,6 +943,22 @@ export async function getPlantSupplyOrder(orderId: number) {
       .innerJoin(plantSupplyOrderLines, eq(plantSupplyOrderLines.id, plantSupplyOrderMixSpecs.orderLineId))
       .where(eq(plantSupplyOrderLines.orderId, orderId)),
   ]);
+  const lineIds = lines.map(line => line.id);
+  const mixVersions = lineIds.length
+    ? await db.select().from(plantSupplyOrderMixVersions)
+      .where(inArray(plantSupplyOrderMixVersions.orderLineId, lineIds))
+      .orderBy(asc(plantSupplyOrderMixVersions.effectiveAt), asc(plantSupplyOrderMixVersions.id))
+    : [];
+  const mixVersionIds = mixVersions.map(version => version.id);
+  const mixVersionComponentRows = mixVersionIds.length
+    ? await db.select({
+        component: plantSupplyOrderMixVersionComponents,
+        materialName: plantMaterials.name,
+      }).from(plantSupplyOrderMixVersionComponents)
+        .innerJoin(plantMaterials, eq(plantMaterials.id, plantSupplyOrderMixVersionComponents.materialId))
+        .where(inArray(plantSupplyOrderMixVersionComponents.mixVersionId, mixVersionIds))
+        .orderBy(asc(plantSupplyOrderMixVersionComponents.sortOrder), asc(plantSupplyOrderMixVersionComponents.id))
+    : [];
   const { storage } = await import("./storage");
   const balanceRows = await storage.getStockBalances();
   const recentDispatches = await db.select({
@@ -535,19 +973,41 @@ export async function getPlantSupplyOrder(orderId: number) {
     orderedMt: finite(line.orderedMt),
     plannedMtPerDay: line.plannedMtPerDay == null ? null : finite(line.plannedMtPerDay),
   }));
-  const orderMixes: SupplyOrderMix[] = orderMixRows.map(({ spec, line }) => ({
-    mixTemplateId: line.mixTemplateId,
-    mixName: spec.mixName,
-    sourceBitumenPercent: finite(spec.sourceBitumenPercent),
-    bitumenPercent: finite(spec.bitumenPercent),
-    ldoNorm: spec.ldoNorm == null ? null : finite(spec.ldoNorm),
-    components: orderMixComponentRows
-      .filter(({ component }) => component.orderMixId === spec.id)
-      .map(({ component }) => ({
-        materialId: component.materialId,
-        aggregateSharePercent: finite(component.aggregateSharePercent),
-      })),
-  }));
+  const orderMixes: SupplyOrderMix[] = lines.flatMap(line => {
+    const latestVersion = mixVersions
+      .filter(version => version.orderLineId === line.id)
+      .at(-1);
+    if (latestVersion) {
+      return [{
+        mixTemplateId: line.mixTemplateId,
+        mixName: latestVersion.mixName,
+        sourceBitumenPercent: finite(latestVersion.sourceBitumenPercent),
+        bitumenPercent: finite(latestVersion.bitumenPercent),
+        ldoNorm: latestVersion.ldoNorm == null ? null : finite(latestVersion.ldoNorm),
+        components: mixVersionComponentRows
+          .filter(({ component }) => component.mixVersionId === latestVersion.id)
+          .map(({ component }) => ({
+            materialId: component.materialId,
+            aggregateSharePercent: finite(component.aggregateSharePercent),
+          })),
+      }];
+    }
+    const base = orderMixRows.find(({ line: mixLine }) => mixLine.id === line.id);
+    if (!base) return [];
+    return [{
+      mixTemplateId: line.mixTemplateId,
+      mixName: base.spec.mixName,
+      sourceBitumenPercent: finite(base.spec.sourceBitumenPercent),
+      bitumenPercent: finite(base.spec.bitumenPercent),
+      ldoNorm: base.spec.ldoNorm == null ? null : finite(base.spec.ldoNorm),
+      components: orderMixComponentRows
+        .filter(({ component }) => component.orderMixId === base.spec.id)
+        .map(({ component }) => ({
+          materialId: component.materialId,
+          aggregateSharePercent: finite(component.aggregateSharePercent),
+        })),
+    }];
+  });
   const dispatchInputs: SupplyDispatch[] = dispatchRows.map(row => ({
     date: row.date,
     mixTemplateId: row.mixTemplateId,
@@ -610,6 +1070,15 @@ export async function getPlantSupplyOrder(orderId: number) {
   const dailyNeedById = new Map(dailyNeeds.map(row => [row.materialId, row.quantity]));
   const allowanceById = new Map<number, { quantity: number; uom: "MT" | "Liters" }>();
   const actualById = new Map<number, { quantity: number; uom: "MT" | "Liters" }>();
+  const versionUsageByKey = new Map<string, Map<number, { allowance: number; actual: number; uom: string }>>();
+  const addVersionUsage = (key: string, materialId: number, field: "allowance" | "actual", quantity: number, uom: string) => {
+    if (!Number.isFinite(quantity) || quantity <= 0) return;
+    const materialUsage = versionUsageByKey.get(key) ?? new Map<number, { allowance: number; actual: number; uom: string }>();
+    const current = materialUsage.get(materialId) ?? { allowance: 0, actual: 0, uom };
+    current[field] += quantity;
+    materialUsage.set(materialId, current);
+    versionUsageByKey.set(key, materialUsage);
+  };
   const addQuantity = (
     target: Map<number, { quantity: number; uom: "MT" | "Liters" }>,
     materialId: number,
@@ -628,12 +1097,49 @@ export async function getPlantSupplyOrder(orderId: number) {
     bitumenPercent: row.bitumenPercent,
     ldoNorm: row.ldoNorm,
   } as SupplyMixTemplate]));
+  const lineByTemplateId = new Map(lines.map(line => [line.mixTemplateId, line]));
+  const versionById = new Map(mixVersions.map(version => [version.id, version]));
   const bitumenId = materialRows.find(row => /bitumen/i.test(row.name))?.id;
   const ldoId = materialRows.find(row => /^LDO$/i.test(row.name.trim()))?.id;
   for (const dispatch of dispatchRows) {
     const template = templateById.get(dispatch.mixTemplateId);
     if (!template) continue;
-    const orderMix = orderMixes.find(row => row.mixTemplateId === dispatch.mixTemplateId);
+    const line = lineByTemplateId.get(dispatch.mixTemplateId);
+    const lineVersions = mixVersions.filter(version => version.orderLineId === line?.id);
+    const selectedVersion = dispatch.supplyOrderMixVersionId
+      ? versionById.get(dispatch.supplyOrderMixVersionId) ?? null
+      : mixVersionAt(lineVersions, dispatch.date, dispatch.time);
+    const versionUsageKey = selectedVersion ? `version:${selectedVersion.id}` : `base:${line?.id ?? dispatch.mixTemplateId}`;
+    const baseSpec = orderMixRows.find(({ line: mixLine }) => mixLine.id === line?.id)?.spec;
+    const orderMix: SupplyOrderMix | undefined = selectedVersion
+      ? {
+          mixTemplateId: dispatch.mixTemplateId,
+          mixName: selectedVersion.mixName,
+          sourceBitumenPercent: finite(selectedVersion.sourceBitumenPercent),
+          bitumenPercent: finite(selectedVersion.bitumenPercent),
+          ldoNorm: selectedVersion.ldoNorm == null ? null : finite(selectedVersion.ldoNorm),
+          components: mixVersionComponentRows
+            .filter(({ component }) => component.mixVersionId === selectedVersion.id)
+            .map(({ component }) => ({
+              materialId: component.materialId,
+              aggregateSharePercent: finite(component.aggregateSharePercent),
+            })),
+        }
+      : baseSpec
+        ? {
+            mixTemplateId: dispatch.mixTemplateId,
+            mixName: baseSpec.mixName,
+            sourceBitumenPercent: finite(baseSpec.sourceBitumenPercent),
+            bitumenPercent: finite(baseSpec.bitumenPercent),
+            ldoNorm: baseSpec.ldoNorm == null ? null : finite(baseSpec.ldoNorm),
+            components: orderMixComponentRows
+              .filter(({ component }) => component.orderMixId === baseSpec.id)
+              .map(({ component }) => ({
+                materialId: component.materialId,
+                aggregateSharePercent: finite(component.aggregateSharePercent),
+              })),
+          }
+        : undefined;
     const allowance = orderMix
       ? materialNeedForOrderMix(template, orderMix, finite(dispatch.loadWeight), supplyMaterials)
       : materialNeedForMix(template, componentRows.map(row => ({
@@ -643,7 +1149,10 @@ export async function getPlantSupplyOrder(orderId: number) {
         moistureContent: row.moistureContent,
         wastageFactor: row.wastageFactor,
       } as SupplyMixComponent)), finite(dispatch.loadWeight), supplyMaterials);
-    for (const row of allowance) addQuantity(allowanceById, row.materialId, row.quantity, row.uom);
+    for (const row of allowance) {
+      addQuantity(allowanceById, row.materialId, row.quantity, row.uom);
+      addVersionUsage(versionUsageKey, row.materialId, "allowance", row.quantity, row.uom);
+    }
 
     let aggregates: Record<string, number> = {};
     try {
@@ -653,19 +1162,18 @@ export async function getPlantSupplyOrder(orderId: number) {
     } catch { aggregates = {}; }
     for (const [rawMaterialId, rawQuantity] of Object.entries(aggregates)) {
       addQuantity(actualById, Number(rawMaterialId), finite(rawQuantity), "MT");
+      addVersionUsage(versionUsageKey, Number(rawMaterialId), "actual", finite(rawQuantity), "MT");
     }
-    if (bitumenId) addQuantity(
-      actualById,
-      bitumenId,
-      dispatch.actualBitumenQty == null ? finite(dispatch.theoreticalBitumenQty) : finite(dispatch.actualBitumenQty),
-      "MT",
-    );
-    if (ldoId) addQuantity(
-      actualById,
-      ldoId,
-      dispatch.actualLdoQty == null ? finite(dispatch.theoreticalLdoQty) : finite(dispatch.actualLdoQty),
-      "Liters",
-    );
+    if (bitumenId) {
+      const actualBitumen = dispatch.actualBitumenQty == null ? finite(dispatch.theoreticalBitumenQty) : finite(dispatch.actualBitumenQty);
+      addQuantity(actualById, bitumenId, actualBitumen, "MT");
+      addVersionUsage(versionUsageKey, bitumenId, "actual", actualBitumen, "MT");
+    }
+    if (ldoId) {
+      const actualLdo = dispatch.actualLdoQty == null ? finite(dispatch.theoreticalLdoQty) : finite(dispatch.actualLdoQty);
+      addQuantity(actualById, ldoId, actualLdo, "Liters");
+      addVersionUsage(versionUsageKey, ldoId, "actual", actualLdo, "Liters");
+    }
   }
 
   const ldoPlantAllocations: Array<{ date: string; litres: number; sharePercent: number }> = [];
@@ -769,9 +1277,92 @@ export async function getPlantSupplyOrder(orderId: number) {
     seenAlertKeys.add(alert.dedupeKey);
     return true;
   });
-  const lineResults = lines.map(line => {
+  const orderAttachments = await storage.getAttachments("plant_supply_order", orderId);
+  const orderHistory = await db.select({
+    id: auditLogs.id,
+    action: auditLogs.action,
+    userName: auditLogs.userName,
+    oldValues: auditLogs.oldValues,
+    newValues: auditLogs.newValues,
+    reason: auditLogs.reason,
+    createdAt: auditLogs.createdAt,
+  }).from(auditLogs)
+    .where(and(eq(auditLogs.module, "plant_supply_order"), eq(auditLogs.transactionId, orderId)))
+    .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id));
+  const lineResults = await Promise.all(lines.map(async line => {
     const dispatchedMt = dispatched.get(line.mixTemplateId) ?? 0;
     const orderMix = orderMixes.find(row => row.mixTemplateId === line.mixTemplateId);
+    const baseSpec = orderMixRows.find(({ line: mixLine }) => mixLine.id === line.id)?.spec;
+    const baseComponents = baseSpec
+      ? orderMixComponentRows.filter(({ component }) => component.orderMixId === baseSpec.id).map(({ component }) => ({
+          materialId: component.materialId,
+          aggregateSharePercent: finite(component.aggregateSharePercent),
+          materialName: materialRows.find(material => material.id === component.materialId)?.name ?? `Material #${component.materialId}`,
+        }))
+      : [];
+    const lineVersions = mixVersions.filter(version => version.orderLineId === line.id);
+    const dispatchesForLine = dispatchRows.filter(row => row.mixTemplateId === line.mixTemplateId);
+    const usageForVersion = (key: string) => Array.from(versionUsageByKey.get(key)?.entries() ?? [])
+      .map(([materialId, usage]) => ({
+        materialId,
+        materialName: materialById.get(materialId)?.name ?? `Material #${materialId}`,
+        allowance: usage.allowance,
+        actual: usage.actual,
+        uom: usage.uom,
+      }))
+      .sort((left, right) => left.materialName.localeCompare(right.materialName));
+    const versionDispatches = new Map<number, number>();
+    let baseDispatchedMt = 0;
+    for (const dispatch of dispatchesForLine) {
+      const selectedVersion = dispatch.supplyOrderMixVersionId
+        ? mixVersions.find(version => version.id === dispatch.supplyOrderMixVersionId) ?? null
+        : mixVersionAt(lineVersions, dispatch.date, dispatch.time);
+      if (!selectedVersion) baseDispatchedMt += finite(dispatch.loadWeight);
+      else versionDispatches.set(
+        selectedVersion.id,
+        (versionDispatches.get(selectedVersion.id) ?? 0) + finite(dispatch.loadWeight),
+      );
+    }
+    const timeline = lineVersions.length || baseSpec ? [
+      {
+        versionId: null,
+        mixName: baseSpec?.mixName ?? line.mixName,
+        sourceBitumenPercent: finite(baseSpec?.sourceBitumenPercent ?? templateRows.find(template => template.id === line.mixTemplateId)?.bitumenPercent),
+        bitumenPercent: finite(baseSpec?.bitumenPercent ?? templateRows.find(template => template.id === line.mixTemplateId)?.bitumenPercent),
+        ldoNorm: baseSpec?.ldoNorm == null ? null : finite(baseSpec.ldoNorm),
+        effectiveAt: order.createdAt,
+        effectiveUntil: lineVersions[0]?.effectiveAt ?? null,
+        reason: null,
+        createdByName: order.createdByName ?? null,
+        dispatchedMt: baseDispatchedMt,
+        materialUsage: usageForVersion(`base:${line.id}`),
+        components: baseComponents,
+        instructionAttached: orderAttachments.some((attachment: any) => attachment.docType === "mix_instruction"),
+      },
+      ...await Promise.all(lineVersions.map(async version => {
+        const versionAttachments = await storage.getAttachments("plant_supply_order_mix_version", version.id);
+        return {
+          versionId: version.id,
+          mixName: version.mixName,
+          sourceBitumenPercent: finite(version.sourceBitumenPercent),
+          bitumenPercent: finite(version.bitumenPercent),
+          ldoNorm: version.ldoNorm == null ? null : finite(version.ldoNorm),
+          effectiveAt: version.effectiveAt,
+          effectiveUntil: lineVersions.find(candidate => candidate.effectiveAt > version.effectiveAt)?.effectiveAt ?? null,
+          reason: version.reason,
+          createdByName: version.createdByName,
+          dispatchedMt: versionDispatches.get(version.id) ?? 0,
+          materialUsage: usageForVersion(`version:${version.id}`),
+          components: mixVersionComponentRows.filter(({ component }) => component.mixVersionId === version.id).map(({ component, materialName }) => ({
+            materialId: component.materialId,
+            materialName,
+            aggregateSharePercent: finite(component.aggregateSharePercent),
+          })),
+          instructionAttached: versionAttachments.some((attachment: any) => attachment.docType === "mix_instruction"),
+          attachments: versionAttachments,
+        };
+      })),
+    ] : [];
     const enteredQuantity = line.enteredQuantity == null ? null : finite(line.enteredQuantity);
     const enteredUnit = line.enteredUnit === "cum" ? "cum" : line.enteredUnit === "MT" ? "MT" : null;
     return {
@@ -784,14 +1375,16 @@ export async function getPlantSupplyOrder(orderId: number) {
         ? enteredQuantity
         : finite(line.orderedMt) / finite(order.mtPerCumFactor || 2.356),
       orderMix: orderMix ?? null,
+      mixVersions: timeline,
       plannedMtPerDay: line.plannedMtPerDay == null ? null : finite(line.plannedMtPerDay),
       dispatchedMt,
       balanceMt: Math.max(0, finite(line.orderedMt) - dispatchedMt),
     };
-  });
+  }));
   return {
     ...order,
-    attachments: await storage.getAttachments("plant_supply_order", orderId),
+    attachments: orderAttachments,
+    history: orderHistory,
     lines: lineResults,
     materials,
     materialUsage,
@@ -1089,6 +1682,9 @@ export async function getSupplyAlertSettings(): Promise<SupplyAlertSettings> {
     .where(eq(appSettings.key, ALERT_SETTINGS_KEY)).limit(1);
   const [operatorRole] = await db.select({ id: roles.id, name: roles.name }).from(roles)
     .where(sql`LOWER(${roles.name}) = 'plant operator'`).limit(1);
+  const ownerIds = (await db.select({ id: users.id }).from(users)
+    .where(and(eq(users.isActive, true), eq(users.isOwner, true))))
+    .map(user => user.id);
   const operatorRecipients = operatorRole
     ? { roles: [operatorRole.name], userIds: [] as number[] }
     : {
@@ -1099,26 +1695,33 @@ export async function getSupplyAlertSettings(): Promise<SupplyAlertSettings> {
         .where(and(eq(users.isActive, true), sql`LOWER(${roles.name}) = 'plant engineer'`)))
         .map(user => user.id),
     };
+  const defaultUserIds = Array.from(new Set([...ownerIds, ...operatorRecipients.userIds]));
   const defaults: SupplyAlertSettings = {
     running_low: {
       roles: [...DEFAULT_ALERT_SETTINGS.running_low.roles, ...operatorRecipients.roles],
-      userIds: operatorRecipients.userIds,
+      userIds: defaultUserIds,
     },
     exhausted: {
       roles: [...DEFAULT_ALERT_SETTINGS.exhausted.roles, ...operatorRecipients.roles],
-      userIds: operatorRecipients.userIds,
+      userIds: defaultUserIds,
     },
     borrowed: {
       roles: [...DEFAULT_ALERT_SETTINGS.borrowed.roles, ...operatorRecipients.roles],
-      userIds: operatorRecipients.userIds,
+      userIds: defaultUserIds,
     },
   };
-  const stored = jsonValue<Partial<SupplyAlertSettings>>(row?.value, {});
-  return {
+  const stored = jsonValue<Partial<SupplyAlertSettings> & { ownerDefaultsApplied?: boolean }>(row?.value, {});
+  const resolved = {
     running_low: normalizeRecipientChoice(stored.running_low, defaults.running_low),
     exhausted: normalizeRecipientChoice(stored.exhausted, defaults.exhausted),
     borrowed: normalizeRecipientChoice(stored.borrowed, defaults.borrowed),
   };
+  if (stored.ownerDefaultsApplied !== true) {
+    for (const choice of Object.values(resolved)) {
+      choice.userIds = Array.from(new Set([...choice.userIds, ...ownerIds]));
+    }
+  }
+  return resolved;
 }
 
 function normalizeRecipientChoice(value: Partial<SupplyRecipientChoice> | undefined, fallback: SupplyRecipientChoice): SupplyRecipientChoice {
@@ -1140,10 +1743,10 @@ export async function saveSupplyAlertSettings(settings: SupplyAlertSettings, act
   await db.transaction(async tx => {
     await tx.insert(appSettings).values({
       key: ALERT_SETTINGS_KEY,
-      value: JSON.stringify(normalized),
+      value: JSON.stringify({ ...normalized, ownerDefaultsApplied: true }),
     }).onConflictDoUpdate({
       target: appSettings.key,
-      set: { value: JSON.stringify(normalized), updatedAt: new Date() },
+      set: { value: JSON.stringify({ ...normalized, ownerDefaultsApplied: true }), updatedAt: new Date() },
     });
     await tx.insert(auditLogs).values({
       module: "plant_supply_alert_settings",

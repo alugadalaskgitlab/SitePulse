@@ -20,6 +20,7 @@ import { hasFrozenTripDailyHire, FROZEN_TRIP_DAILY_MESSAGE } from "../shared/ven
 import { purchaseOrders } from "../shared/schema";
 import { linkedPiStoreStock } from "../shared/piStoreStock";
 import { orderMixAggregateQuantities } from "@shared/plantSupplyOrders";
+import { mixVersionAt, supplyDispatchInstant } from "@shared/plantSupplyOrderVersions";
 import { resolveOwnCompanyParty } from "../shared/hlcParty";
 import {
   DEFAULT_PLANT_NAME,
@@ -86,6 +87,8 @@ import {
   plantSupplyOrderLines,
   plantSupplyOrderMixSpecs,
   plantSupplyOrderMixComponents,
+  plantSupplyOrderMixVersions,
+  plantSupplyOrderMixVersionComponents,
   plantSupplyOrderMaterialScopes,
   plantSupplyBorrowings,
   plantSupplyBorrowingEvents,
@@ -6932,11 +6935,22 @@ export class DatabaseStorage implements IStorage {
           .where(inArray(plantSupplyOrderLines.orderId, orderIds))
       : [];
     const orderMixNameByKey = new Map(orderMixRows.map(row => [`${row.orderId}:${row.mixTemplateId}`, row.mixName]));
+    const versionIds = [...new Set(rows.map(row => row.dispatch.supplyOrderMixVersionId).filter((id): id is number => id != null))];
+    const versionNames = versionIds.length
+      ? await db.select({
+          id: plantSupplyOrderMixVersions.id,
+          mixName: plantSupplyOrderMixVersions.mixName,
+        }).from(plantSupplyOrderMixVersions)
+          .where(inArray(plantSupplyOrderMixVersions.id, versionIds))
+      : [];
+    const versionNameById = new Map(versionNames.map(version => [version.id, version.mixName]));
     return rows.map(({ dispatch, supplyOrderNo, supplyOrderWorkName }) => ({
       ...dispatch,
       supplyOrderNo: supplyOrderNo ?? null,
       supplyOrderWorkName: supplyOrderWorkName ?? null,
-      supplyOrderMixName: orderMixNameByKey.get(`${dispatch.supplyOrderId}:${dispatch.mixTemplateId}`) ?? null,
+      supplyOrderMixName: (dispatch.supplyOrderMixVersionId != null
+        ? versionNameById.get(dispatch.supplyOrderMixVersionId)
+        : null) ?? orderMixNameByKey.get(`${dispatch.supplyOrderId}:${dispatch.mixTemplateId}`) ?? null,
     }));
   }
 
@@ -6979,7 +6993,9 @@ export class DatabaseStorage implements IStorage {
         deliveryLocation: dispatch.deliveryLocation?.toUpperCase(),
       };
 
-      // Always recompute theoretical values from the mix template (use new values if provided, otherwise current)
+      // For order dispatches, keep the effective order-mix snapshot selected by
+      // the truck's original site date/time. Other dispatches retain the
+      // historical global-template behaviour.
       const mixTemplateId = dispatch.mixTemplateId ?? currentDispatch.mixTemplateId;
       const loadWeight = dispatch.loadWeight ?? currentDispatch.loadWeight;
       
@@ -6989,8 +7005,45 @@ export class DatabaseStorage implements IStorage {
       if (mixTemplateId && loadWeight) {
         const [template] = await tx.select().from(mixTemplates).where(eq(mixTemplates.id, mixTemplateId)).limit(1);
         if (!template) throw new Error(`Mix template #${mixTemplateId} not found`);
-        const bitumenPercent = template.bitumenPercent || 0;
-        const ldoNorm = template.ldoNorm || 6;
+        let orderBitumenPercent: number | null = null;
+        let orderLdoNorm: number | null = null;
+        let selectedVersionId: number | null = null;
+        if (currentDispatch.supplyOrderId != null) {
+          const [orderLine] = await tx.select({ id: plantSupplyOrderLines.id })
+            .from(plantSupplyOrderLines)
+            .where(and(
+              eq(plantSupplyOrderLines.orderId, currentDispatch.supplyOrderId),
+              eq(plantSupplyOrderLines.mixTemplateId, mixTemplateId),
+            )).limit(1);
+          if (orderLine) {
+            const lineVersions = await tx.select().from(plantSupplyOrderMixVersions)
+              .where(eq(plantSupplyOrderMixVersions.orderLineId, orderLine.id))
+              .orderBy(asc(plantSupplyOrderMixVersions.effectiveAt), asc(plantSupplyOrderMixVersions.id));
+            const savedVersion = currentDispatch.supplyOrderMixVersionId
+              ? lineVersions.find(version => version.id === currentDispatch.supplyOrderMixVersionId) ?? null
+              : null;
+            const selectedVersion = savedVersion ?? (
+              currentDispatch.mixTemplateId === mixTemplateId
+                ? mixVersionAt(lineVersions, currentDispatch.date, currentDispatch.time)
+                : null
+            );
+            if (selectedVersion) {
+              orderBitumenPercent = Number(selectedVersion.bitumenPercent);
+              orderLdoNorm = selectedVersion.ldoNorm == null ? null : Number(selectedVersion.ldoNorm);
+              selectedVersionId = selectedVersion.id;
+            } else {
+              const [orderMixSpec] = await tx.select().from(plantSupplyOrderMixSpecs)
+                .where(eq(plantSupplyOrderMixSpecs.orderLineId, orderLine.id)).limit(1);
+              if (orderMixSpec) {
+                orderBitumenPercent = Number(orderMixSpec.bitumenPercent);
+                orderLdoNorm = orderMixSpec.ldoNorm == null ? null : Number(orderMixSpec.ldoNorm);
+              }
+            }
+          }
+          uppercased.supplyOrderMixVersionId = selectedVersionId;
+        }
+        const bitumenPercent = orderBitumenPercent ?? (template.bitumenPercent || 0);
+        const ldoNorm = orderLdoNorm ?? template.ldoNorm ?? 6;
         // Always set these computed values on every update
         uppercased.theoreticalBitumenPercent = bitumenPercent;
         uppercased.theoreticalBitumenQty = (loadWeight * bitumenPercent) / 100;
@@ -10357,17 +10410,31 @@ export class DatabaseStorage implements IStorage {
         ? await tx.select().from(plantSupplyOrderMixSpecs)
           .where(eq(plantSupplyOrderMixSpecs.orderLineId, supplyLine.id)).limit(1)
         : [];
-      const orderMixComponents = orderMixSpec
-        ? await tx.select().from(plantSupplyOrderMixComponents)
-          .where(eq(plantSupplyOrderMixComponents.orderMixId, orderMixSpec.id))
-          .orderBy(asc(plantSupplyOrderMixComponents.sortOrder), asc(plantSupplyOrderMixComponents.id))
+      const mixVersionsForLine = supplyLine
+        ? await tx.select().from(plantSupplyOrderMixVersions)
+          .where(eq(plantSupplyOrderMixVersions.orderLineId, supplyLine.id))
+          .orderBy(asc(plantSupplyOrderMixVersions.effectiveAt), asc(plantSupplyOrderMixVersions.id))
         : [];
+      const selectedMixVersion = mixVersionAt(mixVersionsForLine, dispatchData.date, dispatchData.time);
+      const versionComponents = selectedMixVersion
+        ? await tx.select().from(plantSupplyOrderMixVersionComponents)
+          .where(eq(plantSupplyOrderMixVersionComponents.mixVersionId, selectedMixVersion.id))
+          .orderBy(asc(plantSupplyOrderMixVersionComponents.sortOrder), asc(plantSupplyOrderMixVersionComponents.id))
+        : [];
+      const orderMixComponents = selectedMixVersion
+        ? versionComponents
+        : orderMixSpec
+          ? await tx.select().from(plantSupplyOrderMixComponents)
+            .where(eq(plantSupplyOrderMixComponents.orderMixId, orderMixSpec.id))
+            .orderBy(asc(plantSupplyOrderMixComponents.sortOrder), asc(plantSupplyOrderMixComponents.id))
+          : [];
+      const orderMixName = selectedMixVersion?.mixName ?? orderMixSpec?.mixName ?? template.name;
       
       // Calculate theoretical consumption
       const loadWeight = dispatch.loadWeight;
-      const theoreticalBitumenPercent = orderMixSpec?.bitumenPercent ?? (template.bitumenPercent || 0);
+      const theoreticalBitumenPercent = selectedMixVersion?.bitumenPercent ?? orderMixSpec?.bitumenPercent ?? (template.bitumenPercent || 0);
       const theoreticalBitumenQty = (loadWeight * theoreticalBitumenPercent) / 100;
-      const ldoNorm = (orderMixSpec?.ldoNorm ?? (template as any).ldoNorm) || DEFAULT_LDO_NORM;
+      const ldoNorm = (selectedMixVersion?.ldoNorm ?? orderMixSpec?.ldoNorm ?? (template as any).ldoNorm) || DEFAULT_LDO_NORM;
       const theoreticalLdoQty = loadWeight * ldoNorm;
       
       // Calculate aggregate consumption from components (percent of total mix).
@@ -10380,7 +10447,7 @@ export class DatabaseStorage implements IStorage {
         return baseQty * (1 + wf / 100) / (1 - mc / 100);
       };
       const theoreticalAggregates: Record<number, number> = {};
-      if (orderMixSpec) {
+      if (selectedMixVersion || orderMixSpec) {
         Object.assign(theoreticalAggregates, orderMixAggregateQuantities(
           loadWeight,
           theoreticalBitumenPercent,
@@ -10494,7 +10561,7 @@ export class DatabaseStorage implements IStorage {
 
       // Build human-readable label for ledger notes: mix type + delivery site
       const mixLabel = [
-        orderMixSpec?.mixName ?? template?.name ?? "Dispatch",
+        orderMixName ?? "Dispatch",
         dispatchData.deliveryLocation?.trim() || null,
       ].filter(Boolean).join(" — ");
 
@@ -10745,6 +10812,7 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx.insert(truckDispatches).values({
         ...dispatchData,
         supplyOrderId: supplyOrder?.id ?? null,
+        supplyOrderMixVersionId: selectedMixVersion?.id ?? null,
         truckNumber: dispatchData.truckNumber.toUpperCase(),
         deliveryLocation: dispatchData.deliveryLocation?.toUpperCase(),
         theoreticalBitumenPercent,

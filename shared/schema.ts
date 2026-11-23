@@ -826,10 +826,13 @@ export const truckDispatches = pgTable("truck_dispatches", {
   dispatchProLeftByName: text("dispatchpro_left_by_name"),
   dispatchProLastError: text("dispatchpro_last_error"),
   supplyOrderId: integer("supply_order_id").references(() => plantSupplyOrders.id, { onDelete: "set null" }),
+  supplyOrderMixVersionId: integer("supply_order_mix_version_id")
+    .references(() => plantSupplyOrderMixVersions.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("truck_dispatches_date_idx").on(table.date),
   supplyOrderIdx: index("truck_dispatches_supply_order_idx").on(table.supplyOrderId),
+  supplyOrderMixVersionIdx: index("truck_dispatches_supply_order_mix_version_idx").on(table.supplyOrderMixVersionId),
 }));
 
 // HMP supply orders are a forward-looking plan. Existing dispatches are not
@@ -902,6 +905,40 @@ export const plantSupplyOrderMixComponents = pgTable("plant_supply_order_mix_com
   sortOrder: integer("sort_order").notNull().default(0),
 }, (table) => ({
   orderMixSortIdx: index("plant_supply_order_mix_components_sort_idx").on(table.orderMixId, table.sortOrder, table.id),
+}));
+
+// Effective-dated snapshots let an order's mix change without rewriting any
+// past dispatch or the original order-mix snapshot above.
+export const plantSupplyOrderMixVersions = pgTable("plant_supply_order_mix_versions", {
+  id: serial("id").primaryKey(),
+  orderLineId: integer("order_line_id").notNull()
+    .references(() => plantSupplyOrderLines.id, { onDelete: "cascade" }),
+  effectiveAt: timestamp("effective_at", { withTimezone: true }).notNull(),
+  mixName: text("mix_name").notNull(),
+  sourceBitumenPercent: real("source_bitumen_percent").notNull(),
+  bitumenPercent: real("bitumen_percent").notNull(),
+  ldoNorm: real("ldo_norm"),
+  reason: text("reason").notNull(),
+  createdByUserId: integer("created_by_user_id"),
+  createdByName: text("created_by_name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  lineEffectiveIdx: index("plant_supply_order_mix_versions_line_effective_idx")
+    .on(table.orderLineId, table.effectiveAt, table.id),
+  lineEffectiveUq: uniqueIndex("plant_supply_order_mix_versions_line_effective_uq")
+    .on(table.orderLineId, table.effectiveAt),
+}));
+
+export const plantSupplyOrderMixVersionComponents = pgTable("plant_supply_order_mix_version_components", {
+  id: serial("id").primaryKey(),
+  mixVersionId: integer("mix_version_id").notNull()
+    .references(() => plantSupplyOrderMixVersions.id, { onDelete: "cascade" }),
+  materialId: integer("material_id").notNull().references(() => plantMaterials.id),
+  aggregateSharePercent: real("aggregate_share_percent").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+}, (table) => ({
+  versionSortIdx: index("plant_supply_order_mix_version_components_sort_idx")
+    .on(table.mixVersionId, table.sortOrder, table.id),
 }));
 
 export const plantSupplyOrderMaterialScopes = pgTable("plant_supply_order_material_scopes", {
@@ -4686,6 +4723,7 @@ export const attachmentModuleTypes = [
   // docType distinguishes "bill" vs "payment_evidence" within this moduleType.
   "diesel_purchase",
   "plant_supply_order",
+  "plant_supply_order_mix_version",
 ] as const;
 export type AttachmentModuleType = typeof attachmentModuleTypes[number];
 

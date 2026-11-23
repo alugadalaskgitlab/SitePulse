@@ -210,6 +210,7 @@ import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendPushToUser, sendTestPush } from "./push";
 import {
   activeSupplyOrderAlertLines,
+  changeSupplyOrderMix,
   createPlantSupplyOrder,
   createSupplyAlertDeliveries,
   countUserUnreadSupplyAlerts,
@@ -220,6 +221,7 @@ import {
   getSupplyOrderLdoAllocations,
   getPartySupplyBorrowings,
   getSupplyOrderOptions,
+  getSupplyOrderMixVersionOrderId,
   getRecentMatchingReceipts,
   getSupplyAlertOptions,
   getSupplyAlertSettings,
@@ -229,6 +231,8 @@ import {
   markBorrowingReplacement,
   markUserSupplyAlertRead,
   registerDispatchSupplyAlerts,
+  editPlantSupplyOrder,
+  removePlantSupplyOrder,
   saveSupplyAlertSettings,
   setSupplyOrderStatus,
   supplyReceiptCandidates,
@@ -2173,6 +2177,11 @@ export async function registerRoutes(
         if (!assertView(req, res, "plant_supply_orders")) return;
         if (!(await getPlantSupplyOrder(linkedRecordId))) return res.status(404).json({ message: "Plant supply order not found." });
       }
+      if (moduleType === "plant_supply_order_mix_version") {
+        if (!assertView(req, res, "plant_supply_orders")) return;
+        const orderId = await getSupplyOrderMixVersionOrderId(linkedRecordId);
+        if (!orderId || !(await getPlantSupplyOrder(orderId))) return res.status(404).json({ message: "Order mix version not found." });
+      }
       if (moduleType === "diesel_purchase") {
         if (!assertDieselOrStoresView(req, res, true)) return;
         if (!(await assertDieselRecordRead(req, res, linkedRecordId))) return;
@@ -2205,6 +2214,13 @@ export async function registerRoutes(
         return res.status(400).json({ message: "moduleType and ids are required" });
       }
       if (moduleType === "plant_supply_order" && !assertView(req, res, "plant_supply_orders")) return;
+      if (moduleType === "plant_supply_order_mix_version") {
+        if (!assertView(req, res, "plant_supply_orders")) return;
+        for (const id of ids) {
+          const orderId = await getSupplyOrderMixVersionOrderId(id);
+          if (!orderId || !(await getPlantSupplyOrder(orderId))) return res.status(404).json({ message: "Order mix version not found." });
+        }
+      }
       if (moduleType === "diesel_purchase") {
         if (!assertDieselOrStoresView(req, res, true)) return;
         for (const id of ids) {
@@ -2234,11 +2250,19 @@ export async function registerRoutes(
       if (parsed.moduleType === "plant_supply_order") {
         if (!assertCreateOrEdit(req, res, "plant_supply_orders")) return;
         if (!(await getPlantSupplyOrder(parsed.linkedRecordId))) return res.status(404).json({ message: "Plant supply order not found." });
-        if (!["estimate_pdf", "mix_instruction"].includes(parsed.docType ?? "")) {
-          return res.status(400).json({ message: "Choose estimate_pdf or mix_instruction for this order file." });
+        if (!["estimate_pdf", "mix_instruction", "other"].includes(parsed.docType ?? "")) {
+          return res.status(400).json({ message: "Choose estimate_pdf, mix_instruction or other for this order file." });
         }
         if (parsed.docType === "estimate_pdf" && parsed.mimeType !== "application/pdf") {
           return res.status(400).json({ message: "The estimate attachment must be a PDF." });
+        }
+      }
+      if (parsed.moduleType === "plant_supply_order_mix_version") {
+        if (!assertCreateOrEdit(req, res, "plant_supply_orders")) return;
+        const orderId = await getSupplyOrderMixVersionOrderId(parsed.linkedRecordId);
+        if (!orderId || !(await getPlantSupplyOrder(orderId))) return res.status(404).json({ message: "Order mix version not found." });
+        if (!["mix_instruction", "other"].includes(parsed.docType ?? "")) {
+          return res.status(400).json({ message: "Choose mix_instruction or other for this mix version file." });
         }
       }
       // Diesel purchase evidence changes the purchase record's audit trail.
@@ -2306,15 +2330,47 @@ export async function registerRoutes(
         case "equipment_breakdown": case "equipment_maintenance": case "equipment_fuel_proof":
           allowed = assertDelete(req, res, "plant_equipment"); break;
         case "quality_test": allowed = assertDelete(req, res, "rmc_cube_tests"); break;
-        case "plant_supply_order": allowed = assertDelete(req, res, "plant_supply_orders"); break;
+        case "plant_supply_order": {
+          if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can remove order files." });
+          allowed = assertDelete(req, res, "plant_supply_orders");
+          break;
+        }
+        case "plant_supply_order_mix_version": {
+          if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can remove order files." });
+          allowed = assertDelete(req, res, "plant_supply_orders");
+          break;
+        }
         default: return res.status(403).json({ error: "unmapped_attachment_permission" });
       }
       if (!allowed) return;
+      let supplyOrderIdForAttachment: number | null = null;
+      if (attachment.moduleType === "plant_supply_order") {
+        supplyOrderIdForAttachment = attachment.linkedRecordId;
+        if (!(await getPlantSupplyOrder(supplyOrderIdForAttachment))) return res.status(404).json({ message: "Plant supply order not found." });
+      }
+      if (attachment.moduleType === "plant_supply_order_mix_version") {
+        supplyOrderIdForAttachment = await getSupplyOrderMixVersionOrderId(attachment.linkedRecordId);
+        if (!supplyOrderIdForAttachment || !(await getPlantSupplyOrder(supplyOrderIdForAttachment))) {
+          return res.status(404).json({ message: "Order mix version not found." });
+        }
+      }
       if (attachment.moduleType === "equipment_breakdown") {
         if (!(await assertMaintenanceRecordAccess(req, res, attachment.linkedRecordId, true))) return;
       }
       const deleted = await storage.deleteAttachment(id);
       if (!deleted) return res.status(404).json({ message: "Attachment not found" });
+      if (supplyOrderIdForAttachment != null) {
+        await storage.logAudit({
+          module: "plant_supply_order",
+          transactionId: supplyOrderIdForAttachment,
+          action: "attachment_removed",
+          userId: req.authUser.id,
+          userName: currentUserName(req),
+          userRole: "owner",
+          oldValues: { attachmentId: id, fileName: attachment.fileName, moduleType: attachment.moduleType },
+          newValues: null,
+        });
+      }
       res.status(204).send();
     } catch (err) {
       if (err instanceof AttachmentReferenceError) {
@@ -4946,6 +5002,36 @@ export async function registerRoutes(
     }).strict()).min(1),
   }).strict();
 
+  const plantSupplyOrderEditSchema = z.object({
+    orderNo: z.string().trim().max(80).nullable(),
+    periodFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    periodTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    workName: z.string().trim().max(240).nullable(),
+    division: z.string().trim().max(160).nullable(),
+    mandal: z.string().trim().max(160).nullable(),
+    district: z.string().trim().max(160).nullable(),
+    agreementEstimateRef: z.string().trim().max(200).nullable(),
+    estimateSorYear: z.string().trim().max(80).nullable(),
+    mtPerCumFactor: z.number().positive().max(100),
+    remarks: z.string().trim().max(1000).nullable(),
+    lines: z.array(z.object({
+      id: z.number().int().positive().optional(),
+      mixTemplateId: z.number().int().positive(),
+      enteredQuantity: z.number().positive(),
+      enteredUnit: z.enum(["MT", "cum"]),
+      plannedMtPerDay: z.number().positive().nullable(),
+    }).strict()).min(1),
+  }).strict();
+  const supplyOrderMixVersionSchema = z.object({
+    bitumenPercent: z.number().min(0).max(99.9999),
+    components: z.array(z.object({
+      materialId: z.number().int().positive(),
+      aggregateSharePercent: z.number().min(0).max(100),
+    }).strict()).min(1),
+    effectiveAt: z.string().datetime({ offset: true }),
+    reason: z.string().trim().min(1).max(1000),
+  }).strict();
+
   app.get("/api/plant-module/supply-orders/options", async (req, res) => {
     if (!assertView(req, res, "plant_supply_orders")) return;
     try {
@@ -5010,11 +5096,12 @@ export async function registerRoutes(
     if (!assertView(req, res, "plant_production")) return;
     const partyId = Number(req.query.partyId);
     const date = String(req.query.date || "");
+    const time = String(req.query.time || "00:00");
     if (!Number.isInteger(partyId) || partyId <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ message: "Choose a party and date." });
     }
     try {
-      res.json(await getSupplyOrderDispatchContext(partyId, date));
+      res.json(await getSupplyOrderDispatchContext(partyId, date, time));
     } catch {
       res.status(500).json({ message: "Could not load the order mix for this dispatch." });
     }
@@ -5038,6 +5125,65 @@ export async function registerRoutes(
     const order = await getPlantSupplyOrder(Number(req.params.id));
     if (!order) return res.status(404).json({ message: "Plant supply order not found." });
     res.json(order);
+  });
+
+  app.patch("/api/plant-module/supply-orders/:id", async (req, res) => {
+    if (!assertEdit(req, res, "plant_supply_orders")) return;
+    const userId = Number(req.authUser?.id ?? 0);
+    if (!req.authUser?.isOwner && !(await hasSupplyRole(userId, "P&M In-charge"))) {
+      return res.status(403).json({ message: "Only the Owner or P&M In-charge can edit an order." });
+    }
+    const parsed = plantSupplyOrderEditSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid order changes." });
+    }
+    try {
+      res.json(await editPlantSupplyOrder(Number(req.params.id), parsed.data, {
+        userId,
+        name: currentUserName(req),
+      }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not save order changes.";
+      res.status(/already exists|unique/i.test(message) ? 409 : 400).json({ message });
+    }
+  });
+
+  app.post("/api/plant-module/supply-orders/:id/lines/:lineId/mix-versions", async (req, res) => {
+    if (!assertEdit(req, res, "plant_supply_orders")) return;
+    const userId = Number(req.authUser?.id ?? 0);
+    if (!req.authUser?.isOwner && !(await hasSupplyRole(userId, "P&M In-charge"))) {
+      return res.status(403).json({ message: "Only the Owner or P&M In-charge can change an order mix." });
+    }
+    const parsed = supplyOrderMixVersionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid mix change." });
+    }
+    try {
+      const result = await changeSupplyOrderMix(
+        Number(req.params.id),
+        Number(req.params.lineId),
+        parsed.data,
+        { userId, name: currentUserName(req) },
+      );
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ message: err instanceof Error ? err.message : "Could not save the new mix version." });
+    }
+  });
+
+  app.delete("/api/plant-module/supply-orders/:id", async (req, res) => {
+    if (!req.authUser?.isOwner) return res.status(403).json({ message: "Only the Owner can remove an order." });
+    if (!assertDelete(req, res, "plant_supply_orders")) return;
+    try {
+      const removed = await removePlantSupplyOrder(Number(req.params.id), {
+        userId: Number(req.authUser.id),
+        name: currentUserName(req),
+      });
+      if (!removed) return res.status(404).json({ message: "Plant supply order not found." });
+      res.status(204).send();
+    } catch (err) {
+      res.status(409).json({ message: err instanceof Error ? err.message : "Could not remove this order." });
+    }
   });
 
   app.patch("/api/plant-module/supply-orders/:id/material-scope", async (req, res) => {

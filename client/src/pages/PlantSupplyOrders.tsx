@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ClipboardCheck, PackagePlus, Settings2 } from "lucide-react";
+import { ClipboardCheck, History, PackagePlus, Pencil, Settings2, Trash2 } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { formatSupplyOrderVersionTime } from "@shared/plantSupplyOrderVersions";
 
 type OrderMixDraft = {
   mixName: string;
@@ -49,8 +50,13 @@ function errorText(error: unknown) {
   return error instanceof Error ? error.message.replace(/^\d+:\s*/, "") : "Could not complete this action.";
 }
 
+function localDateTimeInput(date: Date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 export default function PlantSupplyOrders() {
-  const { sectionVisible } = useAuth();
+  const { sectionVisible, isOwner } = useAuth();
   const { toast } = useToast();
   const { uploadFile } = useUpload();
   const queryClient = useQueryClient();
@@ -73,13 +79,23 @@ export default function PlantSupplyOrders() {
   const [remarks, setRemarks] = useState("");
   const [estimatePdf, setEstimatePdf] = useState<File | null>(null);
   const [mixInstruction, setMixInstruction] = useState<File | null>(null);
-  const [uploadingAttachment, setUploadingAttachment] = useState<"estimate_pdf" | "mix_instruction" | null>(null);
+  const [otherFile, setOtherFile] = useState<File | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState<"estimate_pdf" | "mix_instruction" | "other" | null>(null);
   const [lines, setLines] = useState<MixLine[]>([{ mixTemplateId: "", enteredQuantity: "", enteredUnit: "MT", plannedMtPerDay: "", orderMix: null }]);
   const [replacementBorrowingId, setReplacementBorrowingId] = useState<number | null>(null);
   const [replacementReceiptId, setReplacementReceiptId] = useState("");
   const [replacementQty, setReplacementQty] = useState("");
   const [decisionBorrowingId, setDecisionBorrowingId] = useState<number | null>(null);
   const [decisionNote, setDecisionNote] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<any>(null);
+  const [editLines, setEditLines] = useState<Array<any>>([]);
+  const [mixChangeLineId, setMixChangeLineId] = useState<number | null>(null);
+  const [mixChangeBitumen, setMixChangeBitumen] = useState("");
+  const [mixChangeComponents, setMixChangeComponents] = useState<Array<{ materialId: string; aggregateSharePercent: string }>>([]);
+  const [mixChangeAt, setMixChangeAt] = useState("");
+  const [mixChangeReason, setMixChangeReason] = useState("");
+  const [mixChangeFile, setMixChangeFile] = useState<File | null>(null);
   useEffect(() => {
     const requestedId = Number(new URLSearchParams(search).get("orderId"));
     if (Number.isInteger(requestedId) && requestedId > 0) setSelectedId(requestedId);
@@ -115,7 +131,7 @@ export default function PlantSupplyOrders() {
     ]);
   };
 
-  const uploadOrderFile = async (orderId: number, file: File, docType: "estimate_pdf" | "mix_instruction") => {
+  const uploadOrderFile = async (orderId: number, file: File, docType: "estimate_pdf" | "mix_instruction" | "other") => {
     const uploaded = await uploadFile(file);
     if (!uploaded) throw new Error(`Could not upload ${file.name}.`);
     const extensionMime = file.name.toLowerCase().endsWith(".pdf") ? "application/pdf"
@@ -133,7 +149,7 @@ export default function PlantSupplyOrders() {
       docType,
     });
   };
-  const attachToExistingOrder = async (file: File | null, docType: "estimate_pdf" | "mix_instruction") => {
+  const attachToExistingOrder = async (file: File | null, docType: "estimate_pdf" | "mix_instruction" | "other") => {
     if (!file || !order?.id) return;
     setUploadingAttachment(docType);
     try {
@@ -168,6 +184,8 @@ export default function PlantSupplyOrders() {
       line.orderMix.components.every(component => Number(component.materialId) > 0 && Number(component.aggregateSharePercent) >= 0) &&
       Math.abs(shareTotal - 100) <= 0.01;
   };
+  const isBlankMixLine = (line: MixLine) =>
+    !line.mixTemplateId && !line.enteredQuantity.trim() && !line.plannedMtPerDay.trim();
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -185,7 +203,7 @@ export default function PlantSupplyOrders() {
         estimateSorYear: estimateSorYear.trim() || null,
         mtPerCumFactor: Number(mtPerCumFactor),
         remarks: remarks.trim() || null,
-        lines: lines.map(line => ({
+        lines: lines.filter(line => !isBlankMixLine(line)).map(line => ({
           mixTemplateId: Number(line.mixTemplateId),
           enteredQuantity: Number(line.enteredQuantity),
           enteredUnit: line.enteredUnit,
@@ -219,9 +237,11 @@ export default function PlantSupplyOrders() {
       const files = [
         ...(estimatePdf ? [{ file: estimatePdf, docType: "estimate_pdf" as const }] : []),
         ...(mixInstruction ? [{ file: mixInstruction, docType: "mix_instruction" as const }] : []),
+        ...(otherFile ? [{ file: otherFile, docType: "other" as const }] : []),
       ];
       setEstimatePdf(null);
       setMixInstruction(null);
+      setOtherFile(null);
       for (const item of files) {
         try {
           await uploadOrderFile(created.id, item.file, item.docType);
@@ -247,6 +267,96 @@ export default function PlantSupplyOrders() {
       apiRequest("PATCH", `/api/plant-module/supply-orders/${selectedId}/status`, { status }),
     onSuccess: async () => { await invalidate(); },
     onError: error => toast({ title: "Could not update order", description: errorText(error), variant: "destructive" }),
+  });
+
+  const editOrderMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        ...editForm,
+        orderNo: editForm.orderNo?.trim() || null,
+        workName: editForm.workName?.trim() || null,
+        division: editForm.division?.trim() || null,
+        mandal: editForm.mandal?.trim() || null,
+        district: editForm.district?.trim() || null,
+        agreementEstimateRef: editForm.agreementEstimateRef?.trim() || null,
+        estimateSorYear: editForm.estimateSorYear?.trim() || null,
+        remarks: editForm.remarks?.trim() || null,
+        mtPerCumFactor: Number(editForm.mtPerCumFactor),
+        lines: editLines.filter(line => !isBlankMixLine(line)).map(line => ({
+          ...(line.id ? { id: line.id } : {}),
+          mixTemplateId: Number(line.mixTemplateId),
+          enteredQuantity: Number(line.enteredQuantity),
+          enteredUnit: line.enteredUnit,
+          plannedMtPerDay: line.plannedMtPerDay.trim() ? Number(line.plannedMtPerDay) : null,
+        })),
+      };
+      const response = await apiRequest("PATCH", `/api/plant-module/supply-orders/${selectedId}`, payload);
+      return response.json();
+    },
+    onSuccess: async () => {
+      setEditOpen(false);
+      await invalidate();
+      toast({ title: "Supply order updated" });
+    },
+    onError: error => toast({ title: "Could not update supply order", description: errorText(error), variant: "destructive" }),
+  });
+
+  const mixVersionMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedId || mixChangeLineId == null) throw new Error("Choose an order mix line.");
+      const response = await apiRequest(
+        "POST",
+        `/api/plant-module/supply-orders/${selectedId}/lines/${mixChangeLineId}/mix-versions`,
+        {
+          bitumenPercent: Number(mixChangeBitumen),
+          components: mixChangeComponents.map(component => ({
+            materialId: Number(component.materialId),
+            aggregateSharePercent: Number(component.aggregateSharePercent),
+          })),
+          effectiveAt: new Date(mixChangeAt).toISOString(),
+          reason: mixChangeReason.trim(),
+        },
+      );
+      const result = await response.json();
+      if (mixChangeFile) {
+        const uploaded = await uploadFile(mixChangeFile);
+        if (!uploaded) throw new Error("The mix was saved, but the instruction file could not be uploaded.");
+        await apiRequest("POST", "/api/attachments", {
+          moduleType: "plant_supply_order_mix_version",
+          linkedRecordId: result.versionId,
+          fileName: mixChangeFile.name,
+          objectPath: uploaded.objectPath,
+          mimeType: mixChangeFile.type || (mixChangeFile.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg"),
+          fileSize: mixChangeFile.size,
+          docType: "mix_instruction",
+        });
+      }
+      return result;
+    },
+    onSuccess: async () => {
+      setMixChangeLineId(null);
+      setMixChangeFile(null);
+      setMixChangeReason("");
+      await invalidate();
+      toast({ title: "New mix version saved" });
+    },
+    onError: error => toast({ title: "Could not change order mix", description: errorText(error), variant: "destructive" }),
+  });
+
+  const removeOrderMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/plant-module/supply-orders/${selectedId}`),
+    onSuccess: async () => {
+      setSelectedId(null);
+      await invalidate();
+      toast({ title: "Supply order removed" });
+    },
+    onError: error => toast({ title: "Could not remove order", description: errorText(error), variant: "destructive" }),
+  });
+
+  const removeAttachmentMutation = useMutation({
+    mutationFn: (attachmentId: number) => apiRequest("DELETE", `/api/attachments/${attachmentId}`),
+    onSuccess: async () => { await invalidate(); toast({ title: "File removed" }); },
+    onError: error => toast({ title: "Could not remove file", description: errorText(error), variant: "destructive" }),
   });
 
   const decisionMutation = useMutation({
@@ -284,6 +394,62 @@ export default function PlantSupplyOrders() {
     orderMix: null,
   });
   const addLine = () => setLines(current => [...current, emptyMixLine()]);
+  const removeLine = (index: number) => setLines(current => current.filter((_, i) => i !== index));
+  const openOrderEdit = () => {
+    if (!order) return;
+    setEditForm({
+      orderNo: order.orderNo ?? "",
+      periodFrom: order.periodFrom,
+      periodTo: order.periodTo,
+      workName: order.workName ?? "",
+      division: order.division ?? "",
+      mandal: order.mandal ?? "",
+      district: order.district ?? "",
+      agreementEstimateRef: order.agreementEstimateRef ?? "",
+      estimateSorYear: order.estimateSorYear ?? "",
+      mtPerCumFactor: String(order.mtPerCumFactor || 2.356),
+      remarks: order.remarks ?? "",
+    });
+    setEditLines(order.lines.map((line: any) => ({
+      id: line.id,
+      mixTemplateId: String(line.mixTemplateId),
+      enteredQuantity: String(line.enteredQuantity ?? line.orderedMt),
+      enteredUnit: line.enteredUnit === "cum" ? "cum" : "MT",
+      plannedMtPerDay: line.plannedMtPerDay == null ? "" : String(line.plannedMtPerDay),
+      dispatchedMt: Number(line.dispatchedMt) || 0,
+    })));
+    setEditOpen(true);
+  };
+  const openMixChange = (line: any) => {
+    const templateComponents = options?.mixComponents.filter(component => component.templateId === line.mixTemplateId) ?? [];
+    const total = templateComponents.reduce((sum, component) => sum + Math.max(0, Number(component.percent) || 0), 0);
+    const components = line.orderMix?.components?.length
+      ? line.orderMix.components.map((component: any) => ({
+          materialId: String(component.materialId),
+          aggregateSharePercent: String(component.aggregateSharePercent),
+        }))
+      : templateComponents.map(component => ({
+          materialId: String(component.materialId),
+          aggregateSharePercent: String(total > 0 ? (Number(component.percent) || 0) * 100 / total : 0),
+        }));
+    setMixChangeLineId(line.id);
+    setMixChangeBitumen(String(line.orderMix?.bitumenPercent ?? options?.mixes.find(mix => mix.id === line.mixTemplateId)?.bitumenPercent ?? ""));
+    setMixChangeComponents(components);
+    setMixChangeAt(localDateTimeInput(new Date()));
+    setMixChangeReason("");
+    setMixChangeFile(null);
+  };
+  const editLineBlank = (line: any) =>
+    !line.mixTemplateId && !String(line.enteredQuantity ?? "").trim() && !String(line.plannedMtPerDay ?? "").trim();
+  const updateEditLine = (index: number, field: "mixTemplateId" | "enteredQuantity" | "enteredUnit" | "plannedMtPerDay", value: string) =>
+    setEditLines(current => current.map((line, i) => i === index ? { ...line, [field]: value } : line));
+  const addEditLine = () => setEditLines(current => [...current, {
+    mixTemplateId: "",
+    enteredQuantity: "",
+    enteredUnit: "MT",
+    plannedMtPerDay: "",
+    dispatchedMt: 0,
+  }]);
   const updateLine = (index: number, key: "mixTemplateId" | "enteredQuantity" | "enteredUnit" | "plannedMtPerDay", value: string) =>
     setLines(current => current.map((line, i) => i === index ? { ...line, [key]: value } : line));
   const setLineTemplate = (index: number, value: string) => {
@@ -384,15 +550,36 @@ export default function PlantSupplyOrders() {
                         {order.estimateSorYear && <p className="text-sm text-slate-600">Estimate SOR: {order.estimateSorYear}</p>}
                         {order.remarks && <p className="mt-2 text-sm text-slate-600">{order.remarks}</p>}
                       </div>
-                      {options?.canManageLifecycle && (
-                        <Button
-                          size="sm"
-                          variant={order.status === "open" ? "outline" : "default"}
-                          onClick={() => statusMutation.mutate(order.status === "open" ? "closed" : "open")}
-                        >
-                          {order.status === "open" ? "Close order" : "Reopen order"}
-                        </Button>
-                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {options?.canManageLifecycle && order.status === "open" && (
+                          <Button size="sm" variant="outline" onClick={openOrderEdit}>
+                            <Pencil className="mr-2 h-4 w-4" />Edit order
+                          </Button>
+                        )}
+                        {options?.canManageLifecycle && (
+                          <Button
+                            size="sm"
+                            variant={order.status === "open" ? "outline" : "default"}
+                            onClick={() => statusMutation.mutate(order.status === "open" ? "closed" : "open")}
+                          >
+                            {order.status === "open" ? "Close order" : "Reopen order"}
+                          </Button>
+                        )}
+                        {isOwner && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={removeOrderMutation.isPending}
+                            onClick={() => {
+                              if (window.confirm("Remove this supply order? Orders with linked trucks cannot be removed.")) {
+                                removeOrderMutation.mutate();
+                              }
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />Remove order
+                          </Button>
+                        )}
+                      </div>
                     </CardHeader>
                     <CardContent className="space-y-5">
                       <section>
@@ -411,6 +598,52 @@ export default function PlantSupplyOrders() {
                                     return `${material?.name ?? `Material #${component.materialId}`} ${Number(component.aggregateSharePercent).toFixed(2)}%`;
                                   }).join(" · ")}
                                 </span>
+                              )}
+                              {options?.canManageLifecycle && order.status === "open" && (
+                                <span className="col-span-2 sm:col-span-4">
+                                  <Button size="sm" variant="outline" onClick={() => openMixChange(line)}>Change mix from a date and time</Button>
+                                </span>
+                              )}
+                              {line.mixVersions?.length > 0 && (
+                                <div className="col-span-2 space-y-2 border-t pt-2 sm:col-span-4" data-testid={`order-mix-timeline-${line.id}`}>
+                                  <p className="text-xs font-semibold text-slate-700">Mix versions</p>
+                                  {line.mixVersions.map((version: any, versionIndex: number) => (
+                                    <div key={version.versionId ?? `base-${line.id}`} className="rounded border bg-white p-2 text-xs">
+                                      <p className="font-medium">
+                                        {version.versionId == null ? "Original order mix" : `Version ${versionIndex}`}
+                                        {" · "}{formatSupplyOrderVersionTime(version.effectiveAt)}
+                                        {version.effectiveUntil ? ` – ${formatSupplyOrderVersionTime(version.effectiveUntil)}` : " – current"}
+                                      </p>
+                                      <p>Bitumen {Number(version.bitumenPercent).toFixed(2)}% · {Number(version.dispatchedMt).toFixed(3)} MT dispatched</p>
+                                      {version.reason && <p>Reason: {version.reason}</p>}
+                                      <p>{version.instructionAttached ? "Mix instruction attached" : "No mix instruction attached"} · Added by {version.createdByName || "Unknown"}</p>
+                                      {version.components?.length > 0 && <p>{version.components.map((component: any) =>
+                                        `${component.materialName ?? options?.materials.find((material: any) => material.id === component.materialId)?.name ?? `Material #${component.materialId}`} ${Number(component.aggregateSharePercent).toFixed(2)}%`
+                                      ).join(" · ")}</p>}
+                                      <div className="mt-1 space-y-0.5">
+                                        {version.materialUsage?.map((usage: any) => (
+                                          <p key={usage.materialId}>
+                                            {usage.materialName}: allowance {Number(usage.allowance).toFixed(3)} {usage.uom} · actual {Number(usage.actual).toFixed(3)} {usage.uom}
+                                          </p>
+                                        ))}
+                                      </div>
+                                      {version.attachments?.map((attachment: any) => (
+                                        <p key={attachment.id}>
+                                          <a className="underline" href={attachment.objectPath}>{attachment.fileName}</a>
+                                          {isOwner && <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="ml-2 h-6 px-2 text-red-700"
+                                            disabled={removeAttachmentMutation.isPending}
+                                            onClick={() => {
+                                              if (window.confirm(`Remove ${attachment.fileName}?`)) removeAttachmentMutation.mutate(attachment.id);
+                                            }}
+                                          >Remove</Button>}
+                                        </p>
+                                      ))}
+                                    </div>
+                                  ))}
+                                </div>
                               )}
                             </div>
                           ))}
@@ -499,9 +732,18 @@ export default function PlantSupplyOrders() {
                           <p key={attachment.id} className="text-sm">
                             <a className="underline" href={attachment.objectPath}>{attachment.fileName}</a>
                             <span className="ml-2 text-xs text-slate-500">{attachment.docType === "estimate_pdf" ? "Estimate PDF" : attachment.docType === "mix_instruction" ? "Party mix instruction" : "Document"}</span>
+                            {isOwner && <Button
+                              size="sm"
+                              variant="ghost"
+                              className="ml-2 h-6 px-2 text-red-700"
+                              disabled={removeAttachmentMutation.isPending}
+                              onClick={() => {
+                                if (window.confirm(`Remove ${attachment.fileName}?`)) removeAttachmentMutation.mutate(attachment.id);
+                              }}
+                            >Remove</Button>}
                           </p>
                         ))}
-                        <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="grid gap-3 sm:grid-cols-3">
                           <label className="space-y-1 text-xs text-slate-600">
                             Add estimate PDF
                             <Input type="file" accept="application/pdf,.pdf" disabled={uploadingAttachment === "estimate_pdf"} onChange={event => { void attachToExistingOrder(event.target.files?.[0] ?? null, "estimate_pdf"); event.currentTarget.value = ""; }} />
@@ -510,8 +752,38 @@ export default function PlantSupplyOrders() {
                             Add party mix instruction
                             <Input type="file" accept="image/*,application/pdf,.pdf" disabled={uploadingAttachment === "mix_instruction"} onChange={event => { void attachToExistingOrder(event.target.files?.[0] ?? null, "mix_instruction"); event.currentTarget.value = ""; }} />
                           </label>
+                          <label className="space-y-1 text-xs text-slate-600">
+                            Add other document
+                            <Input type="file" accept="image/*,application/pdf,.pdf" disabled={uploadingAttachment === "other"} onChange={event => { void attachToExistingOrder(event.target.files?.[0] ?? null, "other"); event.currentTarget.value = ""; }} />
+                          </label>
                         </div>
                       </section>
+                      <details className="rounded-md border p-3">
+                        <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold">
+                          <History className="h-4 w-4" />Order history ({order.history?.length ?? 0})
+                        </summary>
+                        <div className="mt-3 space-y-2 border-t pt-3 text-xs">
+                          {order.history?.map((entry: any) => {
+                            const oldValue = entry.oldValues && typeof entry.oldValues === "object" ? entry.oldValues : null;
+                            const newValue = entry.newValues && typeof entry.newValues === "object" ? entry.newValues : null;
+                            const field = oldValue?.field ?? newValue?.field ?? entry.action.replaceAll("_", " ");
+                            const before = oldValue && "value" in oldValue ? oldValue.value : oldValue;
+                            const after = newValue && "value" in newValue ? newValue.value : newValue;
+                            const display = (value: unknown) => value == null ? "—"
+                              : typeof value === "string" || typeof value === "number" ? String(value)
+                              : JSON.stringify(value);
+                            return (
+                              <p key={entry.id} className="break-words">
+                                {entry.createdAt ? format(new Date(entry.createdAt), "dd MMM yyyy, h:mm a") : ""}
+                                {" · "}{entry.userName || "User"}{" · "}{field}
+                                {before != null || after != null ? ` · ${display(before)} → ${display(after)}` : ""}
+                                {entry.reason ? ` · ${entry.reason}` : ""}
+                              </p>
+                            );
+                          })}
+                          {!order.history?.length && <p className="text-slate-500">No changes recorded.</p>}
+                        </div>
+                      </details>
                     </CardContent>
                   </Card>
 
@@ -570,11 +842,143 @@ export default function PlantSupplyOrders() {
         )}
       </div>
 
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader><DialogTitle>Edit open supply order</DialogTitle></DialogHeader>
+          {editForm && (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2"><Label>Order number</Label><Input value={editForm.orderNo} onChange={event => setEditForm((current: any) => ({ ...current, orderNo: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>MT per cum factor</Label><Input type="number" min="0.001" step="0.001" value={editForm.mtPerCumFactor} onChange={event => setEditForm((current: any) => ({ ...current, mtPerCumFactor: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>Period from</Label><Input type="date" value={editForm.periodFrom} onChange={event => setEditForm((current: any) => ({ ...current, periodFrom: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>Period to</Label><Input type="date" value={editForm.periodTo} onChange={event => setEditForm((current: any) => ({ ...current, periodTo: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>Work details</Label><Input value={editForm.workName} onChange={event => setEditForm((current: any) => ({ ...current, workName: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>Division</Label><Input value={editForm.division} onChange={event => setEditForm((current: any) => ({ ...current, division: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>Mandal</Label><Input value={editForm.mandal} onChange={event => setEditForm((current: any) => ({ ...current, mandal: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>District</Label><Input value={editForm.district} onChange={event => setEditForm((current: any) => ({ ...current, district: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>Agreement / estimate reference</Label><Input value={editForm.agreementEstimateRef} onChange={event => setEditForm((current: any) => ({ ...current, agreementEstimateRef: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>Estimate SOR year</Label><Input value={editForm.estimateSorYear} onChange={event => setEditForm((current: any) => ({ ...current, estimateSorYear: event.target.value }))} /></div>
+              </div>
+              {order?.dispatches?.length > 0 && (() => {
+                const outside = order.dispatches.filter((dispatch: any) =>
+                  dispatch.date < editForm.periodFrom || dispatch.date > editForm.periodTo,
+                );
+                return outside.length > 0 ? (
+                  <p className="rounded-md bg-amber-50 p-2 text-sm text-amber-800">
+                    {outside.length} trucks already linked on {outside.map((dispatch: any) => dispatch.date).sort().join(", ")}. The order period must include every linked truck.
+                  </p>
+                ) : null;
+              })()}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Mix lines</Label>
+                  <Button type="button" size="sm" variant="outline" onClick={addEditLine}>Add mix line</Button>
+                </div>
+                {editLines.map((line, index) => {
+                  const orderedMt = Number(line.enteredQuantity) * (line.enteredUnit === "cum" ? Number(editForm.mtPerCumFactor) : 1);
+                  const belowUsed = Number.isFinite(orderedMt) && orderedMt + 0.000001 < Number(line.dispatchedMt || 0);
+                  return (
+                    <div key={line.id ?? `new-${index}`} className="space-y-2 rounded-md border p-3">
+                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_130px_100px_130px_auto]">
+                        <Select value={line.mixTemplateId} onValueChange={value => updateEditLine(index, "mixTemplateId", value)} disabled={!!line.id}>
+                          <SelectTrigger><SelectValue placeholder="Choose mix" /></SelectTrigger>
+                          <SelectContent>{mixOptions.map(mix => <SelectItem key={mix.id} value={String(mix.id)}>{mix.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                        <Input aria-label={`Mix line ${index + 1} quantity`} type="number" min="0" step="0.001" value={line.enteredQuantity} onChange={event => updateEditLine(index, "enteredQuantity", event.target.value)} placeholder="Quantity" />
+                        <Select value={line.enteredUnit} onValueChange={(value: "MT" | "cum") => updateEditLine(index, "enteredUnit", value)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="MT">MT</SelectItem><SelectItem value="cum">cum</SelectItem></SelectContent>
+                        </Select>
+                        <Input aria-label={`Mix line ${index + 1} planned MT per day`} type="number" min="0" step="0.001" value={line.plannedMtPerDay} onChange={event => updateEditLine(index, "plannedMtPerDay", event.target.value)} placeholder="MT / day" />
+                        <Button type="button" size="icon" variant="ghost" aria-label={`Remove mix line ${index + 1}`} disabled={Number(line.dispatchedMt) > 0} onClick={() => setEditLines(current => current.filter((_, i) => i !== index))}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {Number(line.dispatchedMt) > 0 && <p className="text-xs text-slate-600">{Number(line.dispatchedMt).toFixed(3)} MT already dispatched; this line cannot be removed or reduced below that amount.</p>}
+                      {belowUsed && <p className="text-xs text-red-700">Ordered quantity cannot be below {Number(line.dispatchedMt).toFixed(3)} MT already dispatched.</p>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="space-y-2"><Label>Remarks</Label><Textarea value={editForm.remarks} onChange={event => setEditForm((current: any) => ({ ...current, remarks: event.target.value }))} /></div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button
+              disabled={editOrderMutation.isPending || !editForm || !editLines.some(line => !editLineBlank(line)) ||
+                editLines.some(line => !editLineBlank(line) && (!line.mixTemplateId || Number(line.enteredQuantity) <= 0 ||
+                  Number(line.plannedMtPerDay) < 0 ||
+                  (line.plannedMtPerDay !== "" && Number(line.plannedMtPerDay) <= 0))) ||
+                editLines.some(line => !editLineBlank(line) && Number(line.dispatchedMt) > 0 &&
+                  Number(line.enteredQuantity) * (line.enteredUnit === "cum" ? Number(editForm?.mtPerCumFactor) : 1) + 0.000001 < Number(line.dispatchedMt)) ||
+                (order?.dispatches ?? []).some((dispatch: any) => dispatch.date < (editForm?.periodFrom ?? "") || dispatch.date > (editForm?.periodTo ?? ""))}
+              onClick={() => editOrderMutation.mutate()}
+            >{editOrderMutation.isPending ? "Saving…" : "Save changes"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={mixChangeLineId != null} onOpenChange={open => { if (!open) setMixChangeLineId(null); }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader><DialogTitle>Change order mix</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">This saves a new mix version. Past truck figures and stock entries are not changed.</p>
+            <div className="space-y-2">
+              <Label>Effective from (IST)</Label>
+              <Input type="datetime-local" value={mixChangeAt} onChange={event => setMixChangeAt(event.target.value)} />
+              {order?.dispatches?.some((dispatch: any) => {
+                const line = order.lines.find((candidate: any) => candidate.id === mixChangeLineId);
+                if (!line || dispatch.mixTemplateId !== line.mixTemplateId) return false;
+                const effective = new Date(mixChangeAt).getTime();
+                const dispatchAt = new Date(`${dispatch.date}T${dispatch.time || "00:00"}+05:30`).getTime();
+                return Number.isFinite(effective) && effective < dispatchAt;
+              }) && <p className="text-xs text-red-700">Effective time cannot be earlier than the latest truck already linked to this mix.</p>}
+            </div>
+            <div className="space-y-2"><Label>Bitumen %</Label><Input type="number" min="0" max="99.9999" step="0.01" value={mixChangeBitumen} onChange={event => setMixChangeBitumen(event.target.value)} /></div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between"><Label>Aggregate shares</Label><Button type="button" size="sm" variant="outline" onClick={() => setMixChangeComponents(current => [...current, { materialId: "", aggregateSharePercent: "" }])}>Add material</Button></div>
+              {mixChangeComponents.map((component, index) => (
+                <div key={index} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_130px_auto]">
+                  <Select value={component.materialId} onValueChange={value => setMixChangeComponents(current => current.map((row, i) => i === index ? { ...row, materialId: value } : row))}>
+                    <SelectTrigger><SelectValue placeholder="Choose aggregate" /></SelectTrigger>
+                    <SelectContent>{options?.materials.filter(material => !/bitumen|^\s*LDO\s*$/i.test(material.name)).map(material => (
+                      <SelectItem key={material.id} value={String(material.id)}>{material.name}</SelectItem>
+                    ))}</SelectContent>
+                  </Select>
+                  <Input aria-label={`Aggregate share ${index + 1}`} type="number" min="0" max="100" step="0.01" value={component.aggregateSharePercent} onChange={event => setMixChangeComponents(current => current.map((row, i) => i === index ? { ...row, aggregateSharePercent: event.target.value } : row))} placeholder="Share %" />
+                  <Button type="button" size="icon" variant="ghost" aria-label={`Remove aggregate ${index + 1}`} disabled={mixChangeComponents.length <= 1} onClick={() => setMixChangeComponents(current => current.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>
+                </div>
+              ))}
+              <p className={`text-xs ${Math.abs(mixChangeComponents.reduce((sum, row) => sum + (Number(row.aggregateSharePercent) || 0), 0) - 100) <= 0.01 ? "text-slate-500" : "text-amber-700"}`}>
+                Shares total {mixChangeComponents.reduce((sum, row) => sum + (Number(row.aggregateSharePercent) || 0), 0).toFixed(2)}%; they must total 100%.
+              </p>
+            </div>
+            <div className="space-y-2"><Label>Reason (required)</Label><Textarea value={mixChangeReason} onChange={event => setMixChangeReason(event.target.value)} /></div>
+            <div className="space-y-2"><Label>Mix instruction attachment (optional)</Label><Input type="file" accept="image/*,application/pdf,.pdf" onChange={event => setMixChangeFile(event.target.files?.[0] ?? null)} />{mixChangeFile && <p className="text-xs text-slate-500">{mixChangeFile.name}</p>}</div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMixChangeLineId(null)}>Cancel</Button>
+            <Button
+              disabled={mixVersionMutation.isPending || !mixChangeAt || !mixChangeReason.trim() ||
+                !Number.isFinite(Number(mixChangeBitumen)) || Number(mixChangeBitumen) < 0 || Number(mixChangeBitumen) >= 100 ||
+                !mixChangeComponents.length || mixChangeComponents.some(row => !row.materialId || !Number.isFinite(Number(row.aggregateSharePercent)) || Number(row.aggregateSharePercent) < 0) ||
+                Math.abs(mixChangeComponents.reduce((sum, row) => sum + (Number(row.aggregateSharePercent) || 0), 0) - 100) > 0.01 ||
+                order?.dispatches?.some((dispatch: any) => {
+                  const line = order.lines.find((candidate: any) => candidate.id === mixChangeLineId);
+                  return !!line && dispatch.mixTemplateId === line.mixTemplateId &&
+                    new Date(mixChangeAt).getTime() < new Date(`${dispatch.date}T${dispatch.time || "00:00"}+05:30`).getTime();
+                })}
+              onClick={() => mixVersionMutation.mutate()}
+            >{mixVersionMutation.isPending ? "Saving…" : "Save new version"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader><DialogTitle>New plant supply order</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-2"><Label>Party / job</Label>
                 <Select value={partyId} onValueChange={value => { setPartyId(value); setSiteId(""); }}>
                   <SelectTrigger><SelectValue placeholder="Choose party" /></SelectTrigger>
@@ -621,12 +1025,22 @@ export default function PlantSupplyOrders() {
                 <Input type="file" accept="image/*,application/pdf,.pdf" onChange={e => setMixInstruction(e.target.files?.[0] ?? null)} />
                 {mixInstruction && <p className="text-xs text-muted-foreground">{mixInstruction.name}</p>}
               </div>
+              <div className="space-y-2">
+                <Label>Other document (optional)</Label>
+                <Input type="file" accept="image/*,application/pdf,.pdf" onChange={e => setOtherFile(e.target.files?.[0] ?? null)} />
+                {otherFile && <p className="text-xs text-muted-foreground">{otherFile.name}</p>}
+              </div>
             </div>
             <div className="space-y-2"><Label>Remarks</Label><Textarea value={remarks} onChange={e => setRemarks(e.target.value)} /></div>
             <div className="space-y-3">
-              <div className="flex items-center justify-between"><Label>Mix lines</Label><Button type="button" variant="outline" size="sm" onClick={addLine}>Add mix</Button></div>
+              <div className="flex items-center justify-between"><Label>Mix lines</Label><Button type="button" variant="outline" size="sm" onClick={addLine}>Add mix line</Button></div>
               {lines.map((line, index) => (
                 <div key={index} className="space-y-3 rounded-lg border p-3">
+                  <div className="flex justify-end">
+                    <Button type="button" size="sm" variant="ghost" onClick={() => removeLine(index)} aria-label={`Remove mix line ${index + 1}`}>
+                      <Trash2 className="mr-1 h-4 w-4" />Remove line
+                    </Button>
+                  </div>
                   <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px_120px_150px]">
                     <Select value={line.mixTemplateId} onValueChange={value => setLineTemplate(index, value)}>
                       <SelectTrigger><SelectValue placeholder="Choose mix template" /></SelectTrigger>
@@ -677,7 +1091,7 @@ export default function PlantSupplyOrders() {
               ))}
             </div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button><Button disabled={createMutation.isPending || !partyId || !Number.isFinite(Number(mtPerCumFactor)) || Number(mtPerCumFactor) <= 0 || lines.some(line => !line.mixTemplateId || !Number(line.enteredQuantity) || toOrderedMt(line) <= 0 || !lineHasValidOrderMix(line))} onClick={() => createMutation.mutate()}>{createMutation.isPending ? "Saving…" : "Save order"}</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button><Button disabled={createMutation.isPending || !partyId || !Number.isFinite(Number(mtPerCumFactor)) || Number(mtPerCumFactor) <= 0 || !lines.some(line => !isBlankMixLine(line)) || lines.some(line => !isBlankMixLine(line) && (!line.mixTemplateId || !Number(line.enteredQuantity) || toOrderedMt(line) <= 0 || !lineHasValidOrderMix(line)))} onClick={() => createMutation.mutate()}>{createMutation.isPending ? "Saving…" : "Save order"}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 

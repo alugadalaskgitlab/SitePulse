@@ -271,7 +271,7 @@ export default function PlantDispatches() {
 
   const { data: dispatches, isLoading } = useQuery<Array<TruckDispatch & { supplyOrderNo?: string | null; supplyOrderWorkName?: string | null; supplyOrderMixName?: string | null }>>({
     queryKey: ["/api/plant-module/dispatches"],
-    refetchInterval: 15_000,
+    refetchInterval: 3_000,
   });
 
   const { data: parties } = useQuery<Party[]>({
@@ -282,18 +282,22 @@ export default function PlantDispatches() {
     workName: string | null;
     lines: Array<{
       mixTemplateId: number;
+      orderLineId: number;
       mixName: string;
       bitumenPercent: number | null;
       sourceBitumenPercent: number | null;
       ldoNorm: number | null;
       isOrderMix: boolean;
+      mixVersionId: number | null;
+      effectiveAt: string | null;
       components: Array<{ materialId: number; materialName: string; aggregateSharePercent: number }>;
+      versionAttachments: Array<{ id: number; fileName: string; docType: string | null }>;
     }>;
   } | null>({
-    queryKey: ["/api/plant-module/supply-orders/dispatch-context", partyId, date],
+    queryKey: ["/api/plant-module/supply-orders/dispatch-context", partyId, date, time],
     queryFn: async () => {
       const response = await fetch(
-        `/api/plant-module/supply-orders/dispatch-context?partyId=${encodeURIComponent(partyId)}&date=${encodeURIComponent(date)}`,
+        `/api/plant-module/supply-orders/dispatch-context?partyId=${encodeURIComponent(partyId)}&date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}`,
         { credentials: "include" },
       );
       if (!response.ok) throw new Error("Could not load the matching supply order.");

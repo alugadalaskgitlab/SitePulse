@@ -85,13 +85,14 @@ export default function PlantSupplyAlertSettings() {
               </div>
               <div>
                 <h2 className="mb-2 text-sm font-semibold">Named users</h2>
-                {query.data?.users.filter(user => !user.isOwner).map(user => (
+                {query.data?.users.map(user => (
                   <label key={user.id} className="flex min-h-10 items-center gap-2 text-sm">
                     <Checkbox
-                      checked={current[section.key].userIds.includes(user.id)}
+                      checked={section.key === "borrowed" && user.isOwner || current[section.key].userIds.includes(user.id)}
+                      disabled={section.key === "borrowed" && user.isOwner}
                       onCheckedChange={value => toggle(section.key, "userIds", user.id, value === true)}
                     />
-                    {user.fullName}
+                    {user.fullName}{user.isOwner ? <span className="text-xs text-slate-500">Owner</span> : null}
                   </label>
                 ))}
               </div>
