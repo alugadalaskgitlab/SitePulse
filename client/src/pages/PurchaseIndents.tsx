@@ -32,6 +32,7 @@ import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { PurchaseOrderWorkflow } from "@/components/purchase-order-workflow";
 import { vendorIdentityDisplayName } from "@shared/vendorIdentityDisplay";
+import { convertStockQuantity, stockUnitForMaterial } from "@shared/stockUnits";
 
 type StoreItem = { id: number; name: string; uom: string; category: string };
 
@@ -920,7 +921,7 @@ export default function PurchaseIndents() {
   };
   // Dual-route: Bulk plant receipt dialog (Route B)
   const [bulkReceiptOpen, setBulkReceiptOpen] = useState(false);
-  type BulkReceiptItemData = { qty: string; uom: string; vendor: string; rate: string; receiptDate: string; remarks: string; partyId: string; packed?: boolean; actualNetWeightKg?: string };
+  type BulkReceiptItemData = { qty: string; uom: string; vendor: string; rate: string; receiptDate: string; remarks: string; partyId: string; packed?: boolean; actualNetWeightKg?: string; tankNumber?: string };
   const [bulkReceiptData, setBulkReceiptData] = useState<Record<number, BulkReceiptItemData>>({});
   const [bulkReceivingLocation, setBulkReceivingLocation] = useState<string>("");
   const [bulkReceivingSiteId, setBulkReceivingSiteId] = useState<number | null>(null);
@@ -5206,6 +5207,13 @@ export default function PurchaseIndents() {
           {selectedIndent && (() => {
             const bulkItems = selectedIndent.items.filter(i => ((i as any).procurementRoute === "material" || (i as any).procurementRoute === "bulk_plant") && !["cancelled", "closed"].includes((i as any).status || "") && (i.purchaseStatus || "").toLowerCase() !== "pending_plant_receipt");
             if (bulkItems.length === 0) return <p className="text-sm text-muted-foreground">No bulk plant items pending receipt.</p>;
+            const bulkReceiptMissingTank = bulkItems.some(item => {
+              const material = rawMaterialsList?.find((row: any) => Number(row.id) === Number(item.materialId));
+              if (!material || !/bitumen|emulsion|ldo|diesel|hsd/i.test(`${material.category ?? ""} ${material.name ?? ""}`)) return false;
+              const row = bulkReceiptData[item.id];
+              const packed = row?.packed === true || row?.packed === "true";
+              return !packed && row?.tankNumber !== "1" && row?.tankNumber !== "2";
+            });
             return (
               <div className="space-y-4">
                 {/* Receiving Location — applies to all items in this receipt */}
@@ -5251,7 +5259,8 @@ export default function PurchaseIndents() {
                 {bulkItems.map(item => {
                   const packedMaterial = rawMaterialsList?.find((material: any) => Number(material.id) === Number(item.materialId));
                   const packedConfigured = !!packedMaterial?.packedUnitName;
-                  const rd = bulkReceiptData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "", packed: false, actualNetWeightKg: "" };
+                  const tankRequired = !!packedMaterial && /bitumen|emulsion|ldo|diesel|hsd/i.test(`${packedMaterial.category ?? ""} ${packedMaterial.name ?? ""}`);
+                  const rd = bulkReceiptData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "", packed: false, actualNetWeightKg: "", tankNumber: "" };
                   const upd = (field: string, val: string) => setBulkReceiptData(prev => ({ ...prev, [item.id]: { ...rd, [field]: val } }));
                   const packed = rd.packed === true;
                   return (
@@ -5289,7 +5298,10 @@ export default function PurchaseIndents() {
                             <input
                               type="checkbox"
                               checked={packed}
-                              onChange={event => upd("packed", event.target.checked ? "true" : "false")}
+                              onChange={event => setBulkReceiptData(prev => ({
+                                ...prev,
+                                [item.id]: { ...rd, packed: event.target.checked, tankNumber: event.target.checked ? "" : (rd.tankNumber || "") },
+                              }))}
                               data-testid={`checkbox-packed-receipt-${item.id}`}
                             />
                             Receive as packed {packedMaterial.packedUnitName.toLowerCase()} count
@@ -5297,9 +5309,9 @@ export default function PurchaseIndents() {
                           {packed && (
                             <div className="grid gap-2 sm:grid-cols-2">
                               <p className="text-xs text-muted-foreground">
-                                {packedMaterial.packedUnitNetWeightKg != null
+                                {Number(packedMaterial.packedUnitNetWeightKg) > 0
                                   ? `Standard: ${packedMaterial.packedUnitNetWeightKg} kg per ${packedMaterial.packedUnitName.toLowerCase()}`
-                                  : packedMaterial.packedUnitVolumeLiters != null
+                                  : Number(packedMaterial.packedUnitVolumeLiters) > 0
                                     ? `Standard: ${packedMaterial.packedUnitVolumeLiters} L per ${packedMaterial.packedUnitName.toLowerCase()}`
                                     : "Packed profile is incomplete. Enter actual total net weight or complete the Material Master profile."}
                               </p>
@@ -5311,23 +5323,54 @@ export default function PurchaseIndents() {
                               </div>
                               {Number(rd.qty) > 0 && (
                                 <p className="text-sm font-semibold sm:col-span-2" data-testid={`text-packed-stock-conversion-${item.id}`}>
-                                  {Number(rd.actualNetWeightKg) > 0
-                                    ? `Stock addition = ${(Number(rd.actualNetWeightKg) / 1000).toFixed(3)} MT (actual net weight)`
-                                    : Number(packedMaterial.packedUnitNetWeightKg) > 0
-                                      ? `Stock addition = ${(Number(rd.qty) * Number(packedMaterial.packedUnitNetWeightKg) / 1000).toFixed(3)} MT`
-                                      : Number(packedMaterial.packedUnitVolumeLiters) > 0 && Number(packedMaterial.bulkDensity) > 0
-                                        ? `Stock addition = ${(Number(rd.qty) * Number(packedMaterial.packedUnitVolumeLiters) * Number(packedMaterial.bulkDensity) / 1000).toFixed(3)} MT`
-                                        : "Enter actual net weight or complete the Material Master profile"}
+                                  {(() => {
+                                    const targetUom = stockUnitForMaterial(packedMaterial);
+                                    const standardInput = Number(rd.actualNetWeightKg) > 0
+                                      ? [Number(rd.actualNetWeightKg), "kg"]
+                                      : Number(packedMaterial.packedUnitNetWeightKg) > 0
+                                        ? [Number(rd.qty) * Number(packedMaterial.packedUnitNetWeightKg), "kg"]
+                                        : Number(packedMaterial.packedUnitVolumeLiters) > 0
+                                          ? [Number(rd.qty) * Number(packedMaterial.packedUnitVolumeLiters), "Liters"]
+                                          : null;
+                                    if (!standardInput) return "Enter actual net weight or complete the Material Master profile";
+                                    try {
+                                      const amount = convertStockQuantity(Number(standardInput[0]), String(standardInput[1]), targetUom, Number(packedMaterial.bulkDensity) || null);
+                                      return `Stock addition = ${amount.toFixed(3)} ${targetUom}${Number(rd.actualNetWeightKg) > 0 ? " (actual net weight)" : ""}`;
+                                    } catch {
+                                      return `Set a density in Material Master to convert this packed unit to ${targetUom}`;
+                                    }
+                                  })()}
                                 </p>
                               )}
                             </div>
                           )}
+                          {tankRequired && !packed && (
+                            <div>
+                              <Label className="text-xs">Receiving tank *</Label>
+                              <Select value={rd.tankNumber || ""} onValueChange={value => upd("tankNumber", value)}>
+                                <SelectTrigger data-testid={`select-bulk-receipt-tank-${item.id}`}><SelectValue placeholder="Select Tank 1 or Tank 2" /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="1">Tank 1</SelectItem>
+                                  <SelectItem value="2">Tank 2</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
                         </div>
                       )}
-                      {!packedConfigured && packedMaterial && /bitumen|emulsion/i.test(`${packedMaterial.category ?? ""} ${packedMaterial.name ?? ""}`) && (
+                      {!packedConfigured && packedMaterial && /bitumen|emulsion|ldo|diesel|hsd/i.test(`${packedMaterial.category ?? ""} ${packedMaterial.name ?? ""}`) && (
                         <p className="text-xs text-amber-700" data-testid={`text-packed-profile-missing-${item.id}`}>
                           Set barrel weight in Material Master before receiving this material in barrels or drums.
                         </p>
+                      )}
+                      {!packedConfigured && tankRequired && (
+                        <div>
+                          <Label className="text-xs">Receiving tank *</Label>
+                          <Select value={rd.tankNumber || ""} onValueChange={value => upd("tankNumber", value)}>
+                            <SelectTrigger data-testid={`select-bulk-receipt-tank-${item.id}`}><SelectValue placeholder="Select Tank 1 or Tank 2" /></SelectTrigger>
+                            <SelectContent><SelectItem value="1">Tank 1</SelectItem><SelectItem value="2">Tank 2</SelectItem></SelectContent>
+                          </Select>
+                        </div>
                       )}
                     </div>
                   );
@@ -5339,12 +5382,12 @@ export default function PurchaseIndents() {
                   <Button variant="outline" onClick={() => setBulkReceiptOpen(false)} data-testid="button-cancel-bulk-receipt">Cancel</Button>
                   <Button
                     className="bg-amber-600 hover:bg-amber-700 text-white"
-                    disabled={bulkReceiptMutation.isPending || !bulkReceivingLocation || (bulkReceivingLocation === "site" && !bulkReceivingSiteId)}
+                    disabled={bulkReceiptMutation.isPending || !bulkReceivingLocation || (bulkReceivingLocation === "site" && !bulkReceivingSiteId) || bulkReceiptMissingTank}
                     onClick={() => bulkReceiptMutation.mutate({
                       receivingLocation: bulkReceivingLocation,
                       receivingSiteId: bulkReceivingSiteId,
                       items: bulkItems.map(item => {
-                        const rd = bulkReceiptData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" };
+                        const rd = bulkReceiptData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "", packed: false, actualNetWeightKg: "", tankNumber: "" };
                         const packedMaterial = rawMaterialsList?.find((material: any) => Number(material.id) === Number(item.materialId));
                         const packed = rd.packed === true || rd.packed === "true";
                         return {
@@ -5356,6 +5399,7 @@ export default function PurchaseIndents() {
                           packedCount: packed ? (parseFloat(rd.qty) || 0) : null,
                           packedUnitName: packed ? packedMaterial?.packedUnitName ?? null : null,
                           actualNetWeightKg: packed && rd.actualNetWeightKg ? Number(rd.actualNetWeightKg) : null,
+                          tankNumber: !packed && rd.tankNumber ? Number(rd.tankNumber) : null,
                           vendor: rd.vendor || null,
                           rate: parseFloat(rd.rate) || null,
                           purchaseDate: rd.receiptDate,

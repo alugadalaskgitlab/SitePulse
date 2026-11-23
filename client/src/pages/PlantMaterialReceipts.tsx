@@ -42,6 +42,7 @@ import { decidePiAutoSelect, submitBlockedByPi, showPiIndentBlock, showPiPending
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 import { isPartyNonPurchaseReceipt } from "@shared/materialReceiptParty";
 import { formatPersonName } from "@shared/personName";
+import { convertStockQuantity, stockUnitForMaterial } from "@shared/stockUnits";
 import type { DieselReceiptState } from "@shared/dieselReceiptStatus";
 import { formatEnteredByDisplay, type MaterialReceiptSlipData } from "@/lib/materialReceiptSlipTypes";
 import { dieselTotalIssued } from "@/lib/dieselIssued";
@@ -919,6 +920,10 @@ export default function PlantMaterialReceipts() {
         toast({ title: "Packed unit not configured", description: "Set Barrel or Drum in Material Master before recording this packed receipt.", variant: "destructive" });
         return;
       }
+      if (linkedDieselRequirementId != null) {
+        toast({ title: "Linked Diesel receipts use Liters", description: "Record this purchased Diesel receipt in Liters and select its receiving tank.", variant: "destructive" });
+        return;
+      }
       const hasStandard = Number(selectedMaterial.packedUnitNetWeightKg) > 0 || Number(selectedMaterial.packedUnitVolumeLiters) > 0;
       if (!hasStandard && !(Number(actualNetWeightKg) > 0)) {
         toast({ title: "Packed profile missing", description: "Set the packed-unit weight or volume in Material Master, or enter actual total net weight for this receipt.", variant: "destructive" });
@@ -929,16 +934,14 @@ export default function PlantMaterialReceipts() {
         return;
       }
     }
+    const tankManagedMaterial = selectedMaterial && /bitumen|emulsion|ldo|diesel|hsd/i.test(`${selectedMaterial.category ?? ""} ${selectedMaterial.name ?? ""}`);
+    if (tankManagedMaterial && !receiveAsPacked && tankNumber !== "1" && tankNumber !== "2") {
+      toast({ title: "Receiving tank required", description: "Bulk fuel deliveries must be assigned to Tank 1 or Tank 2. Use the packed-unit option for barrels or drums.", variant: "destructive" });
+      return;
+    }
     const receiptUom = receiveAsPacked && selectedMaterial?.packedUnitName ? selectedMaterial.packedUnitName : uom;
     submittedSummaryRef.current = { date: materialReceiptTransactionDate(invoiceDate, date), quantity, uom: receiptUom };
-    const isTankMaterial = selectedMaterial && (
-      selectedMaterial.category === "Bitumen" ||
-      selectedMaterial.category === "LDO" ||
-      (selectedMaterial.name || "").toUpperCase() === "LDO" ||
-      selectedMaterial.category === "Utility" ||
-      (selectedMaterial.name || "").toUpperCase() === "DIESEL" ||
-      (selectedMaterial.name || "").toUpperCase() === "HSD"
-    );
+    const isTankMaterial = selectedMaterial && /bitumen|emulsion|ldo|diesel|hsd/i.test(`${selectedMaterial.category ?? ""} ${selectedMaterial.name ?? ""}`);
     
     const effectiveInvoiceDate = materialReceiptTransactionDate(invoiceDate, date);
     submitLockRef.current = true;
@@ -1498,31 +1501,24 @@ export default function PlantMaterialReceipts() {
 
               {(() => {
                 const selectedMat = materials?.find(m => m.id === parseInt(materialId));
-                const isLdo = selectedMat && (selectedMat.category === "LDO" || (selectedMat.name || "").toUpperCase() === "LDO");
-                const isDiesel = selectedMat && (
-                  selectedMat.category === "Utility" ||
-                  (selectedMat.name || "").toUpperCase() === "DIESEL" ||
-                  (selectedMat.name || "").toUpperCase() === "HSD"
-                );
-                const isFuel = isLdo || isDiesel;
-                const showTank = selectedMat && (selectedMat.category === "Bitumen" || isFuel);
+                const isFuel = selectedMat && /bitumen|emulsion|ldo|diesel|hsd/i.test(`${selectedMat.category ?? ""} ${selectedMat.name ?? ""}`);
+                const showTank = !!isFuel;
                 if (!showTank) return null;
                 return (
                   <div>
-                    <Label>Receiving tank</Label>
+                    <Label>Receiving tank{!receiveAsPacked && <span className="text-destructive"> *</span>}</Label>
                     <Select value={tankNumber} onValueChange={setTankNumber}>
                       <SelectTrigger data-testid="select-tank-number">
-                        <SelectValue placeholder={isFuel ? "Select tank or keep as stock" : "Select tank"} />
+                        <SelectValue placeholder="Select tank" />
                       </SelectTrigger>
                       <SelectContent>
-                        {isFuel && <SelectItem value="none">Keep as Stock — barrel / no tank</SelectItem>}
                         <SelectItem value="1">Tank 1 (small vertical)</SelectItem>
                         <SelectItem value="2">Tank 2 (big horizontal)</SelectItem>
                       </SelectContent>
                     </Select>
                     {isFuel && (
                       <p className="text-sm text-muted-foreground mt-1">
-                        Choose a tank to log this receipt in the LDO flow tracker, or select "Keep as Stock" if storing in barrels to issue later.
+                        Bulk fuel must go into a tank. For barrels or drums, choose the packed-unit option below; it stays in packed stock until decanted.
                       </p>
                     )}
                   </div>
@@ -1573,27 +1569,41 @@ export default function PlantMaterialReceipts() {
               </div>
               {(() => {
                 const packedMaterial = materials?.find(material => material.id === Number(materialId));
-                if (!packedMaterial || !/bitumen|emulsion/i.test(`${packedMaterial.category ?? ""} ${packedMaterial.name}`)) return null;
+                if (!packedMaterial) return null;
+                const isKnownFuel = /bitumen|emulsion|ldo|diesel|hsd/i.test(`${packedMaterial.category ?? ""} ${packedMaterial.name}`);
+                if (!packedMaterial.packedUnitName && !isKnownFuel) return null;
                 const packedCount = Number(quantity) || 0;
                 const actualKg = Number(actualNetWeightKg) || 0;
-                const derivedMt = actualKg > 0
-                  ? actualKg / 1000
+                const stockUom = stockUnitForMaterial(packedMaterial);
+                const stockQuantity = (quantity: number, uom: string) => {
+                  try {
+                    return convertStockQuantity(quantity, uom, stockUom, Number(packedMaterial.bulkDensity) || null);
+                  } catch {
+                    return null;
+                  }
+                };
+                const derivedStock = actualKg > 0
+                  ? stockQuantity(actualKg, "kg")
                   : Number(packedMaterial.packedUnitNetWeightKg) > 0
-                    ? packedCount * Number(packedMaterial.packedUnitNetWeightKg) / 1000
-                    : Number(packedMaterial.packedUnitVolumeLiters) > 0 && Number(packedMaterial.bulkDensity) > 0
-                      ? packedCount * Number(packedMaterial.packedUnitVolumeLiters) * Number(packedMaterial.bulkDensity) / 1000
+                    ? stockQuantity(packedCount * Number(packedMaterial.packedUnitNetWeightKg), "kg")
+                    : Number(packedMaterial.packedUnitVolumeLiters) > 0
+                      ? stockQuantity(packedCount * Number(packedMaterial.packedUnitVolumeLiters), "Liters")
                       : null;
+                const hasPackedProfile = !!packedMaterial.packedUnitName && (
+                  Number(packedMaterial.packedUnitNetWeightKg) > 0 || Number(packedMaterial.packedUnitVolumeLiters) > 0
+                );
                 return (
                   <div className="rounded-md border p-3 space-y-2" data-testid="packed-receipt-fields">
                     {packedMaterial.packedUnitName ? (
                       <label className="flex items-center gap-2 text-sm font-medium">
                         <input type="checkbox" checked={receiveAsPacked}
-                          onChange={event => { setReceiveAsPacked(event.target.checked); setActualNetWeightKg(""); setQuantity(""); if (event.target.checked) setTankNumber("none"); }}
+                          disabled={linkedDieselRequirementId != null}
+                          onChange={event => { setReceiveAsPacked(event.target.checked); setActualNetWeightKg(""); setQuantity(""); setTankNumber(""); }}
                           data-testid="checkbox-receive-as-packed" />
                         Received in {packedMaterial.packedUnitName.toLowerCase()}s
                       </label>
                     ) : (
-                      <p className="text-sm text-amber-700">Packed unit not configured — set Barrel or Drum and its standard net weight/volume in Material Master.</p>
+                      <p className="text-sm text-amber-700">Set barrel weight in Material Master before receiving this material in barrels or drums.</p>
                     )}
                     {receiveAsPacked && (
                       <div className="space-y-2">
@@ -1602,20 +1612,28 @@ export default function PlantMaterialReceipts() {
                             ? `Standard net weight: ${packedMaterial.packedUnitNetWeightKg} kg per ${packedMaterial.packedUnitName?.toLowerCase()}`
                             : Number(packedMaterial.packedUnitVolumeLiters) > 0
                               ? `Standard volume: ${packedMaterial.packedUnitVolumeLiters} L per ${packedMaterial.packedUnitName?.toLowerCase()}`
-                              : "Packed profile is incomplete."}
+                              : isKnownFuel ? "Set barrel weight in Material Master, or enter actual total net weight." : "Packed profile is incomplete."}
                         </p>
                         <div>
                           <Label htmlFor="packed-actual-net-weight">Actual total net weight, kg (optional; overrides standard)</Label>
                           <Input id="packed-actual-net-weight" type="number" min="0.001" step="0.1" value={actualNetWeightKg}
                             onChange={event => setActualNetWeightKg(event.target.value)} data-testid="input-packed-actual-net-weight" />
                         </div>
-                        {packedCount > 0 && derivedMt != null && (
+                        {packedCount > 0 && derivedStock != null && (
                           <p className="text-sm font-medium" data-testid="packed-stock-conversion">
-                            Stock addition = {derivedMt.toFixed(3)} MT
+                            Stock addition = {derivedStock.toFixed(3)} {stockUom}
                             {actualKg > 0 ? " (actual net weight)" : ""}
                           </p>
                         )}
                       </div>
+                    )}
+                    {!hasPackedProfile && packedMaterial.packedUnitName && (
+                      <p className="text-xs text-amber-700">
+                        {isKnownFuel ? "Set barrel weight in Material Master before receiving this material in barrels or drums." : "Complete the packed-unit profile in Material Master."}
+                      </p>
+                    )}
+                    {linkedDieselRequirementId != null && (
+                      <p className="text-xs text-muted-foreground">Linked Diesel purchases must be received in Liters and assigned to a tank.</p>
                     )}
                   </div>
                 );

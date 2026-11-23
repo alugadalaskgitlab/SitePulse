@@ -1,5 +1,28 @@
 import { convertStockQuantity } from "./stockUnits";
 
+export function tankPositionBalance(input: {
+  entries: Array<{
+    quantityIn: number | string | null;
+    quantityOut: number | string | null;
+    uom: string | null;
+    stockPosition?: string | null;
+    tankNumber?: number | null;
+  }>;
+  tankNumber: 1 | 2;
+  stockUom: string;
+  bulkDensity?: number | null;
+}): number {
+  const targetPosition = input.tankNumber === 1 ? "tank_1" : "tank_2";
+  return input.entries.reduce((total, entry) => {
+    const position = entry.stockPosition
+      ?? (entry.tankNumber === 1 ? "tank_1" : entry.tankNumber === 2 ? "tank_2" : null);
+    if (position !== targetPosition) return total;
+    return total
+      + convertStockQuantity(Number(entry.quantityIn ?? 0), entry.uom ?? input.stockUom, input.stockUom, input.bulkDensity ?? null)
+      - convertStockQuantity(Number(entry.quantityOut ?? 0), entry.uom ?? input.stockUom, input.stockUom, input.bulkDensity ?? null);
+  }, 0);
+}
+
 export function packedReceiptStockQuantity(input: {
   count: number;
   actualNetWeightKg?: number | null;

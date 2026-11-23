@@ -5063,12 +5063,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/plant-module/supply-orders/open-summaries", async (req, res) => {
-    if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
-    if (!requestFeatureAllowed(req, "plant_supply_orders", "view") &&
-        !requestFeatureAllowed(req, "plant_shift_logs", "view") &&
-        !requestFeatureAllowed(req, "plant_production", "view")) {
-      return res.status(403).json({ message: "You do not have access to plant order summaries." });
-    }
+    if (!assertViewEither(req, res, "plant_supply_orders", "plant_shift_logs", "plant_production")) return;
     try {
       const date = typeof req.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
         ? req.query.date
@@ -5083,8 +5078,17 @@ export async function registerRoutes(
         workName: order.workName,
         periodFrom: order.periodFrom,
         periodTo: order.periodTo,
+        mixLines: (order.lines ?? []).map((line: any) => ({
+          mixName: line.mixName,
+          orderedMt: Number(line.orderedMt) || 0,
+          dispatchedMt: Number(line.dispatchedMt) || 0,
+          balanceMt: Number(line.balanceMt) || 0,
+          plannedMtPerDay: line.plannedMtPerDay == null ? null : Number(line.plannedMtPerDay),
+        })),
         mixNames: (order.lines ?? []).map((line: any) => line.mixName).filter(Boolean),
-        plannedMtToday: (order.lines ?? []).reduce((sum: number, line: any) => sum + Math.max(0, Number(line.plannedMtPerDay) || 0), 0),
+        plannedMtToday: date >= order.periodFrom && date <= order.periodTo
+          ? (order.lines ?? []).reduce((sum: number, line: any) => sum + Math.max(0, Number(line.plannedMtPerDay) || 0), 0)
+          : 0,
         dispatchedMtToday: (order.dispatches ?? []).filter((dispatch: any) => dispatch.date === date)
           .reduce((sum: number, dispatch: any) => sum + Math.max(0, Number(dispatch.loadWeight) || 0), 0),
         materials: (order.materials ?? [])
@@ -8248,14 +8252,15 @@ export async function registerRoutes(
     }
     const schema = z.object({
       date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      time: z.string().regex(/^\d{2}:\d{2}$/),
       materialId: z.number().int().positive(),
       partyId: z.number().int().positive().nullable(),
       packedCount: z.number().positive(),
-      quantityMt: z.number().positive(),
+      quantity: z.number().positive(),
       tankNumber: z.union([z.literal(1), z.literal(2)]),
     }).strict();
     const parsed = schema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: "Enter a valid date, material, packed count and tank." });
+    if (!parsed.success) return res.status(400).json({ message: "Enter a valid date/time, material, packed count, quantity and tank." });
     try {
       res.status(201).json(await storage.decantPackedStock(parsed.data, {
         userId: req.authUser.id,

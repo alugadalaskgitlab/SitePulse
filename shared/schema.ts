@@ -1221,6 +1221,7 @@ export const stockLedger = pgTable("stock_ledger", {
 export const packedStockDecants = pgTable("plant_stock_decants", {
   id: serial("id").primaryKey(),
   date: date("date").notNull(),
+  time: text("time"),
   partyId: integer("party_id").references(() => parties.id, { onDelete: "set null" }),
   materialId: integer("material_id").notNull().references(() => plantMaterials.id),
   packedCount: real("packed_count").notNull(),
@@ -4938,6 +4939,7 @@ export const pendingPlantReceipts = pgTable("pending_plant_receipts", {
   packedCount: real("packed_count"),
   packedUnitName: text("packed_unit_name"),
   actualNetWeightKg: real("actual_net_weight_kg"),
+  tankNumber: integer("tank_number"),
   vendor: text("vendor"),
   rate: real("rate"),
   paymentMode: text("payment_mode"),

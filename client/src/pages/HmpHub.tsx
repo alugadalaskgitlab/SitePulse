@@ -202,6 +202,11 @@ export default function HmpHub() {
                     <span>{order.partyName} · {order.orderNo}</span>
                     <span className="text-xs font-normal text-muted-foreground">{order.mixNames?.join(", ") || "No mix listed"}</span>
                   </div>
+                  {(order.mixLines ?? []).map((line: any, index: number) => (
+                    <p key={`${line.mixName}:${index}`} className="mt-1 text-xs text-muted-foreground" data-testid={`open-order-mix-line-${order.id}-${index}`}>
+                      {line.mixName}: {Number(line.orderedMt).toFixed(2)} MT · dispatched {Number(line.dispatchedMt).toFixed(2)} MT · balance {Number(line.balanceMt).toFixed(2)} MT
+                    </p>
+                  ))}
                   {(order.materials ?? []).some((material: any) => material.shortage > 0 || (material.daysLeft != null && material.daysLeft < 2)) ? (
                     <ul className="mt-2 space-y-1 text-sm">
                       {order.materials.filter((material: any) => material.shortage > 0 || (material.daysLeft != null && material.daysLeft < 2)).map((material: any) => (

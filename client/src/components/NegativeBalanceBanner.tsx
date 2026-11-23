@@ -2,7 +2,7 @@ import { useState } from "react";
   import { Button } from "@/components/ui/button";
   import { Info, X } from "lucide-react";
   import type { Party, PlantMaterial } from "@shared/schema";
-import { stockDifferenceTolerance } from "@shared/stockUnits";
+import { isMeaningfullyNegativeStock } from "@shared/stockUnits";
 
   type Balance = { id: number; partyId: number | null; balance: number | string; uom: string };
   type MultiBalance = Balance & { materialId: number };
@@ -29,7 +29,7 @@ import { stockDifferenceTolerance } from "@shared/stockUnits";
       const mat = materials?.find(m => m.id === matId);
       return mat ? /bitumen|ldo/i.test(mat.name) : false;
     };
-    const negs = balances.filter(b => Number(b.balance) <= -stockDifferenceTolerance(b.uom) && !isTankMat(b.materialId));
+    const negs = balances.filter(b => isMeaningfullyNegativeStock(b.balance, b.uom) && !isTankMat(b.materialId));
     if (dismissed || negs.length === 0) return null;
 
     const grouped = new Map<number, MultiBalance[]>();
@@ -88,7 +88,7 @@ import { stockDifferenceTolerance } from "@shared/stockUnits";
 
   export function NegativeBalanceBanner({ balances, parties, material, testid }: Props) {
     const [dismissed, setDismissed] = useState(false);
-    const negs = balances.filter(b => Number(b.balance) <= -stockDifferenceTolerance(b.uom));
+    const negs = balances.filter(b => isMeaningfullyNegativeStock(b.balance, b.uom));
     if (dismissed || negs.length === 0) return null;
     return (
       <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/40 dark:border-red-800 p-3 text-sm" data-testid={testid}>

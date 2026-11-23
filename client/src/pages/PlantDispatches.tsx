@@ -30,6 +30,7 @@ import { format } from "date-fns";
 import { formatPersonName } from "@shared/personName";
 import { cn } from "@/lib/utils";
 import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterType, PlantSettings } from "@shared/schema";
+import { dispatchRefetchInterval } from "@shared/dispatchPolling";
 
 function dispatchProPlainReason(value: string | null | undefined): string {
   if (!value) return "Required dispatch details are missing.";
@@ -286,9 +287,11 @@ export default function PlantDispatches() {
         }
         return true;
       });
-      if (visible.some((dispatch: any) => dispatch.dispatchProSyncStatus === "waiting")) return 10_000;
-      if (lastDispatchActionAt && Date.now() - lastDispatchActionAt < 60_000) return 60_000;
-      return false;
+      return dispatchRefetchInterval({
+        hasVisibleWaitingDispatch: visible.some((dispatch: any) => dispatch.dispatchProSyncStatus === "waiting"),
+        lastActionAt: lastDispatchActionAt,
+        now: Date.now(),
+      });
     },
   });
 
@@ -337,6 +340,19 @@ export default function PlantDispatches() {
     enabled: canCreate,
     refetchInterval: 60_000,
   });
+  const { data: dispatchSupplySummaries = [] } = useQuery<any[]>({
+    queryKey: ["/api/plant-module/supply-orders/open-summaries", "dispatch", partyId, date],
+    queryFn: async () => {
+      const response = await fetch(`/api/plant-module/supply-orders/open-summaries?date=${encodeURIComponent(date)}`, { credentials: "include" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: dialogOpen && !!partyId && !!date && canCreate,
+    staleTime: 30_000,
+  });
+  const dispatchPartySupplyOrders = dispatchSupplySummaries.filter(order =>
+    Number(order.partyId) === Number(partyId) && date >= order.periodFrom && date <= order.periodTo
+  );
 
   const dispatchesForPartyDefaults = useMemo(() => {
     const byId = new Map<number, TruckDispatch>();
@@ -1944,6 +1960,29 @@ export default function PlantDispatches() {
                         {supplyAlertLines.filter(line => line.partyId === Number(partyId)).map((line, index) => (
                           <p key={`${line.orderId ?? "party"}:${line.materialName}:${index}`} className="text-amber-700">{line.message}</p>
                         ))}
+                        {dispatchPartySupplyOrders.map((order: any) => {
+                          const remainingMixMt = (order.mixLines ?? []).reduce((sum: number, line: any) => sum + Math.max(0, Number(line.balanceMt) || 0), 0);
+                          return (
+                            <div key={`stock:${order.id}`} className="mt-2 border-t pt-2" data-testid={`dispatch-order-stock-${order.id}`}>
+                              <p className="text-xs font-medium">{order.orderNo} · {order.workName || order.siteName}</p>
+                              {(order.materials ?? []).map((material: any) => {
+                                const available = Number(material.stockAvailable) || 0;
+                                const spendable = Math.max(0, available);
+                                const need = Number(material.need) || 0;
+                                const mixCapacityMt = need > 0 && remainingMixMt > 0
+                                  ? Math.min(remainingMixMt, spendable / need * remainingMixMt)
+                                  : null;
+                                return (
+                                  <p key={material.materialId} className={`text-xs ${material.shortage > 0 ? "text-amber-700" : "text-muted-foreground"}`}>
+                                    {material.scope === "party" ? "Party stock" : "HLC stock"} — {material.materialName}: {available.toFixed(2)} {material.uom} available
+                                    {mixCapacityMt != null ? ` · approx. ${mixCapacityMt.toFixed(0)} MT mix` : ""}
+                                    {material.shortage > 0 ? ` · ${Number(material.shortage).toFixed(2)} ${material.uom} short` : ""}
+                                  </p>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
             </div>

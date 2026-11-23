@@ -205,6 +205,9 @@ export default function PlantLdoFlowMeter() {
   const { data: stockBalances } = useQuery<{ id: number; partyId: number | null; materialId: number; balance: number; uom: string }[]>({
     queryKey: ["/api/plant-module/stock-balances"],
   });
+  const { data: packedStockPositions } = useQuery<{
+    rows: Array<{ materialId: number; materialName: string; packedUnitName: string | null; partyId: number | null; partyName: string; stockUom: string; tank1: number; tank2: number; packed: number; unassigned: number; packedCount: number; total: number; tank1L: number | null; tank2L: number | null; packedL: number | null; totalL: number | null }>;
+  }>({ queryKey: ["/api/plant-module/packed-stock-positions"] });
 
   const balanceToL = (balance: number, uom: string) => {
     const u = normalizeWeightUnit(uom).toUpperCase();
@@ -221,24 +224,39 @@ export default function PlantLdoFlowMeter() {
   const ldoBookStockL = useMemo(() => {
     return ldoPartyBalances.reduce((s, b) => s + balanceToL(b.balance, b.uom), 0);
   }, [ldoPartyBalances]);
+  const ldoPackedStockL = useMemo(() => (packedStockPositions?.rows ?? [])
+    .filter(row => row.materialName.trim().toUpperCase() === "LDO")
+    .reduce((sum, row) => sum + (row.packedL ?? (row.stockUom.toLowerCase().startsWith("lit") ? row.packed : 0)), 0),
+  [packedStockPositions]);
+  const ldoTankBookStockL = (packedStockPositions?.rows ?? [])
+    .filter(row => row.materialName.trim().toUpperCase() === "LDO")
+    .reduce((sum, row) => {
+      if (row.tank1L != null && row.tank2L != null) return sum + row.tank1L + row.tank2L;
+      return sum + balanceToL(row.tank1 + row.tank2, row.stockUom);
+    }, 0);
 
   const ldoSelectedPartyBalanceL = useMemo(() => {
     if (!ldoCorrPartyId) return null;
-    const b = ldoPartyBalances.find(b => String(b.partyId) === ldoCorrPartyId);
-    return b ? balanceToL(b.balance, b.uom) : 0;
-  }, [ldoPartyBalances, ldoCorrPartyId]);
+    return (packedStockPositions?.rows ?? [])
+      .filter(row => row.materialName.trim().toUpperCase() === "LDO" && String(row.partyId) === ldoCorrPartyId)
+      .reduce((sum, row) => {
+        if (row.tank1L != null && row.tank2L != null) return sum + row.tank1L + row.tank2L;
+        return sum + balanceToL(row.tank1 + row.tank2, row.stockUom);
+      }, 0);
+  }, [ldoCorrPartyId, packedStockPositions]);
 
   const ldoCorrectionMutation = useMutation({
-    mutationFn: async (data: { materialId: number; partyId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }) => {
+    mutationFn: async (data: { materialId: number; partyId: number; physicalQty: number; tank1L: number; tank2L: number; uom: string; date: string; notes: string; correctedBy: string }) => {
       const res = await apiRequest("POST", "/api/plant-module/stock-correction", data);
       return res.json();
     },
     onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
-      const adjL = (result.adjustment || 0) * 1000 / LDO_DENSITY_KG_PER_LITER;
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/packed-stock-positions"] });
+      const adjL = balanceToL(Number(result.adjustment || 0), result.uom || "MT");
       const sign = adjL >= 0 ? "+" : "";
-      const newL = (result.newBalance || 0) * 1000 / LDO_DENSITY_KG_PER_LITER;
+      const newL = balanceToL(Number(result.newBalance || 0), result.uom || "MT");
       toast({ title: "LDO stock correction posted", description: `Adjustment: ${sign}${adjL.toFixed(0)} L. Book stock now ${newL.toFixed(0)} L.` });
       setShowLdoCorrForm(false);
       setLdoCorrTank1L("");
@@ -1179,6 +1197,40 @@ export default function PlantLdoFlowMeter() {
         testid="banner-negative-ldo"
       />
 
+      {(packedStockPositions?.rows ?? []).some(row => row.materialName.trim().toUpperCase() === "LDO") && (
+        <Card data-testid="ldo-packed-stock-summary">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">LDO tank and packed stock</CardTitle>
+            <p className="text-sm text-muted-foreground">Packed LDO is available for supply orders; plant use draws only from tanks.</p>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b text-left">
+                <th className="py-2 pr-3">Party</th>
+                <th className="py-2 pr-3 text-right">Tank 1</th>
+                <th className="py-2 pr-3 text-right">Tank 2</th>
+                <th className="py-2 pr-3 text-right">Packed</th>
+                <th className="py-2 pr-3 text-right">Legacy / unassigned</th>
+                <th className="py-2 text-right">Total</th>
+              </tr></thead>
+              <tbody>{(packedStockPositions?.rows ?? [])
+                .filter(row => row.materialName.trim().toUpperCase() === "LDO")
+                .map(row => (
+                  <tr key={`${row.materialId}:${row.partyId ?? "common"}`} className="border-b last:border-0">
+                    <td className="py-2 pr-3">{row.partyName}</td>
+                    <td className="py-2 pr-3 text-right">{(row.tank1L ?? row.tank1).toLocaleString()} L</td>
+                    <td className="py-2 pr-3 text-right">{(row.tank2L ?? row.tank2).toLocaleString()} L</td>
+                    <td className="py-2 pr-3 text-right">{row.packedCount.toLocaleString()} {row.packedUnitName || "units"} · {(row.packedL ?? row.packed).toLocaleString()} L</td>
+                    <td className="py-2 pr-3 text-right">{row.unassigned.toLocaleString()} L</td>
+                    <td className="py-2 text-right font-semibold">{(row.totalL ?? row.total).toLocaleString()} L</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[1, 2].map(tankNum => {
@@ -1647,7 +1699,7 @@ export default function PlantLdoFlowMeter() {
             {/* Summary grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               <div className="bg-muted/50 rounded-lg p-3">
-                <div className="text-muted-foreground text-sm mb-1">Total Book Stock (All Parties)</div>
+                <div className="text-muted-foreground text-sm mb-1">Total book stock (all parties, including packed)</div>
                 <div className={`font-bold text-lg ${ldoBookStockL < 0 ? "text-red-600" : "text-foreground"}`}>
                   {ldoBookStockL.toFixed(0)} L
                 </div>
@@ -1671,10 +1723,10 @@ export default function PlantLdoFlowMeter() {
                 <div className="text-sm text-muted-foreground">Dryer: {(latestDipTank2?.volumeLiters || 0).toFixed(0)} L</div>
               </div>
               <div className="bg-muted/50 rounded-lg p-3 col-span-2">
-                <div className="text-muted-foreground text-sm mb-1">Difference (Physical − Book)</div>
+                <div className="text-muted-foreground text-sm mb-1">Difference (physical tanks − tank book stock)</div>
                 {(latestDipTank1 || latestDipTank2) ? (() => {
                   const physL = (latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0);
-                  const diff = physL - ldoBookStockL;
+                  const diff = physL - ldoTankBookStockL;
                   return (
                     <div className={`font-bold text-lg ${diff > 0 ? "text-green-600" : diff < 0 ? "text-red-600" : "text-foreground"}`}>
                       {diff > 0 ? "+" : ""}{diff.toFixed(0)} L
@@ -1684,7 +1736,7 @@ export default function PlantLdoFlowMeter() {
                     </div>
                   );
                 })() : <div className="text-muted-foreground">—</div>}
-                <div className="text-sm text-muted-foreground mt-1">Post a correction to align a party's book stock with physical measurement</div>
+                <div className="text-sm text-muted-foreground mt-1">Packed stock is excluded from tank readings and remains in packed stock when tank corrections are posted.</div>
               </div>
             </div>
 
@@ -1712,7 +1764,12 @@ export default function PlantLdoFlowMeter() {
                     </Select>
                     {ldoCorrPartyId && ldoSelectedPartyBalanceL !== null && (
                       <p className="text-sm text-muted-foreground mt-1">
-                        Current book stock: <span className={ldoSelectedPartyBalanceL < 0 ? "text-red-500 font-medium" : "font-medium"}>{ldoSelectedPartyBalanceL.toFixed(0)} L</span>
+                        Current tank book stock: <span className={ldoSelectedPartyBalanceL < 0 ? "text-red-500 font-medium" : "font-medium"}>{ldoSelectedPartyBalanceL.toFixed(0)} L</span>
+                        {" · "}Packed stock: <span className="font-medium">
+                          {((packedStockPositions?.rows ?? [])
+                            .filter(row => row.materialName.trim().toUpperCase() === "LDO" && String(row.partyId) === ldoCorrPartyId)
+                            .reduce((sum, row) => sum + (row.packedL ?? (row.stockUom.toLowerCase().startsWith("lit") ? row.packed : 0)), 0)).toFixed(0)} L
+                        </span>
                       </p>
                     )}
                   </div>
@@ -1792,13 +1849,18 @@ export default function PlantLdoFlowMeter() {
                       if (!ldoMaterialId || !ldoCorrPartyId) return;
                       const t1L = parseFloat(ldoCorrTank1L) || 0;
                       const t2L = parseFloat(ldoCorrTank2L) || 0;
-                      const totalL = t1L + t2L;
+                      const selectedPackedL = (packedStockPositions?.rows ?? [])
+                        .filter(row => row.materialName.trim().toUpperCase() === "LDO" && String(row.partyId) === ldoCorrPartyId)
+                        .reduce((sum, row) => sum + (row.packedL ?? (row.stockUom.toLowerCase().startsWith("lit") ? row.packed : 0)), 0);
+                      const totalL = t1L + t2L + selectedPackedL;
                       const totalMT = totalL * LDO_DENSITY_KG_PER_LITER / 1000;
                       const partyName = parties?.find(p => String(p.id) === ldoCorrPartyId)?.name || `Party ${ldoCorrPartyId}`;
                       ldoCorrectionMutation.mutate({
                         materialId: ldoMaterialId,
                         partyId: parseInt(ldoCorrPartyId),
                         physicalQty: totalMT,
+                        tank1L: t1L,
+                        tank2L: t2L,
                         uom: "MT",
                         date: ldoCorrDate,
                         notes: ldoCorrNotes || `LDO dip reconciliation — Boiler: ${t1L.toFixed(0)} L, Dryer: ${t2L.toFixed(0)} L (${partyName})`,

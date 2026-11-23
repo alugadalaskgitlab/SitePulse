@@ -1553,7 +1553,11 @@ export default function PlantShiftLog() {
               return (
                 <a key={order.id} href={`/plant/supply-orders?orderId=${order.id}`} className="block rounded border p-2 text-sm hover:bg-muted/40" data-testid={`shift-log-order-${order.id}`}>
                   <span className="font-semibold">{order.partyName} · {order.orderNo}</span>
-                  <span className="ml-2 text-muted-foreground">{(order.mixNames ?? []).join(", ") || "Mix not listed"}</span>
+                  <span className="ml-2 text-muted-foreground">
+                    {(order.mixLines ?? []).map((line: any) =>
+                      `${line.mixName} ${Number(line.orderedMt).toFixed(2)} MT · dispatched ${Number(line.dispatchedMt).toFixed(2)} · balance ${Number(line.balanceMt).toFixed(2)}`
+                    ).join(" / ") || (order.mixNames ?? []).join(", ") || "Mix not listed"}
+                  </span>
                   <span className="ml-2 text-muted-foreground">
                     {Number(order.dispatchedMtToday) > 0 ? `${Number(order.dispatchedMtToday).toFixed(2)} MT dispatched` : `${Number(order.plannedMtToday).toFixed(2)} MT planned`}
                     {shortNames ? ` · Short: ${shortNames}` : ""}

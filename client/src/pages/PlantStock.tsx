@@ -214,17 +214,18 @@ export default function PlantStock() {
   const [selectedTank, setSelectedTank] = useState<"all" | "1" | "2">("all");
   const [decantOpen, setDecantOpen] = useState(false);
   const [decantDate, setDecantDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [decantTime, setDecantTime] = useState(format(new Date(), "HH:mm"));
   const [decantMaterialId, setDecantMaterialId] = useState("");
   const [decantPartyId, setDecantPartyId] = useState("");
   const [decantCount, setDecantCount] = useState("");
-  const [decantQuantityMt, setDecantQuantityMt] = useState("");
-  const [decantMtEdited, setDecantMtEdited] = useState(false);
+  const [decantQuantity, setDecantQuantity] = useState("");
+  const [decantQuantityEdited, setDecantQuantityEdited] = useState(false);
   const [decantTankNumber, setDecantTankNumber] = useState<"1" | "2">("1");
 
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
   const { data: materials } = useQuery<PlantMaterial[]>({ queryKey: ["/api/plant-module/materials"] });
   const packedStockQuery = useQuery<{
-    rows: Array<{ materialId: number; materialName: string; partyId: number | null; partyName: string; stockUom: string; tank1: number; tank2: number; packed: number; packedCount: number; total: number; tank1Mt: number | null; tank2Mt: number | null; packedMt: number | null; totalMt: number | null }>;
+    rows: Array<{ materialId: number; materialName: string; packedUnitName: string | null; partyId: number | null; partyName: string; stockUom: string; tank1: number; tank2: number; packed: number; unassigned: number; packedCount: number; total: number; tank1Mt: number | null; tank2Mt: number | null; packedMt: number | null; totalMt: number | null; tank1L: number | null; tank2L: number | null; packedL: number | null; totalL: number | null }>;
     canDecant: boolean;
   }>({ queryKey: ["/api/plant-module/packed-stock-positions"] });
   const { data: allStockBalances } = useQuery<{ id: number; partyId: number | null; materialId: number; balance: number; uom: string }[]>({
@@ -262,10 +263,11 @@ export default function PlantStock() {
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/plant-module/packed-stock-decants", {
         date: decantDate,
+        time: decantTime,
         materialId: Number(decantMaterialId),
         partyId: decantPartyId === "common" ? null : Number(decantPartyId),
         packedCount: Number(decantCount),
-        quantityMt: Number(decantQuantityMt),
+        quantity: Number(decantQuantity),
         tankNumber: Number(decantTankNumber),
       });
       return response.json() as Promise<{ movedQuantity: number; uom: string }>;
@@ -279,6 +281,8 @@ export default function PlantStock() {
       toast({ title: "Packed stock decanted", description: `${result.movedQuantity} ${result.uom} moved to Tank ${decantTankNumber}. Total stored balance is unchanged.` });
       setDecantOpen(false);
       setDecantCount("");
+      setDecantQuantity("");
+      setDecantQuantityEdited(false);
     },
     onError: (error: any) => toast({ title: "Could not decant packed stock", description: error?.message || "Please check the count and try again.", variant: "destructive" }),
   });
@@ -1576,21 +1580,26 @@ export default function PlantStock() {
   const handleReconcileClick = () => reconcileMutation.mutate();
   const packedPositionRows = packedStockQuery.data?.rows ?? [];
   const packedMaterialOptions = (materials ?? []).filter(material =>
-    /bitumen|emulsion/i.test(`${material.category ?? ""} ${material.name}`) && !!material.packedUnitName,
+    /bitumen|emulsion|ldo/i.test(`${material.category ?? ""} ${material.name}`) && !!material.packedUnitName,
   );
   const decantMaterial = packedMaterialOptions.find(material => Number(material.id) === Number(decantMaterialId));
   const decantPartyOptions = packedPositionRows.filter(row =>
     row.materialId === Number(decantMaterialId) && row.packedCount > 0.000001,
   );
   useEffect(() => {
-    if (decantMtEdited || !decantMaterial || !(Number(decantCount) > 0)) return;
-    const standardMt = Number(decantMaterial.packedUnitNetWeightKg) > 0
-      ? Number(decantCount) * Number(decantMaterial.packedUnitNetWeightKg) / 1000
-      : Number(decantMaterial.packedUnitVolumeLiters) > 0 && Number(decantMaterial.bulkDensity) > 0
-        ? Number(decantCount) * Number(decantMaterial.packedUnitVolumeLiters) * Number(decantMaterial.bulkDensity) / 1000
-        : null;
-    setDecantQuantityMt(standardMt == null ? "" : standardMt.toFixed(3));
-  }, [decantMtEdited, decantMaterial, decantCount]);
+    if (decantQuantityEdited || !decantMaterial || !(Number(decantCount) > 0)) return;
+    const stockUom = stockUnitForMaterial(decantMaterial);
+    try {
+      const standardQuantity = Number(decantMaterial.packedUnitNetWeightKg) > 0
+        ? convertStockQuantity(Number(decantCount) * Number(decantMaterial.packedUnitNetWeightKg), "kg", stockUom, Number(decantMaterial.bulkDensity) || null)
+        : Number(decantMaterial.packedUnitVolumeLiters) > 0
+          ? convertStockQuantity(Number(decantCount) * Number(decantMaterial.packedUnitVolumeLiters), "Liters", stockUom, Number(decantMaterial.bulkDensity) || null)
+          : null;
+      setDecantQuantity(standardQuantity == null ? "" : standardQuantity.toFixed(3));
+    } catch {
+      setDecantQuantity("");
+    }
+  }, [decantQuantityEdited, decantMaterial, decantCount]);
 
     const fixOrphanMutation = useMutation({
       mutationFn: async () => {
@@ -1672,10 +1681,10 @@ export default function PlantStock() {
       </div>
 
       {packedPositionRows.length > 0 && (
-        <Card data-testid="packed-stock-position-summary">
+      <Card data-testid="packed-stock-position-summary">
           <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
             <div>
-              <CardTitle>Packed bitumen and emulsion</CardTitle>
+              <CardTitle>Tank and packed stock</CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">Packed stock is separate from tank stock. Decant moves it into a tank without changing the party’s total balance.</p>
             </div>
             {packedStockQuery.data?.canDecant && (
@@ -1683,8 +1692,8 @@ export default function PlantStock() {
                 setDecantMaterialId("");
                 setDecantPartyId("");
                 setDecantCount("");
-                setDecantQuantityMt("");
-                setDecantMtEdited(false);
+                setDecantQuantity("");
+                setDecantQuantityEdited(false);
                 setDecantOpen(true);
               }} data-testid="button-open-stock-decant">Decant</Button>
             )}
@@ -1695,18 +1704,19 @@ export default function PlantStock() {
                 <thead><tr className="border-b text-left">
                   <th className="py-2 pr-3">Material</th><th className="py-2 pr-3">Party</th>
                   <th className="py-2 pr-3 text-right">Tank 1</th><th className="py-2 pr-3 text-right">Tank 2</th>
-                  <th className="py-2 pr-3 text-right">Packed</th><th className="py-2 text-right">Total</th>
+                  <th className="py-2 pr-3 text-right">Packed</th><th className="py-2 pr-3 text-right">Legacy / unassigned</th><th className="py-2 text-right">Total</th>
                 </tr></thead>
                 <tbody>{packedPositionRows.map(row => (
                   <tr className="border-b last:border-0" key={`${row.materialId}:${row.partyId ?? "common"}`}>
                     <td className="py-2 pr-3 font-medium">{row.materialName}</td>
                     <td className="py-2 pr-3">{row.partyName}</td>
-                    <td className="py-2 pr-3 text-right">{row.tank1Mt == null ? "—" : `${row.tank1Mt.toFixed(3)} MT`}</td>
-                    <td className="py-2 pr-3 text-right">{row.tank2Mt == null ? "—" : `${row.tank2Mt.toFixed(3)} MT`}</td>
+                    <td className="py-2 pr-3 text-right">{row.stockUom.toLowerCase().startsWith("lit") ? `${row.tank1.toLocaleString()} L` : row.tank1Mt == null ? `${row.tank1.toLocaleString()} ${row.stockUom}` : `${row.tank1Mt.toFixed(3)} MT`}</td>
+                    <td className="py-2 pr-3 text-right">{row.stockUom.toLowerCase().startsWith("lit") ? `${row.tank2.toLocaleString()} L` : row.tank2Mt == null ? `${row.tank2.toLocaleString()} ${row.stockUom}` : `${row.tank2Mt.toFixed(3)} MT`}</td>
                     <td className="py-2 pr-3 text-right">
-                      {row.packedCount.toLocaleString()} packed · {row.packedMt == null ? "—" : `${row.packedMt.toFixed(3)} MT`}
+                      {row.packedCount.toLocaleString()} {row.packedUnitName || "packed units"} · {row.stockUom.toLowerCase().startsWith("lit") ? `${(row.packedL ?? row.packed).toLocaleString()} L` : row.packedMt == null ? `${row.packed.toLocaleString()} ${row.stockUom}` : `${row.packedMt.toFixed(3)} MT`}
                     </td>
-                    <td className="py-2 text-right font-semibold">{row.totalMt == null ? `— (${row.total.toFixed(3)} ${row.stockUom})` : `${row.totalMt.toFixed(3)} MT`}</td>
+                    <td className="py-2 pr-3 text-right">{row.stockUom.toLowerCase().startsWith("lit") ? `${row.unassigned.toLocaleString()} L` : `${row.unassigned.toLocaleString()} ${row.stockUom}`}</td>
+                    <td className="py-2 text-right font-semibold">{row.stockUom.toLowerCase().startsWith("lit") ? `${(row.totalL ?? row.total).toLocaleString()} L` : row.totalMt == null ? `${row.total.toLocaleString()} ${row.stockUom}` : `${row.totalMt.toFixed(3)} MT`}</td>
                   </tr>
                 ))}</tbody>
               </table>
@@ -3326,7 +3336,7 @@ export default function PlantStock() {
         <DialogContent data-testid="dialog-packed-stock-decant">
           <DialogHeader>
             <DialogTitle>Decant packed stock</DialogTitle>
-            <DialogDescription>Move packed bitumen or emulsion into Tank 1 or Tank 2. This changes position only; total stock is unchanged.</DialogDescription>
+            <DialogDescription>Move packed bitumen, emulsion, or LDO into Tank 1 or Tank 2. This changes position only; total stock is unchanged.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -3334,8 +3344,12 @@ export default function PlantStock() {
               <Input id="decant-date" type="date" value={decantDate} onChange={event => setDecantDate(event.target.value)} data-testid="input-decant-date" />
             </div>
             <div>
+              <Label htmlFor="decant-time">Time</Label>
+              <Input id="decant-time" type="time" value={decantTime} onChange={event => setDecantTime(event.target.value)} data-testid="input-decant-time" />
+            </div>
+            <div>
               <Label>Material</Label>
-              <Select value={decantMaterialId} onValueChange={value => { setDecantMaterialId(value); setDecantPartyId(""); setDecantCount(""); setDecantQuantityMt(""); setDecantMtEdited(false); }}>
+              <Select value={decantMaterialId} onValueChange={value => { setDecantMaterialId(value); setDecantPartyId(""); setDecantCount(""); setDecantQuantity(""); setDecantQuantityEdited(false); }}>
                 <SelectTrigger data-testid="select-decant-material"><SelectValue placeholder="Choose material" /></SelectTrigger>
                 <SelectContent>{packedMaterialOptions.map(material => (
                   <SelectItem key={material.id} value={String(material.id)}>{material.name}</SelectItem>
@@ -3367,18 +3381,18 @@ export default function PlantStock() {
               </div>
             </div>
             <div>
-              <Label htmlFor="decant-quantity-mt">MT to move (editable)</Label>
-              <Input id="decant-quantity-mt" type="number" min="0.001" step="0.001" value={decantQuantityMt}
-                onChange={event => { setDecantQuantityMt(event.target.value); setDecantMtEdited(true); }}
-                data-testid="input-decant-quantity-mt" />
-              <p className="mt-1 text-xs text-muted-foreground">Prefilled from the standard packed-unit weight; enter the actual amount to move.</p>
+              <Label htmlFor="decant-quantity">{decantMaterial ? `${stockUnitForMaterial(decantMaterial)} to move (editable)` : "Quantity to move (editable)"}</Label>
+              <Input id="decant-quantity" type="number" min="0.001" step="0.001" value={decantQuantity}
+                onChange={event => { setDecantQuantity(event.target.value); setDecantQuantityEdited(true); }}
+                data-testid="input-decant-quantity" />
+              <p className="mt-1 text-xs text-muted-foreground">Prefilled from the standard packed-unit weight or volume; enter the actual amount to move.</p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDecantOpen(false)}>Cancel</Button>
             <Button
               onClick={() => decantPackedStockMutation.mutate()}
-              disabled={!decantMaterialId || !decantPartyId || !(Number(decantCount) > 0) || !(Number(decantQuantityMt) > 0) || decantPackedStockMutation.isPending}
+              disabled={!decantMaterialId || !decantPartyId || !(Number(decantCount) > 0) || !(Number(decantQuantity) > 0) || decantPackedStockMutation.isPending}
               data-testid="button-submit-stock-decant"
             >
               {decantPackedStockMutation.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}

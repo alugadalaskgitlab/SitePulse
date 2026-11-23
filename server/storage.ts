@@ -535,10 +535,10 @@ import {
   convertTransferQuantityBetweenBalances,
   normalizeWeightUnit,
   roundStockQuantity,
-  stockDifferenceTolerance,
+  isMeaningfulStockDifference,
   stockUnitForMaterial,
 } from "@shared/stockUnits";
-import { packedReceiptStockQuantity } from "@shared/packedStock";
+import { packedReceiptStockQuantity, tankPositionBalance } from "@shared/packedStock";
 import { emptyDensitySkips, needsStockDensity, recordDensitySkip, type DensitySkips } from "@shared/siteMaterialStockWarnings";
 import { canonMaterialName } from "@shared/materialMatch";
 import { suggestWorkCategory, suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
@@ -991,8 +991,8 @@ export interface IStorage {
   reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }>;
   getStockBalanceLedgerDiscrepancies(): Promise<{ rows: Array<{ materialId: number; materialName: string; partyId: number | null; partyName: string; stockUom: string; storedBalance: number; ledgerBalance: number; difference: number; balanceIds: number[] }>; errors: string[] }>;
   matchStockBalancesToLedger(actor: { userId: number; name: string }, reason: string, confirmation: string): Promise<{ updated: number }>;
-  getPackedStockPositionSummary(): Promise<Array<{ materialId: number; materialName: string; partyId: number | null; partyName: string; stockUom: string; tank1: number; tank2: number; packed: number; packedCount: number; total: number; totalMt: number | null }>>;
-  decantPackedStock(input: { date: string; materialId: number; partyId: number | null; packedCount: number; quantityMt: number; tankNumber: 1 | 2 }, actor: { userId: number; name: string }): Promise<{ movedQuantity: number; uom: string }>;
+  getPackedStockPositionSummary(): Promise<Array<{ materialId: number; materialName: string; packedUnitName: string | null; partyId: number | null; partyName: string; stockUom: string; tank1: number; tank2: number; packed: number; unassigned: number; packedCount: number; total: number; totalMt: number | null; tank1L: number | null; tank2L: number | null; packedL: number | null; totalL: number | null }>>;
+  decantPackedStock(input: { date: string; time: string; materialId: number; partyId: number | null; packedCount: number; quantity: number; tankNumber: 1 | 2 }, actor: { userId: number; name: string }): Promise<{ movedQuantity: number; uom: string }>;
 
   // One-time data fix: insert missing LAXMI 0-qty marker rows for dispatches 49 & 50
   // and correct the over-counted HLC borrow entries (Task #427).
@@ -1632,7 +1632,7 @@ export interface IStorage {
   updateRequirementInternallyIssued(requirementId: number, delta: number): Promise<void>;
   submitHandover(data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string }, actionBy: string): Promise<PiItemTransaction>;
   recordBulkMaterialReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string, actorUserId?: number | null): Promise<void>;
-  submitBulkReceiptAsPending(indentId: number, receivingLocation: string, receivingSiteId: number | null, items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string }[], createdByUserId: number, createdBy: string): Promise<void>;
+  submitBulkReceiptAsPending(indentId: number, receivingLocation: string, receivingSiteId: number | null, items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string; packedCount?: number | null; packedUnitName?: string | null; actualNetWeightKg?: number | null; tankNumber?: number | null }[], createdByUserId: number, createdBy: string): Promise<void>;
   getPendingPlantReceipts(filters?: { status?: string; receivingLocation?: string; receivingSiteId?: number; indentId?: number }): Promise<PendingPlantReceipt[]>;
   countPendingPlantReceipts(filters?: { status?: string }): Promise<number>;
   confirmPendingPlantReceipt(id: number, confirmedByUserId: number, confirmedBy: string): Promise<PendingPlantReceipt>;
@@ -6582,7 +6582,21 @@ export class DatabaseStorage implements IStorage {
 
     const transactionDate = materialReceiptTransactionDate(receipt.invoiceDate, receipt.date);
     const result = await db.transaction(async (tx) => {
+      const [storedMaterial] = await tx.select().from(plantMaterials)
+        .where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+      const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
+      if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
+      const tankManaged = /bitumen|emulsion|ldo|diesel|hsd/i.test(`${material.category ?? ""} ${material.name}`);
+      if (receipt.packedCount != null && receipt.tankNumber != null) {
+        throw new Error("Packed barrels or drums must remain in packed stock; decant them into a tank separately.");
+      }
+      if (tankManaged && receipt.packedCount == null && receipt.tankNumber !== 1 && receipt.tankNumber !== 2) {
+        throw new Error("Bulk fuel receipts must be assigned to Tank 1 or Tank 2.");
+      }
       if (receipt.linkedDieselRequirementId != null) {
+        if (receipt.packedCount != null || !/^(liters?|litres?|l)$/i.test(receipt.uom.trim())) {
+          throw new Error("Linked Diesel purchases must be received in Liters and assigned to a tank.");
+        }
         await this._assertDieselReceiptWithinPurchasedQuantity(
           tx,
           receipt.linkedDieselRequirementId,
@@ -6609,9 +6623,6 @@ export class DatabaseStorage implements IStorage {
       const targetPartyId = receipt.isPlantCommon ? null : (receipt.partyId ?? null);
       
       // Get material info for UOM conversion
-      const [storedMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
-      const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
-      if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
       
       // Apply UOM conversion if receipt UOM differs from default/stock UOM
       // Stock is always tracked in the default UOM (usually Ton for aggregates)
@@ -7335,13 +7346,16 @@ export class DatabaseStorage implements IStorage {
       // ledger removal. These rows represent the net stock effect of this
       // dispatch; reversing them before deletion keeps the two records aligned.
       for (const entry of dispatchEntries) {
-        const netChange = Number(entry.quantityIn ?? 0) - Number(entry.quantityOut ?? 0);
-        if (!Number.isFinite(netChange) || netChange === 0) continue;
+        // Reverse the ledger effect before removing the row: a prior
+        // quantityOut is stock to restore, while a prior quantityIn is stock
+        // to remove from the saved balance.
+        const reversal = Number(entry.quantityOut ?? 0) - Number(entry.quantityIn ?? 0);
+        if (!Number.isFinite(reversal) || reversal === 0) continue;
         await this._adjustStockBalance(
           tx,
           entry.materialId,
           entry.partyId ?? null,
-          netChange,
+          reversal,
           entry.uom ?? null,
         );
       }
@@ -9334,7 +9348,7 @@ export class DatabaseStorage implements IStorage {
         difference: roundStockQuantity(row.before - row.after),
         balanceIds: row.existingBalanceIds,
       }))
-      .filter(row => Math.abs(row.difference) >= stockDifferenceTolerance(row.stockUom));
+      .filter(row => isMeaningfulStockDifference(row.difference, row.stockUom));
     return { rows, errors: preview.errors };
   }
 
@@ -9378,7 +9392,7 @@ export class DatabaseStorage implements IStorage {
       const partyClause = (partyId: number | null) =>
         partyId == null ? sql`${stockBalances.partyId} IS NULL` : eq(stockBalances.partyId, partyId);
       const changedRows = preview.rows.filter(row =>
-        Math.abs(roundStockQuantity(row.before - row.after)) >= stockDifferenceTolerance(row.stockUom),
+        isMeaningfulStockDifference(roundStockQuantity(row.before - row.after), row.stockUom),
       );
       for (const row of changedRows) {
         const [material] = [materialById.get(row.materialId)];
@@ -9391,7 +9405,7 @@ export class DatabaseStorage implements IStorage {
         const old = locked[0];
         if (old) {
           await tx.update(stockBalances).set({
-            balance: String(row.after),
+            balance: row.after,
             uom: row.stockUom,
             lastUpdated: new Date(),
           }).where(eq(stockBalances.id, old.id));
@@ -9410,7 +9424,7 @@ export class DatabaseStorage implements IStorage {
           const [created] = await tx.insert(stockBalances).values({
             partyId: row.partyId,
             materialId: row.materialId,
-            balance: String(row.after),
+            balance: row.after,
             uom: row.stockUom,
             lastUpdated: new Date(),
           }).returning({ id: stockBalances.id });
@@ -9440,23 +9454,25 @@ export class DatabaseStorage implements IStorage {
     const partyName = new Map(partiesRows.map(row => [Number(row.id), String(row.name)]));
     const materialById = new Map(materials.map(row => [Number(row.id), withEffectiveMaterialDensity(row)]));
     const groups = new Map<string, {
-      materialId: number; materialName: string; partyId: number | null; partyName: string; stockUom: string;
-      tank1: number; tank2: number; packed: number; packedCount: number; total: number;
+      materialId: number; materialName: string; packedUnitName: string | null; partyId: number | null; partyName: string; stockUom: string;
+      tank1: number; tank2: number; packed: number; unassigned: number; packedCount: number; total: number;
     }>();
     for (const entry of entries) {
       const material = materialById.get(Number(entry.materialId));
-      if (!material || !(/bitumen|emulsion/i.test(`${material.category ?? ""} ${material.name}`))) continue;
+      if (!material || !(/bitumen|emulsion|ldo/i.test(`${material.category ?? ""} ${material.name}`))) continue;
       const key = `${entry.materialId}:${entry.partyId ?? "common"}`;
       const stockUom = stockUnitForMaterial(material, entry.uom);
       const row = groups.get(key) ?? {
         materialId: Number(entry.materialId),
         materialName: String(material.name),
+        packedUnitName: material.packedUnitName ?? null,
         partyId: entry.partyId == null ? null : Number(entry.partyId),
         partyName: entry.partyId == null ? "Plant common" : partyName.get(Number(entry.partyId)) ?? `Party #${entry.partyId}`,
         stockUom,
         tank1: 0,
         tank2: 0,
         packed: 0,
+        unassigned: 0,
         packedCount: 0,
         total: 0,
       };
@@ -9481,23 +9497,35 @@ export class DatabaseStorage implements IStorage {
             Number(materialById.get(row.materialId)?.bulkDensity) || null));
         } catch { return null; }
       };
+      const toLiters = (value: number): number | null => {
+        try {
+          return roundStockQuantity(convertStockQuantity(value, row.stockUom, "Liters",
+            Number(materialById.get(row.materialId)?.bulkDensity) || null));
+        } catch { return null; }
+      };
+      const unassigned = roundStockQuantity(row.total - row.tank1 - row.tank2 - row.packed);
       return {
         ...row,
         tank1: roundStockQuantity(row.tank1),
         tank2: roundStockQuantity(row.tank2),
         packed: roundStockQuantity(row.packed),
+        unassigned,
         packedCount: roundStockQuantity(row.packedCount),
         total: roundStockQuantity(row.total),
         tank1Mt: toMt(row.tank1),
         tank2Mt: toMt(row.tank2),
         packedMt: toMt(row.packed),
         totalMt: toMt(row.total),
+        tank1L: toLiters(row.tank1),
+        tank2L: toLiters(row.tank2),
+        packedL: toLiters(row.packed),
+        totalL: toLiters(row.total),
       };
     }).sort((a, b) => a.materialName.localeCompare(b.materialName) || a.partyName.localeCompare(b.partyName));
   }
 
   async decantPackedStock(
-    input: { date: string; materialId: number; partyId: number | null; packedCount: number; quantityMt: number; tankNumber: 1 | 2 },
+    input: { date: string; time: string; materialId: number; partyId: number | null; packedCount: number; quantity: number; tankNumber: 1 | 2 },
     actor: { userId: number; name: string },
   ): Promise<{ movedQuantity: number; uom: string }> {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new Error("Enter a valid decant date.");
@@ -9507,15 +9535,16 @@ export class DatabaseStorage implements IStorage {
         .where(eq(plantMaterials.id, input.materialId)).limit(1).for("update");
       if (!materialRow) throw new Error("Material not found.");
       const material = withEffectiveMaterialDensity(materialRow);
-      if (!/bitumen|emulsion/i.test(`${material.category ?? ""} ${material.name}`)) {
-        throw new Error("Only bitumen and emulsion packed stock can be decanted.");
+      if (!/bitumen|emulsion|ldo/i.test(`${material.category ?? ""} ${material.name}`)) {
+        throw new Error("Only tanked bitumen, emulsion, or LDO packed stock can be decanted.");
       }
       if (!material.packedUnitName?.trim()) throw new Error("Set the packed unit in Material Master first.");
       const stockUom = stockUnitForMaterial(material, material.defaultUom);
-      if (!Number.isFinite(input.quantityMt) || input.quantityMt <= 0) {
-        throw new Error("Enter the MT to move into the tank.");
+      if (!/^\d{2}:\d{2}$/.test(input.time)) throw new Error("Enter a valid decant time.");
+      if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+        throw new Error(`Enter the quantity to move into the tank in ${stockUom}.`);
       }
-      const movedQuantity = convertStockQuantity(input.quantityMt, "MT", stockUom, Number(material.bulkDensity) || null);
+      const movedQuantity = convertStockQuantity(input.quantity, stockUom, stockUom, Number(material.bulkDensity) || null);
       const partyClause = input.partyId == null
         ? sql`${stockLedger.partyId} IS NULL`
         : eq(stockLedger.partyId, input.partyId);
@@ -9543,6 +9572,7 @@ export class DatabaseStorage implements IStorage {
       const balanceAfter = Number(balance?.balance ?? 0);
       await tx.insert(packedStockDecants).values({
         date: input.date,
+        time: input.time,
         partyId: input.partyId,
         materialId: input.materialId,
         packedCount: input.packedCount,
@@ -9568,7 +9598,20 @@ export class DatabaseStorage implements IStorage {
           tankNumber: input.tankNumber,
           stockPosition: input.tankNumber === 1 ? "tank_1" : "tank_2",
         },
-      ]);
+      ] as any);
+      if (/^ldo$/i.test(material.name.trim())) {
+        const liters = convertStockQuantity(movedQuantity, stockUom, "Liters", Number(material.bulkDensity) || null);
+        await tx.insert(ldoFlowReadings).values({
+          date: input.date,
+          time: input.time,
+          tankNumber: input.tankNumber,
+          meterReading: 0,
+          readingType: "receipt",
+          quantityLiters: liters,
+          notes: `PACKED-STOCK DECANT: ${input.packedCount} ${material.packedUnitName}`,
+          plantName: "Main Plant",
+        });
+      }
       await tx.insert(auditLogs).values({
         module: "plant_stock",
         transactionId: input.materialId,
@@ -9577,7 +9620,7 @@ export class DatabaseStorage implements IStorage {
         userName: actor.name,
         userRole: "owner_or_plant_in_charge",
         oldValues: { partyId: input.partyId, packedCount: packedCountBalance, packedStock: packedBalance },
-        newValues: { partyId: input.partyId, decantedCount: input.packedCount, movedQuantity, uom: stockUom, tankNumber: input.tankNumber },
+        newValues: { partyId: input.partyId, decantedCount: input.packedCount, movedQuantity, uom: stockUom, tankNumber: input.tankNumber, date: input.date, time: input.time },
       });
       return { movedQuantity: roundStockQuantity(movedQuantity), uom: stockUom };
     });
@@ -10888,6 +10931,13 @@ export class DatabaseStorage implements IStorage {
           }
         }
 
+        if (tankNum === 1 || tankNum === 2) {
+          const tankAvailable = await getTankBalance(pId, matId, tankNum, deductUom, true);
+          if (tankAvailable + 1e-6 < deductQty) {
+            throw new Error(`Insufficient stock in Tank ${tankNum}: ${roundStockQuantity(tankAvailable)} ${deductUom} available; ${roundStockQuantity(deductQty)} ${deductUom} required. Packed stock must be decanted first.`);
+          }
+        }
+
         const materialName = matNameById.get(matId)
           ?? (await tx.select({ name: plantMaterials.name }).from(plantMaterials)
             .where(eq(plantMaterials.id, matId)).limit(1))[0]?.name;
@@ -10905,6 +10955,7 @@ export class DatabaseStorage implements IStorage {
           uom: deductUom,
           notes,
           tankNumber: tankNum ?? null,
+          stockPosition: tankNum === 1 ? "tank_1" : tankNum === 2 ? "tank_2" : null,
         }).returning({ id: stockLedger.id });
         if (insertedRow?.id) insertedLedgerIds.push(insertedRow.id);
         
@@ -10948,6 +10999,45 @@ export class DatabaseStorage implements IStorage {
           : and(eq(stockBalances.partyId, pId), eq(stockBalances.materialId, matId));
         const [bal] = await tx.select().from(stockBalances).where(condition).limit(1);
         return { balance: bal?.balance != null ? Number(bal.balance) : 0, uom: bal?.uom || null };
+      };
+
+      // Tanked fuels must be consumed from the selected tank, not from the
+      // party's combined balance (which now also includes packed barrels).
+      // Older ledger rows without stockPosition are assigned by tankNumber.
+      const getTankBalance = async (
+        pId: number | null,
+        matId: number,
+        tankNum: number,
+        targetUom: string,
+        lockRows = false,
+      ) => {
+        const partyCondition = pId === null
+          ? sql`${stockLedger.partyId} IS NULL`
+          : eq(stockLedger.partyId, pId);
+        const position = tankNum === 1 ? "tank_1" : "tank_2";
+        let query = tx.select({
+          quantityIn: stockLedger.quantityIn,
+          quantityOut: stockLedger.quantityOut,
+          uom: stockLedger.uom,
+          stockPosition: stockLedger.stockPosition,
+          tankNumber: stockLedger.tankNumber,
+        }).from(stockLedger).where(and(
+          eq(stockLedger.materialId, matId),
+          partyCondition,
+          or(
+            eq(stockLedger.stockPosition, position),
+            and(isNull(stockLedger.stockPosition), eq(stockLedger.tankNumber, tankNum)),
+          ),
+        )).orderBy(asc(stockLedger.id));
+        if (lockRows) query = query.for("update") as typeof query;
+        const rows = await query;
+        const material = matRows.find(row => row.id === matId);
+        return tankPositionBalance({
+          entries: rows,
+          tankNumber: tankNum,
+          stockUom: targetUom,
+          bulkDensity: Number(material?.bulkDensity) || null,
+        });
       };
 
       // Helper: look up material conversion info from matRows (pre-fetched below).
@@ -11017,7 +11107,9 @@ export class DatabaseStorage implements IStorage {
         }
 
         const { balance: rawBal, uom: balUom } = await getBalanceRow(partyId, item.matId);
-        const ownerBal = normalizeBalance(rawBal, balUom, item.uom, item.matId);
+        const ownerBal = item.tankNumber === 1 || item.tankNumber === 2
+          ? await getTankBalance(partyId, item.matId, item.tankNumber, item.uom)
+          : normalizeBalance(rawBal, balUom, item.uom, item.matId);
         if (ownerBal < item.qty) {
           const shortfall = +(item.qty - ownerBal).toFixed(6);
           shortageDetails.push({
@@ -11058,7 +11150,9 @@ export class DatabaseStorage implements IStorage {
           }
 
           const { balance: rawBal, uom: balUom } = await getBalanceRow(partyId, item.matId);
-          const ownerBal = normalizeBalance(rawBal, balUom, item.uom, item.matId);
+          const ownerBal = item.tankNumber === 1 || item.tankNumber === 2
+            ? await getTankBalance(partyId, item.matId, item.tankNumber, item.uom)
+            : normalizeBalance(rawBal, balUom, item.uom, item.matId);
           const fromOwner = Math.min(Math.max(ownerBal, 0), item.qty);
           if (fromOwner > 0) {
             await deductFromSource(partyId, item.matId, fromOwner, item.uom, item.label, item.tankNumber);
@@ -11113,7 +11207,9 @@ export class DatabaseStorage implements IStorage {
 
         // ── Owner-receipt material: owner-first, borrow from HLC if needed ──────
         const { balance: rawBal, uom: balUom } = await getBalanceRow(partyId, item.matId);
-        const ownerBal = normalizeBalance(rawBal, balUom, item.uom, item.matId);
+        const ownerBal = item.tankNumber === 1 || item.tankNumber === 2
+          ? await getTankBalance(partyId, item.matId, item.tankNumber, item.uom)
+          : normalizeBalance(rawBal, balUom, item.uom, item.matId);
         const fromOwner = Math.min(Math.max(ownerBal, 0), item.qty);
         if (fromOwner > 0) {
           await deductFromSource(partyId, item.matId, fromOwner, item.uom, item.label, item.tankNumber);
@@ -16067,13 +16163,16 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
 
     // Fetch LDO material receipts in the date range
-    let ldoReceiptRows: { date: string; quantity: number; uom: string }[] = [];
+    let ldoReceiptRows: { id: number; date: string; quantity: number; uom: string; tankNumber: number | null; packedCount: number | null }[] = [];
     if (ldoMaterial) {
       const receiptTransactionDate = sql<string>`COALESCE(${materialReceipts.invoiceDate}, ${materialReceipts.date})`;
       ldoReceiptRows = await db.select({
+        id: materialReceipts.id,
         date: receiptTransactionDate,
         quantity: materialReceipts.quantity,
         uom: materialReceipts.uom,
+        tankNumber: materialReceipts.tankNumber,
+        packedCount: materialReceipts.packedCount,
       }).from(materialReceipts)
         .where(and(
           eq(materialReceipts.materialId, ldoMaterial.id),
@@ -16115,10 +16214,18 @@ export class DatabaseStorage implements IStorage {
       return qty; // liters / litres / l
     };
 
-    // Group receipts by date (total liters)
+    // Flow receipts include both ordinary tank receipts and packed-stock
+    // decants. Older tank receipts without a linked flow row are added below.
     const receiptsByDate: Record<string, number> = {};
-    for (const r of ldoReceiptRows) {
-      receiptsByDate[r.date] = (receiptsByDate[r.date] || 0) + receiptToL(r.quantity, r.uom);
+    const flowReceiptIds = new Set<number>();
+    for (const flow of flowReadings) {
+      if (flow.readingType !== "receipt") continue;
+      receiptsByDate[flow.date] = (receiptsByDate[flow.date] || 0) + Number(flow.quantityLiters || 0);
+      if (flow.sourceMaterialReceiptId != null) flowReceiptIds.add(Number(flow.sourceMaterialReceiptId));
+    }
+    for (const receipt of ldoReceiptRows) {
+      if (receipt.tankNumber == null || receipt.packedCount != null || flowReceiptIds.has(Number(receipt.id))) continue;
+      receiptsByDate[receipt.date] = (receiptsByDate[receipt.date] || 0) + receiptToL(receipt.quantity, receipt.uom);
     }
 
     // Group flow readings by date
@@ -18011,7 +18118,7 @@ export class DatabaseStorage implements IStorage {
     indentId: number,
     receivingLocation: string,
     receivingSiteId: number | null,
-    items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string; packedCount?: number | null; packedUnitName?: string | null; actualNetWeightKg?: number | null }[],
+    items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string; packedCount?: number | null; packedUnitName?: string | null; actualNetWeightKg?: number | null; tankNumber?: number | null }[],
     createdByUserId: number,
     createdBy: string
   ): Promise<void> {
@@ -18029,17 +18136,30 @@ export class DatabaseStorage implements IStorage {
     const lockedItems = await this._lockPiItemsWithinTx(tx, items.map(item => item.itemId), indentId);
     for (const item of items) {
       const piItem = lockedItems.find(row => row.id === item.itemId)!;
+      const materialId = item.materialId ?? piItem?.materialId ?? null;
+      const [material] = materialId == null
+        ? []
+        : await tx.select({ name: plantMaterials.name, category: plantMaterials.category })
+          .from(plantMaterials).where(eq(plantMaterials.id, materialId)).limit(1);
+      const tankManaged = material && /bitumen|emulsion|ldo|diesel|hsd/i.test(`${material.category ?? ""} ${material.name}`);
+      if (item.packedCount != null && item.tankNumber != null) {
+        throw new Error("Packed barrels or drums must remain in packed stock; decant them into a tank separately.");
+      }
+      if (tankManaged && item.packedCount == null && item.tankNumber !== 1 && item.tankNumber !== 2) {
+        throw new Error("Bulk fuel receipts must be assigned to Tank 1 or Tank 2.");
+      }
       const values = {
         indentId,
         indentNo: existing.indentNo,
         indentItemId: item.itemId,
         materialName: item.materialName || piItem?.description || "",
-        materialId: item.materialId ?? piItem?.materialId ?? null,
+        materialId,
         qty: item.qty,
         uom: item.packedUnitName || item.uom,
         packedCount: item.packedCount ?? null,
         packedUnitName: item.packedUnitName ?? null,
         actualNetWeightKg: item.actualNetWeightKg ?? null,
+        tankNumber: item.tankNumber ?? null,
         vendor: item.vendor?.toUpperCase() ?? null,
         rate: item.rate ?? null,
         paymentMode: item.paymentMode ?? null,
@@ -18115,6 +18235,7 @@ export class DatabaseStorage implements IStorage {
       packedCount: ppr.packedCount,
       packedUnitName: ppr.packedUnitName,
       actualNetWeightKg: ppr.actualNetWeightKg,
+      tankNumber: ppr.tankNumber,
       supplier: ppr.vendor ?? null,
       partyId: null,
       isPlantCommon: 0,

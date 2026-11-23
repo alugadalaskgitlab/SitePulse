@@ -94,8 +94,16 @@ export function roundStockQuantity(value: number): number {
 export function stockDifferenceTolerance(uom: string | null | undefined): number {
   const kind = normalizeUom(normalizeWeightUnit(uom));
   if (kind === "MT") return 0.01;
-  if (kind === "L") return 1;
+  if (kind === "LITERS") return 1;
   return 0.0001;
+}
+
+export function isMeaningfullyNegativeStock(balance: number | string | null | undefined, uom: string | null | undefined): boolean {
+  return Number(balance ?? 0) <= -stockDifferenceTolerance(uom);
+}
+
+export function isMeaningfulStockDifference(difference: number | string | null | undefined, uom: string | null | undefined): boolean {
+  return Math.abs(Number(difference ?? 0)) >= stockDifferenceTolerance(uom);
 }
 
 export interface StockLedgerBalanceInput {
