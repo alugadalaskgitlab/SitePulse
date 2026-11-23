@@ -32,29 +32,36 @@ import {
   dispatchCrossesStockZero,
   dispatchedByMix,
   formatPlantSupplyMorningSummary,
+  includeSupplyAlertOwners,
   materialAvailabilityForScope,
   orderMaterialNeedsWithOrderMix,
   materialNeedForMix,
   materialNeedForOrderMix,
   orderQuantityToMt,
+  resolveSupplyAlertSettings,
   type SupplyDispatch,
   type SupplyMixComponent,
   type SupplyMixTemplate,
+  type SupplyAlertRecipientChoice,
+  type SupplyAlertSettings,
   type SupplyOrderLine,
   type SupplyOrderMix,
 } from "@shared/plantSupplyOrders";
 import { convertStockQuantity, stockUnitForMaterial } from "@shared/stockUnits";
-import { mixVersionAt, supplyDispatchInstant } from "@shared/plantSupplyOrderVersions";
+import {
+  mixVersionAt,
+  mixVersionForDispatch,
+  supplyDispatchInstant,
+  supplyDispatchOutsideOrderPeriod,
+  supplyMixVersionTimeError,
+  supplyOrderLineCanBeRemoved,
+  supplyOrderLineQuantityError,
+} from "@shared/plantSupplyOrderVersions";
 
 const ALERT_SETTINGS_KEY = "plant_supply_alert_recipients_v1";
 
 export type SupplyAlertKind = "running_low" | "exhausted" | "borrowed" | "morning_summary";
-export type SupplyRecipientChoice = { roles: string[]; userIds: number[] };
-export type SupplyAlertSettings = {
-  running_low: SupplyRecipientChoice;
-  exhausted: SupplyRecipientChoice;
-  borrowed: SupplyRecipientChoice;
-};
+export type SupplyRecipientChoice = SupplyAlertRecipientChoice;
 
 const DEFAULT_ALERT_SETTINGS: SupplyAlertSettings = {
   running_low: { roles: ["P&M In-charge"], userIds: [] },
@@ -380,7 +387,7 @@ export async function editPlantSupplyOrder(
       mixTemplateId: truckDispatches.mixTemplateId,
       loadWeight: truckDispatches.loadWeight,
     }).from(truckDispatches).where(eq(truckDispatches.supplyOrderId, orderId));
-    const outsidePeriod = dispatches.filter(row => row.date < input.periodFrom || row.date > input.periodTo);
+    const outsidePeriod = dispatches.filter(row => supplyDispatchOutsideOrderPeriod(row.date, input.periodFrom, input.periodTo));
     if (outsidePeriod.length) {
       const dates = outsidePeriod.map(row => row.date).sort();
       throw new Error(`${outsidePeriod.length} trucks already linked between ${dates[0]} and ${dates.at(-1)} — period must include them.`);
@@ -423,16 +430,15 @@ export async function editPlantSupplyOrder(
         ? line.enteredQuantity * input.mtPerCumFactor
         : line.enteredQuantity;
       const dispatchedMt = dispatchedByTemplate.get(line.mixTemplateId) ?? 0;
-      if (orderedMt + 0.000001 < dispatchedMt) {
-        throw new Error(`${templateName.get(line.mixTemplateId) ?? "This mix"} cannot be reduced below ${dispatchedMt.toFixed(3)} MT already dispatched.`);
-      }
+      const quantityError = supplyOrderLineQuantityError(orderedMt, dispatchedMt);
+      if (quantityError) throw new Error(`${templateName.get(line.mixTemplateId) ?? "This mix"} ${quantityError.toLowerCase()}`);
       return { ...line, orderedMt };
     });
 
     for (const existing of existingLines) {
       if (submittedExistingIds.has(existing.id)) continue;
       const dispatchedMt = dispatchedByTemplate.get(existing.mixTemplateId) ?? 0;
-      if (dispatchedMt > 0) {
+      if (!supplyOrderLineCanBeRemoved(dispatchedMt)) {
         throw new Error(`${templateName.get(existing.mixTemplateId) ?? `Mix #${existing.mixTemplateId}`} has dispatches and cannot be removed.`);
       }
     }
@@ -574,23 +580,25 @@ export async function changeSupplyOrderMix(
       eq(truckDispatches.supplyOrderId, orderId),
       eq(truckDispatches.mixTemplateId, line.mixTemplateId),
     ));
+    let latestDispatchAt: Date | null = null;
     if (dispatches.length) {
       const latest = dispatches.reduce((max, row) => {
         const instant = supplyDispatchInstant(row.date, row.time).getTime();
         return instant > max ? instant : max;
       }, Number.NEGATIVE_INFINITY);
-      if (effectiveAt.getTime() < latest) {
-        throw new Error("Effective time cannot be earlier than the latest truck already linked to this mix line.");
-      }
+      latestDispatchAt = Number.isFinite(latest) ? new Date(latest) : null;
     }
     const [latestVersion] = await tx.select({ effectiveAt: plantSupplyOrderMixVersions.effectiveAt })
       .from(plantSupplyOrderMixVersions)
       .where(eq(plantSupplyOrderMixVersions.orderLineId, lineId))
       .orderBy(desc(plantSupplyOrderMixVersions.effectiveAt), desc(plantSupplyOrderMixVersions.id))
       .limit(1);
-    if (latestVersion && effectiveAt.getTime() <= new Date(latestVersion.effectiveAt).getTime()) {
-      throw new Error("Effective time must be after the previous mix version.");
-    }
+    const timeError = supplyMixVersionTimeError(
+      effectiveAt,
+      latestDispatchAt,
+      latestVersion ? new Date(latestVersion.effectiveAt) : null,
+    );
+    if (timeError) throw new Error(timeError);
     const materialIds = Array.from(new Set(input.components.map(component => component.materialId)));
     const materialRows = await tx.select({ id: plantMaterials.id, isActive: plantMaterials.isActive })
       .from(plantMaterials).where(inArray(plantMaterials.id, materialIds));
@@ -1098,7 +1106,6 @@ export async function getPlantSupplyOrder(orderId: number) {
     ldoNorm: row.ldoNorm,
   } as SupplyMixTemplate]));
   const lineByTemplateId = new Map(lines.map(line => [line.mixTemplateId, line]));
-  const versionById = new Map(mixVersions.map(version => [version.id, version]));
   const bitumenId = materialRows.find(row => /bitumen/i.test(row.name))?.id;
   const ldoId = materialRows.find(row => /^LDO$/i.test(row.name.trim()))?.id;
   for (const dispatch of dispatchRows) {
@@ -1106,9 +1113,12 @@ export async function getPlantSupplyOrder(orderId: number) {
     if (!template) continue;
     const line = lineByTemplateId.get(dispatch.mixTemplateId);
     const lineVersions = mixVersions.filter(version => version.orderLineId === line?.id);
-    const selectedVersion = dispatch.supplyOrderMixVersionId
-      ? versionById.get(dispatch.supplyOrderMixVersionId) ?? null
-      : mixVersionAt(lineVersions, dispatch.date, dispatch.time);
+    const selectedVersion = mixVersionForDispatch(
+      lineVersions,
+      dispatch.date,
+      dispatch.time,
+      dispatch.supplyOrderMixVersionId,
+    );
     const versionUsageKey = selectedVersion ? `version:${selectedVersion.id}` : `base:${line?.id ?? dispatch.mixTemplateId}`;
     const baseSpec = orderMixRows.find(({ line: mixLine }) => mixLine.id === line?.id)?.spec;
     const orderMix: SupplyOrderMix | undefined = selectedVersion
@@ -1194,8 +1204,8 @@ export async function getPlantSupplyOrder(orderId: number) {
   }
 
   const usageMaterialIds = new Set<number>([
-    ...allowanceById.keys(),
-    ...actualById.keys(),
+    ...Array.from(allowanceById.keys()),
+    ...Array.from(actualById.keys()),
   ]);
   const materialUsage = Array.from(usageMaterialIds).map(materialId => {
     const material = materialById.get(materialId);
@@ -1314,9 +1324,12 @@ export async function getPlantSupplyOrder(orderId: number) {
     const versionDispatches = new Map<number, number>();
     let baseDispatchedMt = 0;
     for (const dispatch of dispatchesForLine) {
-      const selectedVersion = dispatch.supplyOrderMixVersionId
-        ? mixVersions.find(version => version.id === dispatch.supplyOrderMixVersionId) ?? null
-        : mixVersionAt(lineVersions, dispatch.date, dispatch.time);
+      const selectedVersion = mixVersionForDispatch(
+        lineVersions,
+        dispatch.date,
+        dispatch.time,
+        dispatch.supplyOrderMixVersionId,
+      );
       if (!selectedVersion) baseDispatchedMt += finite(dispatch.loadWeight);
       else versionDispatches.set(
         selectedVersion.id,
@@ -1711,17 +1724,7 @@ export async function getSupplyAlertSettings(): Promise<SupplyAlertSettings> {
     },
   };
   const stored = jsonValue<Partial<SupplyAlertSettings> & { ownerDefaultsApplied?: boolean }>(row?.value, {});
-  const resolved = {
-    running_low: normalizeRecipientChoice(stored.running_low, defaults.running_low),
-    exhausted: normalizeRecipientChoice(stored.exhausted, defaults.exhausted),
-    borrowed: normalizeRecipientChoice(stored.borrowed, defaults.borrowed),
-  };
-  if (stored.ownerDefaultsApplied !== true) {
-    for (const choice of Object.values(resolved)) {
-      choice.userIds = Array.from(new Set([...choice.userIds, ...ownerIds]));
-    }
-  }
-  return resolved;
+  return resolveSupplyAlertSettings(stored, defaults, ownerIds);
 }
 
 function normalizeRecipientChoice(value: Partial<SupplyRecipientChoice> | undefined, fallback: SupplyRecipientChoice): SupplyRecipientChoice {
@@ -1791,12 +1794,12 @@ export async function resolveSupplyAlertRecipients(kind: SupplyAlertKind): Promi
       if (names.has(row.roleName.trim().toLocaleLowerCase())) userIds.add(row.userId);
     });
   }
-  if (kind === "borrowed") {
-    const ownerRows = await db.select({ id: users.id }).from(users)
-      .where(and(eq(users.isActive, true), eq(users.isOwner, true)));
-    ownerRows.forEach(row => userIds.add(row.id));
-  }
-  return Array.from(userIds);
+  const activeOwnerIds = kind === "borrowed"
+    ? (await db.select({ id: users.id }).from(users)
+      .where(and(eq(users.isActive, true), eq(users.isOwner, true))))
+      .map(row => row.id)
+    : [];
+  return includeSupplyAlertOwners(kind, Array.from(userIds), activeOwnerIds);
 }
 
 export async function createSupplyAlertDeliveries(input: {

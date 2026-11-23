@@ -7,13 +7,27 @@ import {
   dispatchedByMix,
   formatPlantSupplyMorningSummary,
   isRunningLow,
+  includeSupplyAlertOwners,
   materialAvailabilityForScope,
   materialNeedForOrderMix,
   materialNeedForMix,
   orderMixAggregateQuantities,
   orderQuantityToMt,
   orderMaterialNeeds,
+  resolveSupplyAlertSettings,
 } from "../shared/plantSupplyOrders";
+import {
+  formatSupplyOrderVersionTime,
+  mixVersionAt,
+  mixVersionForDispatch,
+  supplyDispatchInstant,
+  supplyDispatchOutsideOrderPeriod,
+  supplyMixVersionTimeError,
+  supplyOrderBitumenQuantity,
+  supplyOrderLineCanBeRemoved,
+  supplyOrderLineQuantityError,
+  withoutBlankSupplyOrderLines,
+} from "../shared/plantSupplyOrderVersions";
 
 const template = {
   id: 1,
@@ -32,6 +46,79 @@ const materials = [
 ];
 
 describe("HMP plant supply order calculations", () => {
+  it("includes Owners by default, lets saved Running low and Exhausted choices opt out, and always includes them for Borrowed", () => {
+    const defaults = {
+      running_low: { roles: ["P&M In-charge"], userIds: [] },
+      exhausted: { roles: ["P&M In-charge"], userIds: [] },
+      borrowed: { roles: ["P&M In-charge"], userIds: [] },
+    };
+    const defaulted = resolveSupplyAlertSettings({}, defaults, [8]);
+    expect(defaulted.running_low.userIds).toContain(8);
+    expect(defaulted.exhausted.userIds).toContain(8);
+    expect(defaulted.borrowed.userIds).toContain(8);
+
+    const savedOptOut = resolveSupplyAlertSettings({
+      ownerDefaultsApplied: true,
+      running_low: { roles: [], userIds: [] },
+      exhausted: { roles: [], userIds: [] },
+      borrowed: { roles: [], userIds: [] },
+    }, defaults, [8]);
+    expect(savedOptOut.running_low.userIds).not.toContain(8);
+    expect(savedOptOut.exhausted.userIds).not.toContain(8);
+    expect(includeSupplyAlertOwners("borrowed", savedOptOut.borrowed.userIds, [8])).toContain(8);
+    expect(includeSupplyAlertOwners("morning_summary", savedOptOut.running_low.userIds, [8])).not.toContain(8);
+  });
+
+  it("selects the mix version using dispatch date and time in IST", () => {
+    const versions = [
+      { id: 1, effectiveAt: "2026-11-23T10:00:00+05:30" },
+      { id: 2, effectiveAt: "2026-11-23T13:00:00+05:30" },
+    ];
+    expect(supplyDispatchInstant("2026-11-23", "09:59").toISOString()).toBe("2026-11-23T04:29:00.000Z");
+    expect(mixVersionAt(versions, "2026-11-23", "09:59")).toBeNull();
+    expect(mixVersionAt(versions, "2026-11-23", "10:00")).toBeNull();
+    expect(mixVersionAt(versions, "2026-11-23", "10:01")?.id).toBe(1);
+    expect(mixVersionAt(versions, "2026-11-23", "12:59")?.id).toBe(1);
+    expect(mixVersionAt(versions, "2026-11-23", "13:00")?.id).toBe(1);
+    expect(mixVersionAt(versions, "2026-11-23", "13:01")?.id).toBe(2);
+    expect(mixVersionForDispatch(versions, "2026-11-23", "14:00", 1)?.id).toBe(1);
+    expect(mixVersionForDispatch(versions, "2026-11-23", "14:00")?.id).toBe(2);
+    expect(formatSupplyOrderVersionTime(versions[0].effectiveAt)).toContain("IST");
+    const firstDispatchBitumen = supplyOrderBitumenQuantity(300, 5.0);
+    const secondDispatchBitumen = supplyOrderBitumenQuantity(120, 5.25);
+    expect(firstDispatchBitumen).toBe(15);
+    expect(secondDispatchBitumen).toBeCloseTo(6.3);
+    expect(firstDispatchBitumen + secondDispatchBitumen).toBeCloseTo(21.3);
+  });
+
+  it("blocks backdated or out-of-order mix versions and preserves dispatched order quantities", () => {
+    const latestDispatch = new Date("2026-11-23T08:30:00.000Z");
+    const priorVersion = new Date("2026-11-23T07:00:00.000Z");
+    expect(supplyMixVersionTimeError(new Date("2026-11-23T08:29:00.000Z"), latestDispatch, priorVersion))
+      .toMatch(/cannot be earlier than the latest truck/);
+    expect(supplyMixVersionTimeError(latestDispatch, latestDispatch, priorVersion))
+      .toBeNull();
+    expect(supplyMixVersionTimeError(new Date("2026-11-23T07:00:00.000Z"), null, priorVersion))
+      .toMatch(/after the previous mix version/);
+    expect(supplyMixVersionTimeError(new Date("2026-11-23T09:00:00.000Z"), latestDispatch, priorVersion)).toBeNull();
+    expect(supplyOrderLineQuantityError(99.99, 100)).toMatch(/cannot be below/);
+    expect(supplyOrderLineQuantityError(100, 100)).toBeNull();
+    expect(supplyOrderLineCanBeRemoved(0)).toBe(true);
+    expect(supplyOrderLineCanBeRemoved(0.01)).toBe(false);
+    expect(supplyDispatchOutsideOrderPeriod("2026-11-22", "2026-11-23", "2026-11-30")).toBe(true);
+    expect(supplyDispatchOutsideOrderPeriod("2026-11-25", "2026-11-23", "2026-11-30")).toBe(false);
+  });
+
+  it("ignores blank order mix rows but keeps any partially filled row for validation", () => {
+    const lines = [
+      { mixTemplateId: "", enteredQuantity: "", plannedMtPerDay: "" },
+      { mixTemplateId: 2, enteredQuantity: 90, plannedMtPerDay: "" },
+      { mixTemplateId: "", enteredQuantity: "", plannedMtPerDay: 15 },
+      { mixTemplateId: "", enteredQuantity: 0, plannedMtPerDay: "" },
+    ];
+    expect(withoutBlankSupplyOrderLines(lines)).toEqual([lines[1], lines[2], lines[3]]);
+  });
+
   it("converts order quantities and calculates isolated order-mix allowances", () => {
     expect(orderQuantityToMt(297.1, "cum", 2.356)).toBeCloseTo(700, 1);
     const orderMix = {

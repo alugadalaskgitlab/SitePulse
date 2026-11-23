@@ -20,7 +20,7 @@ import { hasFrozenTripDailyHire, FROZEN_TRIP_DAILY_MESSAGE } from "../shared/ven
 import { purchaseOrders } from "../shared/schema";
 import { linkedPiStoreStock } from "../shared/piStoreStock";
 import { orderMixAggregateQuantities } from "@shared/plantSupplyOrders";
-import { mixVersionAt, supplyDispatchInstant } from "@shared/plantSupplyOrderVersions";
+import { mixVersionAt, mixVersionForDispatch, supplyDispatchInstant, supplyOrderBitumenQuantity } from "@shared/plantSupplyOrderVersions";
 import { resolveOwnCompanyParty } from "../shared/hlcParty";
 import {
   DEFAULT_PLANT_NAME,
@@ -7019,14 +7019,14 @@ export class DatabaseStorage implements IStorage {
             const lineVersions = await tx.select().from(plantSupplyOrderMixVersions)
               .where(eq(plantSupplyOrderMixVersions.orderLineId, orderLine.id))
               .orderBy(asc(plantSupplyOrderMixVersions.effectiveAt), asc(plantSupplyOrderMixVersions.id));
-            const savedVersion = currentDispatch.supplyOrderMixVersionId
-              ? lineVersions.find(version => version.id === currentDispatch.supplyOrderMixVersionId) ?? null
+            const selectedVersion = currentDispatch.mixTemplateId === mixTemplateId
+              ? mixVersionForDispatch(
+                  lineVersions,
+                  currentDispatch.date,
+                  currentDispatch.time,
+                  currentDispatch.supplyOrderMixVersionId,
+                )
               : null;
-            const selectedVersion = savedVersion ?? (
-              currentDispatch.mixTemplateId === mixTemplateId
-                ? mixVersionAt(lineVersions, currentDispatch.date, currentDispatch.time)
-                : null
-            );
             if (selectedVersion) {
               orderBitumenPercent = Number(selectedVersion.bitumenPercent);
               orderLdoNorm = selectedVersion.ldoNorm == null ? null : Number(selectedVersion.ldoNorm);
@@ -7046,7 +7046,7 @@ export class DatabaseStorage implements IStorage {
         const ldoNorm = orderLdoNorm ?? template.ldoNorm ?? 6;
         // Always set these computed values on every update
         uppercased.theoreticalBitumenPercent = bitumenPercent;
-        uppercased.theoreticalBitumenQty = (loadWeight * bitumenPercent) / 100;
+        uppercased.theoreticalBitumenQty = supplyOrderBitumenQuantity(loadWeight, bitumenPercent);
         uppercased.theoreticalLdoQty = loadWeight * ldoNorm;
         theoreticalBitumenQty = uppercased.theoreticalBitumenQty;
         theoreticalLdoQty = uppercased.theoreticalLdoQty;
@@ -10433,7 +10433,7 @@ export class DatabaseStorage implements IStorage {
       // Calculate theoretical consumption
       const loadWeight = dispatch.loadWeight;
       const theoreticalBitumenPercent = selectedMixVersion?.bitumenPercent ?? orderMixSpec?.bitumenPercent ?? (template.bitumenPercent || 0);
-      const theoreticalBitumenQty = (loadWeight * theoreticalBitumenPercent) / 100;
+      const theoreticalBitumenQty = supplyOrderBitumenQuantity(loadWeight, theoreticalBitumenPercent);
       const ldoNorm = (selectedMixVersion?.ldoNorm ?? orderMixSpec?.ldoNorm ?? (template as any).ldoNorm) || DEFAULT_LDO_NORM;
       const theoreticalLdoQty = loadWeight * ldoNorm;
       

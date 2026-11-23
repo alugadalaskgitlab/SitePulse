@@ -240,6 +240,7 @@ import {
   updateSupplyOrderScope,
 } from "./plantSupplyOrderService";
 import { canonicalizeMachineType } from "@shared/canonicalize";
+import { withoutBlankSupplyOrderLines } from "@shared/plantSupplyOrderVersions";
 import { normalizedEquipmentTypeName, plannedHoursInDateRange } from "./dprActualTheoretical";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
 import { requireAuth, isPublicApiPath, isOptionalAuthPath, optionalAuth, lookupSessionFromCookie, loadUserPermissionsMatrix } from "./auth";
@@ -4971,6 +4972,9 @@ export async function registerRoutes(
   // ============================================
 
   // Plant supply orders — additive, forward-looking records only.
+  const withoutBlankPlantSupplyLines = (value: unknown) => Array.isArray(value)
+    ? withoutBlankSupplyOrderLines(value as Array<{ mixTemplateId?: unknown; enteredQuantity?: unknown; orderedMt?: unknown; plannedMtPerDay?: unknown }>)
+    : value;
   const plantSupplyOrderCreateSchema = z.object({
     partyId: z.number().int().positive(),
     siteId: z.number().int().positive().nullable().optional(),
@@ -4985,7 +4989,7 @@ export async function registerRoutes(
     estimateSorYear: z.string().trim().max(80).nullable().optional(),
     mtPerCumFactor: z.number().positive().max(100).optional(),
     remarks: z.string().trim().max(1000).nullable().optional(),
-    lines: z.array(z.object({
+    lines: z.preprocess(withoutBlankPlantSupplyLines, z.array(z.object({
       mixTemplateId: z.number().int().positive(),
       orderedMt: z.number().positive().optional(),
       enteredQuantity: z.number().positive().optional(),
@@ -4999,7 +5003,7 @@ export async function registerRoutes(
           aggregateSharePercent: z.number().min(0).max(100),
         }).strict()).min(1),
       }).strict().nullable().optional(),
-    }).strict()).min(1),
+    }).strict()).min(1)),
   }).strict();
 
   const plantSupplyOrderEditSchema = z.object({
@@ -5014,13 +5018,13 @@ export async function registerRoutes(
     estimateSorYear: z.string().trim().max(80).nullable(),
     mtPerCumFactor: z.number().positive().max(100),
     remarks: z.string().trim().max(1000).nullable(),
-    lines: z.array(z.object({
+    lines: z.preprocess(withoutBlankPlantSupplyLines, z.array(z.object({
       id: z.number().int().positive().optional(),
       mixTemplateId: z.number().int().positive(),
       enteredQuantity: z.number().positive(),
       enteredUnit: z.enum(["MT", "cum"]),
       plannedMtPerDay: z.number().positive().nullable(),
-    }).strict()).min(1),
+    }).strict()).min(1)),
   }).strict();
   const supplyOrderMixVersionSchema = z.object({
     bitumenPercent: z.number().min(0).max(99.9999),
@@ -5097,8 +5101,8 @@ export async function registerRoutes(
     const partyId = Number(req.query.partyId);
     const date = String(req.query.date || "");
     const time = String(req.query.time || "00:00");
-    if (!Number.isInteger(partyId) || partyId <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({ message: "Choose a party and date." });
+    if (!Number.isInteger(partyId) || partyId <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
+      return res.status(400).json({ message: "Choose a party, date and time." });
     }
     try {
       res.json(await getSupplyOrderDispatchContext(partyId, date, time));

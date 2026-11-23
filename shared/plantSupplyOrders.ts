@@ -25,6 +25,52 @@ export type SupplyOrderMixComponent = {
   aggregateSharePercent: number;
 };
 
+export type SupplyAlertRecipientChoice = { roles: string[]; userIds: number[] };
+export type SupplyAlertSettings = {
+  running_low: SupplyAlertRecipientChoice;
+  exhausted: SupplyAlertRecipientChoice;
+  borrowed: SupplyAlertRecipientChoice;
+};
+
+function normalizeSupplyAlertChoice(
+  value: Partial<SupplyAlertRecipientChoice> | undefined,
+  fallback: SupplyAlertRecipientChoice,
+): SupplyAlertRecipientChoice {
+  return {
+    roles: Array.from(new Set((value?.roles ?? fallback.roles).filter(role => typeof role === "string"))),
+    userIds: Array.from(new Set((value?.userIds ?? fallback.userIds).map(Number).filter(id => Number.isInteger(id) && id > 0))),
+  };
+}
+
+export function resolveSupplyAlertSettings(
+  stored: Partial<SupplyAlertSettings> & { ownerDefaultsApplied?: boolean },
+  defaults: SupplyAlertSettings,
+  activeOwnerIds: number[],
+): SupplyAlertSettings {
+  const resolved: SupplyAlertSettings = {
+    running_low: normalizeSupplyAlertChoice(stored.running_low, defaults.running_low),
+    exhausted: normalizeSupplyAlertChoice(stored.exhausted, defaults.exhausted),
+    borrowed: normalizeSupplyAlertChoice(stored.borrowed, defaults.borrowed),
+  };
+  if (stored.ownerDefaultsApplied !== true) {
+    for (const choice of Object.values(resolved)) {
+      choice.userIds = Array.from(new Set([...choice.userIds, ...activeOwnerIds]));
+    }
+  }
+  return resolved;
+}
+
+export function includeSupplyAlertOwners(
+  kind: "running_low" | "exhausted" | "borrowed" | "morning_summary",
+  recipientIds: number[],
+  activeOwnerIds: number[],
+): number[] {
+  return Array.from(new Set([
+    ...recipientIds,
+    ...(kind === "borrowed" ? activeOwnerIds : []),
+  ]));
+}
+
 export type SupplyOrderMix = {
   mixTemplateId: number;
   mixName: string;

@@ -51,8 +51,29 @@ function errorText(error: unknown) {
 }
 
 function localDateTimeInput(date: Date) {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const part = (type: string) => parts.find(item => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
+}
+
+function istDateTimeInputToDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)
+    ? new Date(`${value}:00+05:30`)
+    : new Date(Number.NaN);
+}
+
+function istDateTimeInputToIso(value: string) {
+  const date = istDateTimeInputToDate(value);
+  if (!Number.isFinite(date.getTime())) throw new Error("Choose a valid effective date and time.");
+  return date.toISOString();
 }
 
 export default function PlantSupplyOrders() {
@@ -313,7 +334,7 @@ export default function PlantSupplyOrders() {
             materialId: Number(component.materialId),
             aggregateSharePercent: Number(component.aggregateSharePercent),
           })),
-          effectiveAt: new Date(mixChangeAt).toISOString(),
+          effectiveAt: istDateTimeInputToIso(mixChangeAt),
           reason: mixChangeReason.trim(),
         },
       );
@@ -652,7 +673,9 @@ export default function PlantSupplyOrders() {
                           const lowerBitumenLine = order.lines.find((line: any) => line.orderMix &&
                             Number(line.orderMix.bitumenPercent) < Number(line.orderMix.sourceBitumenPercent));
                           if (!lowerBitumenLine) return null;
-                          const instructionAttached = order.attachments?.some((attachment: any) => attachment.docType === "mix_instruction");
+                          const latestVersion = lowerBitumenLine.mixVersions?.at(-1);
+                          const instructionAttached = latestVersion?.instructionAttached ||
+                            order.attachments?.some((attachment: any) => attachment.docType === "mix_instruction");
                           return <p className="mt-2 text-xs text-amber-700" data-testid="order-bitumen-instruction-note">
                             Bitumen {Number(lowerBitumenLine.orderMix.bitumenPercent).toFixed(2)}% as instructed by party — instruction {instructionAttached ? "attached" : "not attached"}.
                           </p>;
@@ -929,7 +952,7 @@ export default function PlantSupplyOrders() {
               {order?.dispatches?.some((dispatch: any) => {
                 const line = order.lines.find((candidate: any) => candidate.id === mixChangeLineId);
                 if (!line || dispatch.mixTemplateId !== line.mixTemplateId) return false;
-                const effective = new Date(mixChangeAt).getTime();
+                const effective = istDateTimeInputToDate(mixChangeAt).getTime();
                 const dispatchAt = new Date(`${dispatch.date}T${dispatch.time || "00:00"}+05:30`).getTime();
                 return Number.isFinite(effective) && effective < dispatchAt;
               }) && <p className="text-xs text-red-700">Effective time cannot be earlier than the latest truck already linked to this mix.</p>}
@@ -966,7 +989,7 @@ export default function PlantSupplyOrders() {
                 order?.dispatches?.some((dispatch: any) => {
                   const line = order.lines.find((candidate: any) => candidate.id === mixChangeLineId);
                   return !!line && dispatch.mixTemplateId === line.mixTemplateId &&
-                    new Date(mixChangeAt).getTime() < new Date(`${dispatch.date}T${dispatch.time || "00:00"}+05:30`).getTime();
+                    istDateTimeInputToDate(mixChangeAt).getTime() < new Date(`${dispatch.date}T${dispatch.time || "00:00"}+05:30`).getTime();
                 })}
               onClick={() => mixVersionMutation.mutate()}
             >{mixVersionMutation.isPending ? "Saving…" : "Save new version"}</Button>
