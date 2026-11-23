@@ -216,6 +216,8 @@ import {
   decideSupplyBorrowing,
   deleteUserSupplyAlert,
   getPlantSupplyOrder,
+  getSupplyOrderDispatchContext,
+  getSupplyOrderLdoAllocations,
   getPartySupplyBorrowings,
   getSupplyOrderOptions,
   getRecentMatchingReceipts,
@@ -2167,6 +2169,10 @@ export async function registerRoutes(
       if (!moduleType || !Number.isFinite(linkedRecordId)) {
         return res.status(400).json({ message: "moduleType and linkedRecordId are required" });
       }
+      if (moduleType === "plant_supply_order") {
+        if (!assertView(req, res, "plant_supply_orders")) return;
+        if (!(await getPlantSupplyOrder(linkedRecordId))) return res.status(404).json({ message: "Plant supply order not found." });
+      }
       if (moduleType === "diesel_purchase") {
         if (!assertDieselOrStoresView(req, res, true)) return;
         if (!(await assertDieselRecordRead(req, res, linkedRecordId))) return;
@@ -2198,6 +2204,7 @@ export async function registerRoutes(
       if (!moduleType || ids.length === 0) {
         return res.status(400).json({ message: "moduleType and ids are required" });
       }
+      if (moduleType === "plant_supply_order" && !assertView(req, res, "plant_supply_orders")) return;
       if (moduleType === "diesel_purchase") {
         if (!assertDieselOrStoresView(req, res, true)) return;
         for (const id of ids) {
@@ -2223,6 +2230,16 @@ export async function registerRoutes(
       const parsed = insertAttachmentSchema.parse(req.body);
       if (!(attachmentModuleTypes as readonly string[]).includes(parsed.moduleType)) {
         return res.status(400).json({ message: `Invalid moduleType. Must be one of: ${attachmentModuleTypes.join(", ")}` });
+      }
+      if (parsed.moduleType === "plant_supply_order") {
+        if (!assertCreateOrEdit(req, res, "plant_supply_orders")) return;
+        if (!(await getPlantSupplyOrder(parsed.linkedRecordId))) return res.status(404).json({ message: "Plant supply order not found." });
+        if (!["estimate_pdf", "mix_instruction"].includes(parsed.docType ?? "")) {
+          return res.status(400).json({ message: "Choose estimate_pdf or mix_instruction for this order file." });
+        }
+        if (parsed.docType === "estimate_pdf" && parsed.mimeType !== "application/pdf") {
+          return res.status(400).json({ message: "The estimate attachment must be a PDF." });
+        }
       }
       // Diesel purchase evidence changes the purchase record's audit trail.
       // Stores inventory visibility is intentionally not sufficient to mutate it.
@@ -2289,6 +2306,7 @@ export async function registerRoutes(
         case "equipment_breakdown": case "equipment_maintenance": case "equipment_fuel_proof":
           allowed = assertDelete(req, res, "plant_equipment"); break;
         case "quality_test": allowed = assertDelete(req, res, "rmc_cube_tests"); break;
+        case "plant_supply_order": allowed = assertDelete(req, res, "plant_supply_orders"); break;
         default: return res.status(403).json({ error: "unmapped_attachment_permission" });
       }
       if (!allowed) return;
@@ -4903,11 +4921,28 @@ export async function registerRoutes(
     periodFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     periodTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     orderNo: z.string().trim().max(80).nullable().optional(),
+    workName: z.string().trim().max(240).nullable().optional(),
+    division: z.string().trim().max(160).nullable().optional(),
+    mandal: z.string().trim().max(160).nullable().optional(),
+    district: z.string().trim().max(160).nullable().optional(),
+    agreementEstimateRef: z.string().trim().max(200).nullable().optional(),
+    estimateSorYear: z.string().trim().max(80).nullable().optional(),
+    mtPerCumFactor: z.number().positive().max(100).optional(),
     remarks: z.string().trim().max(1000).nullable().optional(),
     lines: z.array(z.object({
       mixTemplateId: z.number().int().positive(),
-      orderedMt: z.number().positive(),
+      orderedMt: z.number().positive().optional(),
+      enteredQuantity: z.number().positive().optional(),
+      enteredUnit: z.enum(["MT", "cum"]).optional(),
       plannedMtPerDay: z.number().positive().nullable().optional(),
+      orderMix: z.object({
+        mixName: z.string().trim().max(160).nullable().optional(),
+        bitumenPercent: z.number().min(0).max(99.9999),
+        components: z.array(z.object({
+          materialId: z.number().int().positive(),
+          aggregateSharePercent: z.number().min(0).max(100),
+        }).strict()).min(1),
+      }).strict().nullable().optional(),
     }).strict()).min(1),
   }).strict();
 
@@ -4968,6 +5003,33 @@ export async function registerRoutes(
       res.json(await activeSupplyOrderAlertLines());
     } catch {
       res.status(500).json({ message: "Could not load supply alerts." });
+    }
+  });
+
+  app.get("/api/plant-module/supply-orders/dispatch-context", async (req, res) => {
+    if (!assertView(req, res, "plant_production")) return;
+    const partyId = Number(req.query.partyId);
+    const date = String(req.query.date || "");
+    if (!Number.isInteger(partyId) || partyId <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ message: "Choose a party and date." });
+    }
+    try {
+      res.json(await getSupplyOrderDispatchContext(partyId, date));
+    } catch {
+      res.status(500).json({ message: "Could not load the order mix for this dispatch." });
+    }
+  });
+
+  app.get("/api/plant-module/supply-orders/ldo-attribution/:date", async (req, res) => {
+    if (!assertView(req, res, "plant_production")) return;
+    const date = String(req.params.date || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ message: "Choose a valid date." });
+    try {
+      const plantName = String(req.query.plant || await storage.getDefaultPlantName());
+      if (!await assertReportPlant(req, res, plantName)) return;
+      res.json(await getSupplyOrderLdoAllocations(date, plantName));
+    } catch (err) {
+      res.status(500).json({ message: err instanceof Error ? err.message : "Could not allocate plant LDO." });
     }
   });
 

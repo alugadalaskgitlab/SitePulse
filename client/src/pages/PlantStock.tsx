@@ -293,7 +293,15 @@ export default function PlantStock() {
 
   type PartyStatementResult = {
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
-    entries: (ReceiptDatedLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number; templateQty?: number; ownQty?: number })[];
+    entries: (ReceiptDatedLedgerEntry & {
+      displayType: string;
+      borrowedQty: number;
+      runningBalance: number;
+      templateQty?: number;
+      ownQty?: number;
+      supplyOrderNo?: string | null;
+      supplyOrderWorkName?: string | null;
+    })[];
   };
   type HlcReconResult = {
     uom: string;
@@ -2738,6 +2746,14 @@ export default function PlantStock() {
                 const isSettled = summary.outstanding <= 0.001;
                 const finalBalance = entries.length > 0 ? entries[entries.length - 1].runningBalance ?? 0 : 0;
                 const totalOut = summary.dispatchedOwn + summary.borrowedFromHlc;
+                const orderHeading = [...new Map(entries
+                  .filter(entry => entry.supplyOrderNo)
+                  .map(entry => [entry.supplyOrderNo, {
+                    orderNo: entry.supplyOrderNo!,
+                    workName: entry.supplyOrderWorkName,
+                  }])).values()]
+                  .map(order => [order.orderNo, order.workName].filter(Boolean).join(" · "))
+                  .join(" | ");
 
                 const typeLabel = (dt: string) => {
                   switch (dt) {
@@ -2801,6 +2817,7 @@ export default function PlantStock() {
                     .note{font-size:10px;color:#555;margin-top:6px}</style></head><body>
                     <h1>${PROJECT_NAME}</h1>
                     <h2>Party supply obligation statement</h2>
+                    ${orderHeading ? `<p><strong>Supply order:</strong> ${escapeHtml(orderHeading)}</p>` : ""}
                     <p><strong>Party:</strong> ${displayName(partyName)} &nbsp;|&nbsp; <strong>Material:</strong> ${materialName} &nbsp;|&nbsp; <strong>Period:</strong> ${dateRange}</p>
                     <div class="summary">
                       <div class="card"><div class="card-label">Total Received</div><div class="card-value">${summary.totalReceived.toFixed(3)} ${uom}</div></div>
@@ -2842,16 +2859,21 @@ export default function PlantStock() {
                   doc.setFontSize(12);
                   doc.text(`Party Supply Obligation Statement`, 14, 20);
                   doc.setFontSize(9);
-                  doc.text(`Party: ${displayName(partyName)}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, 27);
+                  let statementSummaryY = 33;
+                  if (orderHeading) {
+                    doc.text(`Supply order: ${orderHeading}`, 14, 27);
+                    statementSummaryY = 39;
+                  }
+                  doc.text(`Party: ${displayName(partyName)}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, orderHeading ? 33 : 27);
                   doc.text([
                     `Received: ${summary.totalReceived.toFixed(3)} ${uom}`,
                     `From Own Stock: ${summary.dispatchedOwn.toFixed(3)} ${uom}`,
                     `Borrowed from ${companyShortName}: ${summary.borrowedFromHlc.toFixed(3)} ${uom}`,
                     `Replenished to ${companyShortName}: ${summary.replenishedToHlc.toFixed(3)} ${uom}`,
                     `Outstanding: ${summary.outstanding.toFixed(3)} ${uom}`,
-                  ].join('    '), 14, 33);
+                  ].join('    '), 14, statementSummaryY);
                   autoTable(doc, {
-                    startY: 38,
+                    startY: statementSummaryY + 5,
                     head: [[
                       'Transaction Date', 'Invoice Date', 'Entry Date / Time', 'Type', 'Material',
                       `Received\n(${uom})`,

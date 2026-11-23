@@ -20,6 +20,20 @@ export type SupplyOrderLine = {
   plannedMtPerDay: number | null;
 };
 
+export type SupplyOrderMixComponent = {
+  materialId: number;
+  aggregateSharePercent: number;
+};
+
+export type SupplyOrderMix = {
+  mixTemplateId: number;
+  mixName: string;
+  sourceBitumenPercent: number;
+  bitumenPercent: number;
+  ldoNorm: number | null;
+  components: SupplyOrderMixComponent[];
+};
+
 export type SupplyDispatch = {
   date: string;
   mixTemplateId: number;
@@ -39,6 +53,15 @@ export type MaterialQuantity = {
 
 function positive(value: number | null | undefined): number {
   return Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : 0;
+}
+
+export function orderQuantityToMt(quantity: number, unit: "MT" | "cum", mtPerCumFactor: number): number {
+  if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Order quantity must be greater than zero.");
+  if (unit === "MT") return Number(quantity.toFixed(6));
+  if (!Number.isFinite(mtPerCumFactor) || mtPerCumFactor <= 0) {
+    throw new Error("Enter a valid MT-per-cum factor.");
+  }
+  return Number((quantity * mtPerCumFactor).toFixed(6));
 }
 
 /** Matches the dispatcher's theoretical material-use formula. */
@@ -76,6 +99,54 @@ export function materialNeedForMix(
   return Array.from(needs.values()).map((row) => ({ ...row, quantity: Number(row.quantity.toFixed(6)) }));
 }
 
+/** Computes an order-specific recipe without mutating its source mix template. */
+export function materialNeedForOrderMix(
+  template: SupplyMixTemplate,
+  orderMix: SupplyOrderMix,
+  mixTonnes: number,
+  materials: SupplyMaterial[],
+): MaterialQuantity[] {
+  const aggregatePercentOfTotalMix = (100 - orderMix.bitumenPercent) / 100;
+  const components: SupplyMixComponent[] = orderMix.components.map((component, index) => ({
+    templateId: template.id,
+    materialId: component.materialId,
+    percent: aggregatePercentOfTotalMix * component.aggregateSharePercent,
+    moistureContent: 0,
+    wastageFactor: 0,
+  }));
+  return materialNeedForMix(
+    {
+      ...template,
+      bitumenPercent: orderMix.bitumenPercent,
+      ldoNorm: orderMix.ldoNorm,
+    },
+    components,
+    mixTonnes,
+    materials,
+  );
+}
+
+export function orderMixAggregateQuantities(
+  mixTonnes: number,
+  bitumenPercent: number,
+  components: SupplyOrderMixComponent[],
+): Record<number, number> {
+  if (!Number.isFinite(mixTonnes) || mixTonnes <= 0) return {};
+  if (!Number.isFinite(bitumenPercent) || bitumenPercent < 0 || bitumenPercent >= 100) {
+    throw new Error("Order-mix bitumen percent must be from 0 up to, but not including, 100.");
+  }
+  const totalAggregateShare = (100 - bitumenPercent) / 100;
+  const quantities: Record<number, number> = {};
+  for (const component of components) {
+    if (!Number.isFinite(component.aggregateSharePercent) || component.aggregateSharePercent < 0) {
+      throw new Error("Order-mix aggregate share must be a non-negative number.");
+    }
+    const quantity = mixTonnes * totalAggregateShare * component.aggregateSharePercent / 100;
+    quantities[component.materialId] = (quantities[component.materialId] ?? 0) + quantity;
+  }
+  return Object.fromEntries(Object.entries(quantities).map(([id, quantity]) => [id, Number(quantity.toFixed(6))]));
+}
+
 export function dispatchedByMix(
   lines: SupplyOrderLine[],
   dispatches: SupplyDispatch[],
@@ -105,6 +176,35 @@ export function orderMaterialNeeds(
     const template = templates.find((row) => row.id === line.mixTemplateId);
     if (!template || remaining === 0) continue;
     for (const need of materialNeedForMix(template, components, remaining, materials)) {
+      const current = totals.get(need.materialId);
+      totals.set(need.materialId, {
+        materialId: need.materialId,
+        quantity: Number(((current?.quantity ?? 0) + need.quantity).toFixed(6)),
+        uom: need.uom,
+      });
+    }
+  }
+  return Array.from(totals.values());
+}
+
+export function orderMaterialNeedsWithOrderMix(
+  lines: SupplyOrderLine[],
+  templates: SupplyMixTemplate[],
+  components: SupplyMixComponent[],
+  orderMixes: SupplyOrderMix[],
+  materials: SupplyMaterial[],
+  dispatched: Map<number, number>,
+): MaterialQuantity[] {
+  const totals = new Map<number, MaterialQuantity>();
+  for (const line of lines) {
+    const remaining = Math.max(0, positive(line.orderedMt) - (dispatched.get(line.mixTemplateId) ?? 0));
+    const template = templates.find((row) => row.id === line.mixTemplateId);
+    if (!template || remaining === 0) continue;
+    const orderMix = orderMixes.find((row) => row.mixTemplateId === line.mixTemplateId);
+    const needs = orderMix
+      ? materialNeedForOrderMix(template, orderMix, remaining, materials)
+      : materialNeedForMix(template, components, remaining, materials);
+    for (const need of needs) {
       const current = totals.get(need.materialId);
       totals.set(need.materialId, {
         materialId: need.materialId,
@@ -176,6 +276,20 @@ export function materialAvailabilityForScope(
     daysLeft: daysOfStockLeft(stockAvailable, dailyNeed),
     runningLow: isRunningLow(stockAvailable, dailyNeed),
   };
+}
+
+export function allocateSupplyOrderLdo(
+  totalLitres: number,
+  orders: Array<{ orderId: number; dispatchMt: number }>,
+) {
+  const eligible = orders.filter(row => Number.isFinite(row.dispatchMt) && row.dispatchMt > 0);
+  const totalDispatchMt = eligible.reduce((sum, row) => sum + row.dispatchMt, 0);
+  if (!Number.isFinite(totalLitres) || totalLitres < 0 || totalDispatchMt <= 0) return [];
+  return eligible.map(row => ({
+    orderId: row.orderId,
+    sharePercent: row.dispatchMt / totalDispatchMt * 100,
+    allocatedLitres: totalLitres * row.dispatchMt / totalDispatchMt,
+  }));
 }
 
 export function dispatchCrossesStockZero(beforeDispatch: number, afterDispatch: number): boolean {

@@ -19,6 +19,7 @@ import { dailyHireBilledDays } from "./dailyHireBilledDays";
 import { hasFrozenTripDailyHire, FROZEN_TRIP_DAILY_MESSAGE } from "../shared/vendorBillRecovery";
 import { purchaseOrders } from "../shared/schema";
 import { linkedPiStoreStock } from "../shared/piStoreStock";
+import { orderMixAggregateQuantities } from "@shared/plantSupplyOrders";
 import { resolveOwnCompanyParty } from "../shared/hlcParty";
 import {
   DEFAULT_PLANT_NAME,
@@ -82,6 +83,9 @@ import {
   materialReceipts,
   truckDispatches,
   plantSupplyOrders,
+  plantSupplyOrderLines,
+  plantSupplyOrderMixSpecs,
+  plantSupplyOrderMixComponents,
   plantSupplyOrderMaterialScopes,
   plantSupplyBorrowings,
   plantSupplyBorrowingEvents,
@@ -6903,7 +6907,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Truck Dispatches
-  async getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<Array<TruckDispatch & { supplyOrderNo?: string | null }>> {
+  async getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<Array<TruckDispatch & { supplyOrderNo?: string | null; supplyOrderWorkName?: string | null; supplyOrderMixName?: string | null }>> {
     let conditions = [];
     if (filters?.partyId) conditions.push(eq(truckDispatches.partyId, filters.partyId));
     if (filters?.dateFrom) conditions.push(gte(truckDispatches.date, filters.dateFrom));
@@ -6912,11 +6916,28 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.select({
       dispatch: truckDispatches,
       supplyOrderNo: plantSupplyOrders.orderNo,
+      supplyOrderWorkName: plantSupplyOrders.workName,
     }).from(truckDispatches)
       .leftJoin(plantSupplyOrders, eq(plantSupplyOrders.id, truckDispatches.supplyOrderId))
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(truckDispatches.date));
-    return rows.map(({ dispatch, supplyOrderNo }) => ({ ...dispatch, supplyOrderNo: supplyOrderNo ?? null }));
+    const orderIds = [...new Set(rows.map(row => row.dispatch.supplyOrderId).filter((id): id is number => id != null))];
+    const orderMixRows = orderIds.length
+      ? await db.select({
+          orderId: plantSupplyOrderLines.orderId,
+          mixTemplateId: plantSupplyOrderLines.mixTemplateId,
+          mixName: plantSupplyOrderMixSpecs.mixName,
+        }).from(plantSupplyOrderLines)
+          .innerJoin(plantSupplyOrderMixSpecs, eq(plantSupplyOrderMixSpecs.orderLineId, plantSupplyOrderLines.id))
+          .where(inArray(plantSupplyOrderLines.orderId, orderIds))
+      : [];
+    const orderMixNameByKey = new Map(orderMixRows.map(row => [`${row.orderId}:${row.mixTemplateId}`, row.mixName]));
+    return rows.map(({ dispatch, supplyOrderNo, supplyOrderWorkName }) => ({
+      ...dispatch,
+      supplyOrderNo: supplyOrderNo ?? null,
+      supplyOrderWorkName: supplyOrderWorkName ?? null,
+      supplyOrderMixName: orderMixNameByKey.get(`${dispatch.supplyOrderId}:${dispatch.mixTemplateId}`) ?? null,
+    }));
   }
 
   async createTruckDispatch(dispatch: InsertTruckDispatch): Promise<TruckDispatch> {
@@ -9277,14 +9298,20 @@ export class DatabaseStorage implements IStorage {
           theoreticalAggregates: truckDispatches.theoreticalAggregates,
           theoreticalLdoQty: truckDispatches.theoreticalLdoQty,
           actualLdoQty: truckDispatches.actualLdoQty,
+          supplyOrderNo: plantSupplyOrders.orderNo,
+          supplyOrderWorkName: plantSupplyOrders.workName,
         })
-          .from(truckDispatches).where(inArray(truckDispatches.id, refIds))
+          .from(truckDispatches)
+          .leftJoin(plantSupplyOrders, eq(plantSupplyOrders.id, truckDispatches.supplyOrderId))
+          .where(inArray(truckDispatches.id, refIds))
       : [];
     const dispatchMeta = new Map(dispatches.map(d => [d.id, {
       deliveryLocation: d.deliveryLocation,
       theoreticalAggregates: d.theoreticalAggregates,
       theoreticalLdoQty: d.theoreticalLdoQty,
       actualLdoQty: d.actualLdoQty,
+      supplyOrderNo: d.supplyOrderNo,
+      supplyOrderWorkName: d.supplyOrderWorkName,
     }]));
 
     // Resolve material UOM and name (name is used below to detect LDO for templateQty fallback)
@@ -9384,6 +9411,8 @@ export class DatabaseStorage implements IStorage {
       runningBalance: number;
       templateQty?: number;
       ownQty?: number;
+      supplyOrderNo?: string | null;
+      supplyOrderWorkName?: string | null;
     };
     const detail: DetailEntry[] = [];
 
@@ -9492,6 +9521,7 @@ export class DatabaseStorage implements IStorage {
 
         // Single row per dispatch — templateQty, ownQty, and borrowedQty are embedded
         // as extra fields so the frontend can show the breakdown inline without synthetic rows.
+        const dispatchInfo = siteRefId == null ? undefined : dispatchMeta.get(siteRefId);
         detail.push({
           ...e,
           quantityOut: ownQty,
@@ -9501,6 +9531,8 @@ export class DatabaseStorage implements IStorage {
           ownQty,
           templateQty,
           runningBalance: running,
+          supplyOrderNo: dispatchInfo?.supplyOrderNo ?? null,
+          supplyOrderWorkName: dispatchInfo?.supplyOrderWorkName ?? null,
         });
       } else if (e.transactionType === 'transfer') {
         if (qOut > 0) {
@@ -10313,12 +10345,29 @@ export class DatabaseStorage implements IStorage {
       const [template] = await tx.select().from(mixTemplates).where(eq(mixTemplates.id, dispatchData.mixTemplateId)).limit(1);
       if (!template) throw new Error(`Mix template #${dispatchData.mixTemplateId} not found`);
       const components = await tx.select().from(mixTemplateComponents).where(eq(mixTemplateComponents.templateId, dispatchData.mixTemplateId));
+      const [supplyLine] = supplyOrder
+        ? await tx.select({ id: plantSupplyOrderLines.id })
+          .from(plantSupplyOrderLines)
+          .where(and(
+            eq(plantSupplyOrderLines.orderId, supplyOrder.id),
+            eq(plantSupplyOrderLines.mixTemplateId, dispatchData.mixTemplateId),
+          )).limit(1)
+        : [];
+      const [orderMixSpec] = supplyLine
+        ? await tx.select().from(plantSupplyOrderMixSpecs)
+          .where(eq(plantSupplyOrderMixSpecs.orderLineId, supplyLine.id)).limit(1)
+        : [];
+      const orderMixComponents = orderMixSpec
+        ? await tx.select().from(plantSupplyOrderMixComponents)
+          .where(eq(plantSupplyOrderMixComponents.orderMixId, orderMixSpec.id))
+          .orderBy(asc(plantSupplyOrderMixComponents.sortOrder), asc(plantSupplyOrderMixComponents.id))
+        : [];
       
       // Calculate theoretical consumption
       const loadWeight = dispatch.loadWeight;
-      const theoreticalBitumenPercent = template.bitumenPercent || 0;
+      const theoreticalBitumenPercent = orderMixSpec?.bitumenPercent ?? (template.bitumenPercent || 0);
       const theoreticalBitumenQty = (loadWeight * theoreticalBitumenPercent) / 100;
-      const ldoNorm = (template as any).ldoNorm || DEFAULT_LDO_NORM;
+      const ldoNorm = (orderMixSpec?.ldoNorm ?? (template as any).ldoNorm) || DEFAULT_LDO_NORM;
       const theoreticalLdoQty = loadWeight * ldoNorm;
       
       // Calculate aggregate consumption from components (percent of total mix).
@@ -10331,12 +10380,23 @@ export class DatabaseStorage implements IStorage {
         return baseQty * (1 + wf / 100) / (1 - mc / 100);
       };
       const theoreticalAggregates: Record<number, number> = {};
-      for (const comp of components) {
-        const percent = (comp as any).percent || 0;
-        const mc = Math.max(0, Math.min((comp as any).moistureContent || 0, 30));
-        const wf = Math.max(0, Math.min((comp as any).wastageFactor || 0, 20));
-        const baseQty = loadWeight * percent / 100;
-        theoreticalAggregates[comp.materialId] = applyMcWfAdjustment(baseQty, mc, wf);
+      if (orderMixSpec) {
+        Object.assign(theoreticalAggregates, orderMixAggregateQuantities(
+          loadWeight,
+          theoreticalBitumenPercent,
+          orderMixComponents.map(component => ({
+            materialId: component.materialId,
+            aggregateSharePercent: Number(component.aggregateSharePercent),
+          })),
+        ));
+      } else {
+        for (const comp of components) {
+          const percent = (comp as any).percent || 0;
+          const mc = Math.max(0, Math.min((comp as any).moistureContent || 0, 30));
+          const wf = Math.max(0, Math.min((comp as any).wastageFactor || 0, 20));
+          const baseQty = loadWeight * percent / 100;
+          theoreticalAggregates[comp.materialId] = applyMcWfAdjustment(baseQty, mc, wf);
+        }
       }
       
       // Owner-first deduction model:
@@ -10434,7 +10494,7 @@ export class DatabaseStorage implements IStorage {
 
       // Build human-readable label for ledger notes: mix type + delivery site
       const mixLabel = [
-        template?.name ?? "Dispatch",
+        orderMixSpec?.mixName ?? template?.name ?? "Dispatch",
         dispatchData.deliveryLocation?.trim() || null,
       ].filter(Boolean).join(" — ");
 

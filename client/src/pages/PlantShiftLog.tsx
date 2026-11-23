@@ -996,6 +996,27 @@ export default function PlantShiftLog() {
       return response.json();
     },
   });
+  const { data: supplyOrderLdoAllocations = [] } = useQuery<Array<{
+    orderId: number;
+    orderNo: string | null;
+    workName: string | null;
+    partyName: string;
+    scope: "party" | "hlc";
+    dispatchMt: number;
+    sharePercent: number;
+    allocatedLitres: number;
+  }>>({
+    queryKey: ["/api/plant-module/supply-orders/ldo-attribution", date, plantName],
+    enabled: viewMode === "edit" && !!date && !!plantName && !noMainPlantOps,
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/plant-module/supply-orders/ldo-attribution/${encodeURIComponent(date)}?plant=${encodeURIComponent(plantName)}`,
+        { credentials: "include" },
+      );
+      if (!response.ok) throw new Error("Could not load supply-order LDO allocation.");
+      return response.json();
+    },
+  });
 
   const { data: reconciliationData, isLoading: reconciliationLoading, error: reconciliationError } = useQuery<any>({
     queryKey: ["/api/plant-module/shift-logs/reconciliation", date, plantName],
@@ -1772,6 +1793,20 @@ export default function PlantShiftLog() {
               <span className="text-sm tabular-nums">{line.value}</span>
             </div>
           ))}
+          {supplyOrderLdoAllocations.length > 0 && (
+            <div className="rounded-md border border-teal-200 bg-teal-50/50 p-3 text-sm" data-testid="ldo-summary-order-allocation">
+              <p className="font-semibold">Supply-order pre-heat and boiler LDO split</p>
+              <div className="mt-1 space-y-1">
+                {supplyOrderLdoAllocations.map(row => (
+                  <p key={row.orderId}>
+                    {row.orderNo || `Order #${row.orderId}`}{row.workName ? ` · ${row.workName}` : ""} · {row.partyName}
+                    {" · "}{Number(row.sharePercent).toFixed(1)}% of dispatched MT
+                    {" · "}{Number(row.allocatedLitres).toFixed(1)} L to {row.scope === "party" ? "party LDO stock" : "HLC LDO stock"}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
           {ldoAccounting.preheatSessionCount > 1 && (
             <p className="text-xs text-muted-foreground" data-testid="ldo-summary-idle-sessions">
               {(() => {

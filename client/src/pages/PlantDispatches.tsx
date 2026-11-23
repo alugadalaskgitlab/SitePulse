@@ -269,13 +269,37 @@ export default function PlantDispatches() {
   }, [searchString]);
   const [autoEditDone, setAutoEditDone] = useState(false);
 
-  const { data: dispatches, isLoading } = useQuery<Array<TruckDispatch & { supplyOrderNo?: string | null }>>({
+  const { data: dispatches, isLoading } = useQuery<Array<TruckDispatch & { supplyOrderNo?: string | null; supplyOrderWorkName?: string | null; supplyOrderMixName?: string | null }>>({
     queryKey: ["/api/plant-module/dispatches"],
     refetchInterval: 15_000,
   });
 
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
+  });
+  const { data: dispatchOrderContext } = useQuery<{
+    orderNo: string | null;
+    workName: string | null;
+    lines: Array<{
+      mixTemplateId: number;
+      mixName: string;
+      bitumenPercent: number | null;
+      sourceBitumenPercent: number | null;
+      ldoNorm: number | null;
+      isOrderMix: boolean;
+      components: Array<{ materialId: number; materialName: string; aggregateSharePercent: number }>;
+    }>;
+  } | null>({
+    queryKey: ["/api/plant-module/supply-orders/dispatch-context", partyId, date],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/plant-module/supply-orders/dispatch-context?partyId=${encodeURIComponent(partyId)}&date=${encodeURIComponent(date)}`,
+        { credentials: "include" },
+      );
+      if (!response.ok) throw new Error("Could not load the matching supply order.");
+      return response.json();
+    },
+    enabled: dialogOpen && !editingDispatch && !!partyId && !!date && canCreate,
   });
   const { data: supplyAlertLines = [] } = useQuery<Array<{
     orderId: number | null; orderNo: string | null; partyName: string; materialName: string;
@@ -576,11 +600,14 @@ export default function PlantDispatches() {
   // Calculate theoretical values for validation
   const theoreticalValues = useMemo(() => {
     const template = templates?.find(t => t.id === parseInt(mixTemplateId));
+    const orderMix = !editingDispatch
+      ? dispatchOrderContext?.lines.find(line => line.mixTemplateId === Number(mixTemplateId))
+      : undefined;
     const weight = parseFloat(loadWeight) || 0;
     if (!template || !weight) return null;
     
-    const bitumenPercent = template.bitumenPercent || 0;
-    const ldoNorm = template.ldoNorm || 6;
+    const bitumenPercent = orderMix?.bitumenPercent ?? template.bitumenPercent ?? 0;
+    const ldoNorm = orderMix?.ldoNorm || template.ldoNorm || 6;
     const theoreticalBitumenQty = (weight * bitumenPercent) / 100;
     const theoreticalLdoQty = weight * ldoNorm;
     
@@ -589,8 +616,9 @@ export default function PlantDispatches() {
       bitumenQty: theoreticalBitumenQty,
       ldoQty: theoreticalLdoQty,
       ldoNorm,
+      orderMixName: orderMix?.isOrderMix ? orderMix.mixName : null,
     };
-  }, [templates, mixTemplateId, loadWeight]);
+  }, [templates, mixTemplateId, loadWeight, dispatchOrderContext]);
   
   // Validate actual values against tolerance
   const validationStatus = useMemo(() => {
@@ -651,7 +679,12 @@ export default function PlantDispatches() {
     || !mixTemplateId
     || primaryFieldsExpanded;
   const dispatchPartyName = parties?.find(party => String(party.id) === partyId)?.name || "Choose party/job";
-  const dispatchMixName = templates?.find(template => String(template.id) === mixTemplateId)?.name || "Choose mix";
+  const selectedOrderMix = !editingDispatch
+    ? dispatchOrderContext?.lines.find(line => line.mixTemplateId === Number(mixTemplateId))
+    : undefined;
+  const dispatchMixName = selectedOrderMix?.isOrderMix
+    ? selectedOrderMix.mixName
+    : templates?.find(template => String(template.id) === mixTemplateId)?.name || "Choose mix";
   const selectedParty = parties?.find(party => String(party.id) === partyId);
   const selectedPartyAlertStatus = selectedParty
     ? selectedParty.dispatchProSiteId?.trim()
@@ -853,7 +886,7 @@ export default function PlantDispatches() {
     const totals = new Map<string, { mix: string; loads: number; mt: number }>();
     for (const dispatch of filteredDispatches) {
       const template = templates?.find(t => t.id === dispatch.mixTemplateId);
-      const mix = template?.name || template?.mixType || "Unknown mix";
+      const mix = dispatch.supplyOrderMixName || template?.name || template?.mixType || "Unknown mix";
       const current = totals.get(mix) || { mix, loads: 0, mt: 0 };
       current.loads += 1;
       current.mt += Number(dispatch.loadWeight) || 0;
@@ -868,7 +901,11 @@ export default function PlantDispatches() {
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(dispatch);
     return acc;
-  }, {} as Record<string, Array<TruckDispatch & { supplyOrderNo?: string | null }>>);
+  }, {} as Record<string, Array<TruckDispatch & {
+    supplyOrderNo?: string | null;
+    supplyOrderWorkName?: string | null;
+    supplyOrderMixName?: string | null;
+  }>>);
 
   // Sort dates descending, and entries within each date by time descending
   const sortedDates = Object.keys(groupedDispatches).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
@@ -910,6 +947,14 @@ export default function PlantDispatches() {
   // Export functions
   const exportToExcel = async () => {
     try {
+      const orderHeading = Array.from(new Map(filteredDispatches
+        .filter(dispatch => dispatch.supplyOrderNo)
+        .map(dispatch => [dispatch.supplyOrderNo, {
+          orderNo: dispatch.supplyOrderNo!,
+          workName: dispatch.supplyOrderWorkName,
+        }])).values())
+        .map(order => [order.orderNo, order.workName].filter(Boolean).join(" · "))
+        .join(" | ");
       const data = filteredDispatches.map(d => {
         const template = templates?.find(t => t.id === d.mixTemplateId);
         const dispatchAt = dispatchDateTime(d.date, d.time);
@@ -923,7 +968,7 @@ export default function PlantDispatches() {
           Owner: d.ownerName || "",
           Driver: d.driverName || "",
           "Driver mobile": d.driverMobile || "",
-          Mix: template?.name || template?.mixType || "",
+          Mix: d.supplyOrderMixName || template?.name || template?.mixType || "",
           "Load (MT)": Number(d.loadWeight) || 0,
           Status: dispatchPlainStatus(d),
           "Arrived at": istDateTimeLabel(arrival),
@@ -945,6 +990,7 @@ export default function PlantDispatches() {
       const ws = XLSX.utils.aoa_to_sheet([
         [companyName],
         [filterPartyId !== "all" ? exportPartyName : "Dispatch log — all parties"],
+        ...(orderHeading ? [[`Supply order / work: ${orderHeading}`]] : []),
         [`Date range: ${exportDateRange.from} to ${exportDateRange.to}`],
         [`Printed on ${exportPrintedOn}`],
         [],
@@ -1003,6 +1049,14 @@ export default function PlantDispatches() {
   const exportToPDF = async () => {
     try {
       const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const orderHeading = Array.from(new Map(filteredDispatches
+        .filter(dispatch => dispatch.supplyOrderNo)
+        .map(dispatch => [dispatch.supplyOrderNo, {
+          orderNo: dispatch.supplyOrderNo!,
+          workName: dispatch.supplyOrderWorkName,
+        }])).values())
+        .map(order => [order.orderNo, order.workName].filter(Boolean).join(" · "))
+        .join(" | ");
       const title = filterPartyId !== "all" ? "Party daily statement" : "Dispatch log";
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
@@ -1011,8 +1065,10 @@ export default function PlantDispatches() {
       doc.text(`${title} — ${exportPartyName}`, 10, 16);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
-      doc.text(`Date range: ${exportDateRange.from} to ${exportDateRange.to}`, 10, 21);
-      doc.text(`Printed on ${exportPrintedOn}`, 10, 26);
+      if (orderHeading) doc.text(`Supply order / work: ${orderHeading}`, 10, 21, { maxWidth: 275 });
+      const headingY = orderHeading ? 26 : 21;
+      doc.text(`Date range: ${exportDateRange.from} to ${exportDateRange.to}`, 10, headingY);
+      doc.text(`Printed on ${exportPrintedOn}`, 10, headingY + 5);
 
       const tableData = filteredDispatches.map(d => {
         const template = templates?.find(t => t.id === d.mixTemplateId);
@@ -1027,7 +1083,7 @@ export default function PlantDispatches() {
           d.ownerName || "",
           d.driverName || "",
           d.driverMobile || "",
-          template?.name || template?.mixType || "",
+          d.supplyOrderMixName || template?.name || template?.mixType || "",
           Number(d.loadWeight) || 0,
           dispatchPlainStatus(d),
           istDateTimeLabel(arrival),
@@ -1045,7 +1101,7 @@ export default function PlantDispatches() {
       ];
       const notUnloaded = filteredDispatches.filter(d => !d.dispatchProLeftAt);
       autoTable(doc, {
-        startY: 30,
+        startY: orderHeading ? 35 : 30,
         head: [headers],
         body: tableData,
         theme: "grid",
@@ -1183,7 +1239,7 @@ export default function PlantDispatches() {
                   <td>${d.dispatchProChallanNo || '-'}</td>
                   <td>${d.truckNumber}</td>
                 <td>${formatPersonName(getPartyName(d.partyId))}</td>
-                  <td>${template?.name || template?.mixType || '-'}</td>
+                  <td>${d.supplyOrderMixName || template?.name || template?.mixType || '-'}</td>
                   <td>${d.loadWeight}</td>
                   <td>${d.dispatchProArrivedAt ? format(new Date(d.dispatchProArrivedAt), "dd MMM HH:mm") : '-'}</td>
                   <td>${d.dispatchProLeftAt ? format(new Date(d.dispatchProLeftAt), "dd MMM HH:mm") : '-'}</td>
@@ -1358,9 +1414,22 @@ export default function PlantDispatches() {
                     </Select>
                     {selectedTemplate && (
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Theoretical bitumen: {selectedTemplate.bitumenPercent}%
+                        Theoretical bitumen: {theoreticalValues?.bitumenPercent ?? selectedTemplate.bitumenPercent}%
                       </p>
                     )}
+                    {(() => {
+                      const orderLine = !editingDispatch
+                        ? dispatchOrderContext?.lines.find(line => line.mixTemplateId === Number(mixTemplateId))
+                        : undefined;
+                      if (!orderLine?.isOrderMix) return null;
+                      return (
+                        <div className="mt-2 rounded-md border border-teal-200 bg-teal-50/60 p-2 text-xs text-teal-950" data-testid="dispatch-order-mix">
+                          <p className="font-semibold">Order mix: {orderLine.mixName}</p>
+                          {dispatchOrderContext?.orderNo && <p>{dispatchOrderContext.orderNo}{dispatchOrderContext.workName ? ` · ${dispatchOrderContext.workName}` : ""}</p>}
+                          <p>Bitumen {orderLine.bitumenPercent}% · {orderLine.components.map(component => `${component.materialName} ${component.aggregateSharePercent}%`).join(" · ")}</p>
+                        </div>
+                      );
+                    })()}
                   </div>
                   {dispatchDefaultsAvailable && primaryFieldsExpanded && (
                     <Button
@@ -2009,7 +2078,7 @@ export default function PlantDispatches() {
                               <div className="flex-1 flex items-center gap-x-4 gap-y-1 flex-wrap text-sm min-w-0">
                                 <span className="font-semibold">{dispatch.truckNumber}</span>
                                 <span className="font-medium">{dispatch.loadWeight} MT</span>
-                                <Badge variant="outline" className="text-sm">{template?.mixType || "-"}</Badge>
+                                <Badge variant="outline" className="text-sm">{dispatch.supplyOrderMixName || template?.mixType || "-"}</Badge>
                                 <span className="text-sm text-muted-foreground">{getPartyName(dispatch.partyId)}</span>
                                 <Badge variant={dispatch.supplyOrderNo ? "secondary" : "outline"} className="text-xs">
                                   {dispatch.supplyOrderNo ? `Order ${dispatch.supplyOrderNo}` : "No order"}
@@ -2075,7 +2144,7 @@ export default function PlantDispatches() {
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-sm block">Mix</span>
-                                <Badge variant="outline" className="text-sm">{template?.mixType || "-"}</Badge>
+                                <Badge variant="outline" className="text-sm">{dispatch.supplyOrderMixName || template?.mixType || "-"}</Badge>
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-sm block">Party</span>

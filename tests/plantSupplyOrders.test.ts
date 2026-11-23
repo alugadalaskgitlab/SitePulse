@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  allocateSupplyOrderLdo,
   dailyMixTonnes,
   dispatchCrossesStockZero,
   daysOfStockLeft,
@@ -7,7 +8,10 @@ import {
   formatPlantSupplyMorningSummary,
   isRunningLow,
   materialAvailabilityForScope,
+  materialNeedForOrderMix,
   materialNeedForMix,
+  orderMixAggregateQuantities,
+  orderQuantityToMt,
   orderMaterialNeeds,
 } from "../shared/plantSupplyOrders";
 
@@ -28,6 +32,56 @@ const materials = [
 ];
 
 describe("HMP plant supply order calculations", () => {
+  it("converts order quantities and calculates isolated order-mix allowances", () => {
+    expect(orderQuantityToMt(297.1, "cum", 2.356)).toBeCloseTo(700, 1);
+    const orderMix = {
+      mixTemplateId: 1,
+      mixName: "BC — party order mix",
+      sourceBitumenPercent: 5.4,
+      bitumenPercent: 5,
+      ldoNorm: 6,
+      components: [
+        { materialId: 13, aggregateSharePercent: 30 },
+        { materialId: 14, aggregateSharePercent: 25 },
+        { materialId: 15, aggregateSharePercent: 43 },
+        { materialId: 15, aggregateSharePercent: 2 },
+      ],
+    };
+    const orderMaterials = [
+      ...materials,
+      { id: 13, name: "10/12MM" },
+      { id: 14, name: "6MM DOWN" },
+      { id: 15, name: "DUST" },
+    ];
+    const need = materialNeedForOrderMix(template, orderMix, 700, orderMaterials);
+    expect(need.find(row => row.materialId === 11)?.quantity).toBe(35);
+    expect(need.find(row => row.materialId === 13)?.quantity).toBe(199.5);
+    expect(need.find(row => row.materialId === 14)?.quantity).toBe(166.25);
+    expect(need.find(row => row.materialId === 15)?.quantity).toBe(299.25);
+    expect(template.bitumenPercent).toBe(5);
+    expect(materialNeedForOrderMix(template, orderMix, 305, orderMaterials).find(row => row.materialId === 11)?.quantity).toBe(15.25);
+    expect(orderMixAggregateQuantities(305, 5, orderMix.components)).toEqual({
+      13: 86.925,
+      14: 72.4375,
+      15: 130.3875,
+    });
+    expect(materialAvailabilityForScope(35, 0, "party", 26.8, 500).shortage).toBeCloseTo(8.2, 6);
+    expect(materialAvailabilityForScope(299.25, 0, "party", 0, 500).shortage).toBe(299.25);
+  });
+
+  it("allocates plant pre-heat and boiler LDO once by order dispatch weight", () => {
+    expect(allocateSupplyOrderLdo(125, [{ orderId: 1, dispatchMt: 500 }]))
+      .toEqual([{ orderId: 1, sharePercent: 100, allocatedLitres: 125 }]);
+    const shares = allocateSupplyOrderLdo(140, [
+      { orderId: 1, dispatchMt: 305 },
+      { orderId: 2, dispatchMt: 395 },
+    ]);
+    expect(shares[0].sharePercent).toBeCloseTo(305 / 700 * 100, 6);
+    expect(shares[0].allocatedLitres).toBeCloseTo(61, 6);
+    expect(shares[1].allocatedLitres).toBeCloseTo(79, 6);
+    expect(shares.reduce((sum, row) => sum + row.allocatedLitres, 0)).toBeCloseTo(140, 6);
+  });
+
   it("calculates components, bitumen and LDO from the mix template without changing dispatch calculations", () => {
     expect(materialNeedForMix(template, components, 10, materials)).toEqual([
       { materialId: 11, quantity: 0.5, uom: "MT" },

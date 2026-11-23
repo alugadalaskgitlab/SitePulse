@@ -841,6 +841,13 @@ export const plantSupplyOrders = pgTable("plant_supply_orders", {
   siteId: integer("site_id").references(() => sites.id),
   periodFrom: date("period_from").notNull(),
   periodTo: date("period_to").notNull(),
+  workName: text("work_name"),
+  division: text("division"),
+  mandal: text("mandal"),
+  district: text("district"),
+  agreementEstimateRef: text("agreement_estimate_ref"),
+  estimateSorYear: text("estimate_sor_year"),
+  mtPerCumFactor: numeric("mt_per_cum_factor", { precision: 12, scale: 6 }),
   remarks: text("remarks"),
   status: text("status").notNull().default("open"), // open | closed
   createdByUserId: integer("created_by_user_id"),
@@ -861,6 +868,8 @@ export const plantSupplyOrderLines = pgTable("plant_supply_order_lines", {
   id: serial("id").primaryKey(),
   orderId: integer("order_id").notNull().references(() => plantSupplyOrders.id, { onDelete: "cascade" }),
   mixTemplateId: integer("mix_template_id").notNull().references(() => mixTemplates.id),
+  enteredQuantity: numeric("entered_quantity", { precision: 20, scale: 6 }),
+  enteredUnit: text("entered_unit"), // MT | cum; orderedMt remains the canonical dispatch balance unit.
   orderedMt: numeric("ordered_mt", { precision: 20, scale: 6, mode: "number" }).notNull(),
   plannedMtPerDay: numeric("planned_mt_per_day", { precision: 20, scale: 6, mode: "number" }),
   sortOrder: integer("sort_order").notNull().default(0),
@@ -868,6 +877,31 @@ export const plantSupplyOrderLines = pgTable("plant_supply_order_lines", {
 }, (table) => ({
   orderIdx: index("plant_supply_order_lines_order_idx").on(table.orderId, table.sortOrder),
   orderMixUq: uniqueIndex("plant_supply_order_lines_order_mix_uq").on(table.orderId, table.mixTemplateId),
+}));
+
+export const plantSupplyOrderMixSpecs = pgTable("plant_supply_order_mix_specs", {
+  id: serial("id").primaryKey(),
+  orderLineId: integer("order_line_id").notNull()
+    .references(() => plantSupplyOrderLines.id, { onDelete: "cascade" }),
+  mixName: text("mix_name").notNull(),
+  sourceBitumenPercent: real("source_bitumen_percent").notNull(),
+  bitumenPercent: real("bitumen_percent").notNull(),
+  ldoNorm: real("ldo_norm"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orderLineUq: uniqueIndex("plant_supply_order_mix_specs_line_uq").on(table.orderLineId),
+}));
+
+export const plantSupplyOrderMixComponents = pgTable("plant_supply_order_mix_components", {
+  id: serial("id").primaryKey(),
+  orderMixId: integer("order_mix_id").notNull()
+    .references(() => plantSupplyOrderMixSpecs.id, { onDelete: "cascade" }),
+  materialId: integer("material_id").notNull().references(() => plantMaterials.id),
+  aggregateSharePercent: real("aggregate_share_percent").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+}, (table) => ({
+  orderMixSortIdx: index("plant_supply_order_mix_components_sort_idx").on(table.orderMixId, table.sortOrder, table.id),
 }));
 
 export const plantSupplyOrderMaterialScopes = pgTable("plant_supply_order_material_scopes", {
@@ -4651,6 +4685,7 @@ export const attachmentModuleTypes = [
   // Batch 06M: Daily Diesel Requirement purchase evidence (bill / payment QR).
   // docType distinguishes "bill" vs "payment_evidence" within this moduleType.
   "diesel_purchase",
+  "plant_supply_order",
 ] as const;
 export type AttachmentModuleType = typeof attachmentModuleTypes[number];
 
