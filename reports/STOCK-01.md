@@ -14,7 +14,13 @@ Posting now calculates the current balance from the ledger using the same stock-
 
 ### Read-only development check
 
-On `sitelog_dev`, the DUST / HIGH LANE CONSTRUCTIONS balance was approximately **−58.178 MT** from the old CFT and MT ledger rows. The stored-vs-ledger difference observed was about **0.000003 MT**, within six-decimal rounding. This is not the large live mismatch above. No stock, ledger or reconciliation records were changed.
+On `sitelog_dev`, the read-only stored-vs-ledger check returned:
+
+| Party | Material | Unit | Stored balance | Ledger balance | Stored − ledger |
+|---|---|---:|---:|---:|---:|
+| HIGH LANE CONSTRUCTIONS (1) | DUST | MT | −58.177510 | −58.177513 | +0.000003 |
+
+No other material/party rows were listed. This rounding-sized difference is not the large live mismatch above. No stock, ledger or reconciliation records were changed.
 
 ### Proposal for the Owner — not applied
 
