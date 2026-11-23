@@ -24,8 +24,8 @@ interface Props {
 }
 
 const LABEL: Record<DryerSource, string> = {
-  TANK_1: "Boiler tank",
-  TANK_2: "Dryer tank",
+  TANK_1: "Tank 1 (small vertical)",
+  TANK_2: "Tank 2 (big horizontal)",
 };
 
 export default function DryerSourceFixDialog({ open, onOpenChange, target, onFixed }: Props) {
@@ -123,8 +123,8 @@ export default function DryerSourceFixDialog({ open, onOpenChange, target, onFix
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="TANK_1">Boiler tank</SelectItem>
-                <SelectItem value="TANK_2">Dryer tank</SelectItem>
+                <SelectItem value="TANK_1">Tank 1 (small vertical)</SelectItem>
+                <SelectItem value="TANK_2">Tank 2 (big horizontal)</SelectItem>
               </SelectContent>
             </Select>
           </div>

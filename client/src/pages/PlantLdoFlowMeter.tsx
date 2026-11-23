@@ -1025,7 +1025,7 @@ export default function PlantLdoFlowMeter() {
       Date: r.date,
       Time: r.time || "",
       Tank: TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`,
-      "Dryer Src": r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← Boiler tank" : "",
+      "Dryer Src": r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← Tank 1 (small vertical)" : "",
       "Meter Reading (L)": r.meterReading,
       Type: r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       "Receipt Qty (L)": r.quantityLiters || "",
@@ -1062,7 +1062,7 @@ export default function PlantLdoFlowMeter() {
     const tableData = filteredReadings.map(r => [
       r.date, r.time || "",
       TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`,
-      r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← Boiler tank" : "",
+      r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← Tank 1 (small vertical)" : "",
       r.meterReading.toFixed(3),
       r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       r.quantityLiters ? r.quantityLiters.toFixed(3) : "",
@@ -1084,7 +1084,7 @@ export default function PlantLdoFlowMeter() {
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
       <body><div class="header"><h2>LDO Flow Meter Readings - ${companyShortName} Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
       <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Dryer Src</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Source</th><th>Notes</th></tr>
-      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← Boiler tank" : ""}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${getReadingSourceLabel(r)}</td><td>${r.notes || ""}</td></tr>`).join("")}
+      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← Tank 1 (small vertical)" : ""}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${getReadingSourceLabel(r)}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
     openPrintableHtmlOrPreview(printContent, "LDO flow meter readings", `ldo-flow-readings-${format(new Date(), "yyyyMMdd")}.html`);
   }
@@ -1851,8 +1851,8 @@ export default function PlantLdoFlowMeter() {
                     <th className="text-left p-2">Date</th>
                     <th className="text-right p-2">Production (MT)</th>
                     <th className="text-right p-2">Norm (L)</th>
-                    <th className="text-right p-2">{officialMethod === "dip" ? "Tank 1 Dip (L)" : "Actual Boiler (L)"}</th>
-                    <th className="text-right p-2">{officialMethod === "dip" ? "Tank 2 Dip (L)" : "Actual Dryer (L)"}</th>
+                    <th className="text-right p-2">{officialMethod === "dip" ? "Tank 1 (small vertical) dip (L)" : "Actual boiler (L)"}</th>
+                    <th className="text-right p-2">{officialMethod === "dip" ? "Tank 2 (big horizontal) dip (L)" : "Actual dryer (L)"}</th>
                     <th className="text-right p-2">Actual total (L)</th>
                     <th className="text-right p-2">L/Ton</th>
                     <th className="text-right p-2">Variance (L)</th>
@@ -2148,8 +2148,8 @@ export default function PlantLdoFlowMeter() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Dryer Src</SelectItem>
-                <SelectItem value="T1">← Boiler tank only</SelectItem>
-                <SelectItem value="T2">Dryer tank only</SelectItem>
+                <SelectItem value="T1">Tank 1 (small vertical) only</SelectItem>
+                <SelectItem value="T2">Tank 2 (big horizontal) only</SelectItem>
               </SelectContent>
             </Select>
             {(filterDateFrom || filterDateTo || filterTank !== "all" || filterSource !== "all" || filterDryerSrc !== "all" || reconDateFrom || reconDateTo || reconPartyId !== "all" || reconMixTemplateId !== "all" || reconSite !== "all") && (
@@ -2233,10 +2233,10 @@ export default function PlantLdoFlowMeter() {
                           <Badge
                             variant="outline"
                             className="text-sm border-amber-500 text-amber-700 dark:text-amber-300 no-default-hover-elevate no-default-active-elevate"
-                            title="Dryer is fed from Boiler tank stock"
+                            title="Dryer is fed from Tank 1 (small vertical) stock"
                             data-testid={`badge-dryer-src-${r.id}`}
                           >
-                            ← Boiler tank
+                            ← Tank 1 (small vertical)
                           </Badge>
                         )}
                       </td>
@@ -2363,12 +2363,12 @@ export default function PlantLdoFlowMeter() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="TANK_2">Dryer tank (default)</SelectItem>
-                    <SelectItem value="TANK_1">Boiler tank</SelectItem>
+                    <SelectItem value="TANK_2">Tank 2 (big horizontal, default)</SelectItem>
+                    <SelectItem value="TANK_1">Tank 1 (small vertical)</SelectItem>
                   </SelectContent>
                 </Select>
                 {dryerFedFrom === "TANK_1" && (
-                  <p className="text-sm text-amber-600 mt-1">Consumption will be debited from Boiler tank stock.</p>
+                  <p className="text-sm text-amber-600 mt-1">Consumption will be debited from Tank 1 (small vertical) stock.</p>
                 )}
               </div>
             )}

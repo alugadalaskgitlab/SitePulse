@@ -18,12 +18,10 @@ import {
 } from "lucide-react";
 import type { BitumenHeatingSession, PlantShiftLog } from "@shared/schema";
 import { heatingSessionTypeLabel } from "@shared/schema";
-import { HEATING_TRENDS_MISMATCH_THRESHOLD_L } from "@shared/heating-trends-constants";
 
 // Mismatch tolerance is sourced from the same shared constant used by
 // `getHeatingTrends` on the server, so the verdict on this page lines up
 // with the badge the user clicked from the trends report.
-const MISMATCH_THRESHOLD_L = HEATING_TRENDS_MISMATCH_THRESHOLD_L;
 
 function fmt(n: number | null | undefined, digits = 1): string {
   if (n == null || isNaN(n as number)) return "—";
@@ -49,16 +47,6 @@ export default function PlantHeatingMismatch() {
   const search = typeof window !== "undefined" ? window.location.search : "";
   const sp = new URLSearchParams(search);
   const plant = sp.get("plant") || defaultPlantName;
-  const { data: plantSettings } = useQuery<{ boilerFuelMeterMode?: "working" | "dips_only" | null }>({
-    queryKey: ["/api/plant-module/plant-settings", plant],
-    enabled: !!plant,
-    queryFn: async () => {
-      const response = await fetch(`/api/plant-module/plant-settings/${encodeURIComponent(plant)}`, { credentials: "include" });
-      if (!response.ok) throw new Error("Could not load plant settings.");
-      return response.json();
-    },
-  });
-  const boilerDipsOnly = plantSettings?.boilerFuelMeterMode === "dips_only";
 
   // Trends → mismatch is a "reports" tab navigation; preserve that on the
   // back-link so closing the page returns to the same tab.
@@ -80,6 +68,16 @@ export default function PlantHeatingMismatch() {
       );
       if (!res.ok) throw new Error(await res.text());
       return res.json();
+    },
+  });
+
+  const { data: dailySummary } = useQuery<{ ldo?: { openingGap?: { previousAt: string; currentAt: string; gaps: Array<{ tankNumber: number; deltaLitres: number }> } | null } }>({
+    queryKey: ["/api/plant-module/daily-reports", date, plant],
+    enabled: !!date && !!plant,
+    queryFn: async () => {
+      const response = await fetch(`/api/plant-module/daily-reports/${date}?plant=${encodeURIComponent(plant)}`, { credentials: "include" });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
     },
   });
 
@@ -114,29 +112,17 @@ export default function PlantHeatingMismatch() {
     return s + (c == null ? 0 : c);
   }, 0);
   const anyShiftHasMeter = shiftLogs.some(sh => shiftConsumed(sh) != null);
-  const deltaL = anyShiftHasMeter || sessions.length > 0
-    ? Math.round((sessionsTotalL - shiftTotalL) * 10) / 10
-    : null;
-  const isFlagged = !boilerDipsOnly && deltaL != null && Math.abs(deltaL) > MISMATCH_THRESHOLD_L;
+  const openingGap = dailySummary?.ldo?.openingGap ?? null;
+  const isFlagged = openingGap != null;
 
   const verdict = (() => {
-    if (boilerDipsOnly) return "Boiler meter not used — dips only";
-    if (deltaL == null) {
-      return "No heating sessions and no shift-meter readings logged for this date.";
+    if (!openingGap) {
+      return "No opening dip gap over 40 L was found after accounting for receipts between readings. Preheat and production are separate time windows.";
     }
-    if (!isFlagged) {
-      return `Sessions and shift-meter agree within ±${MISMATCH_THRESHOLD_L} L tolerance.`;
-    }
-    if (sessions.length === 0) {
-      return `No heating sessions are logged but the shift meter shows ${fmt(shiftTotalL)} L was consumed — operators likely forgot to capture the heating sessions.`;
-    }
-    if (!anyShiftHasMeter) {
-      return `Sessions total ${fmt(sessionsTotalL)} L but no shift-log opening/closing meter readings were entered for this date — the shift log likely needs the LDO Tank-1 meter filled in.`;
-    }
-    if (deltaL > 0) {
-      return `Sessions claim ${fmt(deltaL)} L more LDO than the shift meter recorded. Either a session's closing meter is too high, or the shift log opening/closing was under-recorded.`;
-    }
-    return `Sessions claim ${fmt(Math.abs(deltaL))} L less LDO than the shift meter recorded. Either a heating session was missed, or the shift log opening/closing meters need correcting.`;
+    const details = openingGap.gaps.map(gap =>
+      `Tank ${gap.tankNumber}: ${gap.deltaLitres > 0 ? "+" : ""}${fmt(gap.deltaLitres)} L`
+    ).join(" · ");
+    return `LDO dip gap over 40 L between ${openingGap.previousAt} and current opening ${openingGap.currentAt}; receipts between those times were included. ${details}`;
   })();
 
   const editSessionLink = (sessionId: number) =>
@@ -219,7 +205,7 @@ export default function PlantHeatingMismatch() {
             <Card>
               <CardContent className="p-4">
                 <div className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Flame className="w-3 h-3" /> Heating sessions total
+                  <Flame className="w-3 h-3" /> Preheat sessions total
                 </div>
                 <div
                   className="text-2xl font-bold"
@@ -235,16 +221,16 @@ export default function PlantHeatingMismatch() {
             <Card>
               <CardContent className="p-4">
                 <div className="text-sm text-muted-foreground flex items-center gap-1">
-                  <GaugeCircle className="w-3 h-3" /> {boilerDipsOnly ? "Boiler meter" : "Shift-meter total"}
+                  <GaugeCircle className="w-3 h-3" /> Boiler production meter
                 </div>
                 <div
                   className="text-2xl font-bold"
                   data-testid="kpi-shift-total"
                 >
-                  {boilerDipsOnly ? "Not used — dips only" : anyShiftHasMeter ? `${fmt(shiftTotalL)} L` : "—"}
+                  {anyShiftHasMeter ? `${fmt(shiftTotalL)} L` : "No complete meter pair"}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {boilerDipsOnly ? "No boiler-meter comparison" : `${shiftLogs.length} shift log${shiftLogs.length === 1 ? "" : "s"}${shiftLogs.length > 0 && !anyShiftHasMeter ? " · no meter readings" : ""}`}
+                  {shiftLogs.length} shift log{shiftLogs.length === 1 ? "" : "s"}
                 </div>
               </CardContent>
             </Card>
@@ -254,18 +240,16 @@ export default function PlantHeatingMismatch() {
             >
               <CardContent className="p-4">
                 <div className="text-sm text-muted-foreground flex items-center gap-1">
-                  <GitCompare className="w-3 h-3" /> {boilerDipsOnly ? "Comparison" : "Δ (sessions − shift)"}
+                  <GitCompare className="w-3 h-3" /> Tank opening gap
                 </div>
                 <div
                   className={`text-2xl font-bold ${isFlagged ? "text-destructive" : ""}`}
                   data-testid="text-delta-l"
                 >
-                  {boilerDipsOnly || deltaL == null
-                    ? "—"
-                    : `${deltaL > 0 ? "+" : ""}${fmt(deltaL)} L`}
+                  {openingGap ? "Over 40 L" : "None found"}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {boilerDipsOnly ? "Not applicable" : `Tolerance: ±${MISMATCH_THRESHOLD_L} L`}
+                  Compared across both tanks, including receipts between readings
                 </div>
               </CardContent>
             </Card>

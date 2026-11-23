@@ -234,7 +234,7 @@ export default function PlantDailyReports() {
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
-      const label = variables.targetValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
+      const label = variables.targetValue === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
       toast({ title: `${data.updatedCount} session${data.updatedCount !== 1 ? "s" : ""} aligned to ${label}` });
     },
     onError: (err: any) => {
@@ -804,7 +804,7 @@ export default function PlantDailyReports() {
                                   data-testid={`button-align-intra-tank1-${rowKey}`}
                                 >
                                   {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                                  Set all → Boiler tank
+                                  Set all → Tank 1 (small vertical)
                                 </Button>
                                 <Button
                                   size="sm"
@@ -815,7 +815,7 @@ export default function PlantDailyReports() {
                                   data-testid={`button-align-intra-tank2-${rowKey}`}
                                 >
                                   {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                                  Set all → Dryer tank
+                                  Set all → Tank 2 (big horizontal)
                                 </Button>
                               </div>
                             </>

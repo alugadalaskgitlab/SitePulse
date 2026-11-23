@@ -9098,17 +9098,9 @@ export async function registerRoutes(
     try {
       if (!assertFeatureAction(req, res, "hmp_rmc", "edit")) return;
       const hasOwnerOnlySetting =
-        Object.prototype.hasOwnProperty.call(req.body || {}, "dgProductionEquipmentIds") ||
-        Object.prototype.hasOwnProperty.call(req.body || {}, "boilerFuelMeterMode");
+        Object.prototype.hasOwnProperty.call(req.body || {}, "dgProductionEquipmentIds");
       if (hasOwnerOnlySetting && !req.authUser?.isOwner) {
         return res.status(403).json({ message: "Only the Owner can change production fuel settings." });
-      }
-      if (
-        Object.prototype.hasOwnProperty.call(req.body || {}, "boilerFuelMeterMode") &&
-        req.body.boilerFuelMeterMode !== "working" &&
-        req.body.boilerFuelMeterMode !== "dips_only"
-      ) {
-        return res.status(400).json({ message: "Choose Working or Not working (use Tank 1 dips)." });
       }
       const plantName = decodeURIComponent(req.params.plantName).trim();
       if (!plantName) return res.status(400).json({ message: "plantName is required" });
@@ -9141,9 +9133,6 @@ export async function registerRoutes(
         tankConfig: req.body?.tankConfig ?? null,
       };
       if (dgProductionEquipmentIds !== undefined) input.dgProductionEquipmentIds = dgProductionEquipmentIds;
-      if (Object.prototype.hasOwnProperty.call(req.body || {}, "boilerFuelMeterMode")) {
-        input.boilerFuelMeterMode = req.body.boilerFuelMeterMode;
-      }
       const parsed = insertPlantSettingsSchema.parse(input as any);
       const saved = await storage.upsertPlantSettings(parsed);
       res.json(saved);
@@ -9235,7 +9224,6 @@ export async function registerRoutes(
       const rows = await storage.getLdoFlowReadings({
         dateFrom: req.params.date,
         dateTo: req.params.date,
-        tankNumber: 1,
         readingType: "receipt",
         plantName,
       });
@@ -9243,7 +9231,11 @@ export async function registerRoutes(
         total + (row.sourceMaterialIssueId == null ? Number(row.quantityLiters || 0) : 0), 0);
       const transferLitres = rows.reduce((total: number, row: any) =>
         total + (row.sourceMaterialIssueId != null ? Number(row.quantityLiters || 0) : 0), 0);
-      res.json({ receiptLitres, transferLitres });
+      res.json({ receiptLitres, transferLitres, byTank: [1, 2].map((tankNumber) => ({
+        tankNumber,
+        litres: rows.filter((row: any) => Number(row.tankNumber) === tankNumber && row.sourceMaterialIssueId == null)
+          .reduce((sum: number, row: any) => sum + Number(row.quantityLiters || 0), 0),
+      })) });
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Could not load Tank 1 fuel receipts." });
     }
@@ -9496,14 +9488,13 @@ export async function registerRoutes(
         if (Array.isArray(configured)) configuredIds = configured.map(Number).filter(Number.isInteger);
       } catch {}
       const selectedIds = new Set(configuredIds);
-      const dipsOnly = existingSettings?.boilerFuelMeterMode === "dips_only";
       const missingClosingReadings = [
         ...(existing.bitumenTank1ClosingDip == null ? ["Bitumen tank 1 closing dip"] : []),
         ...(existing.bitumenTank2ClosingDip == null ? ["Bitumen tank 2 closing dip"] : []),
-        ...(existing.ldoTank2ClosingMeter == null ? ["Dryer fuel meter closing reading"] : []),
-        ...(dipsOnly && existing.ldoTank1OpeningDip == null ? ["LDO tank 1 opening dip"] : []),
-        ...(dipsOnly && existing.ldoTank1ClosingDip == null ? ["LDO tank 1 closing dip"] : []),
-        ...(!dipsOnly && existing.boilerRunsDuringProduction && existing.ldoTank1ClosingMeter == null ? ["Boiler fuel meter closing reading"] : []),
+        ...(existing.ldoTank1OpeningDip == null ? ["Tank 1 opening dip"] : []),
+        ...(existing.ldoTank1ClosingDip == null ? ["Tank 1 closing dip"] : []),
+        ...(existing.ldoTank2OpeningDip == null ? ["Tank 2 opening dip"] : []),
+        ...(existing.ldoTank2ClosingDip == null ? ["Tank 2 closing dip"] : []),
       ];
       const [plantEquipment, dayUsage] = await Promise.all([
         storage.getEquipmentMaster(false),
@@ -9771,13 +9762,47 @@ export async function registerRoutes(
         doc.font("Helvetica").text(`  Tmpl ${templateStr}  /  Actual ${actualStr}${varStr}`);
       }
 
-      section(`LDO Consumption (Shift Meters / Source: ${summary.ldo.source})`);
-      line("Boiler Meter (L)", summary.ldo.consumedT1L?.toFixed(1) ?? "—");
-      line("Dryer Meter (L)", summary.ldo.consumedT2L?.toFixed(1) ?? "—");
-      line("Total (L)", summary.ldo.consumedTotalL?.toFixed(1) ?? "—");
-      line("L / Hour (combined)", summary.ldo.lPerHour ?? "—");
-      line("Dryer L / MT Production", summary.ldo.dryerLPerMT ?? "—");
-      line("Boiler L / MT Production", summary.ldo.boilerLPerMT ?? "—");
+      section("LDO Summary");
+      const ldoAccounting = summary.ldo.accounting;
+      const stopMinutes = Number(summary.idle?.totalMinutes || 0);
+      const stopTime = `${Math.floor(stopMinutes / 60)}:${String(stopMinutes % 60).padStart(2, "0")}`;
+      line(
+        "Preheat",
+        `${ldoAccounting?.preheatSessionCount ?? 0} sessions / ${ldoAccounting?.nightsCount ?? 0} nights / ${ldoAccounting?.preheatHours?.toFixed(1) ?? "—"} h · ${ldoAccounting?.preheatLitres?.toFixed(1) ?? "—"} L · ${ldoAccounting?.preheatLitresPerHour?.toFixed(1) ?? "—"} L/h`,
+      );
+      line(
+        `Boiler during production${ldoAccounting?.boilerMeterUsed ? " (meter)" : ""}`,
+        `${ldoAccounting?.boilerDuringProductionLitres?.toFixed(1) ?? "—"} L · ${ldoAccounting?.boilerDuringProductionLitresPerHour?.toFixed(1) ?? "—"} L/h`,
+      );
+      line(
+        `Dryer${ldoAccounting?.dryerMeterUsed ? " (meter)" : ""}`,
+        `${ldoAccounting?.dryerLitres?.toFixed(1) ?? "—"} L${summary.production.totalProductionMT > 0 ? ` · ${ldoAccounting?.dryerLitresPerMt?.toFixed(2) ?? "—"} L/MT` : ""}`,
+      );
+      if (summary.production.totalProductionMT > 0) {
+        line("Boiler including preheat", `${ldoAccounting?.boilerLitresPerMt?.toFixed(2) ?? "—"} L/MT`);
+      }
+      line(
+        "Total LDO",
+        `${ldoAccounting?.totalLitres?.toFixed(1) ?? "—"} L${summary.production.totalProductionMT > 0 ? ` · ${ldoAccounting?.totalLitresPerMt?.toFixed(2) ?? "—"} L/MT` : ""}`,
+      );
+      line("Plant stops", `${summary.idle?.events?.length ?? 0} events · ${stopTime}`);
+      if (ldoAccounting?.checkDipsOrDryerMeter) {
+        doc.fontSize(10).font("Helvetica-Bold").text("Check dips / dryer meter");
+        doc.font("Helvetica");
+      }
+      if (summary.ldo.openingGap) {
+        const gapText = summary.ldo.openingGap.gaps
+          .map((gap: any) => `Tank ${gap.tankNumber}: ${gap.deltaLitres > 0 ? "+" : ""}${Number(gap.deltaLitres).toFixed(1)} L`)
+          .join(" · ");
+        doc.fontSize(9).font("Helvetica-Bold").text(
+          `LDO dip gap over 40 L between ${summary.ldo.openingGap.previousAt} and current opening ${summary.ldo.openingGap.currentAt}; receipts between those times were included. ${gapText}`,
+        );
+        doc.font("Helvetica");
+      }
+      doc.moveDown(0.3).fontSize(9).font("Helvetica-Bold").text("Tank stock and dip detail");
+      doc.font("Helvetica").fontSize(10);
+      line("Tank 1 (small vertical) stock used (L)", summary.ldo.tank1DeductedL?.toFixed(1) ?? "—");
+      line("Tank 2 (big horizontal) stock used (L)", summary.ldo.tank2DeductedL?.toFixed(1) ?? "—");
       const dryerFedFromLabel = summary.ldo.dryerFedFrom === "TANK_1" ? "Tank 1" : summary.ldo.dryerFedFrom === "TANK_2" ? "Tank 2" : null;
       if (dryerFedFromLabel) {
         line("Dryer fed from", dryerFedFromLabel);
@@ -10482,7 +10507,7 @@ export async function registerRoutes(
         const permitted = await permittedReportPlants(req);
         return res.json(permitted === null ? rows : rows.filter(row => permitted.has(row.plantName || plantName)));
       }
-      const rows = await storage.getBitumenHeatingSessions({
+      const rows = await storage.getHeatingSessionsWithProductionDate({
         date: req.query.date as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,

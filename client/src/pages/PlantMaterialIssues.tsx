@@ -320,8 +320,8 @@ export default function PlantMaterialIssues() {
     : false;
 
   const getLdoTankLabel = (tank: number | null | undefined) => {
-    if (tank === 1) return "Tank 1 (Boiler)";
-    if (tank === 2) return "Tank 2 (Dryer)";
+    if (tank === 1) return "Tank 1 (small vertical)";
+    if (tank === 2) return "Tank 2 (big horizontal)";
     return null;
   };
 
@@ -620,8 +620,8 @@ export default function PlantMaterialIssues() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">None / Not applicable</SelectItem>
-                        <SelectItem value="1">Tank 1 — Boiler</SelectItem>
-                        <SelectItem value="2">Tank 2 — Dryer</SelectItem>
+                        <SelectItem value="1">Tank 1 (small vertical)</SelectItem>
+                        <SelectItem value="2">Tank 2 (big horizontal)</SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-sm text-muted-foreground mt-1">

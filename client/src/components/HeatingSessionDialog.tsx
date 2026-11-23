@@ -193,17 +193,6 @@ export function HeatingSessionDialog({
     queryKey: ["/api/plant-module/generators"],
     enabled: open,
   });
-  const { data: plantSettings } = useQuery<{ boilerFuelMeterMode?: "working" | "dips_only" | null }>({
-    queryKey: ["/api/plant-module/plant-settings", form.plantName],
-    enabled: open && !!form.plantName,
-    queryFn: async () => {
-      const response = await fetch(`/api/plant-module/plant-settings/${encodeURIComponent(form.plantName)}`, { credentials: "include" });
-      if (!response.ok) throw new Error("Could not load plant settings.");
-      return response.json();
-    },
-  });
-  const boilerDipsOnly = plantSettings?.boilerFuelMeterMode === "dips_only";
-
   const generatorOptionsForDate = useMemo(
     () => (dgCandidates || []).filter(g =>
       // Show generator_log rows not already tied to a different session,
@@ -333,13 +322,16 @@ export function HeatingSessionDialog({
 
   const dur = durationHrs(form.startTime, form.endTime);
   const ldoConsumed = (() => {
-    if (boilerDipsOnly) {
-      const openingDip = parseFloat(form.ldoTank1OpeningDip);
-      const closingDip = parseFloat(form.ldoTank1ClosingDip);
-      if (Number.isFinite(openingDip) && Number.isFinite(closingDip)) {
-        return Math.max(0, getLdoVolumeAtDepth(1, openingDip) - getLdoVolumeAtDepth(1, closingDip));
-      }
-      return null;
+    const t1OpenDip = numOrNull(form.ldoTank1OpeningDip);
+    const t1CloseDip = numOrNull(form.ldoTank1ClosingDip);
+    const t2OpenDip = numOrNull(form.ldoTank2OpeningDip);
+    const t2CloseDip = numOrNull(form.ldoTank2ClosingDip);
+    const hasT1Dips = t1OpenDip != null && t1CloseDip != null;
+    const hasT2Dips = t2OpenDip != null && t2CloseDip != null;
+    if (hasT1Dips || hasT2Dips) {
+      const t1 = hasT1Dips ? getLdoVolumeAtDepth(1, t1OpenDip!) - getLdoVolumeAtDepth(1, t1CloseDip!) : 0;
+      const t2 = hasT2Dips ? getLdoVolumeAtDepth(2, t2OpenDip!) - getLdoVolumeAtDepth(2, t2CloseDip!) : 0;
+      return Math.max(0, t1 + t2);
     }
     const o = parseFloat(form.ldoTank1OpeningMeter), c = parseFloat(form.ldoTank1ClosingMeter);
     if (isNaN(o) || isNaN(c)) return null;
@@ -388,8 +380,8 @@ export function HeatingSessionDialog({
       bitumenTank1TempEnd: numOrNull(form.bitumenTank1TempEnd),
       bitumenTank2TempStart: numOrNull(form.bitumenTank2TempStart),
       bitumenTank2TempEnd: numOrNull(form.bitumenTank2TempEnd),
-      ldoTank1OpeningMeter: boilerDipsOnly ? undefined : ldoOpen,
-      ldoTank1ClosingMeter: boilerDipsOnly ? undefined : ldoClose,
+       ldoTank1OpeningMeter: ldoOpen,
+       ldoTank1ClosingMeter: ldoClose,
       ldoTank1OpeningDip: numOrNull(form.ldoTank1OpeningDip),
       ldoTank1ClosingDip: numOrNull(form.ldoTank1ClosingDip),
       ldoTank2OpeningDip: numOrNull(form.ldoTank2OpeningDip),
@@ -410,10 +402,6 @@ export function HeatingSessionDialog({
       remarks: form.remarks || null,
       editedBy: "operator",
     };
-    if (boilerDipsOnly) {
-      delete payload.ldoTank1OpeningMeter;
-      delete payload.ldoTank1ClosingMeter;
-    }
     if (form.id) payload.id = form.id;
     return payload;
   };
@@ -485,8 +473,8 @@ export function HeatingSessionDialog({
             ? sl.dryerFedFrom
             : null;
           if (shiftLogDryerSource && shiftLogDryerSource !== saved.dryerFedFrom) {
-            const hsLabel = saved.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
-            const slLabel = shiftLogDryerSource === "TANK_1" ? "Boiler tank" : "Dryer tank";
+            const hsLabel = saved.dryerFedFrom === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
+            const slLabel = shiftLogDryerSource === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
             const fixTarget: DryerSourceFixTarget = {
               mode: "shift-log",
               recordId: sl.id,
@@ -578,7 +566,7 @@ export function HeatingSessionDialog({
             </CardContent>
           </Card>
 
-          {!boilerDipsOnly && <Card>
+          <Card>
             <CardHeader className="py-3">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <CardTitle className="text-base">Boiler Fuel Meter</CardTitle>
@@ -591,8 +579,8 @@ export function HeatingSessionDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="TANK_1">Boiler tank</SelectItem>
-                      <SelectItem value="TANK_2">Dryer tank</SelectItem>
+                      <SelectItem value="TANK_1">Tank 1 (small vertical)</SelectItem>
+                      <SelectItem value="TANK_2">Tank 2 (big horizontal)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -620,14 +608,14 @@ export function HeatingSessionDialog({
               <div><Label>Total consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
               <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
             </CardContent>
-          </Card>}
+          </Card>
 
           {/* LDO Tank Dip-Stick Readings */}
           <Card>
-            <CardHeader className="py-3"><CardTitle className="text-base">{boilerDipsOnly ? "LDO Tank 1 dips — boiler meter not used" : "LDO Tank Dip-Stick Readings"}</CardTitle></CardHeader>
+            <CardHeader className="py-3"><CardTitle className="text-base">LDO tank dip readings</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
-                <Label>Tank 1 — opening dip (cm)</Label>
+                <Label>Tank 1 (small vertical) — opening dip (cm)</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -647,7 +635,7 @@ export function HeatingSessionDialog({
                 )}
               </div>
               <div>
-                <Label>Tank 1 — closing dip (cm)</Label>
+                <Label>Tank 1 (small vertical) — closing dip (cm)</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -660,12 +648,8 @@ export function HeatingSessionDialog({
                   : <p className="text-sm text-muted-foreground mt-1">Dip-stick at session end, in cm</p>
                 }
               </div>
-              {boilerDipsOnly && <>
-                <div><Label>Tank 1 consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(1) ?? "—"}</div></div>
-                <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
-              </>}
               <div>
-                <Label>Tank 2 — opening dip (cm)</Label>
+                <Label>Tank 2 (big horizontal) — opening dip (cm)</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -685,7 +669,7 @@ export function HeatingSessionDialog({
                 )}
               </div>
               <div>
-                <Label>Tank 2 — closing dip (cm)</Label>
+                <Label>Tank 2 (big horizontal) — closing dip (cm)</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -700,8 +684,8 @@ export function HeatingSessionDialog({
               </div>
               {(() => {
                 const parts = [
-                  { tank: 1, openStr: form.ldoTank1OpeningDip, closeStr: form.ldoTank1ClosingDip, label: "Tank 1" },
-                  { tank: 2, openStr: form.ldoTank2OpeningDip, closeStr: form.ldoTank2ClosingDip, label: "Tank 2" },
+                  { tank: 1, openStr: form.ldoTank1OpeningDip, closeStr: form.ldoTank1ClosingDip, label: "Tank 1 (small vertical)" },
+                  { tank: 2, openStr: form.ldoTank2OpeningDip, closeStr: form.ldoTank2ClosingDip, label: "Tank 2 (big horizontal)" },
                 ];
                 const results = parts.map(({ tank, openStr, closeStr, label }) => {
                   const o = parseFloat(openStr);

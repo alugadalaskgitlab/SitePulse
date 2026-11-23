@@ -147,16 +147,6 @@ export default function PlantHeatingSessions() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm(today, defaultPlantName));
   const [draftRestored, setDraftRestored] = useState(false);
-  const { data: plantSettings } = useQuery<{ boilerFuelMeterMode?: "working" | "dips_only" | null }>({
-    queryKey: ["/api/plant-module/plant-settings", form.plantName],
-    enabled: dialogOpen && !!form.plantName,
-    queryFn: async () => {
-      const response = await fetch(`/api/plant-module/plant-settings/${encodeURIComponent(form.plantName)}`, { credentials: "include" });
-      if (!response.ok) throw new Error("Could not load plant settings.");
-      return response.json();
-    },
-  });
-  const boilerDipsOnly = plantSettings?.boilerFuelMeterMode === "dips_only";
 
   // Draft recovery: save the new-session form to localStorage whenever any field
   // changes so that navigating away (e.g. to fix a shift-log mismatch) and returning
@@ -183,7 +173,7 @@ export default function PlantHeatingSessions() {
   const [dryerFixDialogOpen, setDryerFixDialogOpen] = useState(false);
   const [dryerFixTarget, setDryerFixTarget] = useState<DryerSourceFixTarget | null>(null);
 
-  const { data: sessions, isLoading } = useQuery<BitumenHeatingSession[]>({
+  const { data: sessions, isLoading } = useQuery<Array<BitumenHeatingSession & { countsForDate?: string | null }>>({
     queryKey: ["/api/plant-module/heating-sessions", filterDateFrom, filterDateTo],
     queryFn: async () => {
       const qs = new URLSearchParams();
@@ -450,7 +440,7 @@ export default function PlantHeatingSessions() {
   const autoFilledOpeningRef = useRef<string | null>(null);
   const fetchSeqRef = useRef(0);
   useEffect(() => {
-    if (!dialogOpen || form.id || boilerDipsOnly) return;
+    if (!dialogOpen || form.id) return;
     const isEmpty = !form.ldoTank1OpeningMeter;
     const isAutoFilled = form.ldoTank1OpeningMeter && form.ldoTank1OpeningMeter === autoFilledOpeningRef.current;
     if (!isEmpty && !isAutoFilled) return;
@@ -476,7 +466,7 @@ export default function PlantHeatingSessions() {
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dialogOpen, form.id, form.date, form.startTime, form.plantName, boilerDipsOnly]);
+  }, [dialogOpen, form.id, form.date, form.startTime, form.plantName]);
 
   // Auto-fill Tank-1 and Tank-2 opening dip from the previous session's closing dip.
   const autoFilledDipT1Ref = useRef<string | null>(null);
@@ -519,17 +509,24 @@ export default function PlantHeatingSessions() {
 
   const dur = durationHrs(form.startTime, form.endTime);
   const ldoConsumed = (() => {
-    if (boilerDipsOnly) {
-      const openingDip = numOrNull(form.ldoTank1OpeningDip);
-      const closingDip = numOrNull(form.ldoTank1ClosingDip);
-      if (openingDip == null || closingDip == null) return null;
-      const openingLitres = getLdoVolumeAtDepth(1, openingDip);
-      const closingLitres = getLdoVolumeAtDepth(1, closingDip);
-      return openingLitres == null || closingLitres == null ? null : Math.max(0, openingLitres - closingLitres);
+    const t1Open = numOrNull(form.ldoTank1OpeningDip);
+    const t1Close = numOrNull(form.ldoTank1ClosingDip);
+    const t2Open = numOrNull(form.ldoTank2OpeningDip);
+    const t2Close = numOrNull(form.ldoTank2ClosingDip);
+    const hasT1 = t1Open != null && t1Close != null;
+    const hasT2 = t2Open != null && t2Close != null;
+    if (hasT1 || hasT2) {
+      const tankLitres = (tank: 1 | 2, opening: number | null, closing: number | null) => {
+        if (opening == null || closing == null) return 0;
+        const openL = getLdoVolumeAtDepth(tank, opening);
+        const closeL = getLdoVolumeAtDepth(tank, closing);
+        return openL == null || closeL == null ? 0 : openL - closeL;
+      };
+      return Math.max(0, tankLitres(1, t1Open, t1Close) + tankLitres(2, t2Open, t2Close));
     }
-    const o = parseFloat(form.ldoTank1OpeningMeter), c = parseFloat(form.ldoTank1ClosingMeter);
-    if (isNaN(o) || isNaN(c)) return null;
-    return Math.max(0, c - o);
+    const meterOpen = numOrNull(form.ldoTank1OpeningMeter);
+    const meterClose = numOrNull(form.ldoTank1ClosingMeter);
+    return meterOpen == null || meterClose == null ? null : Math.max(0, meterClose - meterOpen);
   })();
   const ldoLPerHr = (ldoConsumed != null && dur && dur > 0) ? ldoConsumed / dur : null;
 
@@ -575,8 +572,8 @@ export default function PlantHeatingSessions() {
       bitumenTank1TempEnd: numOrNull(form.bitumenTank1TempEnd),
       bitumenTank2TempStart: numOrNull(form.bitumenTank2TempStart),
       bitumenTank2TempEnd: numOrNull(form.bitumenTank2TempEnd),
-      ldoTank1OpeningMeter: boilerDipsOnly && !form.id ? null : ldoOpen,
-      ldoTank1ClosingMeter: boilerDipsOnly && !form.id ? null : ldoClose,
+      ldoTank1OpeningMeter: ldoOpen,
+      ldoTank1ClosingMeter: ldoClose,
       ldoTank1OpeningDip: numOrNull(form.ldoTank1OpeningDip),
       ldoTank1ClosingDip: numOrNull(form.ldoTank1ClosingDip),
       ldoTank2OpeningDip: numOrNull(form.ldoTank2OpeningDip),
@@ -707,7 +704,7 @@ export default function PlantHeatingSessions() {
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
-      const label = variables.targetValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
+      const label = variables.targetValue === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
       toast({ title: `${data.updatedCount} session${data.updatedCount !== 1 ? "s" : ""} aligned to ${label}` });
     },
     onError: (err: any) => {
@@ -788,10 +785,14 @@ export default function PlantHeatingSessions() {
     const list = (sessions || [])
       .filter(s => filterDryerSource === "all" || s.dryerFedFrom === filterDryerSource)
       .slice()
-      .sort((a, b) => b.date.localeCompare(a.date) || (a.startTime || "").localeCompare(b.startTime || ""));
+      .sort((a, b) =>
+        (b.countsForDate || b.date).localeCompare(a.countsForDate || a.date) ||
+        (a.startTime || "").localeCompare(b.startTime || "")
+      );
     const out: Record<string, BitumenHeatingSession[]> = {};
     for (const s of list) {
-      (out[s.date] = out[s.date] || []).push(s);
+      const displayDate = s.countsForDate || s.date;
+      (out[displayDate] = out[displayDate] || []).push(s);
     }
     return out;
   }, [sessions, filterDryerSource]);
@@ -889,8 +890,8 @@ export default function PlantHeatingSessions() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All tanks</SelectItem>
-              <SelectItem value="TANK_1">Boiler tank</SelectItem>
-              <SelectItem value="TANK_2">Dryer tank</SelectItem>
+              <SelectItem value="TANK_1">Tank 1 (small vertical)</SelectItem>
+              <SelectItem value="TANK_2">Tank 2 (big horizontal)</SelectItem>
             </SelectContent>
           </Select>
           <Link href={appendPlantContext("/plant/heating-trends", { forceTab: "operations" })}>
@@ -977,7 +978,7 @@ export default function PlantHeatingSessions() {
             ) : null;
           })()}
           {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
-            groupedDates.length === 0 ? <p className="text-sm text-muted-foreground">{filterDryerSource !== "all" ? `No heating sessions fed from ${filterDryerSource === "TANK_1" ? "Boiler tank" : "Dryer tank"} in this date range.` : "No heating sessions in this date range."}</p> :
+            groupedDates.length === 0 ? <p className="text-sm text-muted-foreground">{filterDryerSource !== "all" ? `No heating sessions fed from ${filterDryerSource === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)"} in this date range.` : "No heating sessions in this date range."}</p> :
             <div className="space-y-1">
               {groupedDates.map(date => {
                 const isOpen = openDateGroups.has(date);
@@ -1049,9 +1050,9 @@ export default function PlantHeatingSessions() {
                                 {/* Shift-log mismatch: show guided one-click fix */}
                                 {hasShiftLogConflict && (() => {
                                   const slValue = dm.shiftLogValue!;
-                                  const slLabel = slValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
+                                  const slLabel = slValue === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
                                   const oppValue = slValue === "TANK_1" ? "TANK_2" : "TANK_1";
-                                  const oppLabel = slValue === "TANK_1" ? "Dryer tank" : "Boiler tank";
+                                  const oppLabel = slValue === "TANK_1" ? "Tank 2 (big horizontal)" : "Tank 1 (small vertical)";
                                   const n = shiftLogConflictSessions.length;
                                   const fixSessionIds = shiftLogConflictSessions.map(s => s.id);
                                   return (
@@ -1139,7 +1140,7 @@ export default function PlantHeatingSessions() {
                                         {intraConflictSessions.map(s => {
                                           const label = heatingSessionTypeLabel(s.sessionType);
                                           const timeLabel = s.startTime ? ` · ${s.startTime}` : "";
-                                          const sourceLabel = s.dryerFedFrom === "TANK_1" ? "Boiler tank" : s.dryerFedFrom === "TANK_2" ? "Dryer tank" : s.dryerFedFrom;
+                                          const sourceLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1 (small vertical)" : s.dryerFedFrom === "TANK_2" ? "Tank 2 (big horizontal)" : s.dryerFedFrom;
                                           return (
                                             <li key={s.id}>
                                               <button
@@ -1168,11 +1169,11 @@ export default function PlantHeatingSessions() {
                                       <div className="flex flex-wrap gap-2">
                                         <Button size="sm" variant="outline" className="h-7 text-sm border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_1" })} data-testid={`button-align-intra-tank1-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                           {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                                          Set all → Boiler tank
+                                          Set all → Tank 1 (small vertical)
                                         </Button>
                                         <Button size="sm" variant="outline" className="h-7 text-sm border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_2" })} data-testid={`button-align-intra-tank2-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                           {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                                          Set all → Dryer tank
+                                          Set all → Tank 2 (big horizontal)
                                         </Button>
                                       </div>
                                     </>
@@ -1244,6 +1245,11 @@ export default function PlantHeatingSessions() {
                               </Badge>
                               <span className="font-medium">{s.startTime || "—"} → {s.endTime || "—"}</span>
                               <span className="text-sm text-muted-foreground">({s.durationHours ?? 0} h)</span>
+                              <span className="text-sm font-medium" data-testid={`text-session-counts-for-${s.id}`}>
+                                {s.countsForDate
+                                  ? `Counts for: ${format(parseISO(s.countsForDate), "dd MMM yyyy")}`
+                                  : "Waiting for next production day"}
+                              </span>
                               <span className="text-sm text-muted-foreground">{s.plantName}</span>
                               {s.generatorLogId != null && (
                                 <Badge variant="outline" className="text-sm border-emerald-400 text-emerald-700 dark:text-emerald-400" data-testid={`badge-dg-linked-${s.id}`}>
@@ -1257,28 +1263,29 @@ export default function PlantHeatingSessions() {
                               )}
                               {(s.dryerFedFrom === "TANK_1" || s.dryerFedFrom === "TANK_2") && (
                                 <Badge variant="outline" className="text-sm border-sky-400 text-sky-700 dark:text-sky-400" data-testid={`badge-dryer-fed-${s.id}`}>
-                                  Dryer fed from: {s.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank"}
+                                  Dryer fed from: {s.dryerFedFrom === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)"}
                                 </Badge>
                               )}
                               {conflictingSessionIds.has(s.id) && (() => {
-                                const hsLabel = s.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
+                                const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
                                 const isShiftLogConflict = shiftLogConflictIds.has(s.id);
                                 const isIntraConflict = intraSessionConflictIds.has(s.id);
-                                const dm = dryerMismatchByKey.get(`${s.date}||${s.plantName}`);
+                                const attributionDate = s.countsForDate || s.date;
+                                const dm = dryerMismatchByKey.get(`${attributionDate}||${s.plantName}`);
                                 let badgeLabel = "⚠ Dryer conflict";
                                 let tooltipText = "";
                                 if (isShiftLogConflict) {
-                                  const slLabel = dm?.shiftLogValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
+                                  const slLabel = dm?.shiftLogValue === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
                                   badgeLabel = "⚠ Dryer mismatch — fix this session";
-                                  tooltipText = `This session says dryer fed from ${hsLabel}, but the ${s.plantName} shift log for ${s.date} says ${slLabel}. Click to edit this session and correct it.`;
+                                  tooltipText = `This session says dryer fed from ${hsLabel}, but the ${s.plantName} shift log for ${attributionDate} says ${slLabel}. Click to edit this session and correct it.`;
                                   if (isIntraConflict) tooltipText += " Also conflicts with other sessions on this date.";
                                 } else if (isIntraConflict) {
                                   badgeLabel = "⚠ Dryer ≠ other session — fix this session";
-                                  tooltipText = `Heating sessions on ${s.date} at ${s.plantName} disagree on dryer source — this session says ${hsLabel}. Click to open and correct it.`;
+                                  tooltipText = `Heating sessions counted for ${attributionDate} at ${s.plantName} disagree on dryer source — this session says ${hsLabel}. Click to open and correct it.`;
                                   if (dm?.shiftLogId == null) tooltipText += " No shift log exists yet — create one to set the authoritative dryer source.";
                                 }
-                                const dm2 = dryerMismatchByKey.get(`${s.date}||${s.plantName}`);
-                                const slLabel2 = dm2?.shiftLogValue === "TANK_1" ? "Boiler tank" : dm2?.shiftLogValue === "TANK_2" ? "Dryer tank" : null;
+                                const dm2 = dryerMismatchByKey.get(`${attributionDate}||${s.plantName}`);
+                                const slLabel2 = dm2?.shiftLogValue === "TANK_1" ? "Tank 1 (small vertical)" : dm2?.shiftLogValue === "TANK_2" ? "Tank 2 (big horizontal)" : null;
                                 return (
                                   <div className="inline-flex flex-col gap-0.5" key={`dryer-conflict-wrap-${s.id}`}>
                                     <span className="inline-flex items-center gap-1.5">
@@ -1288,13 +1295,13 @@ export default function PlantHeatingSessions() {
                                         title={tooltipText}
                                         onClick={() => {
                                           const currentVal = s.dryerFedFrom as "TANK_1" | "TANK_2";
-                                          const dm3 = dryerMismatchByKey.get(`${s.date}||${s.plantName}`);
+                                          const dm3 = dryerMismatchByKey.get(`${attributionDate}||${s.plantName}`);
                                           const suggested: "TANK_1" | "TANK_2" =
                                             dm3?.shiftLogValue ?? (currentVal === "TANK_1" ? "TANK_2" : "TANK_1");
                                           setDryerFixTarget({
                                             mode: "heating-session",
                                             sessionIds: [s.id],
-                                            date: s.date,
+                                            date: attributionDate,
                                             currentValue: currentVal,
                                             suggestedValue: suggested,
                                           });
@@ -1481,8 +1488,8 @@ export default function PlantHeatingSessions() {
               )}
             </div>
 
-            {!boilerDipsOnly && <Card>
-              <CardHeader className="py-3"><CardTitle className="text-base">LDO Boiler Meter</CardTitle></CardHeader>
+            <Card>
+              <CardHeader className="py-3"><CardTitle className="text-base">Boiler meter (used automatically when both readings are entered)</CardTitle></CardHeader>
               <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div>
                   <Label>Opening meter</Label>
@@ -1496,16 +1503,14 @@ export default function PlantHeatingSessions() {
                   )}
                 </div>
                 <div><Label>Closing meter</Label><Input type="number" step="0.01" value={form.ldoTank1ClosingMeter} onChange={e => setField("ldoTank1ClosingMeter", e.target.value)} data-testid="input-ldo-close" /></div>
-                <div><Label>Total consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
-                <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
               </CardContent>
-            </Card>}
+            </Card>
 
             <Card>
-              <CardHeader className="py-3"><CardTitle className="text-base">{boilerDipsOnly ? "LDO tank 1 dips — boiler meter not used" : "LDO Tank Dip-Stick Readings"}</CardTitle></CardHeader>
+              <CardHeader className="py-3"><CardTitle className="text-base">LDO tank dip readings</CardTitle></CardHeader>
               <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div>
-                  <Label>Tank 1 — opening dip (cm)</Label>
+                  <Label>Tank 1 (small vertical) — opening dip (cm)</Label>
                   <Input type="number" step="0.1" value={form.ldoTank1OpeningDip}
                     onChange={e => setForm(p => ({ ...p, ldoTank1OpeningDip: e.target.value, autoFilledDipT1: false }))}
                     data-testid="input-ldo-dip-t1-open" />
@@ -1519,7 +1524,7 @@ export default function PlantHeatingSessions() {
                   )}
                 </div>
                 <div>
-                  <Label>Tank 1 — closing dip (cm)</Label>
+                  <Label>Tank 1 (small vertical) — closing dip (cm)</Label>
                   <Input type="number" step="0.1" value={form.ldoTank1ClosingDip}
                     onChange={e => setField("ldoTank1ClosingDip", e.target.value)}
                     data-testid="input-ldo-dip-t1-close" />
@@ -1528,18 +1533,8 @@ export default function PlantHeatingSessions() {
                     return hint ? <p className="text-sm font-medium text-foreground mt-1">{hint}</p> : <p className="text-sm text-muted-foreground mt-1">Dip-stick at session end, in cm</p>;
                   })()}
                 </div>
-                {boilerDipsOnly && <div className="col-span-2 grid grid-cols-2 gap-3 md:col-span-4" data-testid="section-dips-only-session-summary">
-                  <div>
-                    <Label>Litres used</Label>
-                    <div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(1) ?? "—"}</div>
-                  </div>
-                  <div>
-                    <Label>Litres per hour</Label>
-                    <div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div>
-                  </div>
-                </div>}
                 <div>
-                  <Label>Tank 2 — opening dip (cm)</Label>
+                  <Label>Tank 2 (big horizontal) — opening dip (cm)</Label>
                   <Input type="number" step="0.1" value={form.ldoTank2OpeningDip}
                     onChange={e => setForm(p => ({ ...p, ldoTank2OpeningDip: e.target.value, autoFilledDipT2: false }))}
                     data-testid="input-ldo-dip-t2-open" />
@@ -1553,7 +1548,7 @@ export default function PlantHeatingSessions() {
                   )}
                 </div>
                 <div>
-                  <Label>Tank 2 — closing dip (cm)</Label>
+                  <Label>Tank 2 (big horizontal) — closing dip (cm)</Label>
                   <Input type="number" step="0.1" value={form.ldoTank2ClosingDip}
                     onChange={e => setField("ldoTank2ClosingDip", e.target.value)}
                     data-testid="input-ldo-dip-t2-close" />
@@ -1561,6 +1556,16 @@ export default function PlantHeatingSessions() {
                     const hint = form.ldoTank2ClosingDip ? (() => { const v = getLdoVolumeAtDepth(2, parseFloat(form.ldoTank2ClosingDip)); const dead = getLdoDeadStockVolume(2); return v != null ? `≈ ${(v - (dead ?? 0)).toFixed(0)} L usable` : null; })() : null;
                     return hint ? <p className="text-sm font-medium text-foreground mt-1">{hint}</p> : <p className="text-sm text-muted-foreground mt-1">Dip-stick at session end, in cm</p>;
                   })()}
+                </div>
+                <div className="col-span-2 grid grid-cols-2 gap-3 md:col-span-4" data-testid="section-session-ldo-summary">
+                  <div>
+                    <Label>Total consumed (L)</Label>
+                    <div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(1) ?? "—"}</div>
+                  </div>
+                  <div>
+                    <Label>Litres per hour</Label>
+                    <div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div>
+                  </div>
                 </div>
               </CardContent>
             </Card>

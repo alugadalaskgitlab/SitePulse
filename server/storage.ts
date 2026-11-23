@@ -225,6 +225,7 @@ import {
 } from "@shared/equipmentStatus";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
+import { assignHeatingSessionsToProductionDays, calculatePlantLdo, findLdoOpeningGaps } from "@shared/plantLdoAccounting";
 import {
   omitSelectedGeneratorUsage,
   parseProductionGeneratorIds,
@@ -1819,6 +1820,7 @@ export interface IStorage {
 
   // Bitumen Heating Sessions
   getBitumenHeatingSessions(filters?: { dateFrom?: string; dateTo?: string; date?: string; plantName?: string }): Promise<BitumenHeatingSession[]>;
+  getHeatingSessionsWithProductionDate(filters?: { dateFrom?: string; dateTo?: string; date?: string; plantName?: string }): Promise<Array<BitumenHeatingSession & { countsForDate: string | null }>>;
   getBitumenHeatingSession(id: number): Promise<BitumenHeatingSession | undefined>;
   upsertBitumenHeatingSession(input: UpsertBitumenHeatingSessionInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<BitumenHeatingSession>;
   finalizeBitumenHeatingSession(id: number, finalizedBy: string): Promise<BitumenHeatingSession | undefined>;
@@ -25738,22 +25740,19 @@ export class DatabaseStorage implements IStorage {
       if (r.bitumenTank2ClosingDip != null) row.bitumenTank2ClosingDip = r.bitumenTank2ClosingDip;
     }
 
-    const hsRows = await db.select({
-      date: bitumenHeatingSessions.date,
-      plantName: bitumenHeatingSessions.plantName,
-      cnt: sql<number>`COUNT(*)::int`,
-      ldoConsumed: sql<number>`COALESCE(SUM(${bitumenHeatingSessions.ldoTank1Consumed}), 0)::float`,
-      dgDiesel: sql<number>`COALESCE(SUM(${bitumenHeatingSessions.dgDieselConsumed}), 0)::float`,
-    }).from(bitumenHeatingSessions)
-      .where(and(dateRange(bitumenHeatingSessions.date), plantEq(bitumenHeatingSessions.plantName)))
-      .groupBy(bitumenHeatingSessions.date, bitumenHeatingSessions.plantName);
-    for (const r of hsRows) {
-      const row = get(r.date, r.plantName);
+    const assignedSessions = await this.getHeatingSessionsWithProductionDate({
+      plantName: plant || undefined,
+    });
+    for (const session of assignedSessions) {
+      const attributedDate = session.countsForDate;
+      if (!attributedDate || (from && attributedDate < from) || (to && attributedDate > to)) continue;
+      if (allowedKeys && !allowedKeys.has(`${attributedDate}|${session.plantName}`)) continue;
+      const row = get(attributedDate, session.plantName);
       row.hasHeatingSessions = true;
-      row.sessionsCount = Number(r.cnt) || 0;
+      row.sessionsCount += 1;
       // Set even when 0 — a recorded zero is meaningful (no LDO/DG used that day)
-      row.ldoHeatingSessionLitres = Number(r.ldoConsumed);
-      row.dgDieselLitres = Number(r.dgDiesel);
+      row.ldoHeatingSessionLitres = (row.ldoHeatingSessionLitres || 0) + Number(session.ldoTank1Consumed || 0);
+      row.dgDieselLitres = (row.dgDieselLitres || 0) + Number(session.dgDieselConsumed || 0);
     }
 
     const bdRows = await db.select({
@@ -25806,7 +25805,6 @@ export class DatabaseStorage implements IStorage {
 
   async getDailyPlantSummary(date: string, plantName: string = "Main Plant"): Promise<unknown> {
     const plantSettings = await this.getPlantSettings(plantName);
-    const boilerDipsOnly = plantSettings?.boilerFuelMeterMode === "dips_only";
     // Pick the relevant log for this (date, plant) regardless of shift code.
     // Preference order: FULL → DAY → NIGHT → first available.
     const allShifts = await db.select().from(plantShiftLogs)
@@ -25897,7 +25895,7 @@ export class DatabaseStorage implements IStorage {
     }
     const presentSources = [t1Source, t2Source].filter((s): s is "shift_meter" | "dip_fallback" => s !== null);
     const uniqueSources = Array.from(new Set(presentSources));
-    let ldoSource: "shift_meter" | "dip_fallback" | "mixed" | "dips_only" =
+    let ldoSource: "shift_meter" | "dip_fallback" | "mixed" | "dips_only" | "two_tank_dips" =
       uniqueSources.length === 0 ? "shift_meter" :
       uniqueSources.length === 1 ? uniqueSources[0] : "mixed";
     const ldoConsumedTotalL = (ldoConsumedT1 || 0) + (ldoConsumedT2 || 0);
@@ -26041,13 +26039,10 @@ export class DatabaseStorage implements IStorage {
     } else {
       if (shift.bitumenTank1ClosingDip == null) missingReadings.push("Bitumen tank 1 closing dip");
       if (shift.bitumenTank2ClosingDip == null) missingReadings.push("Bitumen tank 2 closing dip");
-      if (shift.ldoTank2ClosingMeter == null) missingReadings.push("Dryer fuel meter closing reading");
-      if (boilerDipsOnly) {
-        if (shift.ldoTank1OpeningDip == null) missingReadings.push("LDO tank 1 opening dip");
-        if (shift.ldoTank1ClosingDip == null) missingReadings.push("LDO tank 1 closing dip");
-      } else if (shift.boilerRunsDuringProduction && shift.ldoTank1ClosingMeter == null) {
-        missingReadings.push("Boiler fuel meter closing reading");
-      }
+      if (shift.ldoTank1OpeningDip == null) missingReadings.push("Tank 1 opening dip");
+      if (shift.ldoTank1ClosingDip == null) missingReadings.push("Tank 1 closing dip");
+      if (shift.ldoTank2OpeningDip == null) missingReadings.push("Tank 2 opening dip");
+      if (shift.ldoTank2ClosingDip == null) missingReadings.push("Tank 2 closing dip");
     }
     const bitumenMaterial = allMaterials.find(material => /bitumen/i.test(material.name));
     const bitumenReceiptRows = bitumenMaterial
@@ -26127,105 +26122,114 @@ export class DatabaseStorage implements IStorage {
     const generatorTotalDieselConsumed = generatorSummary.reduce((s, g) => s + (g.consumed || 0), 0);
 
     const boilerHeating = await this._getBoilerHeatingSummary(date, plantName, shift, totalProductionMT, ldoConsumedT1, ldoFlows);
-
-    let dipsOnlyTank1UsedL: number | null = null;
-    let dipsOnlyBoilerProductionL: number | null = null;
-    let dipsOnlyReceiptLitres = 0;
-    let dipsOnlyTransferLitres = 0;
-    let dipsOnlyCheck = false;
-    if (boilerDipsOnly) {
-      const tank1Receipts = ldoFlows.filter(row =>
-        Number(row.tankNumber) === 1 &&
-        String(row.readingType).toLowerCase() === "receipt",
-      );
-      dipsOnlyReceiptLitres = tank1Receipts
-        .filter(row => row.sourceMaterialIssueId == null)
-        .reduce((sum, row) => sum + Number(row.quantityLiters || 0), 0);
-      dipsOnlyTransferLitres = tank1Receipts
-        .filter(row => row.sourceMaterialIssueId != null)
-        .reduce((sum, row) => sum + Number(row.quantityLiters || 0), 0);
-      const openingDipLitres = shift?.ldoTank1OpeningDip == null
-        ? null
-        : getLdoVolumeAtDepth(1, shift.ldoTank1OpeningDip);
-      const closingDipLitres = shift?.ldoTank1ClosingDip == null
-        ? null
-        : getLdoVolumeAtDepth(1, shift.ldoTank1ClosingDip);
-      if (openingDipLitres != null && closingDipLitres != null) {
-        dipsOnlyTank1UsedL = openingDipLitres - closingDipLitres + dipsOnlyReceiptLitres + dipsOnlyTransferLitres;
+    const ldoAccounting = boilerHeating.accounting;
+    let ldoOpeningGap: {
+      previousAt: string;
+      currentAt: string;
+      gaps: Array<{ tankNumber: 1 | 2; deltaLitres: number }>;
+    } | null = null;
+    if (shift?.plantStartTime) {
+      const currentAt = `${date}T${shift.plantStartTime}:00`;
+      const candidates: Array<{
+        at: string;
+        label: string;
+        tank1ClosingDip: number | null;
+        tank2ClosingDip: number | null;
+      }> = [];
+      const historicalShifts = await db.select({
+        date: plantShiftLogs.date,
+        plantStopTime: plantShiftLogs.plantStopTime,
+        tank1ClosingDip: plantShiftLogs.ldoTank1ClosingDip,
+        tank2ClosingDip: plantShiftLogs.ldoTank2ClosingDip,
+      }).from(plantShiftLogs)
+        .where(eq(plantShiftLogs.plantName, plantName));
+      for (const previous of historicalShifts) {
+        const at = `${previous.date}T${previous.plantStopTime || "23:59"}:00`;
+        if (at >= currentAt || (previous.tank1ClosingDip == null && previous.tank2ClosingDip == null)) continue;
+        candidates.push({
+          at,
+          label: `shift log ${previous.date} ${previous.plantStopTime || "23:59"}`,
+          tank1ClosingDip: previous.tank1ClosingDip == null ? null : Number(previous.tank1ClosingDip),
+          tank2ClosingDip: previous.tank2ClosingDip == null ? null : Number(previous.tank2ClosingDip),
+        });
       }
-      const dryerMeterLitres =
-        shift?.ldoTank2OpeningMeter != null && shift?.ldoTank2ClosingMeter != null
-          ? Math.max(0, shift.ldoTank2ClosingMeter - shift.ldoTank2OpeningMeter)
-          : null;
-      const preheatLitres = Number(boilerHeating?.sessionsLdoT1L || 0);
-      const beforeFloor = dipsOnlyTank1UsedL == null || dryerMeterLitres == null
-        ? null
-        : dipsOnlyTank1UsedL - dryerMeterLitres - preheatLitres;
-      dipsOnlyCheck = beforeFloor != null && beforeFloor < 0;
-      dipsOnlyBoilerProductionL = beforeFloor == null ? null : Math.max(0, beforeFloor);
-      ldoConsumedT1 = dipsOnlyBoilerProductionL == null
-        ? null
-        : dipsOnlyBoilerProductionL + preheatLitres;
-      ldoConsumedT2 = dryerMeterLitres;
-      t1Source = "dip_fallback";
-      t2Source = dryerMeterLitres == null ? null : "shift_meter";
-      ldoSource = "dips_only";
-      if (boilerHeating) {
-        boilerHeating.boilerDuringProductionL = dipsOnlyBoilerProductionL;
-        boilerHeating.totalBoilerLdoL = dipsOnlyBoilerProductionL == null
-          ? null
-          : dipsOnlyBoilerProductionL + preheatLitres;
-        boilerHeating.shiftLogT1L = null;
-        boilerHeating.mismatchL = null;
-        boilerHeating.reconciliation = {
-          ...boilerHeating.reconciliation,
-          sessionsVsShiftL: null,
-          sessionsVsLedgerL: null,
-          shiftVsLedgerL: null,
-          anyMismatch: false,
-          mismatches: [],
-        };
+      const historicalSessions = await this.getBitumenHeatingSessions({ plantName });
+      for (const previous of historicalSessions) {
+        if (!previous.endTime ||
+          (previous.ldoTank1ClosingDip == null && previous.ldoTank2ClosingDip == null)) continue;
+        let sessionEndDate = previous.date;
+        if (previous.startTime && previous.endTime < previous.startTime) {
+          sessionEndDate = new Date(Date.parse(`${previous.date}T00:00:00Z`) + 86_400_000)
+            .toISOString().slice(0, 10);
+        }
+        const at = `${sessionEndDate}T${previous.endTime}:00`;
+        if (at >= currentAt) continue;
+        candidates.push({
+          at,
+          label: `heating session ${previous.date} ${previous.endTime}`,
+          tank1ClosingDip: previous.ldoTank1ClosingDip == null ? null : Number(previous.ldoTank1ClosingDip),
+          tank2ClosingDip: previous.ldoTank2ClosingDip == null ? null : Number(previous.ldoTank2ClosingDip),
+        });
+      }
+      const previous = candidates.sort((a, b) => b.at.localeCompare(a.at))[0];
+      if (previous) {
+        const betweenReceipts = (await db.select().from(ldoFlowReadings)
+          .where(eq(ldoFlowReadings.plantName, plantName)))
+          .filter((flow) => {
+            if (String(flow.readingType).toLowerCase() !== "receipt" || flow.sourceMaterialIssueId != null) return false;
+            const at = `${flow.date}T${flow.time || "00:00"}:00`;
+            return at > previous.at && at <= currentAt;
+          });
+        const receiptByTank = (tank: 1 | 2) => betweenReceipts
+          .filter((flow) => flow.tankNumber === tank)
+          .reduce((sum, flow) => sum + Number(flow.quantityLiters || 0), 0);
+        const volumeAt = (tank: 1 | 2, dip: number | null) =>
+          dip == null ? null : getLdoVolumeAtDepth(tank, dip);
+        const gaps = findLdoOpeningGaps({
+          previousAt: previous.at,
+          currentAt,
+          tanks: [
+            {
+              tankNumber: 1,
+              previousClosingLitres: volumeAt(1, previous.tank1ClosingDip),
+              currentOpeningLitres: shift.ldoTank1OpeningDip == null
+                ? null
+                : getLdoVolumeAtDepth(1, Number(shift.ldoTank1OpeningDip)),
+              receiptsLitres: receiptByTank(1),
+            },
+            {
+              tankNumber: 2,
+              previousClosingLitres: volumeAt(2, previous.tank2ClosingDip),
+              currentOpeningLitres: shift.ldoTank2OpeningDip == null
+                ? null
+                : getLdoVolumeAtDepth(2, Number(shift.ldoTank2OpeningDip)),
+              receiptsLitres: receiptByTank(2),
+            },
+          ],
+        });
+        if (gaps.length) {
+          ldoOpeningGap = { previousAt: `${previous.label} (${previous.at})`, currentAt, gaps };
+        }
       }
     }
-
-    // Primary-source rule: when heating sessions exist for the day, sessions
-    // are the source of truth for Tank-1 LDO. The shift-log Tank-1 value is
-    // demoted to a reconciliation field. This prevents double-counting and
-    // keeps the report aligned with the operator's actual boiler runs.
-    const t1PrimarySource: "sessions" | "shift_meter" | "dip_fallback" =
-      boilerDipsOnly
-        ? "dip_fallback"
-        : (boilerHeating && boilerHeating.sessionCount > 0)
-        ? "sessions"
-        : (t1Source ?? "shift_meter");
-    const effectiveT1L = boilerDipsOnly
-      ? ldoConsumedT1
-      : t1PrimarySource === "sessions"
-      ? (boilerHeating?.sessionsLdoT1L ?? null)
-      : ldoConsumedT1;
-    const reconciliationT1ShiftL = t1PrimarySource === "sessions" ? ldoConsumedT1 : null;
+    ldoConsumedT1 = ldoAccounting.totalBoilerLitres;
+    ldoConsumedT2 = ldoAccounting.dryerLitres;
+    t1Source = "dip_fallback";
+    t2Source = ldoAccounting.dryerLitres == null ? null : "shift_meter";
+    ldoSource = "two_tank_dips";
+    const t1PrimarySource: "sessions" | "shift_meter" | "dip_fallback" = "dip_fallback";
+    const effectiveT1L = ldoAccounting.totalBoilerLitres;
+    const reconciliationT1ShiftL = null;
     const hasAnyMeasuredLdo = effectiveT1L != null || ldoConsumedT2 != null;
     const effectiveTotalL = hasAnyMeasuredLdo
       ? (effectiveT1L ?? 0) + (ldoConsumedT2 ?? 0)
       : null;
     const ldoFuelMetrics = calculateFuelMetrics(effectiveTotalL, theoreticalLdoL, totalProductionMT);
-    // When the plant log has no start/stop times (runningHours is null) but the
-    // primary source is heating sessions, fall back to the total session hours so
-    // that L / Hour (combined) can still be computed from measured session data.
-    const hoursForLPerHour = (runningHours && runningHours > 0)
-      ? runningHours
-      : (t1PrimarySource === "sessions" && boilerHeating && boilerHeating.totalHours > 0
-          ? boilerHeating.totalHours
-          : null);
-    const effectiveLPerHour = (hoursForLPerHour && hoursForLPerHour > 0 && effectiveTotalL != null && effectiveTotalL > 0)
-      ? Math.round((effectiveTotalL / hoursForLPerHour) * 100) / 100 : null;
-    const effectiveLPerMT = (totalProductionMT > 0 && effectiveTotalL != null && effectiveTotalL > 0)
-      ? Math.round((effectiveTotalL / totalProductionMT) * 1000) / 1000 : null;
-    const effectiveBoilerNumerator = boilerDipsOnly
-      ? dipsOnlyBoilerProductionL
-      : effectiveT1L;
-    const effectiveBoilerLPerMT = (totalProductionMT > 0 && (effectiveBoilerNumerator || 0) > 0)
-      ? Math.round(((effectiveBoilerNumerator as number) / totalProductionMT) * 1000) / 1000 : null;
+    const effectiveLPerHour = ldoAccounting.totalLitres != null && runningHours && runningHours > 0
+      ? ldoAccounting.totalLitres / runningHours
+      : null;
+    const effectiveLPerMT = ldoAccounting.totalLitresPerMt;
+    const effectiveBoilerLPerMT = ldoAccounting.boilerLitresPerMt;
 
     // Per-tank stock-deducted view: dryer-meter litres are attributed to
     // whichever tank the operator pointed the dryer at. Boiler meter always
@@ -26291,9 +26295,10 @@ export class DatabaseStorage implements IStorage {
           differenceMT: physicalBitumen.differenceMT,
         },
         ldo: {
-          boilerLitres: boilerDipsOnly ? dipsOnlyBoilerProductionL : effectiveT1L,
+          boilerLitres: boilerHeating.boilerDuringProductionL,
           dryerLitres: ldoConsumedT2,
           heatingSessionLitres: boilerHeating?.sessionsLdoT1L ?? null,
+          totalLitres: effectiveTotalL,
           theoreticalLitres: Number(theoreticalLdoL.toFixed(1)),
           differenceLitres: ldoFuelMetrics.differenceLitres,
           litresPerMT: ldoFuelMetrics.litresPerMT,
@@ -26318,11 +26323,8 @@ export class DatabaseStorage implements IStorage {
         dryerLPerMT,
         boilerLPerMT: effectiveBoilerLPerMT,
         source: ldoSource,
-        boilerMeterMode: boilerDipsOnly ? "dips_only" : "working",
-        dipsOnlyTank1UsedL,
-        dipsOnlyReceiptLitres,
-        dipsOnlyTransferLitres,
-        dipsOnlyCheck,
+        accounting: ldoAccounting,
+        openingGap: ldoOpeningGap,
         primarySourceT1: t1PrimarySource,
         reconciliationT1ShiftL,
         dryerFedFrom: dryerFedFromShift,
@@ -26402,6 +26404,73 @@ export class DatabaseStorage implements IStorage {
     return rows as BitumenHeatingSession[];
   }
 
+  private async getProductionWindowsForPlant(plantName: string) {
+    const [dispatchRows, shiftRows] = await Promise.all([
+      db.select({
+        date: truckDispatches.date,
+        mt: sql<number>`COALESCE(SUM(${truckDispatches.loadWeight}), 0)::float`,
+      }).from(truckDispatches)
+        .where(eq(truckDispatches.plantName, plantName))
+        .groupBy(truckDispatches.date),
+      db.select({
+        date: plantShiftLogs.date,
+        plantStartTime: plantShiftLogs.plantStartTime,
+        plantStopTime: plantShiftLogs.plantStopTime,
+      }).from(plantShiftLogs)
+        .where(eq(plantShiftLogs.plantName, plantName)),
+    ]);
+    const productionDates = new Set(
+      dispatchRows.filter((row) => Number(row.mt) > 0).map((row) => String(row.date)),
+    );
+    const byDate = new Map<string, { date: string; plantStartTime: string | null; plantStopTime: string | null }>();
+    for (const shift of shiftRows) {
+      const date = String(shift.date);
+      if (!productionDates.has(date)) continue;
+      const current = byDate.get(date);
+      if (!current) {
+        byDate.set(date, {
+          date,
+          plantStartTime: shift.plantStartTime ?? null,
+          plantStopTime: shift.plantStopTime ?? null,
+        });
+        continue;
+      }
+      if (shift.plantStartTime && (!current.plantStartTime || shift.plantStartTime < current.plantStartTime)) {
+        current.plantStartTime = shift.plantStartTime;
+      }
+      if (shift.plantStopTime && (!current.plantStopTime || shift.plantStopTime > current.plantStopTime)) {
+        current.plantStopTime = shift.plantStopTime;
+      }
+    }
+    return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  async getHeatingSessionsWithProductionDate(
+    filters: { dateFrom?: string; dateTo?: string; date?: string; plantName?: string } = {},
+  ): Promise<Array<BitumenHeatingSession & { countsForDate: string | null }>> {
+    const sessions = await this.getBitumenHeatingSessions({
+      plantName: filters.plantName,
+    });
+    const plantNames = filters.plantName
+      ? [filters.plantName]
+      : Array.from(new Set(sessions.map((session) => session.plantName)));
+    const windowsByPlant = new Map<string, Awaited<ReturnType<typeof this.getProductionWindowsForPlant>>>();
+    for (const plantName of plantNames) {
+      windowsByPlant.set(plantName, await this.getProductionWindowsForPlant(plantName));
+    }
+    const attributed = sessions.flatMap((session) => {
+      const windows = windowsByPlant.get(session.plantName) || [];
+      return assignHeatingSessionsToProductionDays([session], windows);
+    });
+    return attributed.filter((session) => {
+      const displayDate = session.countsForDate || session.date;
+      if (filters.date && displayDate !== filters.date) return false;
+      if (filters.dateFrom && displayDate < filters.dateFrom) return false;
+      if (filters.dateTo && displayDate > filters.dateTo) return false;
+      return true;
+    });
+  }
+
   async getBitumenHeatingSession(id: number): Promise<BitumenHeatingSession | undefined> {
     const [row] = await db.select().from(bitumenHeatingSessions).where(eq(bitumenHeatingSessions.id, id)).limit(1);
     return row;
@@ -26434,12 +26503,23 @@ export class DatabaseStorage implements IStorage {
     // Derived numbers
     const durationHours = this._computeDurationHours(payload.startTime, payload.endTime);
     if (durationHours != null) payload.durationHours = durationHours;
-    // Dip-stick readings are the authoritative source for LDO consumption while the
-    // flow meters are being calibrated. Fall back to meter delta only when dip is absent.
-    if (payload.ldoTank1OpeningDip != null && payload.ldoTank1ClosingDip != null) {
-      payload.ldoTank1Consumed = Math.max(0,
-        getLdoVolumeAtDepth(1, payload.ldoTank1OpeningDip) - getLdoVolumeAtDepth(1, payload.ldoTank1ClosingDip)
-      );
+    // Preserve the established storage column, but calculate its value from
+    // both tank dip pairs. Use Tank 1 alone when Tank 2 is blank; use the meter
+    // only when neither tank has a complete dip pair.
+    const hasTank1Dips =
+      payload.ldoTank1OpeningDip != null && payload.ldoTank1ClosingDip != null;
+    const hasTank2Dips =
+      payload.ldoTank2OpeningDip != null && payload.ldoTank2ClosingDip != null;
+    if (hasTank1Dips || hasTank2Dips) {
+      const tank1Litres = hasTank1Dips
+        ? getLdoVolumeAtDepth(1, payload.ldoTank1OpeningDip!) -
+          getLdoVolumeAtDepth(1, payload.ldoTank1ClosingDip!)
+        : 0;
+      const tank2Litres = hasTank2Dips
+        ? getLdoVolumeAtDepth(2, payload.ldoTank2OpeningDip!) -
+          getLdoVolumeAtDepth(2, payload.ldoTank2ClosingDip!)
+        : 0;
+      payload.ldoTank1Consumed = Math.max(0, tank1Litres + tank2Litres);
     } else if (payload.ldoTank1OpeningMeter != null && payload.ldoTank1ClosingMeter != null) {
       payload.ldoTank1Consumed = Math.max(0, payload.ldoTank1ClosingMeter - payload.ldoTank1OpeningMeter);
     }
@@ -26767,7 +26847,12 @@ export class DatabaseStorage implements IStorage {
     const dateTo = filters.dateTo;
     const TARGET_L_PER_MT = 1.5;
 
-    const sessions = await this.getBitumenHeatingSessions({ dateFrom, dateTo, plantName });
+    const sessions = (await this.getHeatingSessionsWithProductionDate({ plantName }))
+      .filter((session) =>
+        session.countsForDate != null &&
+        session.countsForDate >= dateFrom &&
+        session.countsForDate <= dateTo
+      );
     const dispatches = await db.select().from(truckDispatches).where(and(
       gte(truckDispatches.date, dateFrom),
       lte(truckDispatches.date, dateTo),
@@ -26808,7 +26893,9 @@ export class DatabaseStorage implements IStorage {
     }
 
     const dateKeys = new Set<string>();
-    for (const s of sessions) dateKeys.add(s.date);
+    for (const s of sessions) {
+      if (s.countsForDate) dateKeys.add(s.countsForDate);
+    }
     for (const d of productionByDate.keys()) dateKeys.add(d);
 
     // Walk every calendar day in range so the chart has a continuous x-axis.
@@ -26853,7 +26940,9 @@ export class DatabaseStorage implements IStorage {
     const hotOilReturnByDate = new Map<string, number[]>();
     const hotOilDeltaByDate = new Map<string, number[]>();
     for (const s of sessions) {
-      const row = rowMap.get(s.date);
+      const attributedDate = s.countsForDate;
+      if (!attributedDate) continue;
+      const row = rowMap.get(attributedDate);
       if (!row) continue;
       const bucket = s.sessionType === "DAY_MAINTENANCE" ? row.day : row.night;
       bucket.count += 1;
@@ -26865,21 +26954,21 @@ export class DatabaseStorage implements IStorage {
       row.total.ldoT1L += s.ldoTank1Consumed || 0;
       row.total.dgDieselL += s.dgDieselConsumed || 0;
       if (s.hotOilTempEnd != null && !isNaN(s.hotOilTempEnd as number)) {
-        const arr = hotOilByDate.get(s.date) || [];
+        const arr = hotOilByDate.get(attributedDate) || [];
         arr.push(s.hotOilTempEnd);
-        hotOilByDate.set(s.date, arr);
+        hotOilByDate.set(attributedDate, arr);
       }
       const supply = s.hotOilSupplyTemp;
       const ret = s.hotOilReturnTemp;
       if (supply != null && !isNaN(supply)) {
-        const arr = hotOilSupplyByDate.get(s.date) || [];
+        const arr = hotOilSupplyByDate.get(attributedDate) || [];
         arr.push(supply);
-        hotOilSupplyByDate.set(s.date, arr);
+        hotOilSupplyByDate.set(attributedDate, arr);
       }
       if (ret != null && !isNaN(ret)) {
-        const arr = hotOilReturnByDate.get(s.date) || [];
+        const arr = hotOilReturnByDate.get(attributedDate) || [];
         arr.push(ret);
-        hotOilReturnByDate.set(s.date, arr);
+        hotOilReturnByDate.set(attributedDate, arr);
       }
       // Per-session delta only when both readings exist on the same session,
       // so we never average a supply from one session against a return from
@@ -26889,9 +26978,9 @@ export class DatabaseStorage implements IStorage {
         supply != null && !isNaN(supply) &&
         ret != null && !isNaN(ret)
       ) {
-        const arr = hotOilDeltaByDate.get(s.date) || [];
+        const arr = hotOilDeltaByDate.get(attributedDate) || [];
         arr.push(supply - ret);
-        hotOilDeltaByDate.set(s.date, arr);
+        hotOilDeltaByDate.set(attributedDate, arr);
       }
     }
     for (const [dt, samples] of hotOilByDate.entries()) {
@@ -27135,21 +27224,11 @@ export class DatabaseStorage implements IStorage {
     return null;
   }
 
-  // Task #254 — return the heating sessions whose run-date is attributed to
-  // the production day `productionDate` for `plantName`. Attribution window is
-  // (lastProductionDateBefore(productionDate), productionDate]. When there is
-  // no prior production day for this plant, all sessions on or before
-  // productionDate are returned (first-ever production).
+  // Return only sessions assigned to this production day by the shared
+  // end-time / production-window rule. Waiting sessions are not counted.
   async getHeatingSessionsForProductionDay(plantName: string, productionDate: string) {
-    const lastProd = await this.getLastProductionDateBefore(plantName, productionDate);
-    const conditions = [
-      eq(bitumenHeatingSessions.plantName, plantName),
-      lte(bitumenHeatingSessions.date, productionDate),
-    ];
-    if (lastProd) conditions.push(gt(bitumenHeatingSessions.date, lastProd));
-    return db.select().from(bitumenHeatingSessions)
-      .where(and(...conditions))
-      .orderBy(bitumenHeatingSessions.date, bitumenHeatingSessions.startTime);
+    const assigned = await this.getHeatingSessionsWithProductionDate({ plantName });
+    return assigned.filter((session) => session.countsForDate === productionDate);
   }
 
   private async _getBoilerHeatingSummary(
@@ -27157,126 +27236,121 @@ export class DatabaseStorage implements IStorage {
     plantName: string,
     shift: PlantShiftLogWithDetails | undefined,
     totalProductionMT: number,
-    ldoConsumedT1Shift: number | null,
+    _ldoConsumedT1Shift: number | null,
     ldoFlows?: LdoFlowReading[],
   ) {
-    // Task #254 — Attribute sessions to the production day. On a production
-    // day (totalProductionMT > 0) we roll up every session since the prior
-    // production day so overnight / pre-heat LDO is counted in that day's
-    // L/MT. On a no-production day we keep the legacy strict-by-date view so
-    // the shift log still shows just that day's sessions.
-    const isProductionDay = totalProductionMT > 0;
-    const sessions = isProductionDay
+    const sessions = totalProductionMT > 0
       ? await this.getHeatingSessionsForProductionDay(plantName, date)
-      : await this.getBitumenHeatingSessions({ date, plantName });
-    const lastProductionDate = isProductionDay
-      ? await this.getLastProductionDateBefore(plantName, date)
-      : null;
-
-    // Task #254 — boiler-during-production delta from the shift log (only when
-    // operator toggled "Boiler runs during production" on). This is added on
-    // top of the session-rolled LDO. Both inputs must be present and closing
-    // must be > opening for a valid delta; otherwise we contribute zero.
-    const boilerRunsDuringProduction = !!shift?.boilerRunsDuringProduction;
-    const op = shift?.ldoTank1OpeningMeter ?? null;
-    const cl = shift?.ldoTank1ClosingMeter ?? null;
-    const boilerDuringProductionL = (boilerRunsDuringProduction && op != null && cl != null && cl > op)
-      ? Math.round((cl - op) * 10) / 10
-      : 0;
-
+      : [];
     const sessionCount = sessions.length;
-    const totalHours = sessions.reduce((s, x) => s + (x.durationHours || 0), 0);
-    const sessionsLdoT1L = sessions.reduce((s, x) => s + (x.ldoTank1Consumed || 0), 0);
-    const dgDieselL = sessions.reduce((s, x) => s + (x.dgDieselConsumed || 0), 0);
-    const totalBoilerLdoL = sessionsLdoT1L + boilerDuringProductionL;
-
-    // Reconciliation mismatch compares the shift-log Tank-1 reading against
-    // the LDO that's attributed to *this date's sessions only* (legacy
-    // semantics) so the existing alert keeps the same meaning.
-    const todaySessionsLdoT1L = sessions
-      .filter(s => s.date === date)
-      .reduce((s, x) => s + (x.ldoTank1Consumed || 0), 0);
-    const mismatchL = (sessionCount > 0 && ldoConsumedT1Shift != null)
-      ? Math.round((todaySessionsLdoT1L - ldoConsumedT1Shift) * 10) / 10
-      : null;
-
-    // Task #219 — three-way Boiler Meter reconciliation. In addition to the
-    // legacy "sessions vs shift" check we also verify that the LDO Flow Meter
-    // ledger (rows tagged sourceHeatingSessionId / sourceShiftLogId) still
-    // agrees with both upstream sources. A mismatch here means the operator
-    // edited the shift log or added a session after the ledger was synced
-    // (or vice versa).
-    const flowsForRecon = (ldoFlows ?? []).filter(r => r.tankNumber === 1);
-    const ledgerSessionsT1L = computeLdoLedgerConsumedL(flowsForRecon, "session");
-    const ledgerShiftT1L = computeLdoLedgerConsumedL(flowsForRecon, "shift");
-    const reconciliation = buildBoilerMeterReconciliation({
-      sessionsLdoT1L: sessionCount > 0 ? Math.round(todaySessionsLdoT1L * 10) / 10 : null,
-      shiftLogT1L: ldoConsumedT1Shift,
-      ledgerSessionsT1L,
-      ledgerShiftT1L,
+    const preheatLitres = sessions.reduce((sum, session) => sum + Number(session.ldoTank1Consumed || 0), 0);
+    const totalHours = sessions.reduce((sum, session) => sum + Number(session.durationHours || 0), 0);
+    const dgDieselL = sessions.reduce((sum, session) => sum + Number(session.dgDieselConsumed || 0), 0);
+    const nightDates = new Set(
+      sessions
+        .filter((session) => session.date < date ||
+          (session.date === date && session.endTime && shift?.plantStartTime && session.endTime <= shift.plantStartTime))
+        .map((session) => session.date),
+    );
+    const receiptsLitres = (ldoFlows || [])
+      .filter((flow) =>
+        String(flow.readingType).toLowerCase() === "receipt" &&
+        flow.sourceMaterialIssueId == null
+      )
+      .reduce((sum, flow) => sum + Number(flow.quantityLiters || 0), 0);
+    const parseDuration = (start?: string | null, stop?: string | null) => {
+      if (!start || !stop) return null;
+      const [sh, sm] = start.split(":").map(Number);
+      const [eh, em] = stop.split(":").map(Number);
+      if (!Number.isFinite(sh) || !Number.isFinite(eh)) return null;
+      let minutes = eh * 60 + (em || 0) - (sh * 60 + (sm || 0));
+      if (minutes < 0) minutes += 24 * 60;
+      return minutes / 60;
+    };
+    const accounting = calculatePlantLdo({
+      tank1OpeningDipCm: shift?.ldoTank1OpeningDip,
+      tank1ClosingDipCm: shift?.ldoTank1ClosingDip,
+      tank2OpeningDipCm: shift?.ldoTank2OpeningDip,
+      tank2ClosingDipCm: shift?.ldoTank2ClosingDip,
+      receiptsLitres,
+      dryerMeterOpening: shift?.ldoTank2OpeningMeter,
+      dryerMeterClosing: shift?.ldoTank2ClosingMeter,
+      boilerMeterOpening: shift?.ldoTank1OpeningMeter,
+      boilerMeterClosing: shift?.ldoTank1ClosingMeter,
+      boilerMeterLitres:
+        shift?.ldoTank1OpeningMeter != null && shift?.ldoTank1ClosingMeter != null
+          ? null
+          : sessions.some((session) => session.ldoTank1OpeningMeter != null && session.ldoTank1ClosingMeter != null)
+            ? sessions.reduce((sum, session) => {
+                if (session.ldoTank1OpeningMeter == null || session.ldoTank1ClosingMeter == null) return sum;
+                return sum + Math.max(0, Number(session.ldoTank1ClosingMeter) - Number(session.ldoTank1OpeningMeter));
+              }, 0)
+            : null,
+      preheatLitres,
+      preheatHours: totalHours,
+      preheatSessionCount: sessionCount,
+      nightsCount: nightDates.size,
+      plantRunHours: parseDuration(shift?.plantStartTime, shift?.plantStopTime),
+      dispatchedMt: totalProductionMT,
     });
-
-    if (sessionCount === 0 && boilerDuringProductionL === 0) {
-      return {
-        sessionCount: 0,
-        totalHours: 0,
-        sessionsLdoT1L: 0,
-        boilerDuringProductionL: 0,
-        totalBoilerLdoL: 0,
-        boilerRunsDuringProduction,
-        lPerHour: null,
-        lPerMT: null,
-        dgDieselL: 0,
-        shiftLogT1L: ldoConsumedT1Shift,
-        mismatchL: null,
-        sessionsLdoT1LToday: null,
-        ledgerSessionsT1L,
-        ledgerShiftT1L,
-        reconciliation,
-        primarySource: "shift_meter" as const,
-        attributionFromDate: lastProductionDate,
-        attributionToDate: date,
-        sessions: [],
-      };
-    }
-
-    // L/Hour uses session hours only (the shift-log boiler delta has no
-    // dedicated hours input). L/MT divides the combined boiler litres by
-    // production MT and is null on a no-production day.
-    const lPerHour = totalHours > 0 ? Math.round((totalBoilerLdoL / totalHours) * 100) / 100 : null;
-    const lPerMT = totalProductionMT > 0 && totalBoilerLdoL > 0
-      ? Math.round((totalBoilerLdoL / totalProductionMT) * 1000) / 1000
-      : null;
+    const firstSessionDate = sessions.map((session) => session.date).sort()[0] ?? null;
+    const reconciliation = buildBoilerMeterReconciliation({
+      sessionsLdoT1L: sessionCount > 0 ? Math.round(preheatLitres * 10) / 10 : null,
+      shiftLogT1L: accounting.boilerMeterUsed
+        ? Math.round((accounting.boilerDuringProductionLitres ?? 0) * 10) / 10
+        : null,
+      ledgerSessionsT1L: computeLdoLedgerConsumedL(
+        (ldoFlows || []).filter((flow) => flow.tankNumber === 1),
+        "session",
+      ),
+      ledgerShiftT1L: computeLdoLedgerConsumedL(
+        (ldoFlows || []).filter((flow) => flow.tankNumber === 1),
+        "shift",
+      ),
+    });
     return {
       sessionCount,
+      nightsCount: nightDates.size,
       totalHours: Math.round(totalHours * 100) / 100,
-      sessionsLdoT1L: Math.round(sessionsLdoT1L * 10) / 10,
-      boilerDuringProductionL,
-      totalBoilerLdoL: Math.round(totalBoilerLdoL * 10) / 10,
-      boilerRunsDuringProduction,
-      lPerHour,
-      lPerMT,
+      sessionsLdoT1L: Math.round(preheatLitres * 10) / 10,
+      preheatLitresPerHour: accounting.preheatLitresPerHour,
+      boilerDuringProductionL: accounting.boilerDuringProductionLitres,
+      boilerDuringProductionLitresPerHour: accounting.boilerDuringProductionLitresPerHour,
+      boilerMeterUsed: accounting.boilerMeterUsed,
+      totalBoilerLdoL: accounting.totalBoilerLitres,
+      totalLdoL: accounting.totalLitres,
+      boilerRunsDuringProduction: accounting.boilerMeterUsed,
+      lPerHour: accounting.preheatLitresPerHour,
+      lPerMT: accounting.boilerLitresPerMt,
+      dryerLPerMT: accounting.dryerLitresPerMt,
+      totalLPerMT: accounting.totalLitresPerMt,
+      dryerLitres: accounting.dryerLitres,
+      dipUsedLitres: accounting.dipUsedLitres,
+      receiptsLitres,
+      checkDipsOrDryerMeter: accounting.checkDipsOrDryerMeter,
       dgDieselL: Math.round(dgDieselL * 10) / 10,
-      shiftLogT1L: ldoConsumedT1Shift,
-      mismatchL,
-      sessionsLdoT1LToday: sessionCount > 0 ? Math.round(todaySessionsLdoT1L * 10) / 10 : null,
-      ledgerSessionsT1L,
-      ledgerShiftT1L,
-      reconciliation,
-      primarySource: sessionCount > 0 ? ("sessions" as const) : ("shift_meter" as const),
-      attributionFromDate: lastProductionDate,
+      shiftLogT1L: accounting.boilerMeterUsed ? accounting.boilerDuringProductionLitres : null,
+      mismatchL: null,
+      sessionsLdoT1LToday: null,
+      ledgerSessionsT1L: null,
+      ledgerShiftT1L: null,
+      reconciliation: { ...reconciliation, anyMismatch: false, mismatches: [] },
+      primarySource: "sessions" as const,
+      attributionFromDate: firstSessionDate,
       attributionToDate: date,
-      sessions: sessions.map(s => ({
-        id: s.id,
-        date: s.date,
-        sessionType: s.sessionType,
-        startTime: s.startTime,
-        endTime: s.endTime,
-        durationHours: s.durationHours,
-        ldoTank1Consumed: s.ldoTank1Consumed,
-        dgDieselConsumed: s.dgDieselConsumed,
-        staffName: s.staffName,
-        isFinalized: s.isFinalized,
+      accounting,
+      sessions: sessions.map((session) => ({
+        id: session.id,
+        date: session.date,
+        sessionType: session.sessionType,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        durationHours: session.durationHours,
+        ldoTank1Consumed: session.ldoTank1Consumed,
+        dgDieselConsumed: session.dgDieselConsumed,
+        staffName: session.staffName,
+        isFinalized: session.isFinalized,
+        countsForDate: session.countsForDate,
       })),
     };
   }
@@ -27302,12 +27376,13 @@ export class DatabaseStorage implements IStorage {
     ledgerShiftT1L: number | null;
     reconciliation: BoilerMeterReconciliationDetail;
   }>> {
-    const conds: any[] = [
-      gte(bitumenHeatingSessions.date, filters.dateFrom),
-      lte(bitumenHeatingSessions.date, filters.dateTo),
-    ];
-    if (filters.plantName) conds.push(eq(bitumenHeatingSessions.plantName, filters.plantName));
-    const sessionRows = await db.select().from(bitumenHeatingSessions).where(and(...conds));
+    const sessionRows = (await this.getHeatingSessionsWithProductionDate({
+      plantName: filters.plantName,
+    })).filter((session) =>
+      session.countsForDate != null &&
+      session.countsForDate >= filters.dateFrom &&
+      session.countsForDate <= filters.dateTo
+    );
 
     const shiftConds: any[] = [
       gte(plantShiftLogs.date, filters.dateFrom),
@@ -27316,13 +27391,8 @@ export class DatabaseStorage implements IStorage {
     if (filters.plantName) shiftConds.push(eq(plantShiftLogs.plantName, filters.plantName));
     const shiftRows = await db.select().from(plantShiftLogs).where(and(...shiftConds));
 
-    const flowConds: any[] = [
-      gte(ldoFlowReadings.date, filters.dateFrom),
-      lte(ldoFlowReadings.date, filters.dateTo),
-      eq(ldoFlowReadings.tankNumber, 1),
-    ];
-    if (filters.plantName) flowConds.push(eq(ldoFlowReadings.plantName, filters.plantName));
-    const flowRows = await db.select().from(ldoFlowReadings).where(and(...flowConds));
+    const flowRows = await db.select().from(ldoFlowReadings)
+      .where(filters.plantName ? eq(ldoFlowReadings.plantName, filters.plantName) : undefined);
 
     type Bucket = {
       sessionsL: number;
@@ -27342,7 +27412,7 @@ export class DatabaseStorage implements IStorage {
       return b;
     };
     for (const s of sessionRows) {
-      const b = ensure(s.date, s.plantName);
+      const b = ensure(s.countsForDate!, s.plantName);
       if (s.ldoTank1Consumed != null) b.sessionsL += s.ldoTank1Consumed;
       b.sessionsCount += 1;
     }
@@ -27353,8 +27423,17 @@ export class DatabaseStorage implements IStorage {
         b.shiftL = (b.shiftL ?? 0) + consumed;
       }
     }
+    const sessionDateById = new Map(sessionRows.map((session) => [session.id, session.countsForDate!]));
+    const shiftDateById = new Map(shiftRows.map((shift) => [shift.id, shift.date]));
     for (const f of flowRows) {
-      const b = ensure(f.date, f.plantName);
+      const attributedDate = f.sourceHeatingSessionId != null
+        ? sessionDateById.get(f.sourceHeatingSessionId)
+        : f.sourceShiftLogId != null
+          ? shiftDateById.get(f.sourceShiftLogId)
+          : null;
+      const date = attributedDate || f.date;
+      if (date < filters.dateFrom || date > filters.dateTo) continue;
+      const b = ensure(date, f.plantName);
       b.flows.push(f);
     }
 
@@ -27374,7 +27453,9 @@ export class DatabaseStorage implements IStorage {
       const ledgerSessionsT1L = computeLdoLedgerConsumedL(b.flows, "session");
       const ledgerShiftT1L = computeLdoLedgerConsumedL(b.flows, "shift");
       const reconciliation = buildBoilerMeterReconciliation({
-        sessionsLdoT1L,
+        // Session litres include pre-heat assigned from prior calendar days;
+        // they are not directly comparable to the production-only shift meter.
+        sessionsLdoT1L: null,
         shiftLogT1L,
         ledgerSessionsT1L,
         ledgerShiftT1L,
@@ -27426,19 +27507,13 @@ export class DatabaseStorage implements IStorage {
       dryerFedFrom: plantShiftLogs.dryerFedFrom,
     }).from(plantShiftLogs).where(and(...shiftConds));
 
-    const sessConds: any[] = [
-      gte(bitumenHeatingSessions.date, filters.dateFrom),
-      lte(bitumenHeatingSessions.date, filters.dateTo),
-    ];
-    if (filters.plantName) sessConds.push(eq(bitumenHeatingSessions.plantName, filters.plantName));
-    const sessRows = await db.select({
-      id: bitumenHeatingSessions.id,
-      date: bitumenHeatingSessions.date,
-      plantName: bitumenHeatingSessions.plantName,
-      dryerFedFrom: bitumenHeatingSessions.dryerFedFrom,
-      sessionType: bitumenHeatingSessions.sessionType,
-      startTime: bitumenHeatingSessions.startTime,
-    }).from(bitumenHeatingSessions).where(and(...sessConds));
+    const sessRows = (await this.getHeatingSessionsWithProductionDate({
+      plantName: filters.plantName,
+    })).filter((session) =>
+      session.countsForDate != null &&
+      session.countsForDate >= filters.dateFrom &&
+      session.countsForDate <= filters.dateTo
+    );
 
     // Build per-(date, plant) buckets
     type Bucket = {
@@ -27466,7 +27541,7 @@ export class DatabaseStorage implements IStorage {
       b.shiftLogValue = (sh.dryerFedFrom === "TANK_1" || sh.dryerFedFrom === "TANK_2") ? sh.dryerFedFrom : null;
     }
     for (const s of sessRows) {
-      const b = ensure(s.date, s.plantName);
+      const b = ensure(s.countsForDate!, s.plantName);
       // Skip sessions with no explicit dryer-source — they were created before
       // the operator had a UI to set the value and can't be meaningfully compared.
       if (s.dryerFedFrom !== "TANK_1" && s.dryerFedFrom !== "TANK_2") continue;

@@ -1484,8 +1484,8 @@ export default function PlantMaterialReceipts() {
                       </SelectTrigger>
                       <SelectContent>
                         {isFuel && <SelectItem value="none">Keep as Stock — barrel / no tank</SelectItem>}
-                        <SelectItem value="1">Tank 1{isFuel ? " — Boiler" : ""}</SelectItem>
-                        <SelectItem value="2">Tank 2{isFuel ? " — Dryer" : ""}</SelectItem>
+                        <SelectItem value="1">Tank 1 (small vertical)</SelectItem>
+                        <SelectItem value="2">Tank 2 (big horizontal)</SelectItem>
                       </SelectContent>
                     </Select>
                     {isFuel && (

@@ -26,7 +26,7 @@ import { SHIFT_IDLE_REASONS, LABOUR_CATEGORIES, LABOUR_GENDERS, heatingSessionTy
 import type { PlantShiftLog as PlantShiftLogRow, PlantShiftLogWithDetails, BitumenHeatingSession, Personnel } from "@shared/schema";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoVolumeAtDepth, getLdoDeadStockVolume } from "@shared/ldo-dip-chart";
-import { calculateDipsOnlyFuel } from "@shared/plantFuel";
+import { calculatePlantLdo, formatStoppedTime } from "@shared/plantLdoAccounting";
 import DryerSourceFixDialog from "@/components/DryerSourceFixDialog";
 import type { DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
 
@@ -238,7 +238,6 @@ export default function PlantShiftLog() {
   });
   const { data: plantSettings } = useQuery<{
     dgProductionEquipmentIds?: string | null;
-    boilerFuelMeterMode?: "working" | "dips_only" | null;
   }>({
     queryKey: ["/api/plant-module/plant-settings", plantName],
     enabled: viewMode === "edit" && !!plantName,
@@ -248,8 +247,6 @@ export default function PlantShiftLog() {
       return response.json();
     },
   });
-  const boilerFuelMeterMode = plantSettings?.boilerFuelMeterMode === "dips_only" ? "dips_only" : "working";
-  const boilerDipsOnly = boilerFuelMeterMode === "dips_only";
   const { data: previousShiftLog } = useQuery<PlantShiftLogRow | null>({
     queryKey: ["/api/plant-module/shift-logs/previous-before", date, plantName],
     enabled: viewMode === "edit" && !isLoading && !existing && !!date && !!plantName,
@@ -707,17 +704,23 @@ export default function PlantShiftLog() {
   const incompleteManpower = manpower.filter(
     m => m.name?.trim() && (!m.contractorName?.trim() || !m.category || !m.gender)
   );
+  const plantStoppedMinutes = idleEvents.reduce((total, event) => {
+    if (!event.startTime || !event.endTime) return total;
+    const [sh, sm] = event.startTime.split(":").map(Number);
+    const [eh, em] = event.endTime.split(":").map(Number);
+    if (!Number.isFinite(sh) || !Number.isFinite(eh)) return total;
+    let minutes = eh * 60 + (em || 0) - (sh * 60 + (sm || 0));
+    if (minutes < 0) minutes += 1440;
+    return total + minutes;
+  }, 0);
   const missingClosingReadings = useMemo(() => {
     const missing: string[] = [];
     if (!bitumenTank1ClosingDip.trim()) missing.push("Bitumen tank 1 closing dip");
     if (!bitumenTank2ClosingDip.trim()) missing.push("Bitumen tank 2 closing dip");
-    if (boilerDipsOnly) {
-      if (!ldoTank1OpeningDip.trim()) missing.push("LDO tank 1 opening dip");
-      if (!ldoTank1ClosingDip.trim()) missing.push("LDO tank 1 closing dip");
-    } else if (boilerRunsDuringProduction && !ldoTank1ClosingMeter.trim()) {
-      missing.push("Boiler fuel meter closing reading");
-    }
-    if (!ldoTank2ClosingMeter.trim()) missing.push("Dryer fuel meter closing reading");
+    if (!ldoTank1OpeningDip.trim()) missing.push("Tank 1 opening dip");
+    if (!ldoTank1ClosingDip.trim()) missing.push("Tank 1 closing dip");
+    if (!ldoTank2OpeningDip.trim()) missing.push("Tank 2 opening dip");
+    if (!ldoTank2ClosingDip.trim()) missing.push("Tank 2 closing dip");
     for (const dg of dgReadings) {
       if (!dg.closingReading.trim()) missing.push(`${dg.equipmentName} closing hour meter`);
       if (!dg.closingDiesel.trim()) missing.push(`${dg.equipmentName} closing diesel level`);
@@ -726,12 +729,10 @@ export default function PlantShiftLog() {
   }, [
     bitumenTank1ClosingDip,
     bitumenTank2ClosingDip,
-    boilerDipsOnly,
-    boilerRunsDuringProduction,
     ldoTank1OpeningDip,
     ldoTank1ClosingDip,
-    ldoTank1ClosingMeter,
-    ldoTank2ClosingMeter,
+    ldoTank2OpeningDip,
+    ldoTank2ClosingDip,
     dgReadings,
   ]);
 
@@ -762,16 +763,10 @@ export default function PlantShiftLog() {
         bitumenTank1ClosingDip: numOrNull(bitumenTank1ClosingDip),
         bitumenTank2OpeningDip: numOrNull(bitumenTank2OpeningDip),
         bitumenTank2ClosingDip: numOrNull(bitumenTank2ClosingDip),
-        // Task #254 — when the boiler-runs-during-production toggle is OFF
-        // we explicitly null the Boiler Meter (Tank-1) inputs so they don't
-        // contribute phantom litres to the daily report. Dryer Meter (Tank-2)
-        // is independent of the toggle.
-        ldoTank1OpeningMeter: boilerDipsOnly
-          ? (existing ? undefined : null)
-          : boilerRunsDuringProduction ? numOrNull(ldoTank1OpeningMeter) : null,
-        ldoTank1ClosingMeter: boilerDipsOnly
-          ? (existing ? undefined : null)
-          : boilerRunsDuringProduction ? numOrNull(ldoTank1ClosingMeter) : null,
+        // Complete meter pairs are an automatic fallback/override; they are
+        // saved as entered regardless of the legacy display toggle.
+        ldoTank1OpeningMeter: numOrNull(ldoTank1OpeningMeter),
+        ldoTank1ClosingMeter: numOrNull(ldoTank1ClosingMeter),
         ldoTank2OpeningMeter: numOrNull(ldoTank2OpeningMeter),
         ldoTank2ClosingMeter: numOrNull(ldoTank2ClosingMeter),
         ldoTank1OpeningDip: numOrNull(ldoTank1OpeningDip),
@@ -779,9 +774,7 @@ export default function PlantShiftLog() {
         ldoTank2OpeningDip: numOrNull(ldoTank2OpeningDip),
         ldoTank2ClosingDip: numOrNull(ldoTank2ClosingDip),
         dryerFedFrom: extra?.effectiveDryerFedFrom ?? dryerFedFrom ?? "TANK_2",
-        boilerRunsDuringProduction: boilerDipsOnly
-          ? existing?.boilerRunsDuringProduction ?? 0
-          : boilerRunsDuringProduction ? 1 : 0,
+        boilerRunsDuringProduction: boilerRunsDuringProduction ? 1 : 0,
         noMainPlantOps,
         manpower: manpower
           .filter(m => m.name?.trim())
@@ -881,8 +874,8 @@ export default function PlantShiftLog() {
           const mismatches = sessions.filter(s => s.dryerFedFrom && s.dryerFedFrom !== savedDryerFedFrom && s.id != null);
           if (mismatches.length > 0) {
             const firstMismatch = mismatches[0];
-            const slLabel = savedDryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
-            const hsLabel = firstMismatch.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
+            const slLabel = savedDryerFedFrom === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
+            const hsLabel = firstMismatch.dryerFedFrom === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
             const fixTarget: DryerSourceFixTarget = {
               mode: "heating-session",
               sessionIds: mismatches.map(s => s.id as number),
@@ -958,7 +951,7 @@ export default function PlantShiftLog() {
   // and the "Heating Sessions for this Production" card. Using useQuery
   // ensures the shift log picks up new/edited sessions via cache
   // invalidation (e.g. after saving a session).
-  const { data: heatingSessionsForDate } = useQuery<BitumenHeatingSession[]>({
+  const { data: heatingSessionsForDate } = useQuery<Array<BitumenHeatingSession & { countsForDate?: string | null }>>({
     queryKey: ["/api/plant-module/heating-sessions", { servedByProductionDate: date, plant: plantName }],
     enabled: viewMode === "edit" && !!date,
     queryFn: async () => {
@@ -972,7 +965,7 @@ export default function PlantShiftLog() {
   });
   const { data: dipsOnlyFuelInputs } = useQuery<{ receiptLitres: number; transferLitres: number }>({
     queryKey: ["/api/plant-module/shift-logs/dips-only-inputs", date, plantName],
-    enabled: viewMode === "edit" && boilerDipsOnly && !!date && !!plantName,
+    enabled: viewMode === "edit" && !!date && !!plantName,
     queryFn: async () => {
       const res = await fetch(
         `/api/plant-module/shift-logs/${encodeURIComponent(date)}/dips-only-inputs?plant=${encodeURIComponent(plantName)}`,
@@ -1096,21 +1089,15 @@ export default function PlantShiftLog() {
 
   // Carry-forward: auto-fill opening dip readings from previous day's closing dip
   useEffect(() => {
-    if (!date || existing) return;
-    let cancelled = false;
-    const prevDate = new Date(date);
-    prevDate.setDate(prevDate.getDate() - 1);
-    const prevDateStr = prevDate.toISOString().slice(0, 10);
-    fetch(`/api/plant-module/shift-logs/by-date/${prevDateStr}?plant=${encodeURIComponent(plantName)}`, { credentials: "include" })
-      .then(r => r.ok ? r.json() : null)
-      .then((prev: { bitumenTank1ClosingDip?: number | null; bitumenTank2ClosingDip?: number | null; ldoTank1ClosingDip?: number | null; ldoTank2ClosingDip?: number | null } | null) => {
-        if (cancelled || !prev) return;
+    if (!date || existing || !previousShiftLog) return;
+        const prev = previousShiftLog;
+        const previousDate = String(prev.date || "");
         if (prev.bitumenTank1ClosingDip != null) {
           const next = String(prev.bitumenTank1ClosingDip);
           setBitumenTank1OpeningDip(cur => {
             if (cur && cur !== autoFilledBitumenT1Ref.current) return cur;
             autoFilledBitumenT1Ref.current = next;
-            setAutoFillBitumenT1Source(`${prevDateStr} closing dip`);
+            setAutoFillBitumenT1Source(`${previousDate} closing dip`);
             return next;
           });
         }
@@ -1119,7 +1106,7 @@ export default function PlantShiftLog() {
           setBitumenTank2OpeningDip(cur => {
             if (cur && cur !== autoFilledBitumenT2Ref.current) return cur;
             autoFilledBitumenT2Ref.current = next;
-            setAutoFillBitumenT2Source(`${prevDateStr} closing dip`);
+            setAutoFillBitumenT2Source(`${previousDate} closing dip`);
             return next;
           });
         }
@@ -1128,7 +1115,7 @@ export default function PlantShiftLog() {
           setLdoTank1OpeningDip(cur => {
             if (cur && cur !== autoFilledLdoDipT1Ref.current) return cur;
             autoFilledLdoDipT1Ref.current = next;
-            setAutoFillLdoDipT1Source(`${prevDateStr} closing dip`);
+            setAutoFillLdoDipT1Source(`${previousDate} closing dip`);
             return next;
           });
         }
@@ -1137,38 +1124,17 @@ export default function PlantShiftLog() {
           setLdoTank2OpeningDip(cur => {
             if (cur && cur !== autoFilledLdoDipT2Ref.current) return cur;
             autoFilledLdoDipT2Ref.current = next;
-            setAutoFillLdoDipT2Source(`${prevDateStr} closing dip`);
+            setAutoFillLdoDipT2Source(`${previousDate} closing dip`);
             return next;
           });
         }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, plantName, existing]);
+  }, [date, previousShiftLog, existing]);
 
   // Derived
-  const ldoTotal = useMemo(() => {
-    const t1Open = parseFloat(ldoTank1OpeningMeter), t1Close = parseFloat(ldoTank1ClosingMeter);
-    const t2Open = parseFloat(ldoTank2OpeningMeter), t2Close = parseFloat(ldoTank2ClosingMeter);
-    const t1 = (!isNaN(t1Open) && !isNaN(t1Close)) ? Math.max(0, t1Close - t1Open) : null;
-    const t2 = (!isNaN(t2Open) && !isNaN(t2Close)) ? Math.max(0, t2Close - t2Open) : null;
-    return { t1, t2, total: (t1 || 0) + (t2 || 0) };
-  }, [ldoTank1OpeningMeter, ldoTank1ClosingMeter, ldoTank2OpeningMeter, ldoTank2ClosingMeter]);
-
-  // Filter heating sessions to only those within the shift time window.
-  // Sessions from prior dates (overnight pre-heating) are always included.
-  // Same-date sessions are only shown if they overlap with [plantStartTime, plantStopTime].
-  const filteredHeatingSessionsForShiftLog = useMemo(() => {
-    const all = Array.isArray(heatingSessionsForDate) ? heatingSessionsForDate : [];
-    if (!plantStartTime || !plantStopTime) return all;
-    return all.filter(s => {
-      if (!s.date || s.date < date) return true; // prior-date pre-heating always shown
-      const sStart = s.startTime || "00:00";
-      const sEnd = s.endTime || "23:59";
-      return sStart <= plantStopTime && sEnd >= plantStartTime;
-    });
-  }, [heatingSessionsForDate, date, plantStartTime, plantStopTime]);
+  // The server applies the single canonical assignment rule to every
+  // production-day session query. Do not re-filter it by the calendar date.
+  const filteredHeatingSessionsForShiftLog = heatingSessionsForDate || [];
 
   // Task #325 — plant run hours derived from header start/stop times.
   const plantRunHours = useMemo(() => {
@@ -1189,62 +1155,53 @@ export default function PlantShiftLog() {
     return rows.reduce((sum, d) => sum + Number(d.loadWeight || 0), 0);
   }, [todayDispatches, plantName]);
 
-  const dipsOnlyFuel = useMemo(() => {
-    const dryerOpen = parseFloat(ldoTank2OpeningMeter);
-    const dryerClose = parseFloat(ldoTank2ClosingMeter);
-    const dryerLitres = Number.isFinite(dryerOpen) && Number.isFinite(dryerClose)
-      ? Math.max(0, dryerClose - dryerOpen)
-      : null;
-    const preheatLitres = (heatingSessionsForDate || []).reduce(
-      (sum, session) => sum + Number(session.ldoTank1Consumed || 0),
-      0,
-    );
-    return calculateDipsOnlyFuel({
-      openingDipCm: numOrNull(ldoTank1OpeningDip),
-      closingDipCm: numOrNull(ldoTank1ClosingDip),
-      receiptLitres: dipsOnlyFuelInputs?.receiptLitres ?? 0,
-      transferLitres: dipsOnlyFuelInputs?.transferLitres ?? 0,
-      dryerLitres,
-      preheatLitres,
+  const ldoAccounting = useMemo(() => {
+    const sessions = heatingSessionsForDate || [];
+    const preheatHours = sessions.reduce((sum, session) => {
+      if (session.durationHours != null) return sum + Number(session.durationHours);
+      const start = session.startTime?.split(":").map(Number);
+      const end = session.endTime?.split(":").map(Number);
+      if (!start || !end || !Number.isFinite(start[0]) || !Number.isFinite(end[0])) return sum;
+      let minutes = end[0] * 60 + (end[1] || 0) - (start[0] * 60 + (start[1] || 0));
+      if (minutes < 0) minutes += 1440;
+      return sum + minutes / 60;
+    }, 0);
+    const nightsCount = new Set(sessions
+      .filter(session => session.date < date ||
+        (session.date === date && !!plantStartTime && !!session.endTime && session.endTime <= plantStartTime))
+      .map(session => session.date)).size;
+    return calculatePlantLdo({
+      tank1OpeningDipCm: numOrNull(ldoTank1OpeningDip),
+      tank1ClosingDipCm: numOrNull(ldoTank1ClosingDip),
+      tank2OpeningDipCm: numOrNull(ldoTank2OpeningDip),
+      tank2ClosingDipCm: numOrNull(ldoTank2ClosingDip),
+      receiptsLitres: dipsOnlyFuelInputs?.receiptLitres ?? 0,
+      dryerMeterOpening: numOrNull(ldoTank2OpeningMeter),
+      dryerMeterClosing: numOrNull(ldoTank2ClosingMeter),
+      boilerMeterOpening: numOrNull(ldoTank1OpeningMeter),
+      boilerMeterClosing: numOrNull(ldoTank1ClosingMeter),
+      boilerMeterLitres:
+        numOrNull(ldoTank1OpeningMeter) != null && numOrNull(ldoTank1ClosingMeter) != null
+          ? null
+          : sessions.some(session => session.ldoTank1OpeningMeter != null && session.ldoTank1ClosingMeter != null)
+            ? sessions.reduce((sum, session) => {
+                if (session.ldoTank1OpeningMeter == null || session.ldoTank1ClosingMeter == null) return sum;
+                return sum + Math.max(0, Number(session.ldoTank1ClosingMeter) - Number(session.ldoTank1OpeningMeter));
+              }, 0)
+            : null,
+      preheatLitres: sessions.reduce((sum, session) => sum + Number(session.ldoTank1Consumed || 0), 0),
+      preheatHours,
+      preheatSessionCount: sessions.length,
+      nightsCount,
+      plantRunHours,
       dispatchedMt: totalDispatchedMt,
     });
   }, [
-    ldoTank1OpeningDip,
-    ldoTank1ClosingDip,
-    ldoTank2OpeningMeter,
-    ldoTank2ClosingMeter,
-    dipsOnlyFuelInputs,
-    heatingSessionsForDate,
+    heatingSessionsForDate, date, plantStartTime, ldoTank1OpeningDip, ldoTank1ClosingDip,
+    ldoTank2OpeningDip, ldoTank2ClosingDip, dipsOnlyFuelInputs, ldoTank1OpeningMeter,
+    ldoTank1ClosingMeter, ldoTank2OpeningMeter, ldoTank2ClosingMeter, plantRunHours,
     totalDispatchedMt,
   ]);
-  const displayedLdoTotal = boilerDipsOnly
-    ? {
-        t1: dipsOnlyFuel.boilerLitres,
-        t2: dipsOnlyFuel.dryerLitres,
-        total: dipsOnlyFuel.boilerLitres == null || dipsOnlyFuel.dryerLitres == null
-          ? null
-          : dipsOnlyFuel.boilerLitres + dipsOnlyFuel.preheatLitres + dipsOnlyFuel.dryerLitres,
-      }
-    : ldoTotal;
-
-  // Six live stats shown below the LDO meter inputs.
-  const liveStats = useMemo(() => {
-    const boilerL = boilerDipsOnly ? dipsOnlyFuel.boilerLitres : boilerRunsDuringProduction ? ldoTotal.t1 : null;
-    const dryerL = boilerDipsOnly ? dipsOnlyFuel.dryerLitres : ldoTotal.t2;
-    const hrs = plantRunHours;
-    const mt = totalDispatchedMt;
-    const hasAny = boilerL != null || dryerL != null;
-    return {
-      boilerLHr: (boilerL != null && hrs && hrs > 0) ? boilerL / hrs : null,
-      dryerLHr: (dryerL != null && hrs && hrs > 0) ? dryerL / hrs : null,
-      combinedLHr: (hasAny && hrs && hrs > 0) ? ((boilerL ?? 0) + (dryerL ?? 0)) / hrs : null,
-      dryerLMt: (dryerL != null && mt && mt > 0) ? dryerL / mt : null,
-      boilerLMt: (boilerL != null && mt && mt > 0) ? boilerL / mt : null,
-      combinedLMt: (mt && mt > 0 && hasAny)
-        ? ((boilerL ?? 0) + (dryerL ?? 0)) / mt : null,
-      noDispatches: todayDispatches != null && totalDispatchedMt == null,
-    };
-  }, [ldoTotal, dipsOnlyFuel, boilerDipsOnly, plantRunHours, totalDispatchedMt, boilerRunsDuringProduction, todayDispatches]);
 
   const exportShiftLogsToExcel = useCallback(() => {
     const rows = (shiftLogs || [])
@@ -1359,8 +1316,8 @@ export default function PlantShiftLog() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All tanks</SelectItem>
-                <SelectItem value="TANK_1">Boiler tank</SelectItem>
-                <SelectItem value="TANK_2">Dryer tank</SelectItem>
+                <SelectItem value="TANK_1">Tank 1 (small vertical)</SelectItem>
+                <SelectItem value="TANK_2">Tank 2 (big horizontal)</SelectItem>
               </SelectContent>
             </Select>
             <Link href={appendPlantContext("/plant/shift-log-manpower-review", { forceTab: "operations" })}>
@@ -1379,7 +1336,7 @@ export default function PlantShiftLog() {
           <CardHeader><CardTitle>Plant Logs {listDateFrom} → {listDateTo}</CardTitle></CardHeader>
           <CardContent>
             {listLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
-              !sorted.length ? <p className="text-sm text-muted-foreground">{listDryerFilter !== "all" ? `No plant logs with dryer fed from ${listDryerFilter === "TANK_1" ? "Boiler tank" : "Dryer tank"} in this date range.` : "No plant logs in this date range."}</p> :
+              !sorted.length ? <p className="text-sm text-muted-foreground">{listDryerFilter !== "all" ? `No plant logs with dryer fed from ${listDryerFilter === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)"} in this date range.` : "No plant logs in this date range."}</p> :
               <div className="space-y-1">
                 {Object.keys(grouped).map(d => {
                   const isOpen = openDateGroups.has(d);
@@ -1607,6 +1564,19 @@ export default function PlantShiftLog() {
               <div><Label>Ambient temperature °C</Label><Input type="number" step="0.1" value={ambientTemp} onChange={e => setAmbientTemp(e.target.value)} data-testid="input-ambient-temp" /></div>
               <div><Label>Bitumen tank 1 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank1Temp} onChange={e => setBitumenTank1Temp(e.target.value)} data-testid="input-bitumen-t1-temp" /></div>
               <div><Label>Bitumen tank 2 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank2Temp} onChange={e => setBitumenTank2Temp(e.target.value)} data-testid="input-bitumen-t2-temp" /></div>
+              <div className="flex items-center gap-2 rounded border border-dashed border-amber-300 px-3 py-2">
+                <Switch
+                  id="boiler-runs-during-production"
+                  checked={boilerRunsDuringProduction}
+                  onCheckedChange={setBoilerRunsDuringProduction}
+                  data-testid="switch-boiler-runs-during-production"
+                />
+                <Label htmlFor="boiler-runs-during-production" className="text-sm cursor-pointer">
+                  Boiler runs during production
+                </Label>
+              </div>
+              <div><Label>Boiler meter — opening</Label><Input type="number" step="0.01" value={ldoTank1OpeningMeter} onChange={e => setLdoTank1OpeningMeter(e.target.value)} data-testid="input-ldo-t1-open" /></div>
+              <div><Label>Boiler meter — closing</Label><Input type="number" step="0.01" value={ldoTank1ClosingMeter} onChange={e => setLdoTank1ClosingMeter(e.target.value)} data-testid="input-ldo-t1-close" /></div>
             </div>
           </details>
 
@@ -1627,33 +1597,12 @@ export default function PlantShiftLog() {
                     <SelectValue placeholder="Select tank…" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="TANK_1">Boiler tank</SelectItem>
-                    <SelectItem value="TANK_2">Dryer tank</SelectItem>
+                    <SelectItem value="TANK_1">Tank 1 (small vertical)</SelectItem>
+                    <SelectItem value="TANK_2">Tank 2 (big horizontal)</SelectItem>
                   </SelectContent>
                 </Select>
                 {dryerFedFromNote && <p className="text-xs text-muted-foreground">{dryerFedFromNote}</p>}
               </div>
-              {!boilerDipsOnly && <div className="flex items-center gap-2 rounded border border-dashed border-amber-300 px-3 py-2">
-                <Switch
-                  id="boiler-runs-during-production"
-                  checked={boilerRunsDuringProduction}
-                  onCheckedChange={(value) => {
-                    setBoilerRunsDuringProduction(!!value);
-                    if (!value) {
-                      setLdoTank1OpeningMeter("");
-                      setLdoTank1ClosingMeter("");
-                      setAutoFillT1Source("");
-                      setAutoFillT1ClosingSource("");
-                      autoFilledT1ValueRef.current = null;
-                      autoFilledT1ClosingValueRef.current = null;
-                    }
-                  }}
-                  data-testid="switch-boiler-runs-during-production"
-                />
-                <Label htmlFor="boiler-runs-during-production" className="text-sm cursor-pointer">
-                  Boiler runs during production
-                </Label>
-              </div>}
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {[
@@ -1667,21 +1616,21 @@ export default function PlantShiftLog() {
                   {hint && <p className="mt-1 text-sm font-medium" data-testid={hintId}>{hint}</p>}
                 </div>
               ))}
-              {boilerDipsOnly && <div>
-                <Label>LDO tank 1 — opening dip (cm)</Label>
+              <div>
+                <Label>Tank 1 (small vertical) — opening dip (cm)</Label>
                 <Input type="number" step="0.1" value={ldoTank1OpeningDip} onChange={event => { setLdoTank1OpeningDip(event.target.value); setAutoFillLdoDipT1Source(""); autoFilledLdoDipT1Ref.current = null; }} data-testid="input-ldo-dip-t1-open-main" />
                 {ldoDipHint(1, ldoTank1OpeningDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t1-open-litres">{ldoDipHint(1, ldoTank1OpeningDip)}</p>}
-              </div>}
+              </div>
+              <div>
+                <Label>Tank 2 (big horizontal) — opening dip (cm)</Label>
+                <Input type="number" step="0.1" value={ldoTank2OpeningDip} onChange={event => { setLdoTank2OpeningDip(event.target.value); setAutoFillLdoDipT2Source(""); autoFilledLdoDipT2Ref.current = null; }} data-testid="input-ldo-dip-t2-open-main" />
+                {ldoDipHint(2, ldoTank2OpeningDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t2-open-litres">{ldoDipHint(2, ldoTank2OpeningDip)}</p>}
+              </div>
               <div>
                 <Label>Dryer fuel meter — opening</Label>
                 <Input type="number" step="0.01" value={ldoTank2OpeningMeter} onChange={event => { setLdoTank2OpeningMeter(event.target.value); setAutoFillT2Source(""); }} data-testid="input-ldo-t2-open" />
                 {autoFillT2Source && <p className="mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid="text-autofill-t2">Auto-filled from {autoFillT2Source}</p>}
               </div>
-              {!boilerDipsOnly && boilerRunsDuringProduction && <div>
-                <Label>Boiler fuel meter — opening</Label>
-                <Input type="number" step="0.01" value={ldoTank1OpeningMeter} onChange={event => { setLdoTank1OpeningMeter(event.target.value); setAutoFillT1Source(""); }} data-testid="input-ldo-t1-open" />
-                {autoFillT1Source && <p className="mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid="text-autofill-t1">Auto-filled from {autoFillT1Source}</p>}
-              </div>}
               {dgReadings.map((reading, index) => <div key={`open-${reading.equipmentId}`} className="rounded border p-2">
                 <p className="mb-2 text-sm font-medium">{reading.equipmentName}</p>
                 {reading.prefillFrom && <p className="mb-2 text-xs text-muted-foreground">Opening values prefilled from {reading.prefillFrom}.</p>}
@@ -1711,20 +1660,20 @@ export default function PlantShiftLog() {
                   <Input type="number" step="0.1" value={bitumenTank2ClosingDip} onChange={event => setBitumenTank2ClosingDip(event.target.value)} data-testid="input-bitumen-t2-close" />
                   {dipHint(bitumenTank2ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip)}</p>}
                 </div>
-                {boilerDipsOnly && <div>
-                  <Label>LDO tank 1 — closing dip (cm)</Label>
+                <div>
+                  <Label>Tank 1 (small vertical) — closing dip (cm)</Label>
                   <Input type="number" step="0.1" value={ldoTank1ClosingDip} onChange={event => { setLdoTank1ClosingDip(event.target.value); setAutoFillLdoDipT1Source(""); autoFilledLdoDipT1Ref.current = null; }} data-testid="input-ldo-dip-t1-close-main" />
                   {ldoDipHint(1, ldoTank1ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t1-close-litres">{ldoDipHint(1, ldoTank1ClosingDip)}</p>}
-                </div>}
+                </div>
+                <div>
+                  <Label>Tank 2 (big horizontal) — closing dip (cm)</Label>
+                  <Input type="number" step="0.1" value={ldoTank2ClosingDip} onChange={event => { setLdoTank2ClosingDip(event.target.value); setAutoFillLdoDipT2Source(""); autoFilledLdoDipT2Ref.current = null; }} data-testid="input-ldo-dip-t2-close-main" />
+                  {ldoDipHint(2, ldoTank2ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t2-close-litres">{ldoDipHint(2, ldoTank2ClosingDip)}</p>}
+                </div>
                 <div>
                   <Label>Dryer fuel meter — closing</Label>
                   <Input type="number" step="0.01" value={ldoTank2ClosingMeter} onChange={event => setLdoTank2ClosingMeter(event.target.value)} data-testid="input-ldo-t2-close" />
                 </div>
-                {!boilerDipsOnly && boilerRunsDuringProduction && <div>
-                  <Label>Boiler fuel meter — closing</Label>
-                  <Input type="number" step="0.01" value={ldoTank1ClosingMeter} onChange={event => setLdoTank1ClosingMeter(event.target.value)} data-testid="input-ldo-t1-close" />
-                  {autoFillT1ClosingSource && <p className="mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid="text-autofill-t1-close">Auto-filled from {autoFillT1ClosingSource}</p>}
-                </div>}
               </>}
               {dgReadings.map((reading, index) => <div key={`close-${reading.equipmentId}`} className="rounded border p-2">
                 <p className="mb-2 text-sm font-medium">{reading.equipmentName}</p>
@@ -1762,164 +1711,54 @@ export default function PlantShiftLog() {
         <CardHeader>
           <CardTitle>LDO consumption summary</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {boilerDipsOnly ? (
-            <>
-              <div className="col-span-2 md:col-span-4 text-sm font-medium" data-testid="text-boiler-meter-not-used">
-                Boiler meter not used — dips only
-              </div>
-              <div>
-                <Label>Tank 1 used (L)</Label>
-                <div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-tank1-dips-used">
-                  {dipsOnlyFuel.tank1UsedLitres?.toFixed(1) ?? "—"}
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Dips + {dipsOnlyFuel.receiptLitres.toFixed(1)} received + {dipsOnlyFuel.transferLitres.toFixed(1)} transferred
-                </p>
-              </div>
-              <div>
-                <Label>Preheat (L)</Label>
-                <div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-preheat-dips-only">{dipsOnlyFuel.preheatLitres.toFixed(1)}</div>
-              </div>
-              <div>
-                <Label>Boiler during production (L)</Label>
-                <div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-boiler-dips-only">{dipsOnlyFuel.boilerLitres?.toFixed(1) ?? "—"}</div>
-                <p className="mt-1 text-xs text-muted-foreground">L/MT: {dipsOnlyFuel.boilerLitresPerMt?.toFixed(3) ?? "—"}</p>
-              </div>
-              <div>
-                <Label>Dryer fuel (L)</Label>
-                <div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-dryer-dips-only">{dipsOnlyFuel.dryerLitres?.toFixed(1) ?? "—"}</div>
-                <p className="mt-1 text-xs text-muted-foreground">L/MT: {dipsOnlyFuel.dryerLitresPerMt?.toFixed(3) ?? "—"}</p>
-              </div>
-              <div>
-                <Label>Total LDO (L)</Label>
-                <div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold" data-testid="text-ldo-total">
-                  {displayedLdoTotal.total?.toFixed(1) ?? "—"}
-                </div>
-              </div>
-              {dipsOnlyFuel.checkDipsOrDryerMeter && <div className="col-span-2 md:col-span-4 rounded border border-amber-400 bg-amber-50 p-2 text-sm font-medium dark:bg-amber-950/20" data-testid="warning-dips-only-fuel-reconciliation">
-                Check dips/dryer meter
-              </div>}
-            </>
-          ) : boilerRunsDuringProduction ? (
-            <>
-              <div><Label>Boiler fuel consumed (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t1-consumed">{displayedLdoTotal.t1?.toFixed(2) ?? "—"}</div></div>
-              <div />
-            </>
-          ) : (
-            <div className="md:col-span-4 text-sm text-muted-foreground italic" data-testid="text-boiler-meter-hidden">
-              Boiler Meter inputs are hidden — turn on "Boiler runs during production" to record the meter opening/closing for this shift. Heating session LDO is still counted in the Daily Plant Report.
+        <CardContent className="space-y-3">
+          {[
+            {
+              title: `1. Pre-heat — ${ldoAccounting.preheatSessionCount} sessions / ${ldoAccounting.nightsCount} nights`,
+              value: `${ldoAccounting.preheatLitres.toFixed(1)} L · ${ldoAccounting.preheatHours?.toFixed(1) ?? "—"} h · ${ldoAccounting.preheatLitresPerHour?.toFixed(1) ?? "—"} L/h`,
+              testId: "ldo-summary-preheat",
+            },
+            {
+              title: `2. Boiler during production${ldoAccounting.boilerMeterUsed ? " (meter)" : ""}`,
+              value: `${ldoAccounting.boilerDuringProductionLitres?.toFixed(1) ?? "—"} L · ${ldoAccounting.boilerDuringProductionLitresPerHour?.toFixed(1) ?? "—"} L/h`,
+              testId: "ldo-summary-boiler-production",
+            },
+            {
+              title: "3. Dryer — flow meter",
+              value: `${ldoAccounting.dryerLitres?.toFixed(1) ?? "—"} L · ${ldoAccounting.dryerLitresPerMt?.toFixed(2) ?? "—"} L/MT`,
+              testId: "ldo-summary-dryer",
+            },
+            {
+              title: "4. Boiler, including pre-heat",
+              value: `${ldoAccounting.boilerLitresPerMt?.toFixed(2) ?? "—"} L/MT`,
+              testId: "ldo-summary-boiler-per-mt",
+            },
+            {
+              title: "5. Total LDO",
+              value: `${ldoAccounting.totalLitres?.toFixed(1) ?? "—"} L · ${ldoAccounting.totalLitresPerMt?.toFixed(2) ?? "—"} L/MT`,
+              testId: "ldo-summary-total",
+            },
+            {
+              title: "6. Plant stops",
+              value: `${idleEvents.length} events · ${formatStoppedTime(plantStoppedMinutes)} h:mm`,
+              testId: "ldo-summary-stops",
+            },
+          ].map((line) => (
+            <div key={line.testId} className="flex flex-col gap-1 border-b pb-2 sm:flex-row sm:items-center sm:justify-between" data-testid={line.testId}>
+              <span className="font-medium">{line.title}</span>
+              <span className="text-sm tabular-nums">{line.value}</span>
             </div>
+          ))}
+          {ldoAccounting.nightsCount > 0 && (
+            <p className="text-xs text-muted-foreground" data-testid="ldo-summary-idle-sessions">
+              Includes {ldoAccounting.preheatSessionCount} heating sessions ({(heatingSessionsForDate || []).filter(session => session.date < date).map(session => session.date.slice(8, 10)).join("–")}, plant idle), {ldoAccounting.preheatLitres.toFixed(0)} L.
+            </p>
           )}
-          {!boilerDipsOnly && <>
-            <div><Label>Dryer fuel consumed (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{displayedLdoTotal.t2?.toFixed(2) ?? "—"}</div></div>
-            <div><Label>Total LDO (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold" data-testid="text-ldo-total">{displayedLdoTotal.total ? displayedLdoTotal.total.toFixed(2) : "—"}</div></div>
-          </>}
-
-          {/* Optional LDO dip-stick readings remain available in More details. */}
-          {moreDetailsOpen && <div className="col-span-2 md:col-span-4 border-t pt-3 mt-1">
-            <p className="text-sm font-medium text-muted-foreground mb-2">LDO Tank Dip-Stick Readings</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {!boilerDipsOnly && <>
-              <div>
-                <Label>Tank 1 — opening dip (cm)</Label>
-                <Input type="number" step="0.1" value={ldoTank1OpeningDip} onChange={e => { setLdoTank1OpeningDip(e.target.value); setAutoFillLdoDipT1Source(""); autoFilledLdoDipT1Ref.current = null; }} data-testid="input-ldo-dip-t1-open" />
-                {autoFillLdoDipT1Source && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-ldo-dip-t1-open">Auto-filled from {autoFillLdoDipT1Source}</p>}
-                {ldoDipHint(1, ldoTank1OpeningDip) ? (
-                  <p className="text-sm font-medium text-foreground mt-1" data-testid="text-ldo-dip-t1-open-hint">{ldoDipHint(1, ldoTank1OpeningDip)}</p>
-                ) : (
-                  !autoFillLdoDipT1Source && <p className="text-sm text-foreground/60 mt-1">Dip-stick at shift start, in cm</p>
-                )}
-              </div>
-              <div>
-                <Label>Tank 1 — closing dip (cm)</Label>
-                <Input type="number" step="0.1" value={ldoTank1ClosingDip} onChange={e => setLdoTank1ClosingDip(e.target.value)} data-testid="input-ldo-dip-t1-close" />
-                {ldoDipHint(1, ldoTank1ClosingDip) ? (
-                  <p className="text-sm font-medium text-foreground mt-1" data-testid="text-ldo-dip-t1-close-hint">{ldoDipHint(1, ldoTank1ClosingDip)}</p>
-                ) : (
-                  <p className="text-sm text-foreground/60 mt-1">Dip-stick at shift end, in cm</p>
-                )}
-              </div>
-              </>}
-              <div>
-                <Label>Tank 2 — opening dip (cm)</Label>
-                <Input type="number" step="0.1" value={ldoTank2OpeningDip} onChange={e => { setLdoTank2OpeningDip(e.target.value); setAutoFillLdoDipT2Source(""); autoFilledLdoDipT2Ref.current = null; }} data-testid="input-ldo-dip-t2-open" />
-                {autoFillLdoDipT2Source && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-ldo-dip-t2-open">Auto-filled from {autoFillLdoDipT2Source}</p>}
-                {ldoDipHint(2, ldoTank2OpeningDip) ? (
-                  <p className="text-sm font-medium text-foreground mt-1" data-testid="text-ldo-dip-t2-open-hint">{ldoDipHint(2, ldoTank2OpeningDip)}</p>
-                ) : (
-                  !autoFillLdoDipT2Source && <p className="text-sm text-foreground/60 mt-1">Dip-stick at shift start, in cm</p>
-                )}
-              </div>
-              <div>
-                <Label>Tank 2 — closing dip (cm)</Label>
-                <Input type="number" step="0.1" value={ldoTank2ClosingDip} onChange={e => setLdoTank2ClosingDip(e.target.value)} data-testid="input-ldo-dip-t2-close" />
-                {ldoDipHint(2, ldoTank2ClosingDip) ? (
-                  <p className="text-sm font-medium text-foreground mt-1" data-testid="text-ldo-dip-t2-close-hint">{ldoDipHint(2, ldoTank2ClosingDip)}</p>
-                ) : (
-                  <p className="text-sm text-foreground/60 mt-1">Dip-stick at shift end, in cm</p>
-                )}
-              </div>
-              {(() => {
-                const parts: { tank: number; openStr: string; closeStr: string; label: string }[] = [
-                  { tank: 1, openStr: ldoTank1OpeningDip, closeStr: ldoTank1ClosingDip, label: "Tank 1" },
-                  { tank: 2, openStr: ldoTank2OpeningDip, closeStr: ldoTank2ClosingDip, label: "Tank 2" },
-                ];
-                const results = parts.map(({ tank, openStr, closeStr, label }) => {
-                  const o = parseFloat(openStr);
-                  const c = parseFloat(closeStr);
-                  if (isNaN(o) || o < 0 || isNaN(c) || c < 0) return null;
-                  const diff = getLdoVolumeAtDepth(tank, o) - getLdoVolumeAtDepth(tank, c);
-                  const litres = Math.round(Math.abs(diff));
-                  const mt = (litres * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3);
-                  const isReceipt = diff < 0;
-                  return { label, litres, mt, isReceipt };
-                }).filter(Boolean);
-                if (!results.length) return null;
-                return (
-                  <div className="col-span-2 md:col-span-4 flex flex-wrap gap-4 pt-1" data-testid="text-ldo-dip-consumed-summary">
-                    {results.map(r => r && (
-                      <span key={r.label} className={`text-sm font-semibold ${r.isReceipt ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
-                        {r.label} — {r.isReceipt ? "Net receipt" : "Consumed"}: {r.litres.toLocaleString()} L ({r.mt} MT)
-                      </span>
-                    ))}
-                  </div>
-                );
-              })()}
-            </div>
-          </div>}
-
-          {/* Task #325/#372 — live LDO efficiency stats strip. Updates as the
-              operator types closing readings, changes plant start/stop times,
-              or when dispatch totals load in the background. */}
-          <div className="col-span-2 md:col-span-4 border-t pt-3 mt-1">
-            <p className="text-sm font-medium text-muted-foreground mb-2">Live LDO Stats</p>
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-              {([
-                { label: "Boiler L/Hr", value: liveStats.boilerLHr, testId: "text-ldo-stat-boiler-lphr" },
-                { label: "Dryer L/Hr", value: liveStats.dryerLHr, testId: "text-ldo-stat-dryer-lphr" },
-                { label: "Combined L/Hr", value: liveStats.combinedLHr, testId: "text-ldo-stat-combined-lphr" },
-                { label: "Boiler L/MT", value: liveStats.boilerLMt, testId: "text-ldo-stat-boiler-lpmt" },
-                { label: "Dryer L/MT", value: liveStats.dryerLMt, testId: "text-ldo-stat-dryer-lpmt" },
-                { label: "Combined L/MT", value: liveStats.combinedLMt, testId: "text-ldo-stat-combined-lpmt" },
-              ] as const).map(({ label, value, testId }) => (
-                <div key={label} className="flex flex-col gap-0.5">
-                  <span className="text-sm text-muted-foreground">{label}</span>
-                  <span
-                    className={`text-sm font-semibold ${value == null ? "text-muted-foreground" : "text-foreground"}`}
-                    data-testid={testId}
-                  >
-                    {value != null ? value.toFixed(1) : "—"}
-                  </span>
-                </div>
-              ))}
-            </div>
-            {liveStats.noDispatches && (
-              <p className="text-sm text-muted-foreground mt-2" data-testid="text-ldo-stat-no-dispatches">
-                No dispatches logged for {date} — L/MT metrics will appear once production is recorded.
-              </p>
-            )}
-          </div>
+          {ldoAccounting.checkDipsOrDryerMeter && (
+            <p className="rounded border border-amber-400 p-2 text-sm font-medium" data-testid="warning-dips-only-fuel-reconciliation">
+              Check dips / dryer meter
+            </p>
+          )}
         </CardContent>
       </Card>}
 
@@ -2196,16 +2035,12 @@ export default function PlantShiftLog() {
                   </div>
                   <div>
                     <h3 className="font-medium">LDO (L)</h3>
-                    {boilerDipsOnly ? (
-                      <p className="text-sm text-muted-foreground" data-testid="text-reconciliation-boiler-dips-only">Boiler meter not used — dips only</p>
-                    ) : <>
-                      <p className="text-sm text-muted-foreground">
-                        Boiler {number(ldo.boilerLitres, 1)} L · Dryer {number(ldo.dryerLitres, 1)} L · Heating sessions {number(ldo.heatingSessionLitres, 1)} L
-                      </p>
-                      <p className="text-sm">
-                        Theoretical {number(ldo.theoreticalLitres, 1)} L · Difference {number(ldo.differenceLitres, 1)} L · {number(ldo.litresPerMT, 3)} L/MT
-                      </p>
-                    </>}
+                    <p className="text-sm text-muted-foreground">
+                      Boiler during production {number(ldo.boilerLitres, 1)} L · Dryer {number(ldo.dryerLitres, 1)} L · Pre-heat {number(ldo.heatingSessionLitres, 1)} L
+                    </p>
+                    <p className="text-sm">
+                      Total {number(ldo.totalLitres, 1)} L · Theoretical {number(ldo.theoreticalLitres, 1)} L · Difference {number(ldo.differenceLitres, 1)} L · {number(ldo.litresPerMT, 3)} L/MT
+                    </p>
                   </div>
                   {Array.isArray(report.generators) && report.generators.length > 0 && (
                     <div>
@@ -2333,7 +2168,7 @@ export default function PlantShiftLog() {
           <AlertDialogHeader>
             <AlertDialogTitle>Dryer feed tank not selected</AlertDialogTitle>
             <AlertDialogDescription>
-              You haven't selected which tank is feeding the dryer this shift. LDO stock consumption will be recorded against Tank 2 (Dryer tank) by default, which may produce incorrect stock balances if the dryer is actually fed from Tank 1.
+              You haven't selected which tank feeds the dryer this shift. LDO stock consumption will be recorded against Tank 2 (big horizontal) by default, which may produce incorrect stock balances if the dryer is actually fed from Tank 1 (small vertical).
               <br /><br />
               Please go back and select the correct tank, or confirm to proceed with Tank 2 as the default.
             </AlertDialogDescription>

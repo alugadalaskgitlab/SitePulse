@@ -1564,7 +1564,6 @@ export function PlantTypeConfigSection() {
   const [calibrateConfig, setCalibrateConfig] = useState<PlantTankConfig>({});
   const [fuelSettingsTarget, setFuelSettingsTarget] = useState<PlantSettings | null>(null);
   const [selectedProductionGenerators, setSelectedProductionGenerators] = useState<number[]>([]);
-  const [boilerFuelMeterMode, setBoilerFuelMeterMode] = useState<"working" | "dips_only">("working");
 
   const { data: sitesList = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
   const { data: partiesList = [] } = useQuery<Party[]>({ queryKey: ["/api/parties"] });
@@ -1750,7 +1749,6 @@ export function PlantTypeConfigSection() {
         bitumenDensityKgPerL: fuelSettingsTarget.bitumenDensityKgPerL ?? null,
         tankConfig: fuelSettingsTarget.tankConfig ?? null,
         dgProductionEquipmentIds: selectedProductionGenerators,
-        boilerFuelMeterMode,
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
@@ -1773,7 +1771,6 @@ export function PlantTypeConfigSection() {
       if (Array.isArray(parsed)) ids = parsed.map(Number).filter(Number.isInteger);
     } catch {}
     setSelectedProductionGenerators(ids);
-    setBoilerFuelMeterMode(plant.boilerFuelMeterMode === "dips_only" ? "dips_only" : "working");
     setFuelSettingsTarget(plant);
   };
 
@@ -1956,7 +1953,7 @@ export function PlantTypeConfigSection() {
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Production fuel settings — {fuelSettingsTarget?.plantName}</DialogTitle>
-            <DialogDescription>Choose the generators used during production and how boiler LDO is measured.</DialogDescription>
+            <DialogDescription>Choose the generators used during production.</DialogDescription>
           </DialogHeader>
           <div className="space-y-5 py-2">
             <fieldset className="space-y-2">
@@ -1983,16 +1980,6 @@ export function PlantTypeConfigSection() {
                 (!item.plantName || item.plantName.toLowerCase() === fuelSettingsTarget?.plantName.toLowerCase())
               ) && <p className="text-sm text-muted-foreground">No active generator is tagged to this plant or shared with it in Equipment Master.</p>}
             </fieldset>
-            <div className="space-y-2">
-              <Label>Boiler fuel meter</Label>
-              <Select value={boilerFuelMeterMode} onValueChange={(value) => setBoilerFuelMeterMode(value as "working" | "dips_only")}>
-                <SelectTrigger data-testid="select-boiler-fuel-meter-mode"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="working">Working (use meter readings)</SelectItem>
-                  <SelectItem value="dips_only">Not working (use Tank 1 dips)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setFuelSettingsTarget(null)}>Cancel</Button>
               <Button onClick={() => fuelSettingsMutation.mutate()} disabled={fuelSettingsMutation.isPending} data-testid="button-save-production-fuel-settings">
