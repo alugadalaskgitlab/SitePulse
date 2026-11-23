@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   assignHeatingSessionsToProductionDays,
+  calculateHeatingSessionConsumedLitres,
   calculatePlantLdo,
   findLdoOpeningGaps,
 } from "../shared/plantLdoAccounting";
+import { getLdoVolumeAtDepth } from "../shared/ldo-dip-chart";
 
 describe("PLANT-04 production-day attribution", () => {
   const productionDays = [
@@ -60,6 +62,34 @@ describe("PLANT-04 production-day attribution", () => {
 });
 
 describe("PLANT-04 LDO calculations", () => {
+  it("saves combined tank dips into the existing heating-session litres value", () => {
+    const expected =
+      getLdoVolumeAtDepth(1, 116) - getLdoVolumeAtDepth(1, 100) +
+      getLdoVolumeAtDepth(2, 20) - getLdoVolumeAtDepth(2, 10);
+    expect(calculateHeatingSessionConsumedLitres({
+      tank1OpeningDipCm: 116,
+      tank1ClosingDipCm: 100,
+      tank2OpeningDipCm: 20,
+      tank2ClosingDipCm: 10,
+    })).toBeCloseTo(expected, 6);
+  });
+
+  it("falls back to Tank 1 alone, then to a meter only when no dip pair is entered", () => {
+    expect(calculateHeatingSessionConsumedLitres({
+      tank1OpeningDipCm: 116,
+      tank1ClosingDipCm: 100,
+      tank2OpeningDipCm: 20,
+    })).toBeCloseTo(
+      getLdoVolumeAtDepth(1, 116) - getLdoVolumeAtDepth(1, 100),
+      6,
+    );
+    expect(calculateHeatingSessionConsumedLitres({
+      boilerMeterOpening: 100,
+      boilerMeterClosing: 130,
+    })).toBe(30);
+    expect(calculateHeatingSessionConsumedLitres({})).toBeNull();
+  });
+
   it("reproduces the two-tank dip example with pre-heat counted once", () => {
     const result = calculatePlantLdo({
       tank1OpeningDipCm: 116,
@@ -191,6 +221,18 @@ describe("PLANT-04 LDO calculations", () => {
       tanks: [
         { tankNumber: 1, previousClosingLitres: 1000, currentOpeningLitres: 900, receiptsLitres: 0 },
         { tankNumber: 2, previousClosingLitres: 500, currentOpeningLitres: 600, receiptsLitres: 0 },
+      ],
+    });
+    expect(result).toBeNull();
+  });
+
+  it("does not report an opening gap when either tank is missing a comparison dip", () => {
+    const result = findLdoOpeningGaps({
+      previousAt: "2026-11-22 18:00",
+      currentAt: "2026-11-23 08:00",
+      tanks: [
+        { tankNumber: 1, previousClosingLitres: 1000, currentOpeningLitres: 900, receiptsLitres: 0 },
+        { tankNumber: 2, previousClosingLitres: 500, currentOpeningLitres: null, receiptsLitres: 0 },
       ],
     });
     expect(result).toBeNull();

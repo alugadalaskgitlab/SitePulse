@@ -12,6 +12,35 @@ export type HeatingSessionWindow = {
   endTime?: string | null;
 };
 
+export function calculateHeatingSessionConsumedLitres(input: {
+  tank1OpeningDipCm?: number | null;
+  tank1ClosingDipCm?: number | null;
+  tank2OpeningDipCm?: number | null;
+  tank2ClosingDipCm?: number | null;
+  boilerMeterOpening?: number | null;
+  boilerMeterClosing?: number | null;
+}): number | null {
+  const hasTank1Dips =
+    input.tank1OpeningDipCm != null && input.tank1ClosingDipCm != null;
+  const hasTank2Dips =
+    input.tank2OpeningDipCm != null && input.tank2ClosingDipCm != null;
+  if (hasTank1Dips || hasTank2Dips) {
+    const tank1 = hasTank1Dips
+      ? getLdoVolumeAtDepth(1, input.tank1OpeningDipCm!) -
+        getLdoVolumeAtDepth(1, input.tank1ClosingDipCm!)
+      : 0;
+    const tank2 = hasTank2Dips
+      ? getLdoVolumeAtDepth(2, input.tank2OpeningDipCm!) -
+        getLdoVolumeAtDepth(2, input.tank2ClosingDipCm!)
+      : 0;
+    return Math.max(0, tank1 + tank2);
+  }
+  if (input.boilerMeterOpening != null && input.boilerMeterClosing != null) {
+    return Math.max(0, input.boilerMeterClosing - input.boilerMeterOpening);
+  }
+  return null;
+}
+
 const timeToMinutes = (value?: string | null): number | null => {
   if (!value) return null;
   const match = /^(\d{1,2}):(\d{2})/.exec(value);
@@ -189,12 +218,19 @@ export function findLdoOpeningGaps(input: {
   thresholdLitres?: number;
 }) {
   const threshold = input.thresholdLitres ?? 40;
-  const deltas = input.tanks.flatMap((tank) => {
-    if (tank.previousClosingLitres == null || tank.currentOpeningLitres == null) return [];
-    const deltaLitres =
-      tank.currentOpeningLitres - tank.previousClosingLitres - tank.receiptsLitres;
-    return [{ tankNumber: tank.tankNumber, deltaLitres }];
-  });
+  const hasBothTanks = ([1, 2] as const).every((tankNumber) =>
+    input.tanks.some((tank) =>
+      tank.tankNumber === tankNumber &&
+      tank.previousClosingLitres != null &&
+      tank.currentOpeningLitres != null
+    )
+  );
+  if (!hasBothTanks) return null;
+  const deltas = input.tanks.map((tank) => ({
+    tankNumber: tank.tankNumber,
+    deltaLitres:
+      tank.currentOpeningLitres! - tank.previousClosingLitres! - tank.receiptsLitres,
+  }));
   // A transfer between the two tanks changes each tank in opposite directions,
   // but does not change the total fuel on hand. Only the net unexplained change
   // across both tanks is a gap.

@@ -49,12 +49,12 @@ describe("PLANT-04 heating session fuel readings", () => {
       getLdoVolumeAtDepth(1, 50) - getLdoVolumeAtDepth(1, 40) +
         getLdoVolumeAtDepth(2, 20) - getLdoVolumeAtDepth(2, 10),
     );
-    expect(screen.getByTestId("text-ldo-consumed").textContent).toBe(expected.toFixed(1));
+    expect(screen.getByTestId("text-ldo-consumed").textContent).toBe(expected.toFixed(2));
     expect(screen.getByTestId("text-ldo-lphr").textContent).toBe(expected.toFixed(2));
 
     fireEvent.change(screen.getByTestId("input-ldo-open"), { target: { value: "100" } });
     fireEvent.change(screen.getByTestId("input-ldo-close"), { target: { value: "130" } });
-    expect(screen.getByTestId("text-ldo-consumed").textContent).toBe(expected.toFixed(1));
+    expect(screen.getByTestId("text-ldo-consumed").textContent).toBe(expected.toFixed(2));
     fireEvent.change(screen.getByTestId("input-ldo-dip-t1-open"), { target: { value: "" } });
     fireEvent.change(screen.getByTestId("input-ldo-dip-t1-close"), { target: { value: "" } });
     fireEvent.change(screen.getByTestId("input-ldo-dip-t2-open"), { target: { value: "" } });

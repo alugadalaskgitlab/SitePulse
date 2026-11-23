@@ -225,7 +225,7 @@ import {
 } from "@shared/equipmentStatus";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
-import { assignHeatingSessionsToProductionDays, calculatePlantLdo, findLdoOpeningGaps } from "@shared/plantLdoAccounting";
+import { assignHeatingSessionsToProductionDays, calculateHeatingSessionConsumedLitres, calculatePlantLdo, findLdoOpeningGaps } from "@shared/plantLdoAccounting";
 import {
   omitSelectedGeneratorUsage,
   parseProductionGeneratorIds,
@@ -26148,7 +26148,7 @@ export class DatabaseStorage implements IStorage {
         .where(eq(plantShiftLogs.plantName, plantName));
       for (const previous of historicalShifts) {
         const at = `${previous.date}T${asClock(previous.plantStopTime || "23:59")}`;
-        if (at >= currentAt || (previous.tank1ClosingDip == null && previous.tank2ClosingDip == null)) continue;
+        if (at >= currentAt || previous.tank1ClosingDip == null || previous.tank2ClosingDip == null) continue;
         candidates.push({
           at,
           label: `shift log ${previous.date} ${previous.plantStopTime || "23:59"}`,
@@ -26160,7 +26160,8 @@ export class DatabaseStorage implements IStorage {
       for (const previous of historicalSessions) {
         if (previous.countsForDate !== date ||
           !previous.endTime ||
-          (previous.ldoTank1ClosingDip == null && previous.ldoTank2ClosingDip == null)) continue;
+          previous.ldoTank1ClosingDip == null ||
+          previous.ldoTank2ClosingDip == null) continue;
         let sessionEndDate = previous.date;
         if (previous.startTime && asClock(previous.endTime) < asClock(previous.startTime)) {
           sessionEndDate = new Date(Date.parse(`${previous.date}T00:00:00Z`) + 86_400_000)
@@ -26517,23 +26518,15 @@ export class DatabaseStorage implements IStorage {
     // Preserve the established storage column, but calculate its value from
     // both tank dip pairs. Use Tank 1 alone when Tank 2 is blank; use the meter
     // only when neither tank has a complete dip pair.
-    const hasTank1Dips =
-      payload.ldoTank1OpeningDip != null && payload.ldoTank1ClosingDip != null;
-    const hasTank2Dips =
-      payload.ldoTank2OpeningDip != null && payload.ldoTank2ClosingDip != null;
-    if (hasTank1Dips || hasTank2Dips) {
-      const tank1Litres = hasTank1Dips
-        ? getLdoVolumeAtDepth(1, payload.ldoTank1OpeningDip!) -
-          getLdoVolumeAtDepth(1, payload.ldoTank1ClosingDip!)
-        : 0;
-      const tank2Litres = hasTank2Dips
-        ? getLdoVolumeAtDepth(2, payload.ldoTank2OpeningDip!) -
-          getLdoVolumeAtDepth(2, payload.ldoTank2ClosingDip!)
-        : 0;
-      payload.ldoTank1Consumed = Math.max(0, tank1Litres + tank2Litres);
-    } else if (payload.ldoTank1OpeningMeter != null && payload.ldoTank1ClosingMeter != null) {
-      payload.ldoTank1Consumed = Math.max(0, payload.ldoTank1ClosingMeter - payload.ldoTank1OpeningMeter);
-    }
+    const sessionLdoConsumed = calculateHeatingSessionConsumedLitres({
+      tank1OpeningDipCm: payload.ldoTank1OpeningDip,
+      tank1ClosingDipCm: payload.ldoTank1ClosingDip,
+      tank2OpeningDipCm: payload.ldoTank2OpeningDip,
+      tank2ClosingDipCm: payload.ldoTank2ClosingDip,
+      boilerMeterOpening: payload.ldoTank1OpeningMeter,
+      boilerMeterClosing: payload.ldoTank1ClosingMeter,
+    });
+    if (sessionLdoConsumed != null) payload.ldoTank1Consumed = sessionLdoConsumed;
     if (payload.dgMode === "inline") {
       // Auto-coerce inline → none when the operator left every DG field blank
       // (default form state). Prevents persisting empty placeholder generator
