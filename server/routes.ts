@@ -9237,7 +9237,7 @@ export async function registerRoutes(
           .reduce((sum: number, row: any) => sum + Number(row.quantityLiters || 0), 0),
       })) });
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Could not load Tank 1 fuel receipts." });
+      res.status(500).json({ message: err.message || "Could not load LDO receipts and transfers." });
     }
   });
 
@@ -9767,12 +9767,33 @@ export async function registerRoutes(
       const stopMinutes = Number(summary.idle?.totalMinutes || 0);
       const stopTime = `${Math.floor(stopMinutes / 60)}:${String(stopMinutes % 60).padStart(2, "0")}`;
       line(
-        "Preheat",
+        "Pre-heat",
         `${ldoAccounting?.preheatSessionCount ?? 0} sessions / ${ldoAccounting?.nightsCount ?? 0} nights / ${ldoAccounting?.preheatHours?.toFixed(1) ?? "—"} h · ${ldoAccounting?.preheatLitres?.toFixed(1) ?? "—"} L · ${ldoAccounting?.preheatLitresPerHour?.toFixed(1) ?? "—"} L/h`,
       );
+      if ((summary.boilerHeating?.sessionCount ?? 0) > 1) {
+        const idleDates: string[] = summary.boilerHeating?.idleDates || [];
+        const sessionDates: string[] = Array.from(new Set<string>(
+          (summary.boilerHeating?.sessions || []).map((session: any) => String(session.date)).filter(Boolean),
+        )).sort();
+        const allSessionsIdle = sessionDates.length > 0 && sessionDates.every((sessionDate: string) => idleDates.includes(sessionDate));
+        const shortDate = (value: string) => new Date(`${value}T00:00:00Z`).toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          timeZone: "UTC",
+        });
+        const dateRange = sessionDates.length
+          ? sessionDates.length === 1
+            ? shortDate(sessionDates[0])
+            : `${shortDate(sessionDates[0])}–${shortDate(sessionDates[sessionDates.length - 1])}`
+          : "before production";
+        line(
+          "Dates",
+          `Includes ${summary.boilerHeating.sessionCount} heating sessions (${dateRange}${allSessionsIdle ? ", plant idle" : ""}), ${ldoAccounting?.preheatLitres?.toFixed(0) ?? "—"} L`,
+        );
+      }
       line(
         `Boiler during production${ldoAccounting?.boilerMeterUsed ? " (meter)" : ""}`,
-        `${ldoAccounting?.boilerDuringProductionLitres?.toFixed(1) ?? "—"} L · ${ldoAccounting?.boilerDuringProductionLitresPerHour?.toFixed(1) ?? "—"} L/h`,
+        `${summary.runningHours?.toFixed(1) ?? "—"} h · ${ldoAccounting?.boilerDuringProductionLitres?.toFixed(1) ?? "—"} L · ${ldoAccounting?.boilerDuringProductionLitresPerHour?.toFixed(1) ?? "—"} L/h`,
       );
       line(
         `Dryer${ldoAccounting?.dryerMeterUsed ? " (meter)" : ""}`,
@@ -9791,11 +9812,8 @@ export async function registerRoutes(
         doc.font("Helvetica");
       }
       if (summary.ldo.openingGap) {
-        const gapText = summary.ldo.openingGap.gaps
-          .map((gap: any) => `Tank ${gap.tankNumber}: ${gap.deltaLitres > 0 ? "+" : ""}${Number(gap.deltaLitres).toFixed(1)} L`)
-          .join(" · ");
         doc.fontSize(9).font("Helvetica-Bold").text(
-          `LDO dip gap over 40 L between ${summary.ldo.openingGap.previousAt} and current opening ${summary.ldo.openingGap.currentAt}; receipts between those times were included. ${gapText}`,
+          `${Math.abs(Number(summary.ldo.openingGap.unaccountedLitres)).toFixed(1)} L unaccounted between ${summary.ldo.openingGap.previousAt} and plant start (${summary.ldo.openingGap.currentAt}) — check dips.`,
         );
         doc.font("Helvetica");
       }

@@ -832,7 +832,7 @@ export default function AdminSettings() {
         <CardContent>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="ldoTank1ReceivedBy">Tank 1 (boiler) — received by</Label>
+              <Label htmlFor="ldoTank1ReceivedBy">Tank 1 (small vertical) — received by</Label>
               <Input
                 id="ldoTank1ReceivedBy"
                 value={ldoTank1ReceivedBy}
@@ -843,7 +843,7 @@ export default function AdminSettings() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ldoTank2ReceivedBy">Tank 2 (dryer) — received by</Label>
+              <Label htmlFor="ldoTank2ReceivedBy">Tank 2 (big horizontal) — received by</Label>
               <Input
                 id="ldoTank2ReceivedBy"
                 value={ldoTank2ReceivedBy}

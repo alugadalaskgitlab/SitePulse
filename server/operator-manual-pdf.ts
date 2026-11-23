@@ -307,7 +307,7 @@ export function pipeOperatorManualPdf(stream: NodeJS.WritableStream, plantName?:
       'Bitumen Stock — Opening Dip (cm) for Tank 1 and Tank 2 — take the dip stick measurement from each bitumen tank and enter the centimetre reading. The app will show you the approximate Metric Tons (MT) beside the field — this is for reference only.',
       'Boiler Fuel Meter — Opening (if visible): enter the boiler fuel meter reading. This field only appears if the "Boiler runs during production" option is switched on in plant settings.',
       'Dryer Fuel Meter — Opening: enter the opening reading of the dryer fuel flow meter.',
-      '"Which tank feeds the Dryer?" — choose Boiler Tank or Dryer Tank. This tells the system which fuel storage tank the dryer is drawing from.',
+      '"Which tank feeds the dryer?" — choose Tank 1 (small vertical) or Tank 2 (big horizontal). This tells the system which fuel storage tank the dryer is drawing from.',
       'Tap Save — come back at the end of the shift to complete the log.',
     ]);
 

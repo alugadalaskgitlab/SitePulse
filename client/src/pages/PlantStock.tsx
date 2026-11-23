@@ -1049,7 +1049,7 @@ export default function PlantStock() {
           "Entry Time": entry.entryTime || "",
           Material: getMaterialName(entry.materialId),
           "Stock Owner": getPartyName(entry.partyId, entry.materialId),
-          Type: entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'tank_transfer' ? '→ Boiler Tank' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'transfer_correction' ? 'Transfer correction' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType === 'ldo_dip_consumption' ? 'Actual Consumption' : entry.transactionType,
+          Type: entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'tank_transfer' ? '→ Tank 1 (small vertical)' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'transfer_correction' ? 'Transfer correction' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType === 'ldo_dip_consumption' ? 'Actual Consumption' : entry.transactionType,
           "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '')
             : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
@@ -1155,7 +1155,7 @@ export default function PlantStock() {
           case 'receipt': return 'Receipt';
           case 'dispatch': return 'Dispatch';
           case 'issue': return 'Issue';
-          case 'tank_transfer': return '→ Boiler Tank';
+          case 'tank_transfer': return '→ Tank 1 (small vertical)';
           case 'opening': return 'Opening';
           case 'adjustment': return 'Adjustment';
           case 'return': return 'Return';
@@ -1252,7 +1252,7 @@ export default function PlantStock() {
         case 'receipt': return 'Receipt';
         case 'dispatch': return 'Dispatch';
         case 'issue': return 'Issue';
-        case 'tank_transfer': return '→ Boiler Tank';
+        case 'tank_transfer': return '→ Tank 1 (small vertical)';
         case 'opening': return 'Opening';
         case 'adjustment': return 'Adjustment';
         case 'equipment_usage': return 'Equip. Usage';
@@ -1617,7 +1617,7 @@ export default function PlantStock() {
                   <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
                   <SelectItem value="ldo_consumption">LDO Consumption</SelectItem>
                   <SelectItem value="issue">Issue</SelectItem>
-                  <SelectItem value="tank_transfer">→ Boiler Tank</SelectItem>
+                  <SelectItem value="tank_transfer">→ Tank 1 (small vertical)</SelectItem>
                   <SelectItem value="dispatch">Dispatch</SelectItem>
                   <SelectItem value="return">Return</SelectItem>
                   <SelectItem value="transfer">Transfer</SelectItem>
@@ -2171,7 +2171,7 @@ export default function PlantStock() {
                                 : entry.transactionType === 'receipt' ? 'Receipt'
                                 : entry.transactionType === 'dispatch' ? 'Dispatch'
                                 : entry.transactionType === 'issue' ? 'Issue'
-                                : entry.transactionType === 'tank_transfer' ? '→ Boiler Tank'
+                                : entry.transactionType === 'tank_transfer' ? '→ Tank 1 (small vertical)'
                                 : entry.transactionType === 'opening' ? 'Opening'
                                 : entry.transactionType === 'adjustment' ? 'Adjustment'
                                 : entry.transactionType === 'return' ? 'Return'

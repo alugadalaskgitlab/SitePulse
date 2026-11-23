@@ -971,8 +971,29 @@ export default function PlantShiftLog() {
         `/api/plant-module/shift-logs/${encodeURIComponent(date)}/dips-only-inputs?plant=${encodeURIComponent(plantName)}`,
         { credentials: "include" },
       );
-      if (!res.ok) throw new Error("Could not load Tank 1 fuel receipts.");
+      if (!res.ok) throw new Error("Could not load LDO receipts and transfers.");
       return res.json();
+    },
+  });
+  const { data: ldoDaySummary } = useQuery<{
+    ldo?: {
+      openingGap?: {
+        previousAt: string;
+        currentAt: string;
+        unaccountedLitres: number;
+      } | null;
+    };
+    boilerHeating?: { idleDates?: string[] };
+  }>({
+    queryKey: ["/api/plant-module/daily-reports", date, plantName, "ldo-summary"],
+    enabled: viewMode === "edit" && !!date && !!plantName,
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/plant-module/daily-reports/${encodeURIComponent(date)}?plant=${encodeURIComponent(plantName)}`,
+        { credentials: "include" },
+      );
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
     },
   });
 
@@ -1720,22 +1741,22 @@ export default function PlantShiftLog() {
             },
             {
               title: `2. Boiler during production${ldoAccounting.boilerMeterUsed ? " (meter)" : ""}`,
-              value: `${ldoAccounting.boilerDuringProductionLitres?.toFixed(1) ?? "—"} L · ${ldoAccounting.boilerDuringProductionLitresPerHour?.toFixed(1) ?? "—"} L/h`,
+              value: `${plantRunHours?.toFixed(1) ?? "—"} h · ${ldoAccounting.boilerDuringProductionLitres?.toFixed(1) ?? "—"} L · ${ldoAccounting.boilerDuringProductionLitresPerHour?.toFixed(1) ?? "—"} L/h`,
               testId: "ldo-summary-boiler-production",
             },
             {
               title: "3. Dryer — flow meter",
-              value: `${ldoAccounting.dryerLitres?.toFixed(1) ?? "—"} L · ${ldoAccounting.dryerLitresPerMt?.toFixed(2) ?? "—"} L/MT`,
+              value: `${ldoAccounting.dryerLitres?.toFixed(1) ?? "—"} L${(totalDispatchedMt || 0) > 0 ? ` · ${ldoAccounting.dryerLitresPerMt?.toFixed(2) ?? "—"} L/MT` : ""}`,
               testId: "ldo-summary-dryer",
             },
-            {
+            ...((totalDispatchedMt || 0) > 0 ? [{
               title: "4. Boiler, including pre-heat",
               value: `${ldoAccounting.boilerLitresPerMt?.toFixed(2) ?? "—"} L/MT`,
               testId: "ldo-summary-boiler-per-mt",
-            },
+            }] : []),
             {
-              title: "5. Total LDO",
-              value: `${ldoAccounting.totalLitres?.toFixed(1) ?? "—"} L · ${ldoAccounting.totalLitresPerMt?.toFixed(2) ?? "—"} L/MT`,
+              title: `${(totalDispatchedMt || 0) > 0 ? "5" : "4"}. Total LDO`,
+              value: `${ldoAccounting.totalLitres?.toFixed(1) ?? "—"} L${(totalDispatchedMt || 0) > 0 ? ` · ${ldoAccounting.totalLitresPerMt?.toFixed(2) ?? "—"} L/MT` : ""}`,
               testId: "ldo-summary-total",
             },
             {
@@ -1749,14 +1770,32 @@ export default function PlantShiftLog() {
               <span className="text-sm tabular-nums">{line.value}</span>
             </div>
           ))}
-          {ldoAccounting.nightsCount > 0 && (
+          {ldoAccounting.preheatSessionCount > 1 && (
             <p className="text-xs text-muted-foreground" data-testid="ldo-summary-idle-sessions">
-              Includes {ldoAccounting.preheatSessionCount} heating sessions ({(heatingSessionsForDate || []).filter(session => session.date < date).map(session => session.date.slice(8, 10)).join("–")}, plant idle), {ldoAccounting.preheatLitres.toFixed(0)} L.
+              {(() => {
+                const sessions = heatingSessionsForDate || [];
+                const sessionDates = Array.from(new Set(sessions.map(session => session.date))).sort();
+                const idleDates = ldoDaySummary?.boilerHeating?.idleDates || [];
+                const first = sessionDates[0];
+                const last = sessionDates[sessionDates.length - 1];
+                const allSessionsIdle = sessionDates.length > 0 && sessionDates.every(sessionDate => idleDates.includes(sessionDate));
+                const dateRange = first
+                  ? first === last
+                    ? format(parseISO(first), "dd MMM")
+                    : `${format(parseISO(first), "dd MMM")}–${format(parseISO(last), "dd MMM")}`
+                  : "before production";
+                return `Includes ${ldoAccounting.preheatSessionCount} heating sessions (${dateRange}${allSessionsIdle ? ", plant idle" : ""}), ${ldoAccounting.preheatLitres.toFixed(0)} L.`;
+              })()}
             </p>
           )}
           {ldoAccounting.checkDipsOrDryerMeter && (
             <p className="rounded border border-amber-400 p-2 text-sm font-medium" data-testid="warning-dips-only-fuel-reconciliation">
               Check dips / dryer meter
+            </p>
+          )}
+          {ldoDaySummary?.ldo?.openingGap && (
+            <p className="rounded border border-amber-400 p-2 text-sm font-medium" data-testid="warning-ldo-opening-gap">
+              {Math.abs(ldoDaySummary.ldo.openingGap.unaccountedLitres).toFixed(1)} L unaccounted between {ldoDaySummary.ldo.openingGap.previousAt} and plant start ({ldoDaySummary.ldo.openingGap.currentAt}) — check dips.
             </p>
           )}
         </CardContent>

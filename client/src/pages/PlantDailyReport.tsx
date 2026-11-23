@@ -37,7 +37,7 @@ type DailyPlantSummary = {
   receipts: { byMaterial: Array<{ materialName: string; quantity: number; uom: string; lines: number }>; totalLines: number };
   runningHours: number | null;
   productiveHours: number | null;
-  ldo: { consumedT1L: number | null; consumedT2L: number | null; consumedTotalL: number | null; lPerHour: number | null; lPerMT: number | null; dryerLPerMT: number | null; boilerLPerMT: number | null; source: string; accounting?: { preheatLitres: number; preheatHours: number | null; preheatSessionCount: number; nightsCount: number; preheatLitresPerHour: number | null; boilerDuringProductionLitres: number | null; boilerDuringProductionLitresPerHour: number | null; boilerLitresPerMt: number | null; boilerMeterUsed: boolean; dryerLitres: number | null; dryerMeterUsed: boolean; dryerLitresPerMt: number | null; totalLitres: number | null; totalLitresPerMt: number | null; checkDipsOrDryerMeter: boolean }; openingGap?: { previousAt: string; currentAt: string; gaps: Array<{ tankNumber: 1 | 2; deltaLitres: number }> } | null; primarySourceT1?: "sessions" | "shift_meter" | "dip_fallback"; reconciliationT1ShiftL?: number | null; dryerFedFrom?: "TANK_1" | "TANK_2"; tank1DeductedL?: number | null; tank2DeductedL?: number | null; dipDeltaT1L?: number | null; dipDeltaT2L?: number | null };
+  ldo: { consumedT1L: number | null; consumedT2L: number | null; consumedTotalL: number | null; lPerHour: number | null; lPerMT: number | null; dryerLPerMT: number | null; boilerLPerMT: number | null; source: string; accounting?: { preheatLitres: number; preheatHours: number | null; preheatSessionCount: number; nightsCount: number; preheatLitresPerHour: number | null; boilerDuringProductionLitres: number | null; boilerDuringProductionLitresPerHour: number | null; boilerLitresPerMt: number | null; boilerMeterUsed: boolean; dryerLitres: number | null; dryerMeterUsed: boolean; dryerLitresPerMt: number | null; totalLitres: number | null; totalLitresPerMt: number | null; checkDipsOrDryerMeter: boolean }; openingGap?: { previousAt: string; currentAt: string; unaccountedLitres: number; gaps: Array<{ tankNumber: 1 | 2; deltaLitres: number }> } | null; primarySourceT1?: "sessions" | "shift_meter" | "dip_fallback"; reconciliationT1ShiftL?: number | null; dryerFedFrom?: "TANK_1" | "TANK_2"; tank1DeductedL?: number | null; tank2DeductedL?: number | null; dipDeltaT1L?: number | null; dipDeltaT2L?: number | null };
   bitumenDips: unknown[];
   ldoFlows: unknown[];
   ldoDips: unknown[];
@@ -65,8 +65,8 @@ type DailyPlantSummary = {
   idle: { events: Array<{ startTime: string; endTime: string | null; reason: string; remarks: string | null; minutes: number }>; byReason: Record<string, number>; totalMinutes: number };
   boilerHeating?: {
     sessionCount: number;
-      nightsCount: number;
     nightsCount: number;
+    idleDates: string[];
     totalHours: number;
     sessionsLdoT1L: number;
     boilerDuringProductionL: number;
@@ -491,13 +491,13 @@ export default function PlantDailyReport() {
                 <CardContent className="border-t pt-4 space-y-3" data-testid="section-ldo-summary">
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                     <div>
-                      <div className="text-muted-foreground">Preheat</div>
+                      <div className="text-muted-foreground">Pre-heat</div>
                       <div className="font-medium">{data.ldo.accounting.preheatSessionCount} sessions · {data.ldo.accounting.nightsCount} nights · {fmt(data.ldo.accounting.preheatHours, 1)} h</div>
                       <div>{fmt(data.ldo.accounting.preheatLitres, 1)} L · {fmt(data.ldo.accounting.preheatLitresPerHour, 1)} L/h</div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Boiler during production{data.ldo.accounting.boilerMeterUsed ? " (meter)" : ""}</div>
-                      <div className="font-medium">{fmt(data.ldo.accounting.boilerDuringProductionLitres, 1)} L</div>
+                      <div className="font-medium">{fmt(data.runningHours, 1)} h · {fmt(data.ldo.accounting.boilerDuringProductionLitres, 1)} L</div>
                       <div>{fmt(data.ldo.accounting.boilerDuringProductionLitresPerHour, 1)} L/h</div>
                     </div>
                     <div>
@@ -521,18 +521,19 @@ export default function PlantDailyReport() {
                       <div className="font-medium">{data.idle.events.length} events · {Math.floor(data.idle.totalMinutes / 60)}:{String(data.idle.totalMinutes % 60).padStart(2, "0")}</div>
                     </div>
                   </div>
-                  {data.boilerHeating && data.boilerHeating.nightsCount > 0 && (() => {
-                    const idleDates = Array.from(new Set((data.boilerHeating.sessions || [])
-                      .filter(session => session.date < date)
+                  {data.boilerHeating && data.boilerHeating.sessionCount > 1 && (() => {
+                    const idleDates = data.boilerHeating.idleDates || [];
+                    const sessionDates = Array.from(new Set((data.boilerHeating.sessions || [])
                       .map(session => session.date))).sort();
-                    if (!idleDates.length) return null;
-                    const first = idleDates[0];
-                    const last = idleDates[idleDates.length - 1];
+                    if (!sessionDates.length) return null;
+                    const first = sessionDates[0];
+                    const last = sessionDates[sessionDates.length - 1];
+                    const allSessionsIdle = sessionDates.every(sessionDate => idleDates.includes(sessionDate));
                     const range = first === last
                       ? format(parseISO(first), "dd MMM")
                       : `${format(parseISO(first), "dd")}–${format(parseISO(last), "dd MMM")}`;
                     return <p className="text-sm text-muted-foreground" data-testid="text-preheat-idle-sessions">
-                      Includes {data.boilerHeating.nightsCount} sessions ({range}, plant idle), {fmt(data.ldo.accounting.preheatLitres, 0)} L.
+                      Includes {data.boilerHeating.sessionCount} heating sessions ({range}{allSessionsIdle ? ", plant idle" : ""}), {fmt(data.ldo.accounting.preheatLitres, 0)} L.
                     </p>;
                   })()}
                   {data.ldo.accounting.checkDipsOrDryerMeter && (
@@ -542,10 +543,7 @@ export default function PlantDailyReport() {
                   )}
                   {data.ldo.openingGap && (
                     <div className="rounded border border-amber-400 p-2 text-sm font-medium" data-testid="warning-ldo-opening-gap">
-                      LDO dip gap over 40 L between {data.ldo.openingGap.previousAt} and current opening {data.ldo.openingGap.currentAt}; receipts between those times were included.{" "}
-                      {data.ldo.openingGap.gaps.map(gap =>
-                        `Tank ${gap.tankNumber}: ${gap.deltaLitres > 0 ? "+" : ""}${gap.deltaLitres.toFixed(1)} L`
-                      ).join(" · ")}
+                      {Math.abs(data.ldo.openingGap.unaccountedLitres).toFixed(1)} L unaccounted between {data.ldo.openingGap.previousAt} and plant start ({data.ldo.openingGap.currentAt}) — check dips.
                     </div>
                   )}
                 </CardContent>

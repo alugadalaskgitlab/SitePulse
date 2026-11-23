@@ -35,6 +35,7 @@ export function assignHeatingSessionsToProductionDays<
 ): Array<T & { countsForDate: string | null }> {
   const windows = productionWindows
     .map((window) => {
+      if (!window.plantStartTime) return null;
       const start = dateTimeMinutes(window.date, window.plantStartTime, 0);
       if (start == null) return null;
       const stopTime = timeToMinutes(window.plantStopTime);
@@ -47,7 +48,9 @@ export function assignHeatingSessionsToProductionDays<
     .sort((a, b) => a.start - b.start);
 
   return sessions.map((session) => {
-    const startOfSession = dateTimeMinutes(session.date, session.startTime, 0);
+    const startOfSession = session.startTime
+      ? dateTimeMinutes(session.date, session.startTime, 0)
+      : null;
     const explicitEnd = timeToMinutes(session.endTime);
     if (explicitEnd == null) return { ...session, countsForDate: null };
     let endOfSession = dateTimeMinutes(
@@ -55,17 +58,17 @@ export function assignHeatingSessionsToProductionDays<
       session.endTime,
       24 * 60 - 1,
     );
-    if (startOfSession == null || endOfSession == null) {
+    if (endOfSession == null) {
       return { ...session, countsForDate: null };
     }
-    if (explicitEnd != null && session.startTime && explicitEnd < (timeToMinutes(session.startTime) ?? 0)) {
+    if (explicitEnd != null && startOfSession != null && explicitEnd < (timeToMinutes(session.startTime) ?? 0)) {
       endOfSession += 24 * 60;
     }
 
     // A session that overlaps a production shift belongs to that same day,
     // even when it ends after the plant's opening time.
     const overlapping = windows.find((window) =>
-      window.date === session.date &&
+      startOfSession != null &&
       startOfSession < window.end &&
       endOfSession > window.start
     );
@@ -186,12 +189,25 @@ export function findLdoOpeningGaps(input: {
   thresholdLitres?: number;
 }) {
   const threshold = input.thresholdLitres ?? 40;
-  return input.tanks.flatMap((tank) => {
+  const deltas = input.tanks.flatMap((tank) => {
     if (tank.previousClosingLitres == null || tank.currentOpeningLitres == null) return [];
     const deltaLitres =
       tank.currentOpeningLitres - tank.previousClosingLitres - tank.receiptsLitres;
-    return Math.abs(deltaLitres) > threshold
-      ? [{ tankNumber: tank.tankNumber, deltaLitres: Math.round(deltaLitres * 10) / 10 }]
-      : [];
+    return [{ tankNumber: tank.tankNumber, deltaLitres }];
   });
+  // A transfer between the two tanks changes each tank in opposite directions,
+  // but does not change the total fuel on hand. Only the net unexplained change
+  // across both tanks is a gap.
+  const unaccountedLitres = Math.round(
+    deltas.reduce((sum, tank) => sum + tank.deltaLitres, 0) * 10,
+  ) / 10;
+  return Math.abs(unaccountedLitres) > threshold
+    ? {
+        unaccountedLitres,
+        gaps: deltas.map((tank) => ({
+          tankNumber: tank.tankNumber,
+          deltaLitres: Math.round(tank.deltaLitres * 10) / 10,
+        })),
+      }
+    : null;
 }

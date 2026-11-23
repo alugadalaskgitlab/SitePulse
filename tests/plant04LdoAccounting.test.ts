@@ -27,6 +27,14 @@ describe("PLANT-04 production-day attribution", () => {
     expect(session.countsForDate).toBe("2026-11-23");
   });
 
+  it("attributes an overnight session that continues into production hours to that production day", () => {
+    const [session] = assignHeatingSessionsToProductionDays(
+      [{ id: 8, date: "2026-11-22", startTime: "22:00", endTime: "09:00" }],
+      productionDays,
+    );
+    expect(session.countsForDate).toBe("2026-11-23");
+  });
+
   it("rolls multiple idle-day sessions into the next production day and leaves later sessions waiting", () => {
     const sessions = assignHeatingSessionsToProductionDays(
       [
@@ -158,15 +166,33 @@ describe("PLANT-04 LDO calculations", () => {
     expect(result.boilerDuringProductionLitres).toBe(0);
   });
 
-  it("flags only inter-reading tank gaps greater than 40 L after receipts", () => {
+  it("flags net inter-reading tank gaps greater than 40 L after receipts", () => {
     const result = findLdoOpeningGaps({
       previousAt: "2026-11-22 18:00",
       currentAt: "2026-11-23 08:00",
       tanks: [
         { tankNumber: 1, previousClosingLitres: 1000, currentOpeningLitres: 1445, receiptsLitres: 400 },
-        { tankNumber: 2, previousClosingLitres: 500, currentOpeningLitres: 539, receiptsLitres: 0 },
+        { tankNumber: 2, previousClosingLitres: 500, currentOpeningLitres: 500, receiptsLitres: 0 },
       ],
     });
-    expect(result).toEqual([{ tankNumber: 1, deltaLitres: 45 }]);
+    expect(result).toEqual({
+      unaccountedLitres: 45,
+      gaps: [
+        { tankNumber: 1, deltaLitres: 45 },
+        { tankNumber: 2, deltaLitres: 0 },
+      ],
+    });
+  });
+
+  it("does not flag tank-to-tank transfers because they cancel in the combined balance", () => {
+    const result = findLdoOpeningGaps({
+      previousAt: "2026-11-22 18:00",
+      currentAt: "2026-11-23 08:00",
+      tanks: [
+        { tankNumber: 1, previousClosingLitres: 1000, currentOpeningLitres: 900, receiptsLitres: 0 },
+        { tankNumber: 2, previousClosingLitres: 500, currentOpeningLitres: 600, receiptsLitres: 0 },
+      ],
+    });
+    expect(result).toBeNull();
   });
 });

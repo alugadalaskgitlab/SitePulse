@@ -27,8 +27,8 @@ import { UOM_OPTIONS } from "@shared/schema";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 
 const LDO_TANK_LABELS: Record<string, string> = {
-  "1": "LDO TANK 1 (BOILER)",
-  "2": "LDO TANK 2 (DRYER)",
+  "1": "Tank 1 (small vertical)",
+  "2": "Tank 2 (big horizontal)",
 };
 
 export default function PlantMaterialIssues() {

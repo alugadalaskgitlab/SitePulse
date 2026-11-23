@@ -807,14 +807,14 @@ export function pipeAdminGuidePdf(stream: NodeJS.WritableStream, plantName?: str
       'Once removed, the ledger entries cannot be automatically restored. If you later re-create the missing sessions, new ledger entries will be generated — but the old ones are gone. Only remove if you are certain the sessions will not be re-entered.');
 
     sectionHeading(doc, '5.5 — Mismatch Type 3: Dryer-Source Mismatch');
-    body(doc, 'Each heating session records which physical fuel storage tank feeds the dryer (Boiler Tank or Dryer Tank). The shift log also records this. If they disagree, an orange banner appears on the Heating Sessions page for that date.');
+    body(doc, 'Each heating session records which physical fuel storage tank feeds the dryer (Tank 1 (small vertical) or Tank 2 (big horizontal)). The shift log also records this. If they disagree, an orange banner appears on the Heating Sessions page for that date.');
     doc.moveDown(0.3);
     subHeading(doc, 'How to fix it');
     numberedSteps(doc, [
       'Go to Plant → Heating Sessions → find the date with the orange banner.',
       'The banner tells you which session has a different tank selection from the shift log.',
       'Open the offending session → change "Dryer fed from" to match the shift log → Save.',
-      'Alternatively, use the bulk "Set all → Boiler tank" or "Set all → Dryer tank" buttons to align all sessions for that date in one action.',
+      'Alternatively, use the bulk "Set all → Tank 1 (small vertical)" or "Set all → Tank 2 (big horizontal)" buttons to align all sessions for that date in one action.',
       'If the shift log is wrong instead: go to Shift Log → Unlock (PIN) → change "Which tank feeds the dryer?" → Finalise.',
     ]);
 

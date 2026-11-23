@@ -111,28 +111,27 @@ interface DaySummary {
 
 function buildDaySummaries(
   dates: string[],
-  allSessions: BitumenHeatingSession[],
+  allSessions: Array<BitumenHeatingSession & { countsForDate?: string | null }>,
   allShiftLogs: PlantShiftLog[],
   allLedgerRows: LdoFlowReading[],
   plant: string,
-  boilerDipsOnly = false,
 ): DaySummary[] {
   return dates.map(date => {
     const sessions = allSessions.filter(
-      s => s.plantName === plant && s.date === date,
+      s => s.plantName === plant && s.countsForDate === date,
     );
+    const sessionsById = new Map(allSessions.map(session => [session.id, session]));
     const shiftLogs = allShiftLogs.filter(
       sh => sh.plantName === plant && sh.date === date,
     );
-    const ledgerRows = allLedgerRows.filter(
-      r =>
-        r.date === date &&
-        (r.sourceHeatingSessionId != null || r.sourceShiftLogId != null),
-    );
-
-    const sessionIds = new Set(sessions.map(s => s.id));
-    const orphanedLedgerRows = ledgerRows.filter(
-      r => r.sourceHeatingSessionId != null && !sessionIds.has(r.sourceHeatingSessionId),
+    const ledgerRows = allLedgerRows.filter(r => {
+      if (r.sourceHeatingSessionId != null) {
+        return sessionsById.get(r.sourceHeatingSessionId)?.countsForDate === date;
+      }
+      return r.date === date && r.sourceShiftLogId != null;
+    });
+    const orphanedLedgerRows = allLedgerRows.filter(
+      r => r.date === date && r.sourceHeatingSessionId != null && !sessionsById.has(r.sourceHeatingSessionId),
     );
 
     const sessionsTotalL = sessions.reduce((s, x) => s + (x.ldoTank1Consumed || 0), 0);
@@ -140,14 +139,14 @@ function buildDaySummaries(
       const c = shiftConsumed(sh);
       return s + (c == null ? 0 : c);
     }, 0);
-    const anyShiftHasMeter = !boilerDipsOnly && shiftLogs.some(sh => shiftConsumed(sh) != null);
+    const anyShiftHasMeter = shiftLogs.some(sh => shiftConsumed(sh) != null);
     const ledgerTotalL = ledgerRows.reduce((s, r) => {
       const c = ldoLedgerConsumed(r);
       return s + (c == null ? 0 : c);
     }, 0);
 
     const deltaSessionsVsShift =
-      !boilerDipsOnly && (sessions.length > 0 || anyShiftHasMeter)
+      (sessions.length > 0 || anyShiftHasMeter)
         ? Math.round((sessionsTotalL - shiftTotalL) * 10) / 10
         : null;
     const deltaSessionsVsLedger =
@@ -155,11 +154,11 @@ function buildDaySummaries(
         ? Math.round((sessionsTotalL - ledgerTotalL) * 10) / 10
         : null;
     const deltaShiftVsLedger =
-      !boilerDipsOnly && (anyShiftHasMeter || ledgerRows.length > 0)
+      (anyShiftHasMeter || ledgerRows.length > 0)
         ? Math.round((shiftTotalL - ledgerTotalL) * 10) / 10
         : null;
 
-    const hasMismatch = !boilerDipsOnly && [deltaSessionsVsShift, deltaSessionsVsLedger, deltaShiftVsLedger].some(
+    const hasMismatch = [deltaSessionsVsShift, deltaSessionsVsLedger, deltaShiftVsLedger].some(
       d => d != null && Math.abs(d) > MISMATCH_THRESHOLD_L,
     );
 
@@ -860,7 +859,7 @@ export default function PlantLdoMismatch() {
 
   const rangeEnabled = !!(effectiveDateFrom && effectiveDateTo);
 
-  const sessionsQuery = useQuery<BitumenHeatingSession[]>({
+  const sessionsQuery = useQuery<Array<BitumenHeatingSession & { countsForDate?: string | null }>>({
     queryKey: [
       "/api/plant-module/heating-sessions",
       { dateFrom: effectiveDateFrom, dateTo: effectiveDateTo, plant },
@@ -897,18 +896,25 @@ export default function PlantLdoMismatch() {
     },
   });
 
+  const sessionLedgerStart = (sessionsQuery.data || [])
+    .map(session => session.date)
+    .filter(Boolean)
+    .sort()[0];
+  const ledgerDateFrom = sessionLedgerStart && sessionLedgerStart < effectiveDateFrom
+    ? sessionLedgerStart
+    : effectiveDateFrom;
+
   const ldoReadingsQuery = useQuery<LdoFlowReading[]>({
     queryKey: [
       "/api/plant-module/ldo-flow-readings",
-      { dateFrom: effectiveDateFrom, dateTo: effectiveDateTo, plantName: plant, tankNumber: 1 },
+      { dateFrom: ledgerDateFrom, dateTo: effectiveDateTo, plantName: plant },
     ],
-    enabled: rangeEnabled,
+    enabled: rangeEnabled && !!sessionsQuery.data,
     queryFn: async () => {
       const qs = new URLSearchParams();
-      qs.set("dateFrom", effectiveDateFrom);
+      qs.set("dateFrom", ledgerDateFrom);
       qs.set("dateTo", effectiveDateTo);
       qs.set("plantName", plant);
-      qs.set("tankNumber", "1");
       const res = await fetch(`/api/plant-module/ldo-flow-readings?${qs.toString()}`, {
         credentials: "include",
       });
@@ -930,9 +936,8 @@ export default function PlantLdoMismatch() {
         shiftLogsQuery.data || [],
         ldoReadingsQuery.data || [],
         plant,
-        boilerDipsOnly,
       ),
-    [dates, sessionsQuery.data, shiftLogsQuery.data, ldoReadingsQuery.data, plant, boilerDipsOnly],
+    [dates, sessionsQuery.data, shiftLogsQuery.data, ldoReadingsQuery.data, plant],
   );
 
   const rangeTotals = useMemo(() => {

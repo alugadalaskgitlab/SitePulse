@@ -55,7 +55,7 @@ export default function PlantHeatingMismatch() {
   });
   const dashboardBackLink = getPlantBackLink({ defaultTab: "reports" });
 
-  const sessionsQuery = useQuery<BitumenHeatingSession[]>({
+  const sessionsQuery = useQuery<Array<BitumenHeatingSession & { countsForDate?: string | null }>>({
     queryKey: ["/api/plant-module/heating-sessions", date, plant],
     enabled: !!date,
     queryFn: async () => {
@@ -71,7 +71,7 @@ export default function PlantHeatingMismatch() {
     },
   });
 
-  const { data: dailySummary } = useQuery<{ ldo?: { openingGap?: { previousAt: string; currentAt: string; gaps: Array<{ tankNumber: number; deltaLitres: number }> } | null } }>({
+  const { data: dailySummary } = useQuery<{ ldo?: { openingGap?: { previousAt: string; currentAt: string; unaccountedLitres: number; gaps: Array<{ tankNumber: number; deltaLitres: number }> } | null } }>({
     queryKey: ["/api/plant-module/daily-reports", date, plant],
     enabled: !!date && !!plant,
     queryFn: async () => {
@@ -101,7 +101,7 @@ export default function PlantHeatingMismatch() {
     () => (shiftLogsQuery.data || []).filter(sh => sh.plantName === plant),
     [shiftLogsQuery.data, plant],
   );
-  const sessions = sessionsQuery.data || [];
+  const sessions = (sessionsQuery.data || []).filter(session => session.countsForDate === date);
 
   const sessionsTotalL = sessions.reduce(
     (s, x) => s + (x.ldoTank1Consumed || 0),
@@ -119,10 +119,7 @@ export default function PlantHeatingMismatch() {
     if (!openingGap) {
       return "No opening dip gap over 40 L was found after accounting for receipts between readings. Preheat and production are separate time windows.";
     }
-    const details = openingGap.gaps.map(gap =>
-      `Tank ${gap.tankNumber}: ${gap.deltaLitres > 0 ? "+" : ""}${fmt(gap.deltaLitres)} L`
-    ).join(" · ");
-    return `LDO dip gap over 40 L between ${openingGap.previousAt} and current opening ${openingGap.currentAt}; receipts between those times were included. ${details}`;
+    return `${Math.abs(openingGap.unaccountedLitres).toFixed(1)} L unaccounted between ${openingGap.previousAt} and plant start (${openingGap.currentAt}) — check dips.`;
   })();
 
   const editSessionLink = (sessionId: number) =>

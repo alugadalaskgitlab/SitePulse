@@ -25393,10 +25393,10 @@ export class DatabaseStorage implements IStorage {
     } else {
       // dryerFedFrom === "TANK_2" (default): each meter draws from its own tank.
       if (meterDeltaT1 != null && dipDeltaT1 != null) {
-        pushDivergenceWarning("Tank 1 (Boiler)", meterDeltaT1, dipDeltaT1);
+        pushDivergenceWarning("Tank 1 (small vertical)", meterDeltaT1, dipDeltaT1);
       }
       if (meterDeltaT2 != null && dipDeltaT2 != null) {
-        pushDivergenceWarning("Tank 2 (Dryer)", meterDeltaT2, dipDeltaT2);
+        pushDivergenceWarning("Tank 2 (big horizontal)", meterDeltaT2, dipDeltaT2);
       }
     }
 
@@ -26126,16 +26126,19 @@ export class DatabaseStorage implements IStorage {
     let ldoOpeningGap: {
       previousAt: string;
       currentAt: string;
+      unaccountedLitres: number;
       gaps: Array<{ tankNumber: 1 | 2; deltaLitres: number }>;
     } | null = null;
     if (shift?.plantStartTime) {
-      const currentAt = `${date}T${shift.plantStartTime}:00`;
+      const asClock = (value: unknown) => String(value || "00:00").slice(0, 5);
+      const currentAt = `${date}T${asClock(shift.plantStartTime)}`;
       const candidates: Array<{
         at: string;
         label: string;
         tank1ClosingDip: number | null;
         tank2ClosingDip: number | null;
       }> = [];
+      const sessionCandidates: typeof candidates = [];
       const historicalShifts = await db.select({
         date: plantShiftLogs.date,
         plantStopTime: plantShiftLogs.plantStopTime,
@@ -26144,7 +26147,7 @@ export class DatabaseStorage implements IStorage {
       }).from(plantShiftLogs)
         .where(eq(plantShiftLogs.plantName, plantName));
       for (const previous of historicalShifts) {
-        const at = `${previous.date}T${previous.plantStopTime || "23:59"}:00`;
+        const at = `${previous.date}T${asClock(previous.plantStopTime || "23:59")}`;
         if (at >= currentAt || (previous.tank1ClosingDip == null && previous.tank2ClosingDip == null)) continue;
         candidates.push({
           at,
@@ -26153,31 +26156,34 @@ export class DatabaseStorage implements IStorage {
           tank2ClosingDip: previous.tank2ClosingDip == null ? null : Number(previous.tank2ClosingDip),
         });
       }
-      const historicalSessions = await this.getBitumenHeatingSessions({ plantName });
+      const historicalSessions = await this.getHeatingSessionsWithProductionDate({ plantName });
       for (const previous of historicalSessions) {
-        if (!previous.endTime ||
+        if (previous.countsForDate !== date ||
+          !previous.endTime ||
           (previous.ldoTank1ClosingDip == null && previous.ldoTank2ClosingDip == null)) continue;
         let sessionEndDate = previous.date;
-        if (previous.startTime && previous.endTime < previous.startTime) {
+        if (previous.startTime && asClock(previous.endTime) < asClock(previous.startTime)) {
           sessionEndDate = new Date(Date.parse(`${previous.date}T00:00:00Z`) + 86_400_000)
             .toISOString().slice(0, 10);
         }
-        const at = `${sessionEndDate}T${previous.endTime}:00`;
+        const at = `${sessionEndDate}T${asClock(previous.endTime)}`;
         if (at >= currentAt) continue;
-        candidates.push({
+        sessionCandidates.push({
           at,
           label: `heating session ${previous.date} ${previous.endTime}`,
           tank1ClosingDip: previous.ldoTank1ClosingDip == null ? null : Number(previous.ldoTank1ClosingDip),
           tank2ClosingDip: previous.ldoTank2ClosingDip == null ? null : Number(previous.ldoTank2ClosingDip),
         });
       }
-      const previous = candidates.sort((a, b) => b.at.localeCompare(a.at))[0];
+      const previous =
+        sessionCandidates.sort((a, b) => b.at.localeCompare(a.at))[0] ??
+        candidates.sort((a, b) => b.at.localeCompare(a.at))[0];
       if (previous) {
         const betweenReceipts = (await db.select().from(ldoFlowReadings)
           .where(eq(ldoFlowReadings.plantName, plantName)))
           .filter((flow) => {
             if (String(flow.readingType).toLowerCase() !== "receipt" || flow.sourceMaterialIssueId != null) return false;
-            const at = `${flow.date}T${flow.time || "00:00"}:00`;
+            const at = `${flow.date}T${asClock(flow.time)}`;
             return at > previous.at && at <= currentAt;
           });
         const receiptByTank = (tank: 1 | 2) => betweenReceipts
@@ -26185,7 +26191,7 @@ export class DatabaseStorage implements IStorage {
           .reduce((sum, flow) => sum + Number(flow.quantityLiters || 0), 0);
         const volumeAt = (tank: 1 | 2, dip: number | null) =>
           dip == null ? null : getLdoVolumeAtDepth(tank, dip);
-        const gaps = findLdoOpeningGaps({
+        const gap = findLdoOpeningGaps({
           previousAt: previous.at,
           currentAt,
           tanks: [
@@ -26207,8 +26213,13 @@ export class DatabaseStorage implements IStorage {
             },
           ],
         });
-        if (gaps.length) {
-          ldoOpeningGap = { previousAt: `${previous.label} (${previous.at})`, currentAt, gaps };
+        if (gap) {
+          ldoOpeningGap = {
+            previousAt: `${previous.label} (${previous.at})`,
+            currentAt,
+            unaccountedLitres: gap.unaccountedLitres,
+            gaps: gap.gaps,
+          };
         }
       }
     }
@@ -27252,6 +27263,14 @@ export class DatabaseStorage implements IStorage {
           (session.date === date && session.endTime && shift?.plantStartTime && session.endTime <= shift.plantStartTime))
         .map((session) => session.date),
     );
+    const productionDates = new Set(
+      (await this.getProductionWindowsForPlant(plantName)).map((window) => window.date),
+    );
+    const idleDates = Array.from(new Set(
+      sessions
+        .filter((session) => session.date < date && !productionDates.has(session.date))
+        .map((session) => session.date),
+    )).sort();
     const receiptsLitres = (ldoFlows || [])
       .filter((flow) =>
         String(flow.readingType).toLowerCase() === "receipt" &&
@@ -27311,6 +27330,7 @@ export class DatabaseStorage implements IStorage {
     return {
       sessionCount,
       nightsCount: nightDates.size,
+      idleDates,
       totalHours: Math.round(totalHours * 100) / 100,
       sessionsLdoT1L: Math.round(preheatLitres * 10) / 10,
       preheatLitresPerHour: accounting.preheatLitresPerHour,
