@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { reconciliationPreviewMatches } from "../shared/stockReconciliation";
 import {
   buildStockBalanceRebuildPreview,
   calculateStockLedgerNet,
@@ -28,17 +29,27 @@ describe("STOCK-02 stock unit normalization and ledger rebuild", () => {
     expect(expected).not.toBeCloseTo(convertStockQuantity(6625, "CFT", "MT", 1.65) + 30, 5);
   });
 
-  it("uses the same canonical ledger net when stored balance is stale", () => {
-    const material = { id: 4, name: "DUST", defaultUom: "MT", conversionToUom: "MT", bulkDensity: 1.65 };
-    const currentLedger = calculateStockLedgerNet(material, [
-      { transactionType: "adjustment", quantityIn: 39.562487, quantityOut: 97.7444, uom: "MT" },
-    ]);
-    const expectedBookBalance = -58.181913;
-    expect(currentLedger).toBeCloseTo(expectedBookBalance, 6);
+  it("reconciles mixed-unit DUST from the current ledger and refuses the stale stored snapshot", () => {
+    const material = { id: 4, name: "DUST", defaultUom: "CFT", conversionToUom: "MT", bulkDensity: 1.65 };
+    const legacyLedger = [
+      { transactionType: "receipt", quantityIn: 846.844143, quantityOut: 0, uom: "CFT" },
+      { transactionType: "adjustment", quantityIn: 0, quantityOut: 97.7444, uom: "MT" },
+    ];
+    const currentLedger = calculateStockLedgerNet(material, legacyLedger);
+    expect(currentLedger).toBeCloseTo(-58.178, 3);
+    expect(reconciliationPreviewMatches(currentLedger, currentLedger)).toBe(true);
+    expect(reconciliationPreviewMatches(-72.818, currentLedger)).toBe(false);
+
     const physicalCount = 20;
-    expect(physicalCount - currentLedger).toBeCloseTo(78.181913, 6);
-    // The historical stale snapshot would have produced a different adjustment.
-    expect(physicalCount - (-72.818)).not.toBeCloseTo(physicalCount - currentLedger, 3);
+    const previewAdjustment = physicalCount - currentLedger;
+    expect(previewAdjustment).toBeCloseTo(78.178, 3);
+    const afterPosting = calculateStockLedgerNet(material, [
+      ...legacyLedger,
+      { transactionType: "adjustment", quantityIn: previewAdjustment, quantityOut: 0, uom: "MT" },
+    ]);
+    expect(afterPosting).toBe(physicalCount);
+    // The stored summary is set to this same calculated stock-unit value.
+    expect(afterPosting).toBe(physicalCount);
   });
 
   it.each(["T", "t", "TON", "Ton", "TONS", "tonnes", "Tonne"])(

@@ -9843,13 +9843,13 @@ export class DatabaseStorage implements IStorage {
               sourceUom: String(r.physicalUom || ""),
               reason: String(r.reason || ""),
               note: r.note ? String(r.note) : undefined,
-              expectedBookBalance: Number(r.expectedBookBalance),
+              expectedBookBalance: r.expectedBookBalance == null ? Number.NaN : Number(r.expectedBookBalance),
             };
           });
           for (const it of postItems) {
             if (!Number.isFinite(it.materialId) || !it.materialId || !Number.isFinite(it.sourceQty) || !it.sourceUom ||
                 !Number.isFinite(it.expectedBookBalance)) {
-              throw new Error("DRAFT_CORRUPT: a saved draft row is missing its material, quantity or UOM");
+              throw new Error("DRAFT_CORRUPT: a saved draft row is missing its material, quantity, UOM or displayed system balance");
             }
           }
           validateItems(postItems);
@@ -9936,7 +9936,13 @@ export class DatabaseStorage implements IStorage {
             WHERE material_id = ${it.materialId} AND ${partyClause}
             ORDER BY id
           `);
-          const oldBalance = calculateStockLedgerNet(material, ledgerResult.rows ?? [], row?.uom ?? null);
+          const ledgerRows = (ledgerResult.rows ?? []) as Array<{
+            transactionType: string;
+            quantityIn: number | string | null;
+            quantityOut: number | string | null;
+            uom: string | null;
+          }>;
+          const oldBalance = calculateStockLedgerNet(material, ledgerRows, row?.uom ?? null);
           if (!reconciliationPreviewMatches(it.expectedBookBalance, oldBalance)) {
             throw new Error(`PREVIEW_STALE: ${material.name} / party ${it.partyId ?? "plant-common"} changed since preview (preview ${it.expectedBookBalance} ${stockUom}, current ${oldBalance} ${stockUom}) — reopen the reconciliation preview`);
           }
@@ -9987,9 +9993,9 @@ export class DatabaseStorage implements IStorage {
               materialId: c.it.materialId,
               transactionType: "adjustment",
               referenceId: session.id,
-              quantityIn: c.adjustment > 0 ? c.adjustment : 0,
-              quantityOut: c.adjustment < 0 ? -c.adjustment : 0,
-              balanceAfter: c.physicalBase,
+              quantityIn: c.adjustment > 0 ? c.adjustment.toFixed(6) : "0.000000",
+              quantityOut: c.adjustment < 0 ? (-c.adjustment).toFixed(6) : "0.000000",
+              balanceAfter: c.physicalBase.toFixed(6),
               uom: c.stockUom,
               notes: `${refNo} | ${c.it.reason}${c.it.note ? ` | ${c.it.note}` : ""} | posted by ${data.postedBy}`,
             }).returning();
@@ -9997,13 +10003,13 @@ export class DatabaseStorage implements IStorage {
 
             if (c.balanceRowId != null) {
               await tx.update(stockBalances)
-                .set({ balance: c.physicalBase, uom: c.stockUom, lastUpdated: new Date() })
+                .set({ balance: c.physicalBase.toFixed(6), uom: c.stockUom, lastUpdated: new Date() })
                 .where(eq(stockBalances.id, c.balanceRowId));
             } else {
               await tx.insert(stockBalances).values({
                 materialId: c.it.materialId,
                 partyId: c.it.partyId,
-                balance: c.physicalBase,
+                balance: c.physicalBase.toFixed(6),
                 uom: c.stockUom,
                 lastUpdated: new Date(),
               });
@@ -10013,13 +10019,13 @@ export class DatabaseStorage implements IStorage {
             // ledger movement. Still align a stale summary snapshot to the
             // canonical ledger value so the two views stay in sync.
             await tx.update(stockBalances)
-              .set({ balance: c.oldBalance, uom: c.stockUom, lastUpdated: new Date() })
+              .set({ balance: c.oldBalance.toFixed(6), uom: c.stockUom, lastUpdated: new Date() })
               .where(eq(stockBalances.id, c.balanceRowId));
           } else {
             await tx.insert(stockBalances).values({
               materialId: c.it.materialId,
               partyId: c.it.partyId,
-              balance: c.oldBalance,
+              balance: c.oldBalance.toFixed(6),
               uom: c.stockUom,
               lastUpdated: new Date(),
             });
@@ -10029,12 +10035,12 @@ export class DatabaseStorage implements IStorage {
             sessionId: session.id,
             materialId: c.it.materialId,
             partyId: c.it.partyId,
-            oldBalance: c.oldBalance,
-            physicalQty: c.physicalBase,
-            adjustment: c.adjustment,
-            sourceQty: c.it.sourceQty,
+            oldBalance: c.oldBalance.toFixed(6),
+            physicalQty: c.physicalBase.toFixed(6),
+            adjustment: c.adjustment.toFixed(6),
+            sourceQty: c.it.sourceQty.toFixed(6),
             sourceUom: c.it.sourceUom,
-            conversionFactor: c.conv.kind === "same" ? null : c.conv.factor,
+            conversionFactor: c.conv.kind === "same" ? null : c.conv.factor.toFixed(9),
             baseUom: c.stockUom,
             reason: c.it.reason,
             note: c.it.note ?? null,

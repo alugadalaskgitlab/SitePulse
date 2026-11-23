@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 const mocks = vi.hoisted(() => ({
   search: "",
   navigate: vi.fn(),
+  isOwner: false,
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -28,6 +29,9 @@ vi.mock("@tanstack/react-query", () => ({
         refetch: vi.fn(),
       };
     }
+    if (key.includes("stock-balance-ledger-check")) {
+      return { data: { rows: [], errors: [] }, isLoading: false, isFetching: false, refetch: vi.fn() };
+    }
     return {
       data: key.includes("reconciliation") ? undefined : [],
       isLoading: false,
@@ -46,7 +50,7 @@ vi.mock("wouter", () => ({
 
 vi.mock("@/lib/auth-context", () => ({
   useAuth: () => ({
-    user: { id: 1, isOwner: false, isAdmin: false },
+    user: { id: 1, isOwner: mocks.isOwner, isAdmin: mocks.isOwner },
     featureCan: () => true,
     sectionCan: () => true,
   }),
@@ -65,6 +69,7 @@ import PlantStock from "../client/src/pages/PlantStock";
 describe("Plant Stock page navigation", () => {
   beforeEach(() => {
     mocks.search = "";
+    mocks.isOwner = false;
     mocks.navigate.mockClear();
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: false,
@@ -112,5 +117,24 @@ describe("Plant Stock page navigation", () => {
       expect(mocks.navigate.mock.calls[0][0]).toContain(`context=${context}`);
       expect(mocks.navigate.mock.calls[0][1]).toEqual({ replace: true });
     }
+  });
+
+  it("shows the read-only ledger check and typed maintenance confirmation only to Owner", async () => {
+    mocks.isOwner = false;
+    const nonOwner = render(<PlantStock />);
+    expect(nonOwner.queryByTestId("advanced-owner-section")).toBeNull();
+    nonOwner.unmount();
+
+    mocks.isOwner = true;
+    render(<PlantStock />);
+    const advanced = screen.getByTestId("advanced-owner-section") as HTMLDetailsElement;
+    expect(advanced.open).toBe(false);
+    fireEvent.click(screen.getByText("Advanced (Owner only)"));
+    expect(screen.getByTestId("stock-check-matches")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("button-reconcile-data"));
+    const proceed = screen.getByTestId("button-adv-proceed") as HTMLButtonElement;
+    expect(proceed.disabled).toBe(true);
+    fireEvent.change(screen.getByTestId("input-confirm-stock-action"), { target: { value: "RECONCILE" } });
+    expect(proceed.disabled).toBe(false);
   });
 });

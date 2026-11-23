@@ -7831,7 +7831,7 @@ export async function registerRoutes(
         sourceUom: String(it.sourceUom || ""),
         reason: String(it.reason || ""),
         note: it.note ? String(it.note) : undefined,
-        expectedBookBalance: Number(it.expectedBookBalance),
+        expectedBookBalance: it.expectedBookBalance == null ? Number.NaN : Number(it.expectedBookBalance),
       }));
       for (const it of cleanItems) {
         if (!it.materialId || !Number.isFinite(it.sourceQty) || it.sourceQty < 0 || !it.sourceUom || !it.reason ||

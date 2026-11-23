@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Link, useSearch, useLocation } from "wouter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X, RotateCcw, ClipboardList, GitCompare, ExternalLink, AlertTriangle, ShieldAlert, Scale } from "lucide-react";
+import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X, RotateCcw, ClipboardList, GitCompare, ExternalLink, AlertTriangle, Scale } from "lucide-react";
 import { format, subDays } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -849,42 +849,17 @@ export default function PlantStock() {
         const bfBalance = getConvertedQty(entry.quantityIn) - getConvertedQty(entry.quantityOut);
         summaryMap[key].openingStock += bfBalance;
       }
-      // Opening stock entries (from Masters -> Opening Stock)
+      // Opening stock entries (from Masters -> Opening Stock).
       else if (entry.transactionType === "opening") {
-        summaryMap[key].openingStock += getConvertedQty(entry.quantityIn);
+        summaryMap[key].openingStock += getConvertedQty(entry.quantityIn) - getConvertedQty(entry.quantityOut);
       }
-      // Receipts (from Material Receipts)
-      else if (entry.transactionType === "receipt") {
-        summaryMap[key].received += getConvertedQty(entry.quantityIn);
-      }
-      // Reconciliation adjustments can add or remove stock.
-      else if (entry.transactionType === "adjustment") {
+      // Every other ledger row contributes its exact in/out quantities. This
+      // keeps summary closing identical to the ledger calculation, including
+      // negative reconciliation adjustments and newer transaction types.
+      else {
         summaryMap[key].received += getConvertedQty(entry.quantityIn);
         summaryMap[key].consumed += getConvertedQty(entry.quantityOut);
       }
-      // Returns: materials returned from site back to stock — treated as received (add-back)
-      else if (entry.transactionType === "return") {
-        summaryMap[key].received += getConvertedQty(Math.abs(entry.quantityIn || 0));
-      }
-      // Transfers: quantityIn = stock arriving (add to received), quantityOut = stock leaving (add to consumed)
-      else if (entry.transactionType === "transfer" || entry.transactionType === "transfer_correction") {
-        if ((entry.quantityIn || 0) > 0) summaryMap[key].received += getConvertedQty(entry.quantityIn);
-        if ((entry.quantityOut || 0) > 0) summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
-      }
-      // Tank transfer: LDO/Diesel moved from store drums into boiler/dryer tank.
-      // This is a store→tank movement — treat the same as a regular inter-party transfer
-      // (stock leaves the drum store, but is NOT counted as theoretical consumption).
-      else if (entry.transactionType === "tank_transfer") {
-        if ((entry.quantityOut || 0) > 0) summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
-      }
-      // Consumed: dispatch, issue, equipment_usage; ldo_dip_consumption is the only
-      // actual LDO deduction — flow meter (ldo_shift_consumption) and heating
-      // (ldo_heating_consumption) are reference-only and never created in the ledger.
-      else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage" || entry.transactionType === "ldo_dip_consumption") {
-        summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
-      }
-      // Direct purchases bypass plant stock - tracked but no balance impact
-      // (quantityIn and quantityOut are equal, net effect is zero)
     });
 
     // Calculate closing balance - round to eliminate floating-point accumulation errors
@@ -953,32 +928,10 @@ export default function PlantStock() {
         }
       };
 
-      // Receipts and positive reconciliation adjustments.
-      if (entry.transactionType === "opening" || entry.transactionType === "receipt" || entry.transactionType === "adjustment") {
-        summaryMap[key].totalReceipts += getConvertedQty(entry.quantityIn);
-      }
-      if (entry.transactionType === "adjustment") {
-        summaryMap[key].totalIssues += getConvertedQty(entry.quantityOut);
-      }
-      // Returns: material returned from site reduces net issues (adds back to receipts side)
-      if (entry.transactionType === "return") {
-        summaryMap[key].totalReceipts += getConvertedQty(Math.abs(entry.quantityIn || 0));
-      }
-      // Transfers: quantityIn = stock arriving (add to receipts), quantityOut = stock leaving (add to issues)
-      if (entry.transactionType === "transfer" || entry.transactionType === "transfer_correction") {
-        if ((entry.quantityIn || 0) > 0) summaryMap[key].totalReceipts += getConvertedQty(entry.quantityIn);
-        if ((entry.quantityOut || 0) > 0) summaryMap[key].totalIssues += getConvertedQty(Math.abs(entry.quantityOut || 0));
-      }
-      // Tank transfer: LDO/Diesel moved from store drums into boiler/dryer tank — reduces store balance
-      if (entry.transactionType === "tank_transfer") {
-        if ((entry.quantityOut || 0) > 0) summaryMap[key].totalIssues += getConvertedQty(Math.abs(entry.quantityOut || 0));
-      }
-      // Issues: dispatch, issue, equipment_usage, dpr_equipment_usage
-      if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage" || entry.transactionType === "ldo_dip_consumption") {
-        summaryMap[key].totalIssues += getConvertedQty(Math.abs(entry.quantityOut || 0));
-      }
-      // Direct purchases bypass plant stock - not counted in balance
-      // (quantityIn and quantityOut are equal, net effect is zero)
+      // Keep the all-time balance as the exact ledger sum, independent of
+      // transaction labels; in/out pairs such as direct purchases net to zero.
+      summaryMap[key].totalReceipts += getConvertedQty(entry.quantityIn);
+      summaryMap[key].totalIssues += getConvertedQty(entry.quantityOut);
     });
 
     // Calculate balance - round to eliminate floating-point accumulation errors
@@ -1007,11 +960,11 @@ export default function PlantStock() {
   const todayDate = format(new Date(), "yyyy-MM-dd");
   const summaryBalanceWarnings = dateTo === todayDate
     ? stockSummary.flatMap(item => {
-        const current = allTimeBalances?.find(row =>
+        const current = allStockBalances?.find(row =>
           row.materialId === item.materialId && row.partyId === item.partyId,
         );
         if (!current) return [];
-        const difference = Math.round((item.closing - current.balance) * 1_000_000) / 1_000_000;
+        const difference = Math.round((item.closing - Number(current.balance)) * 1_000_000) / 1_000_000;
         return difference === 0
           ? []
           : [{ ...item, difference }];
