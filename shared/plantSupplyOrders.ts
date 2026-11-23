@@ -73,7 +73,7 @@ export function materialNeedForMix(
     add(component.materialId, adjusted, "MT");
   }
 
-  return [...needs.values()].map((row) => ({ ...row, quantity: Number(row.quantity.toFixed(6)) }));
+  return Array.from(needs.values()).map((row) => ({ ...row, quantity: Number(row.quantity.toFixed(6)) }));
 }
 
 export function dispatchedByMix(
@@ -113,7 +113,7 @@ export function orderMaterialNeeds(
       });
     }
   }
-  return [...totals.values()];
+  return Array.from(totals.values());
 }
 
 /** Planned daily mix rates win; missing rates use the last three party production days. */
@@ -128,7 +128,7 @@ export function dailyMixTonnes(
   const fallbackLines = lines.filter((line) => !daily.has(line.mixTemplateId));
   if (fallbackLines.length === 0) return daily;
 
-  const productionDays = [...new Set(dispatches.map((dispatch) => dispatch.date).filter(Boolean))]
+  const productionDays = Array.from(new Set(dispatches.map((dispatch) => dispatch.date).filter(Boolean)))
     .sort((a, b) => b.localeCompare(a))
     .slice(0, 3);
   if (productionDays.length === 0) {
@@ -157,4 +157,39 @@ export function isRunningLow(stockAvailable: number, dailyNeed: number): boolean
 export function daysOfStockLeft(stockAvailable: number, dailyNeed: number): number | null {
   if (!Number.isFinite(stockAvailable) || !Number.isFinite(dailyNeed) || dailyNeed <= 0) return null;
   return Math.max(0, stockAvailable) / dailyNeed;
+}
+
+export function materialAvailabilityForScope(
+  need: number,
+  dailyNeed: number,
+  scope: "party" | "hlc",
+  partyStock: number,
+  hlcStock: number,
+) {
+  const selectedStock = Number(scope === "party" ? partyStock : hlcStock);
+  const stockAvailable = Number.isFinite(selectedStock) ? selectedStock : 0;
+  const safeNeed = Number.isFinite(need) ? Math.max(0, need) : 0;
+  const shortage = Math.max(0, safeNeed - Math.max(stockAvailable, 0));
+  return {
+    stockAvailable,
+    shortage,
+    daysLeft: daysOfStockLeft(stockAvailable, dailyNeed),
+    runningLow: isRunningLow(stockAvailable, dailyNeed),
+  };
+}
+
+export function dispatchCrossesStockZero(beforeDispatch: number, afterDispatch: number): boolean {
+  return Number.isFinite(beforeDispatch) && Number.isFinite(afterDispatch) && beforeDispatch > 0 && afterDispatch <= 0;
+}
+
+export function formatPlantSupplyMorningSummary(order: {
+  orderNo: string;
+  lines: Array<{ mixName: string; balanceMt: number }>;
+  materials: Array<{ materialName: string; daysLeft: number | null }>;
+}): string {
+  const mixBalances = order.lines.map(line => `${line.mixName}: ${line.balanceMt.toFixed(3)} MT to go`);
+  const materialDays = order.materials.map(material =>
+    `${material.materialName}: ${material.daysLeft == null ? "days remaining unavailable" : `${material.daysLeft.toFixed(1)} days left`}`,
+  );
+  return [order.orderNo, ...mixBalances, ...materialDays].join(" · ");
 }

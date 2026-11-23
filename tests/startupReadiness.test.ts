@@ -19,6 +19,7 @@ describe("read-only startup", () => {
       await pg.exec(`CREATE UNIQUE INDEX hire_statements_equipment_period_uq ON hire_statements(equipment_id,period_from,period_to);
         CREATE UNIQUE INDEX equipment_usage_source_usage_successor_uq ON equipment_usage(source_usage_id) WHERE source_usage_id IS NOT NULL;
         CREATE UNIQUE INDEX stock_ledger_dispatch_dedup_idx ON stock_ledger(material_id,party_id,reference_id);
+        CREATE UNIQUE INDEX plant_supply_orders_one_open_party_uq ON plant_supply_orders(party_id) WHERE status='open';
         INSERT INTO users(id,is_admin) VALUES(1,true);
         INSERT INTO plant_shift_logs(id,lock_status) VALUES(1,'locked');
         INSERT INTO dprs(id,site,is_superseded) VALUES(1,'STARTUP TEST',false);

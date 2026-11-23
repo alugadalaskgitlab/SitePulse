@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import {
   appSettings,
   auditLogs,
@@ -16,16 +16,18 @@ import {
   plantSupplyOrders,
   roles,
   sites,
+  stockLedger,
   truckDispatches,
   userRoles,
   users,
 } from "@shared/schema";
 import { db } from "./db";
 import {
-  daysOfStockLeft,
   dailyMixTonnes,
+  dispatchCrossesStockZero,
   dispatchedByMix,
-  isRunningLow,
+  formatPlantSupplyMorningSummary,
+  materialAvailabilityForScope,
   orderMaterialNeeds,
   type SupplyDispatch,
   type SupplyMixComponent,
@@ -45,9 +47,9 @@ export type SupplyAlertSettings = {
 };
 
 const DEFAULT_ALERT_SETTINGS: SupplyAlertSettings = {
-  running_low: { roles: ["P&M In-charge", "Plant Engineer"], userIds: [] },
-  exhausted: { roles: ["P&M In-charge", "Plant Engineer", "Project Manager", "Project Head"], userIds: [] },
-  borrowed: { roles: ["P&M In-charge", "Plant Engineer", "Project Manager", "Project Head"], userIds: [] },
+  running_low: { roles: ["P&M In-charge"], userIds: [] },
+  exhausted: { roles: ["P&M In-charge", "Project Manager", "Project Head"], userIds: [] },
+  borrowed: { roles: ["P&M In-charge", "Project Manager", "Project Head"], userIds: [] },
 };
 
 function jsonValue<T>(value: string | null | undefined, fallback: T): T {
@@ -146,6 +148,8 @@ export async function createPlantSupplyOrder(input: {
     await tx.insert(plantSupplyOrderLines).values(normalizedLines.map(line => ({
       ...line,
       orderId: order.id,
+      orderedMt: String(line.orderedMt),
+      plannedMtPerDay: line.plannedMtPerDay == null ? null : String(line.plannedMtPerDay),
     })));
 
     const components = await tx.select({ materialId: mixTemplateComponents.materialId })
@@ -154,11 +158,11 @@ export async function createPlantSupplyOrder(input: {
       .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`).limit(1);
     const [ldo] = await tx.select({ id: plantMaterials.id }).from(plantMaterials)
       .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`).limit(1);
-    const materialIds = [...new Set([
+    const materialIds = Array.from(new Set([
       ...components.map(row => row.materialId),
       ...(bitumen ? [bitumen.id] : []),
       ...(ldo ? [ldo.id] : []),
-    ])];
+    ]));
     if (materialIds.length) {
       await tx.insert(plantSupplyOrderMaterialScopes).values(materialIds.map(materialId => ({
         orderId: order.id,
@@ -312,40 +316,65 @@ export async function getPlantSupplyOrder(orderId: number) {
   const dailyNeedById = new Map(dailyNeeds.map(row => [row.materialId, row.quantity]));
   const materials = needs.map(need => {
     const material = materialById.get(need.materialId);
-    const scope = scopeByMaterial.get(need.materialId) ?? "hlc";
+    const scope = scopeByMaterial.get(need.materialId) === "party" ? "party" : "hlc";
     const stockPartyId = scope === "party" ? order.partyId : hlcPartyId;
-    const balance = stockByKey.get(`${stockPartyId ?? "common"}:${need.materialId}`);
-    const stockUnit = stockUnitForMaterial(material, balance?.uom ?? need.uom);
-    const balanceUnit = balance?.uom ?? stockUnit;
-    let available = finite(balance?.balance);
-    if (balance && balanceUnit !== need.uom) {
-      try {
-        available = convertStockQuantity(available, balanceUnit, need.uom, material?.bulkDensity);
-      } catch {
-        available = 0;
+    const toNeedUnit = (balance: typeof balanceRows[number] | undefined) => {
+      const stockUnit = stockUnitForMaterial(material, balance?.uom ?? need.uom);
+      const balanceUnit = balance?.uom ?? stockUnit;
+      let available = finite(balance?.balance);
+      if (balance && balanceUnit !== need.uom) {
+        try {
+          available = convertStockQuantity(available, balanceUnit, need.uom, material?.bulkDensity);
+        } catch {
+          available = 0;
+        }
       }
-    }
+      return available;
+    };
+    const partyAvailable = toNeedUnit(stockByKey.get(`${order.partyId}:${need.materialId}`));
+    const hlcAvailable = toNeedUnit(stockByKey.get(`${hlcPartyId ?? "common"}:${need.materialId}`));
     const needQty = need.quantity;
-    const shortage = Math.max(0, needQty - Math.max(available, 0));
     const dailyNeed = dailyNeedById.get(need.materialId) ?? 0;
-    const daysLeft = daysOfStockLeft(available, dailyNeed);
+    const availability = materialAvailabilityForScope(
+      needQty, dailyNeed, scope, partyAvailable, hlcAvailable,
+    );
     return {
       materialId: need.materialId,
       materialName: material?.name ?? `Material #${need.materialId}`,
       scope,
       need: needQty,
       uom: need.uom,
-      stockAvailable: available,
+      stockAvailable: availability.stockAvailable,
       stockUom: need.uom,
-      shortage,
+      shortage: availability.shortage,
       dailyNeed,
-      daysLeft,
-      runningLow: isRunningLow(available, dailyNeed),
+      daysLeft: availability.daysLeft,
+      runningLow: availability.runningLow,
       scopePartyId: stockPartyId,
     };
   });
 
   const borrowings = await getBorrowingsForOrder(orderId);
+  const alertRows = await db.select({
+    dedupeKey: plantSupplyAlertDeliveries.dedupeKey,
+    alertType: plantSupplyAlertDeliveries.alertType,
+    title: plantSupplyAlertDeliveries.title,
+    message: plantSupplyAlertDeliveries.message,
+    createdAt: plantSupplyAlertDeliveries.createdAt,
+  }).from(plantSupplyAlertDeliveries)
+    .where(and(
+      eq(plantSupplyAlertDeliveries.partyId, order.partyId),
+      inArray(plantSupplyAlertDeliveries.alertType, ["running_low", "exhausted", "borrowed"]),
+      gte(plantSupplyAlertDeliveries.createdAt, new Date(`${order.periodFrom}T00:00:00`)),
+      lte(plantSupplyAlertDeliveries.createdAt, new Date(`${order.periodTo}T23:59:59.999`)),
+    ))
+    .orderBy(desc(plantSupplyAlertDeliveries.createdAt)).limit(200);
+  const seenAlertKeys = new Set<string>();
+  const orderAlerts = alertRows.filter(alert => {
+    if (seenAlertKeys.has(alert.dedupeKey)) return false;
+    seenAlertKeys.add(alert.dedupeKey);
+    return true;
+  });
   const lineResults = lines.map(line => {
     const dispatchedMt = dispatched.get(line.mixTemplateId) ?? 0;
     return {
@@ -361,6 +390,7 @@ export async function getPlantSupplyOrder(orderId: number) {
     lines: lineResults,
     materials,
     borrowings,
+    alerts: orderAlerts,
     dispatches: dispatchRows,
     hlcPartyId,
   };
@@ -540,7 +570,7 @@ export async function getPartySupplyBorrowings(partyId: number) {
     existing.owed += row.owed;
     totalsByMaterial.set(row.materialId, existing);
   });
-  return { rows: withBalance, totals: [...totalsByMaterial.values()] };
+  return { rows: withBalance, totals: Array.from(totalsByMaterial.values()) };
 }
 
 export async function hasSupplyRole(userId: number, roleName: string) {
@@ -629,7 +659,7 @@ export async function markBorrowingReplacement(input: {
     const [replacement] = await tx.insert(plantSupplyBorrowingReplacements).values({
       borrowingId: input.borrowingId,
       receiptId: input.receiptId,
-      quantity: input.quantity,
+      quantity: String(input.quantity),
       uom: String(borrowing.uom),
       markedByUserId: actor.userId,
       markedByName: actor.name,
@@ -639,7 +669,7 @@ export async function markBorrowingReplacement(input: {
       action: "replaced",
       actorUserId: actor.userId,
       actorName: actor.name,
-      quantity: input.quantity,
+      quantity: String(input.quantity),
       uom: String(borrowing.uom),
       relatedReceiptId: input.receiptId,
     });
@@ -650,18 +680,44 @@ export async function markBorrowingReplacement(input: {
 export async function getSupplyAlertSettings(): Promise<SupplyAlertSettings> {
   const [row] = await db.select({ value: appSettings.value }).from(appSettings)
     .where(eq(appSettings.key, ALERT_SETTINGS_KEY)).limit(1);
+  const [operatorRole] = await db.select({ id: roles.id, name: roles.name }).from(roles)
+    .where(sql`LOWER(${roles.name}) = 'plant operator'`).limit(1);
+  const operatorRecipients = operatorRole
+    ? { roles: [operatorRole.name], userIds: [] as number[] }
+    : {
+      roles: [] as string[],
+      userIds: (await db.select({ id: users.id }).from(users)
+        .innerJoin(userRoles, eq(userRoles.userId, users.id))
+        .innerJoin(roles, eq(roles.id, userRoles.roleId))
+        .where(and(eq(users.isActive, true), sql`LOWER(${roles.name}) = 'plant engineer'`)))
+        .map(user => user.id),
+    };
+  const defaults: SupplyAlertSettings = {
+    running_low: {
+      roles: [...DEFAULT_ALERT_SETTINGS.running_low.roles, ...operatorRecipients.roles],
+      userIds: operatorRecipients.userIds,
+    },
+    exhausted: {
+      roles: [...DEFAULT_ALERT_SETTINGS.exhausted.roles, ...operatorRecipients.roles],
+      userIds: operatorRecipients.userIds,
+    },
+    borrowed: {
+      roles: [...DEFAULT_ALERT_SETTINGS.borrowed.roles, ...operatorRecipients.roles],
+      userIds: operatorRecipients.userIds,
+    },
+  };
   const stored = jsonValue<Partial<SupplyAlertSettings>>(row?.value, {});
   return {
-    running_low: normalizeRecipientChoice(stored.running_low, DEFAULT_ALERT_SETTINGS.running_low),
-    exhausted: normalizeRecipientChoice(stored.exhausted, DEFAULT_ALERT_SETTINGS.exhausted),
-    borrowed: normalizeRecipientChoice(stored.borrowed, DEFAULT_ALERT_SETTINGS.borrowed),
+    running_low: normalizeRecipientChoice(stored.running_low, defaults.running_low),
+    exhausted: normalizeRecipientChoice(stored.exhausted, defaults.exhausted),
+    borrowed: normalizeRecipientChoice(stored.borrowed, defaults.borrowed),
   };
 }
 
 function normalizeRecipientChoice(value: Partial<SupplyRecipientChoice> | undefined, fallback: SupplyRecipientChoice): SupplyRecipientChoice {
   return {
-    roles: [...new Set((value?.roles ?? fallback.roles).filter(role => typeof role === "string"))],
-    userIds: [...new Set((value?.userIds ?? fallback.userIds).map(Number).filter(id => Number.isInteger(id) && id > 0))],
+    roles: Array.from(new Set((value?.roles ?? fallback.roles).filter(role => typeof role === "string"))),
+    userIds: Array.from(new Set((value?.userIds ?? fallback.userIds).map(Number).filter(id => Number.isInteger(id) && id > 0))),
   };
 }
 
@@ -730,7 +786,7 @@ export async function resolveSupplyAlertRecipients(kind: SupplyAlertKind): Promi
       .where(and(eq(users.isActive, true), eq(users.isOwner, true)));
     ownerRows.forEach(row => userIds.add(row.id));
   }
-  return [...userIds];
+  return Array.from(userIds);
 }
 
 export async function createSupplyAlertDeliveries(input: {
@@ -804,7 +860,7 @@ export async function activeSupplyOrderAlertLines() {
   const openOrders = await db.select({ id: plantSupplyOrders.id }).from(plantSupplyOrders)
     .where(eq(plantSupplyOrders.status, "open"));
   const summaries = await Promise.all(openOrders.map(row => getPlantSupplyOrder(row.id)));
-  return summaries.flatMap(order => order?.materials.filter(material => material.runningLow).map(material => ({
+  const lowLines = summaries.flatMap(order => order?.materials.filter(material => material.runningLow).map(material => ({
     orderId: order.id,
     orderNo: order.orderNo,
     partyId: order.partyId,
@@ -816,7 +872,49 @@ export async function activeSupplyOrderAlertLines() {
     daysLeft: material.daysLeft,
     uom: material.uom,
     scope: material.scope,
+    alertType: "running_low" as const,
+    message: `${order.partyName} · ${material.materialName}: ${material.stockAvailable.toFixed(3)} ${material.uom} available; under one production day.`,
   })) ?? []);
+  const dateParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const datePart = (type: string) => dateParts.find(part => part.type === type)?.value ?? "";
+  const todayStart = new Date(`${datePart("year")}-${datePart("month")}-${datePart("day")}T00:00:00+05:30`);
+  const recentRows = await db.select({
+    dedupeKey: plantSupplyAlertDeliveries.dedupeKey,
+    alertType: plantSupplyAlertDeliveries.alertType,
+    partyId: plantSupplyAlertDeliveries.partyId,
+    title: plantSupplyAlertDeliveries.title,
+    message: plantSupplyAlertDeliveries.message,
+    createdAt: plantSupplyAlertDeliveries.createdAt,
+  }).from(plantSupplyAlertDeliveries)
+    .where(and(
+      inArray(plantSupplyAlertDeliveries.alertType, ["exhausted", "borrowed"]),
+      gte(plantSupplyAlertDeliveries.createdAt, todayStart),
+    ))
+    .orderBy(desc(plantSupplyAlertDeliveries.createdAt)).limit(300);
+  const seenEventKeys = new Set<string>();
+  const eventLines = recentRows.filter(row => {
+    if (seenEventKeys.has(row.dedupeKey)) return false;
+    seenEventKeys.add(row.dedupeKey);
+    return true;
+  }).map(row => ({
+    orderId: null,
+    orderNo: null,
+    partyId: row.partyId,
+    partyName: "",
+    materialId: null,
+    materialName: "",
+    stockAvailable: null,
+    dailyNeed: null,
+    daysLeft: null,
+    uom: "",
+    scope: "",
+    alertType: row.alertType,
+    title: row.title,
+    message: row.message,
+  }));
+  return [...lowLines, ...eventLines];
 }
 
 export async function registerDispatchSupplyAlerts(orderId: number, dispatchId: number, borrowed: Array<{
@@ -825,25 +923,54 @@ export async function registerDispatchSupplyAlerts(orderId: number, dispatchId: 
   const order = await getPlantSupplyOrder(orderId);
   if (!order) return [];
   const date = order.dispatches.find(row => row.id === dispatchId)?.date ?? new Date().toISOString().slice(0, 10);
+  const [dispatch] = await db.select({
+    truckNumber: truckDispatches.truckNumber,
+    time: truckDispatches.time,
+  }).from(truckDispatches).where(eq(truckDispatches.id, dispatchId)).limit(1);
   const deliveries = [];
-  for (const row of order.materials) {
-    if (row.scope === "party" && row.stockAvailable <= 0 && row.need > 0) {
+  const partyStockRows = await db.select({
+    materialId: stockLedger.materialId,
+    quantityOut: stockLedger.quantityOut,
+    balanceAfter: stockLedger.balanceAfter,
+  }).from(stockLedger).where(and(
+    eq(stockLedger.referenceId, dispatchId),
+    eq(stockLedger.partyId, order.partyId),
+    eq(stockLedger.transactionType, "dispatch"),
+  ));
+  const partyScopeMaterialIds = new Set(
+    (await db.select({ materialId: plantSupplyOrderMaterialScopes.materialId })
+      .from(plantSupplyOrderMaterialScopes)
+      .where(and(
+        eq(plantSupplyOrderMaterialScopes.orderId, orderId),
+        eq(plantSupplyOrderMaterialScopes.scope, "party"),
+      ))).map(row => row.materialId),
+  );
+  for (const row of partyStockRows) {
+    const after = finite(row.balanceAfter);
+    const before = after + finite(row.quantityOut);
+    if (partyScopeMaterialIds.has(row.materialId) && dispatchCrossesStockZero(before, after)) {
+      const material = order.materials.find(item => item.materialId === row.materialId);
+      const [materialRow] = material ? [] : await db.select({ name: plantMaterials.name })
+        .from(plantMaterials).where(eq(plantMaterials.id, row.materialId)).limit(1);
+      const materialName = material?.materialName ?? materialRow?.name ?? `Material #${row.materialId}`;
       const created = await createSupplyAlertDeliveries({
-        dedupeKey: `supply-exhausted:${order.partyId}:${row.materialId}:${date}`,
+        dedupeKey: `supply-exhausted:${dispatchId}:${row.materialId}`,
         kind: "exhausted",
         title: "Party material stock exhausted",
-        message: `${order.partyName} ${row.materialName}: ${row.stockAvailable.toFixed(3)} ${row.uom}.`,
+        message: `${order.partyName} — ${materialName} finished${dispatch?.truckNumber ? ` at truck ${dispatch.truckNumber}` : ""}${dispatch?.time ? `, ${dispatch.time}` : ""}.`,
         partyId: order.partyId,
         materialId: row.materialId,
       });
       deliveries.push(...created);
     }
+  }
+  for (const row of order.materials) {
     if (row.runningLow) {
       const created = await createSupplyAlertDeliveries({
         dedupeKey: `supply-low:${order.partyId}:${row.materialId}:${date}`,
         kind: "running_low",
         title: "Plant material running low",
-        message: `${order.partyName} ${row.materialName}: less than one production day of stock.`,
+        message: `${order.partyName} — ${row.materialName} ${row.stockAvailable.toFixed(3)} ${row.uom} left; less than one production day.`,
         partyId: order.partyId,
         materialId: row.materialId,
       });
@@ -865,23 +992,26 @@ export async function registerDispatchSupplyAlerts(orderId: number, dispatchId: 
 }
 
 export async function runPlantSupplyMorningSummary(dateKey: string) {
-  const lowLines = await activeSupplyOrderAlertLines();
-  const byOrder = new Map<number, typeof lowLines>();
-  lowLines.forEach(line => {
-    const list = byOrder.get(line.orderId) ?? [];
-    list.push(line);
-    byOrder.set(line.orderId, list);
-  });
-  const created = [];
-  for (const [orderId, lines] of byOrder) {
-    const head = lines[0];
-    const message = lines.map(row => `${row.materialName}: ${row.daysLeft == null ? "less than 1 day" : `${row.daysLeft.toFixed(1)} days`}`).join("; ");
+  const openOrders = await db.select({ id: plantSupplyOrders.id }).from(plantSupplyOrders)
+    .where(eq(plantSupplyOrders.status, "open"));
+  const created: Array<{ id: number; recipientUserId: number; title: string; message: string }> = [];
+  for (let index = 0; index < openOrders.length; index += 1) {
+    const order = await getPlantSupplyOrder(openOrders[index].id);
+    if (!order) continue;
+    const message = formatPlantSupplyMorningSummary({
+      orderNo: order.orderNo ?? "Supply order",
+      lines: order.lines.map((line: any) => ({ mixName: line.mixName, balanceMt: line.balanceMt })),
+      materials: order.materials.map((material: any) => ({
+        materialName: material.materialName,
+        daysLeft: material.daysLeft,
+      })),
+    });
     created.push(...await createSupplyAlertDeliveries({
-      dedupeKey: `supply-morning:${orderId}:${dateKey}`,
+      dedupeKey: `supply-morning:${order.id}:${dateKey}`,
       kind: "morning_summary",
-      title: `Morning supply summary — ${head.partyName}`,
-      message: `${head.orderNo}: ${message}`,
-      partyId: head.partyId,
+      title: `Morning supply summary — ${order.partyName}`,
+      message,
+      partyId: order.partyId,
     }));
   }
   return created;

@@ -278,8 +278,9 @@ export default function PlantDispatches() {
     queryKey: ["/api/plant-module/parties"],
   });
   const { data: supplyAlertLines = [] } = useQuery<Array<{
-    orderId: number; orderNo: string; partyName: string; materialName: string;
-    stockAvailable: number; dailyNeed: number; daysLeft: number | null; uom: string;
+    orderId: number | null; orderNo: string | null; partyName: string; materialName: string;
+    stockAvailable: number | null; dailyNeed: number | null; daysLeft: number | null; uom: string;
+    alertType: string; title?: string; message: string; partyId?: number | null;
   }>>({
     queryKey: ["/api/plant-module/supply-orders/active-alerts"],
     queryFn: async () => {
@@ -867,7 +868,7 @@ export default function PlantDispatches() {
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(dispatch);
     return acc;
-  }, {} as Record<string, TruckDispatch[]>);
+  }, {} as Record<string, Array<TruckDispatch & { supplyOrderNo?: string | null }>>);
 
   // Sort dates descending, and entries within each date by time descending
   const sortedDates = Object.keys(groupedDispatches).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
@@ -1230,9 +1231,9 @@ export default function PlantDispatches() {
       {supplyAlertLines.length > 0 && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
           {supplyAlertLines.map((line, index) => (
-            <p key={`${line.orderId}-${line.materialName}-${index}`}>
-              {line.partyName} · {line.materialName}: {line.stockAvailable.toFixed(3)} {line.uom} available; under one production day.{" "}
-              <a className="font-semibold underline" href={`/plant/supply-orders?orderId=${line.orderId}`}>Open {line.orderNo}</a>
+            <p key={`${line.alertType}-${line.orderId ?? line.partyId}-${index}`}>
+              {line.message}{" "}
+              {line.orderId && line.orderNo && <a className="font-semibold underline" href={`/plant/supply-orders?orderId=${line.orderId}`}>Open {line.orderNo}</a>}
             </p>
           ))}
         </div>

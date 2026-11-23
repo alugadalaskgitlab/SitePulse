@@ -289,6 +289,17 @@ export default function PlantSupplyOrders() {
                     </CardContent>
                   </Card>
 
+                  {order.alerts?.length > 0 && (
+                    <Card>
+                      <CardHeader className="pb-2"><CardTitle className="text-base">Supply alerts</CardTitle></CardHeader>
+                      <CardContent className="space-y-1 text-sm">
+                        {order.alerts.map((alert: any) => (
+                          <p key={alert.dedupeKey}>{alert.message}</p>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
                   <Card>
                     <CardHeader><CardTitle className="text-base">Borrowed from HLC</CardTitle></CardHeader>
                     <CardContent className="space-y-3">
