@@ -155,6 +155,12 @@ export default function PlantBitumenStock() {
   const { data: stockBalances } = useQuery<{ id: number; partyId: number | null; materialId: number; balance: number; uom: string }[]>({
     queryKey: ["/api/plant-module/stock-balances"],
   });
+  const { data: packedStockPositions = [] } = useQuery<Array<{
+    materialId: number; materialName: string; partyId: number | null; partyName: string;
+    stockUom: string; tank1Mt: number | null; tank2Mt: number | null; packedMt: number | null;
+    packedCount: number; totalMt: number | null;
+  }>>({ queryKey: ["/api/plant-module/packed-stock-positions"] });
+  const bitumenPackedPositions = packedStockPositions.filter(row => /bitumen/i.test(row.materialName));
 
   const bitumenPartyBalances = useMemo(() => {
     if (!stockBalances || !bitumenMaterialId) return [];
@@ -680,6 +686,15 @@ export default function PlantBitumenStock() {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Bitumen Dip Readings");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bitumenPackedPositions.map(row => ({
+      Material: row.materialName,
+      Party: row.partyName,
+      "Tank 1 (MT)": row.tank1Mt,
+      "Tank 2 (MT)": row.tank2Mt,
+      "Packed count": row.packedCount,
+      "Packed (MT)": row.packedMt,
+      "Total (MT)": row.totalMt,
+    }))), "Stock Positions");
     XLSX.writeFile(wb, `bitumen_dip_readings_${format(new Date(), "yyyyMMdd")}.xlsx`);
   }
 
@@ -748,6 +763,24 @@ export default function PlantBitumenStock() {
       headStyles: { fillColor: [180, 120, 30] },
       margin: { left: 14, right: 14 },
     });
+    if (bitumenPackedPositions.length > 0) {
+      const finalY = (doc as any).lastAutoTable?.finalY ?? curY;
+      autoTable(doc, {
+        startY: finalY + 8,
+        head: [["Material", "Party", "Tank 1 (MT)", "Tank 2 (MT)", "Packed count", "Packed (MT)", "Total (MT)"]],
+        body: bitumenPackedPositions.map(row => [
+          row.materialName, row.partyName,
+          row.tank1Mt == null ? "—" : row.tank1Mt.toFixed(3),
+          row.tank2Mt == null ? "—" : row.tank2Mt.toFixed(3),
+          row.packedCount.toFixed(2),
+          row.packedMt == null ? "—" : row.packedMt.toFixed(3),
+          row.totalMt == null ? "—" : row.totalMt.toFixed(3),
+        ]),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [180, 120, 30] },
+        margin: { left: 14, right: 14 },
+      });
+    }
     doc.save(`bitumen_dip_readings_${format(new Date(), "yyyyMMdd")}.pdf`);
   }
 
@@ -758,7 +791,10 @@ export default function PlantBitumenStock() {
       <body><div class="header"><h2>Bitumen Dip Readings - ${companyShortName} Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
       <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Depth(cm)</th><th>Volume(L)</th><th>Weight(MT)</th><th>Usable(MT)</th><th>Type</th><th>Source</th><th>Notes</th></tr>
       ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>Tank ${r.tankNumber}</td><td>${r.depthCm}</td><td>${r.volumeLiters.toFixed(3)}</td><td>${(r.weightKg / 1000).toFixed(3)}</td><td>${(getUsableVolume(r.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)}</td><td>${r.readingType}</td><td>${SOURCE_LABELS[classifyReadingSource(r)]}</td><td>${r.notes || ""}</td></tr>`).join("")}
-      </table></body></html>`;
+      </table>
+      ${bitumenPackedPositions.length ? `<h3>Ledger stock positions</h3><table><tr><th>Party</th><th>Tank 1 (MT)</th><th>Tank 2 (MT)</th><th>Packed count</th><th>Packed (MT)</th><th>Total (MT)</th></tr>
+      ${bitumenPackedPositions.map(row => `<tr><td>${row.partyName}</td><td>${row.tank1Mt == null ? "—" : row.tank1Mt.toFixed(3)}</td><td>${row.tank2Mt == null ? "—" : row.tank2Mt.toFixed(3)}</td><td>${row.packedCount}</td><td>${row.packedMt == null ? "—" : row.packedMt.toFixed(3)}</td><td>${row.totalMt == null ? "—" : row.totalMt.toFixed(3)}</td></tr>`).join("")}</table>` : ""}
+      </body></html>`;
     openPrintableHtmlOrPreview(printContent, "Bitumen dip readings", `bitumen-dip-readings-${format(new Date(), "yyyyMMdd")}.html`);
   }
 
@@ -894,6 +930,25 @@ export default function PlantBitumenStock() {
         testid="banner-negative-bitumen"
       />
 
+      {bitumenPackedPositions.length > 0 && (
+        <Card data-testid="bitumen-ledger-stock-positions">
+          <CardHeader className="pb-2"><CardTitle className="text-base">Bitumen stock positions from the ledger</CardTitle></CardHeader>
+          <CardContent className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b text-left"><th className="py-2 pr-3">Party</th><th className="py-2 pr-3 text-right">Tank 1</th><th className="py-2 pr-3 text-right">Tank 2</th><th className="py-2 pr-3 text-right">Packed</th><th className="py-2 text-right">Total</th></tr></thead>
+              <tbody>{bitumenPackedPositions.map(row => (
+                <tr className="border-b last:border-0" key={`${row.materialId}:${row.partyId ?? "common"}`}>
+                  <td className="py-2 pr-3">{row.partyName}</td>
+                  <td className="py-2 pr-3 text-right">{row.tank1Mt == null ? "—" : `${row.tank1Mt.toFixed(3)} MT`}</td>
+                  <td className="py-2 pr-3 text-right">{row.tank2Mt == null ? "—" : `${row.tank2Mt.toFixed(3)} MT`}</td>
+                  <td className="py-2 pr-3 text-right">{row.packedCount.toLocaleString()} packed · {row.packedMt == null ? "—" : `${row.packedMt.toFixed(3)} MT`}</td>
+                  <td className="py-2 text-right font-semibold">{row.totalMt == null ? "—" : `${row.totalMt.toFixed(3)} MT`}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <TankIndicator label="Tank 1" reading={latestTank1} tankNum={1} />

@@ -2842,6 +2842,9 @@ export function MaterialMaster() {
   const [extraLoosePct, setExtraLoosePct] = useState("");
   const [wastagePct, setWastagePct] = useState("");
   const [materialThicknessMm, setMaterialThicknessMm] = useState("");
+  const [packedUnitName, setPackedUnitName] = useState("");
+  const [packedUnitNetWeightKg, setPackedUnitNetWeightKg] = useState("");
+  const [packedUnitVolumeLiters, setPackedUnitVolumeLiters] = useState("");
   
   // Opening Stock dialog state
   const [openingStockDialogOpen, setOpeningStockDialogOpen] = useState(false);
@@ -2885,7 +2888,7 @@ export function MaterialMaster() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; category?: string; defaultUom: string; procurementRoute: string; bulkDensity?: number | null; conversionFromUom?: string; rolledDensity?: number | null; rollingPct?: number | null; looseFactor?: number | null; wastagePct?: number | null }) =>
+    mutationFn: (data: { name: string; category?: string; defaultUom: string; procurementRoute: string; bulkDensity?: number | null; conversionFromUom?: string; rolledDensity?: number | null; rollingPct?: number | null; looseFactor?: number | null; wastagePct?: number | null; packedUnitName?: string | null; packedUnitNetWeightKg?: number | null; packedUnitVolumeLiters?: number | null }) =>
       apiRequest("POST", "/api/plant-module/materials", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
@@ -2902,7 +2905,7 @@ export function MaterialMaster() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; category?: string; defaultUom: string; procurementRoute: string; bulkDensity?: number | null; conversionFromUom?: string; rolledDensity?: number | null; rollingPct?: number | null; looseFactor?: number | null; wastagePct?: number | null }> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; category?: string; defaultUom: string; procurementRoute: string; bulkDensity?: number | null; conversionFromUom?: string; rolledDensity?: number | null; rollingPct?: number | null; looseFactor?: number | null; wastagePct?: number | null; packedUnitName?: string | null; packedUnitNetWeightKg?: number | null; packedUnitVolumeLiters?: number | null }> }) =>
       apiRequest("PATCH", `/api/plant-module/materials/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
@@ -3031,6 +3034,9 @@ export function MaterialMaster() {
     setExtraLoosePct("");
     setWastagePct("");
     setMaterialThicknessMm("");
+    setPackedUnitName("");
+    setPackedUnitNetWeightKg("");
+    setPackedUnitVolumeLiters("");
     setShowAdvancedConversions(false);
     setShowConvForm(false);
   };
@@ -3062,6 +3068,9 @@ export function MaterialMaster() {
     setRollingPct((material as any).rollingPct != null ? String((material as any).rollingPct) : "");
     setExtraLoosePct(extraLoosePercentFromFactor((material as any).looseFactor)?.toString() ?? "");
     setWastagePct((material as any).wastagePct != null ? String((material as any).wastagePct) : "");
+    setPackedUnitName(material.packedUnitName || "");
+    setPackedUnitNetWeightKg(material.packedUnitNetWeightKg != null ? String(material.packedUnitNetWeightKg) : "");
+    setPackedUnitVolumeLiters(material.packedUnitVolumeLiters != null ? String(material.packedUnitVolumeLiters) : "");
     setMaterialThicknessMm("");
     setShowAdvancedConversions(false);
     setShowConvForm(false);
@@ -3107,6 +3116,9 @@ export function MaterialMaster() {
       rollingPct: formProfile.rollingPct,
       looseFactor: formProfile.looseFactor,
       wastagePct: formProfile.wastagePct,
+      packedUnitName: packedUnitName || null,
+      packedUnitNetWeightKg: packedUnitNetWeightKg.trim() ? Number(packedUnitNetWeightKg) : null,
+      packedUnitVolumeLiters: packedUnitVolumeLiters.trim() ? Number(packedUnitVolumeLiters) : null,
     };
     if (editingMaterial) {
       updateMutation.mutate({ id: editingMaterial.id, data });
@@ -3288,6 +3300,41 @@ export function MaterialMaster() {
                       </p>
                     )}
                   </div>
+                )}
+              </div>
+
+              <div className="rounded-md border border-dashed border-border p-3 space-y-3 bg-muted/30" data-testid="packed-unit-master-fields">
+                <div>
+                  <p className="text-sm font-semibold">Packed receipt unit (optional)</p>
+                  <p className="text-xs text-muted-foreground">For bitumen or emulsion received in barrels/drums. Enter either the standard net weight or volume per unit; receipt stock is converted once into this material’s stock unit.</p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <Label htmlFor="packed-unit-name">Packed unit</Label>
+                    <Select value={packedUnitName || "none"} onValueChange={value => setPackedUnitName(value === "none" ? "" : value)}>
+                      <SelectTrigger id="packed-unit-name" data-testid="select-packed-unit"><SelectValue placeholder="Not configured" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Not configured</SelectItem>
+                        <SelectItem value="Barrel">Barrel</SelectItem>
+                        <SelectItem value="Drum">Drum</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="packed-unit-net-kg">Standard net weight per unit, kg</Label>
+                    <Input id="packed-unit-net-kg" type="number" min="0.001" step="0.1" value={packedUnitNetWeightKg}
+                      onChange={event => { setPackedUnitNetWeightKg(event.target.value); if (event.target.value) setPackedUnitVolumeLiters(""); }}
+                      placeholder="e.g. 156" data-testid="input-packed-unit-net-kg" />
+                  </div>
+                  <div>
+                    <Label htmlFor="packed-unit-volume-liters">Standard volume per unit, L</Label>
+                    <Input id="packed-unit-volume-liters" type="number" min="0.001" step="0.1" value={packedUnitVolumeLiters}
+                      onChange={event => { setPackedUnitVolumeLiters(event.target.value); if (event.target.value) setPackedUnitNetWeightKg(""); }}
+                      placeholder="e.g. 200" data-testid="input-packed-unit-volume-liters" />
+                  </div>
+                </div>
+                {packedUnitName && !packedUnitNetWeightKg && !packedUnitVolumeLiters && (
+                  <p className="text-xs text-amber-700" data-testid="packed-unit-profile-missing">Set the standard net weight or volume before recording a packed receipt.</p>
                 )}
               </div>
 

@@ -394,6 +394,9 @@ const plantMaterialCreateBodySchema = insertPlantMaterialSchema
     looseFactor: true,
     wastagePct: true,
     procurementRoute: true,
+    packedUnitName: true,
+    packedUnitNetWeightKg: true,
+    packedUnitVolumeLiters: true,
   })
   .strict();
 const plantMaterialUpdateBodySchema = plantMaterialCreateBodySchema.partial();
@@ -5059,6 +5062,49 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/plant-module/supply-orders/open-summaries", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+    if (!requestFeatureAllowed(req, "plant_supply_orders", "view") &&
+        !requestFeatureAllowed(req, "plant_shift_logs", "view") &&
+        !requestFeatureAllowed(req, "plant_production", "view")) {
+      return res.status(403).json({ message: "You do not have access to plant order summaries." });
+    }
+    try {
+      const date = typeof req.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
+        ? req.query.date
+        : new Date().toISOString().slice(0, 10);
+      const orders = await listPlantSupplyOrders();
+      res.json(orders.filter((order: any) => order?.status === "open").map((order: any) => ({
+        id: order.id,
+        orderNo: order.orderNo,
+        partyId: order.partyId,
+        partyName: order.partyName,
+        siteName: order.siteName,
+        workName: order.workName,
+        periodFrom: order.periodFrom,
+        periodTo: order.periodTo,
+        mixNames: (order.lines ?? []).map((line: any) => line.mixName).filter(Boolean),
+        plannedMtToday: (order.lines ?? []).reduce((sum: number, line: any) => sum + Math.max(0, Number(line.plannedMtPerDay) || 0), 0),
+        dispatchedMtToday: (order.dispatches ?? []).filter((dispatch: any) => dispatch.date === date)
+          .reduce((sum: number, dispatch: any) => sum + Math.max(0, Number(dispatch.loadWeight) || 0), 0),
+        materials: (order.materials ?? [])
+          .map((material: any) => ({
+            materialId: material.materialId,
+            materialName: material.materialName,
+            need: Number(material.need) || 0,
+            uom: material.uom,
+            scope: material.scope,
+            stockAvailable: Number(material.stockAvailable) || 0,
+            shortage: Number(material.shortage) || 0,
+            daysLeft: material.daysLeft == null ? null : Number(material.daysLeft),
+          })),
+      })));
+    } catch (err) {
+      console.error("[plant supply orders] open summaries", err);
+      res.status(500).json({ message: "Failed to load open order summaries." });
+    }
+  });
+
   app.post("/api/plant-module/supply-orders", async (req, res) => {
     if (!assertCreate(req, res, "plant_supply_orders")) return;
     try {
@@ -8181,6 +8227,63 @@ export async function registerRoutes(
       res.json(await storage.getStockBalanceLedgerDiscrepancies());
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Could not compare stored balances with the stock ledger" });
+    }
+  });
+
+  app.get("/api/plant-module/packed-stock-positions", async (req, res) => {
+    if (!assertFeatureAction(req, res, "issues_stock", "view")) return;
+    try {
+      const canDecant = !!req.authUser?.isOwner ||
+        (req.authUser ? await hasSupplyRole(Number(req.authUser.id), "P&M In-charge") : false);
+      res.json({ rows: await storage.getPackedStockPositionSummary(), canDecant });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Could not load packed stock positions" });
+    }
+  });
+
+  app.post("/api/plant-module/packed-stock-decants", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+    if (!req.authUser.isOwner && !(await hasSupplyRole(Number(req.authUser.id), "P&M In-charge"))) {
+      return res.status(403).json({ message: "Only the Owner or P&M In-charge can decant packed stock." });
+    }
+    const schema = z.object({
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      materialId: z.number().int().positive(),
+      partyId: z.number().int().positive().nullable(),
+      packedCount: z.number().positive(),
+      quantityMt: z.number().positive(),
+      tankNumber: z.union([z.literal(1), z.literal(2)]),
+    }).strict();
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Enter a valid date, material, packed count and tank." });
+    try {
+      res.status(201).json(await storage.decantPackedStock(parsed.data, {
+        userId: req.authUser.id,
+        name: currentUserName(req),
+      }));
+    } catch (err: any) {
+      res.status(400).json({ message: err?.message || "Could not decant packed stock" });
+    }
+  });
+
+  app.post("/api/plant-module/stock-balance-ledger-check/match", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+    if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can match stored balances to the ledger" });
+    const schema = z.object({
+      confirmation: z.string().trim(),
+      reason: z.string().trim().min(1).max(1000),
+    }).strict();
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "A reason and confirmation are required." });
+    try {
+      const result = await storage.matchStockBalancesToLedger(
+        { userId: req.authUser.id, name: currentUserName(req) },
+        parsed.data.reason,
+        parsed.data.confirmation,
+      );
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ message: err?.message || "Could not match stored balances to the ledger" });
     }
   });
 

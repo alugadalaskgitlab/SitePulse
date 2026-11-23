@@ -237,6 +237,8 @@ export default function PlantMaterialReceipts() {
   const [materialId, setMaterialId] = useState<string>("");
   const [quantity, setQuantity] = useState("");
   const [uom, setUom] = useState("MT");
+  const [receiveAsPacked, setReceiveAsPacked] = useState(false);
+  const [actualNetWeightKg, setActualNetWeightKg] = useState("");
   const [supplier, setSupplier] = useState("");
   const [transporter, setTransporter] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
@@ -272,6 +274,8 @@ export default function PlantMaterialReceipts() {
     materialId: string;
     quantity: string;
     uom: string;
+    receiveAsPacked?: boolean;
+    actualNetWeightKg?: string;
     supplier: string;
     transporter: string;
     vehicleNumber: string;
@@ -286,8 +290,8 @@ export default function PlantMaterialReceipts() {
   }
 
   const formData = useMemo<ReceiptFormData>(() => ({
-    date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, driverName, receivedByName, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason
-  }), [date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, driverName, receivedByName, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason]);
+    date, time, partyId, materialId, quantity, uom, receiveAsPacked, actualNetWeightKg, supplier, transporter, vehicleNumber, driverName, receivedByName, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason
+  }), [date, time, partyId, materialId, quantity, uom, receiveAsPacked, actualNetWeightKg, supplier, transporter, vehicleNumber, driverName, receivedByName, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef, dieselExceptionReason]);
 
   const handleRestoreDraft = useCallback((data: ReceiptFormData) => {
     setDate(data.date);
@@ -296,6 +300,8 @@ export default function PlantMaterialReceipts() {
     setMaterialId(data.materialId);
     setQuantity(data.quantity);
     setUom(data.uom);
+    setReceiveAsPacked(data.receiveAsPacked === true);
+    setActualNetWeightKg(data.actualNetWeightKg || "");
     setSupplier(data.supplier);
     setTransporter(data.transporter || "");
     setVehicleNumber(data.vehicleNumber);
@@ -803,6 +809,8 @@ export default function PlantMaterialReceipts() {
     setMaterialId("");
     setQuantity("");
     setUom("MT");
+    setReceiveAsPacked(false);
+    setActualNetWeightKg("");
     setSupplier("");
     setTransporter("");
     setVehicleNumber("");
@@ -836,6 +844,8 @@ export default function PlantMaterialReceipts() {
     setMaterialId(String(receipt.materialId));
     setQuantity(String(receipt.quantity));
     setUom(receipt.uom);
+    setReceiveAsPacked((receipt as any).packedCount != null);
+    setActualNetWeightKg((receipt as any).actualNetWeightKg != null ? String((receipt as any).actualNetWeightKg) : "");
     setSupplier(receipt.supplier || "");
     setTransporter(receipt.transporter || "");
     setVehicleNumber(receipt.vehicleNumber || "");
@@ -904,6 +914,23 @@ export default function PlantMaterialReceipts() {
     }
     
     const selectedMaterial = materials?.find(m => m.id === parseInt(materialId));
+    if (receiveAsPacked) {
+      if (!selectedMaterial?.packedUnitName) {
+        toast({ title: "Packed unit not configured", description: "Set Barrel or Drum in Material Master before recording this packed receipt.", variant: "destructive" });
+        return;
+      }
+      const hasStandard = Number(selectedMaterial.packedUnitNetWeightKg) > 0 || Number(selectedMaterial.packedUnitVolumeLiters) > 0;
+      if (!hasStandard && !(Number(actualNetWeightKg) > 0)) {
+        toast({ title: "Packed profile missing", description: "Set the packed-unit weight or volume in Material Master, or enter actual total net weight for this receipt.", variant: "destructive" });
+        return;
+      }
+      if (actualNetWeightKg.trim() && !(Number(actualNetWeightKg) > 0)) {
+        toast({ title: "Invalid actual net weight", description: "Enter a value greater than zero or leave it blank.", variant: "destructive" });
+        return;
+      }
+    }
+    const receiptUom = receiveAsPacked && selectedMaterial?.packedUnitName ? selectedMaterial.packedUnitName : uom;
+    submittedSummaryRef.current = { date: materialReceiptTransactionDate(invoiceDate, date), quantity, uom: receiptUom };
     const isTankMaterial = selectedMaterial && (
       selectedMaterial.category === "Bitumen" ||
       selectedMaterial.category === "LDO" ||
@@ -917,7 +944,6 @@ export default function PlantMaterialReceipts() {
     submitLockRef.current = true;
     setSubmissionLocked(true);
     setSubmissionFeedback(null);
-    submittedSummaryRef.current = { date: effectiveInvoiceDate, quantity, uom };
     if (editingReceipt) {
       const updateData = {
         date,
@@ -927,7 +953,10 @@ export default function PlantMaterialReceipts() {
         isPlantCommon: 0,
         materialId: parseInt(materialId),
         quantity: parseFloat(quantity),
-        uom,
+        uom: receiptUom,
+        packedCount: receiveAsPacked ? parseFloat(quantity) : null,
+        packedUnitName: receiveAsPacked ? selectedMaterial?.packedUnitName ?? null : null,
+        actualNetWeightKg: receiveAsPacked && actualNetWeightKg.trim() ? Number(actualNetWeightKg) : null,
         supplier,
         transporter,
         vehicleNumber,
@@ -954,7 +983,10 @@ export default function PlantMaterialReceipts() {
         isPlantCommon: 0,
         materialId: parseInt(materialId),
         quantity: parseFloat(quantity),
-        uom,
+        uom: receiptUom,
+        packedCount: receiveAsPacked ? parseFloat(quantity) : null,
+        packedUnitName: receiveAsPacked ? selectedMaterial?.packedUnitName ?? null : null,
+        actualNetWeightKg: receiveAsPacked && actualNetWeightKg.trim() ? Number(actualNetWeightKg) : null,
         supplier,
         transporter,
         vehicleNumber,
@@ -1452,7 +1484,7 @@ export default function PlantMaterialReceipts() {
 
               <div>
                 <Label>Material{linkedDieselRequirementId != null && <span className="text-muted-foreground text-sm"> (canonical Diesel source)</span>}</Label>
-                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); setTankNumber(""); setIndentRef(""); setIndentComboSearch(""); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(normalizeWeightUnit(m.defaultUom || "MT")); }} disabled={linkedDieselRequirementId != null}>
+                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); setTankNumber(""); setIndentRef(""); setIndentComboSearch(""); setReceiveAsPacked(false); setActualNetWeightKg(""); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(normalizeWeightUnit(m.defaultUom || "MT")); }} disabled={linkedDieselRequirementId != null}>
                   <SelectTrigger data-testid="select-material" aria-describedby={linkedDieselRequirementId != null ? "diesel-canonical-source" : undefined}>
                     <SelectValue placeholder="Select material" />
                   </SelectTrigger>
@@ -1513,23 +1545,81 @@ export default function PlantMaterialReceipts() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Quantity</Label>
+                  <Label>{receiveAsPacked ? `Packed unit count (${materials?.find(m => m.id === Number(materialId))?.packedUnitName || "unit"})` : "Quantity"}</Label>
                   <Input type="number" step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0.00" data-testid="input-quantity" />
                 </div>
                 <div>
-                  <Label>UOM{linkedDieselRequirementId != null && <span className="text-muted-foreground text-sm"> (canonical Liters)</span>}</Label>
-                  <Select value={uom} onValueChange={setUom} disabled={linkedDieselRequirementId != null}>
-                    <SelectTrigger data-testid="select-uom" aria-describedby={linkedDieselRequirementId != null ? "diesel-canonical-source" : undefined}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {UOM_OPTIONS.map(u => (
-                        <SelectItem key={u} value={u}>{u}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {receiveAsPacked ? (
+                    <>
+                      <Label>UOM</Label>
+                      <div className="h-10 rounded-md border bg-muted px-3 py-2 text-sm" data-testid="text-packed-receipt-uom">{materials?.find(m => m.id === Number(materialId))?.packedUnitName}</div>
+                    </>
+                  ) : (
+                    <>
+                      <Label>UOM{linkedDieselRequirementId != null && <span className="text-muted-foreground text-sm"> (canonical Liters)</span>}</Label>
+                      <Select value={uom} onValueChange={setUom} disabled={linkedDieselRequirementId != null}>
+                        <SelectTrigger data-testid="select-uom" aria-describedby={linkedDieselRequirementId != null ? "diesel-canonical-source" : undefined}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {UOM_OPTIONS.map(u => (
+                            <SelectItem key={u} value={u}>{u}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </>
+                  )}
                 </div>
               </div>
+              {(() => {
+                const packedMaterial = materials?.find(material => material.id === Number(materialId));
+                if (!packedMaterial || !/bitumen|emulsion/i.test(`${packedMaterial.category ?? ""} ${packedMaterial.name}`)) return null;
+                const packedCount = Number(quantity) || 0;
+                const actualKg = Number(actualNetWeightKg) || 0;
+                const derivedMt = actualKg > 0
+                  ? actualKg / 1000
+                  : Number(packedMaterial.packedUnitNetWeightKg) > 0
+                    ? packedCount * Number(packedMaterial.packedUnitNetWeightKg) / 1000
+                    : Number(packedMaterial.packedUnitVolumeLiters) > 0 && Number(packedMaterial.bulkDensity) > 0
+                      ? packedCount * Number(packedMaterial.packedUnitVolumeLiters) * Number(packedMaterial.bulkDensity) / 1000
+                      : null;
+                return (
+                  <div className="rounded-md border p-3 space-y-2" data-testid="packed-receipt-fields">
+                    {packedMaterial.packedUnitName ? (
+                      <label className="flex items-center gap-2 text-sm font-medium">
+                        <input type="checkbox" checked={receiveAsPacked}
+                          onChange={event => { setReceiveAsPacked(event.target.checked); setActualNetWeightKg(""); setQuantity(""); if (event.target.checked) setTankNumber("none"); }}
+                          data-testid="checkbox-receive-as-packed" />
+                        Received in {packedMaterial.packedUnitName.toLowerCase()}s
+                      </label>
+                    ) : (
+                      <p className="text-sm text-amber-700">Packed unit not configured — set Barrel or Drum and its standard net weight/volume in Material Master.</p>
+                    )}
+                    {receiveAsPacked && (
+                      <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          {Number(packedMaterial.packedUnitNetWeightKg) > 0
+                            ? `Standard net weight: ${packedMaterial.packedUnitNetWeightKg} kg per ${packedMaterial.packedUnitName?.toLowerCase()}`
+                            : Number(packedMaterial.packedUnitVolumeLiters) > 0
+                              ? `Standard volume: ${packedMaterial.packedUnitVolumeLiters} L per ${packedMaterial.packedUnitName?.toLowerCase()}`
+                              : "Packed profile is incomplete."}
+                        </p>
+                        <div>
+                          <Label htmlFor="packed-actual-net-weight">Actual total net weight, kg (optional; overrides standard)</Label>
+                          <Input id="packed-actual-net-weight" type="number" min="0.001" step="0.1" value={actualNetWeightKg}
+                            onChange={event => setActualNetWeightKg(event.target.value)} data-testid="input-packed-actual-net-weight" />
+                        </div>
+                        {packedCount > 0 && derivedMt != null && (
+                          <p className="text-sm font-medium" data-testid="packed-stock-conversion">
+                            Stock addition = {derivedMt.toFixed(3)} MT
+                            {actualKg > 0 ? " (actual net weight)" : ""}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {isSelectedDiesel && (
                 <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50/60 dark:border-amber-700 dark:bg-amber-900/10 p-3" data-testid="section-diesel-receipt-control">
@@ -2149,7 +2239,11 @@ export default function PlantMaterialReceipts() {
                                   {formatEnteredByDisplay((receipt as any).enteredByUserName, receipt.createdAt)}
                                 </span>
                                 <span className="font-semibold">{getMaterialName(receipt.materialId)}</span>
-                                <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
+                                <span className="font-medium">
+                                  {receipt.packedCount != null
+                                    ? `${receipt.packedCount} ${receipt.packedUnitName || receipt.uom}${receipt.packedStockQuantity != null ? ` (= ${Number(receipt.packedStockQuantity).toFixed(3)} ${normalizeWeightUnit(materials?.find(material => material.id === receipt.materialId)?.defaultUom || "MT")})` : ""}`
+                                    : `${receipt.quantity} ${receipt.uom}`}
+                                </span>
                                 {receipt.vehicleNumber && <span className="entity-name text-sm text-muted-foreground">{receipt.vehicleNumber}</span>}
                                 {receipt.driverName && <span className="text-sm text-muted-foreground">Driver: {formatPersonName(receipt.driverName)}</span>}
                                 {receipt.receivedByName && <span className="text-sm text-muted-foreground">Received by: {formatPersonName(receipt.receivedByName)}</span>}

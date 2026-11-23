@@ -116,6 +116,12 @@ export default function HmpHub() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: openSupplyOrderSummaries = [] } = useQuery<any[]>({
+    queryKey: ["/api/plant-module/supply-orders/open-summaries"],
+    enabled: canSupplyOrders,
+    staleTime: 60_000,
+  });
+
   const { data: equipmentUsageToday = [], isLoading: equipLoading } = useQuery<any[]>({
     queryKey: ["/api/plant-module/equipment-usage", TODAY],
     queryFn: async () => {
@@ -183,6 +189,36 @@ export default function HmpHub() {
           />
           <KpiCard label="Date" value={format(new Date(), "dd MMM")} sub={format(new Date(), "yyyy")} color="purple" />
         </div>
+
+        {canSupplyOrders && openSupplyOrderSummaries.length > 0 && (
+          <Card className="border-amber-200 shadow-sm" data-testid="hmp-open-order-material-alerts">
+            <CardHeader className="pb-2 pt-4 px-5">
+              <CardTitle className="text-base">Open orders — material status</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 px-5 pb-4">
+              {openSupplyOrderSummaries.map((order: any) => (
+                <a key={order.id} href={`/plant/supply-orders?orderId=${order.id}`} className="block rounded-md border border-slate-200 p-3 hover:bg-slate-50" data-testid={`open-order-summary-${order.id}`}>
+                  <div className="flex flex-wrap justify-between gap-2 text-sm font-semibold">
+                    <span>{order.partyName} · {order.orderNo}</span>
+                    <span className="text-xs font-normal text-muted-foreground">{order.mixNames?.join(", ") || "No mix listed"}</span>
+                  </div>
+                  {(order.materials ?? []).some((material: any) => material.shortage > 0 || (material.daysLeft != null && material.daysLeft < 2)) ? (
+                    <ul className="mt-2 space-y-1 text-sm">
+                      {order.materials.filter((material: any) => material.shortage > 0 || (material.daysLeft != null && material.daysLeft < 2)).map((material: any) => (
+                        <li key={material.materialId} className="flex flex-wrap justify-between gap-2">
+                          <span>{material.materialName}</span>
+                          <span className={material.shortage > 0 ? "font-medium text-rose-700" : "text-amber-700"}>
+                            {material.shortage > 0 ? `${material.shortage.toFixed(2)} ${material.uom} short` : `${material.daysLeft.toFixed(1)} days left`}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="mt-1 text-sm text-emerald-700">No current material shortfall or under-two-day supply.</p>}
+                </a>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Equipment cost breakdown by plant */}
         {canEquipment && (

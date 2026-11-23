@@ -268,10 +268,28 @@ export default function PlantDispatches() {
     return v ? parseInt(v, 10) : null;
   }, [searchString]);
   const [autoEditDone, setAutoEditDone] = useState(false);
+  const [lastDispatchActionAt, setLastDispatchActionAt] = useState(0);
 
   const { data: dispatches, isLoading } = useQuery<Array<TruckDispatch & { supplyOrderNo?: string | null; supplyOrderWorkName?: string | null; supplyOrderMixName?: string | null }>>({
     queryKey: ["/api/plant-module/dispatches"],
-    refetchInterval: 3_000,
+    refetchInterval: (query) => {
+      const rows = query.state.data ?? [];
+      const visible = rows.filter((dispatch: any) => {
+        if (filterDateFrom && dispatch.date < filterDateFrom) return false;
+        if (filterDateTo && dispatch.date > filterDateTo) return false;
+        if (filterPartyId !== "all" && dispatch.partyId !== Number(filterPartyId)) return false;
+        if (filterPlantName !== "all" && dispatch.plantName !== filterPlantName) return false;
+        if (filterVehicle !== "all" && dispatch.truckNumber !== filterVehicle) return false;
+        if (filterOwner !== "all" && dispatch.ownerName !== filterOwner) return false;
+        if (filterMixType !== "all") {
+          if (dispatch.mixType && dispatch.mixType.toUpperCase() !== filterMixType) return false;
+        }
+        return true;
+      });
+      if (visible.some((dispatch: any) => dispatch.dispatchProSyncStatus === "waiting")) return 10_000;
+      if (lastDispatchActionAt && Date.now() - lastDispatchActionAt < 60_000) return 60_000;
+      return false;
+    },
   });
 
   const { data: parties } = useQuery<Party[]>({
@@ -502,6 +520,7 @@ export default function PlantDispatches() {
     mutationFn: ({ id, data }: { id: number; data: any }) =>
       apiRequest("PUT", `/api/plant-module/dispatches/${id}`, data),
     onSuccess: () => {
+      setLastDispatchActionAt(Date.now());
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/dispatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
@@ -527,6 +546,7 @@ export default function PlantDispatches() {
   const retryDispatchProMutation = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/plant-module/dispatches/${id}/dispatchpro/retry`, {}),
     onSuccess: () => {
+      setLastDispatchActionAt(Date.now());
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/dispatches"] });
       toast({ title: "DispatchPro retry queued" });
     },
@@ -1909,6 +1929,23 @@ export default function PlantDispatches() {
                   ))}
                 </SelectContent>
               </Select>
+                    {partyId && (
+                      <div className="mt-2 rounded border bg-muted/30 px-3 py-2 text-sm" data-testid="dispatch-party-order-stock-summary">
+                        <p className="font-semibold">
+                          {parties?.find(party => party.id === Number(partyId))?.name || "Selected party"}
+                          {" · "}
+                          {filteredTemplates.find(template => String(template.id) === mixTemplateId)?.name || "Mix not selected"}
+                        </p>
+                        <p className="text-muted-foreground">
+                          {dispatchOrderContext
+                            ? `${dispatchOrderContext.orderNo || "Open order"}${dispatchOrderContext.workName ? ` · ${dispatchOrderContext.workName}` : ""} · party-owned stock / material needs are checked for this mix`
+                            : "No open supply order for this party and date; plant stock rules remain unchanged."}
+                        </p>
+                        {supplyAlertLines.filter(line => line.partyId === Number(partyId)).map((line, index) => (
+                          <p key={`${line.orderId ?? "party"}:${line.materialName}:${index}`} className="text-amber-700">{line.message}</p>
+                        ))}
+                      </div>
+                    )}
             </div>
             <div>
               <Label className="text-sm text-muted-foreground">MIX TYPE</Label>

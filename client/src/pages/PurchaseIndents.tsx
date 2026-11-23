@@ -920,7 +920,7 @@ export default function PurchaseIndents() {
   };
   // Dual-route: Bulk plant receipt dialog (Route B)
   const [bulkReceiptOpen, setBulkReceiptOpen] = useState(false);
-  type BulkReceiptItemData = { qty: string; uom: string; vendor: string; rate: string; receiptDate: string; remarks: string; partyId: string };
+  type BulkReceiptItemData = { qty: string; uom: string; vendor: string; rate: string; receiptDate: string; remarks: string; partyId: string; packed?: boolean; actualNetWeightKg?: string };
   const [bulkReceiptData, setBulkReceiptData] = useState<Record<number, BulkReceiptItemData>>({});
   const [bulkReceivingLocation, setBulkReceivingLocation] = useState<string>("");
   const [bulkReceivingSiteId, setBulkReceivingSiteId] = useState<number | null>(null);
@@ -5249,8 +5249,11 @@ export default function PurchaseIndents() {
                 </div>
 
                 {bulkItems.map(item => {
-                  const rd = bulkReceiptData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" };
+                  const packedMaterial = rawMaterialsList?.find((material: any) => Number(material.id) === Number(item.materialId));
+                  const packedConfigured = !!packedMaterial?.packedUnitName;
+                  const rd = bulkReceiptData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "", packed: false, actualNetWeightKg: "" };
                   const upd = (field: string, val: string) => setBulkReceiptData(prev => ({ ...prev, [item.id]: { ...rd, [field]: val } }));
+                  const packed = rd.packed === true;
                   return (
                     <div key={item.id} className="border rounded-lg p-3 space-y-2">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -5280,6 +5283,52 @@ export default function PurchaseIndents() {
                           <Input value={rd.remarks} onChange={e => upd("remarks", e.target.value)} data-testid={`input-br-remarks-${item.id}`} />
                         </div>
                       </div>
+                      {packedConfigured && (
+                        <div className="rounded border border-amber-200 bg-amber-50/50 p-2 space-y-2">
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={packed}
+                              onChange={event => upd("packed", event.target.checked ? "true" : "false")}
+                              data-testid={`checkbox-packed-receipt-${item.id}`}
+                            />
+                            Receive as packed {packedMaterial.packedUnitName.toLowerCase()} count
+                          </label>
+                          {packed && (
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <p className="text-xs text-muted-foreground">
+                                {packedMaterial.packedUnitNetWeightKg != null
+                                  ? `Standard: ${packedMaterial.packedUnitNetWeightKg} kg per ${packedMaterial.packedUnitName.toLowerCase()}`
+                                  : packedMaterial.packedUnitVolumeLiters != null
+                                    ? `Standard: ${packedMaterial.packedUnitVolumeLiters} L per ${packedMaterial.packedUnitName.toLowerCase()}`
+                                    : "Packed profile is incomplete. Enter actual total net weight or complete the Material Master profile."}
+                              </p>
+                              <div>
+                                <Label className="text-xs">Actual total net weight, kg (optional; overrides standard)</Label>
+                                <Input type="number" min="0.001" step="0.1" value={rd.actualNetWeightKg || ""}
+                                  onChange={event => upd("actualNetWeightKg", event.target.value)}
+                                  data-testid={`input-packed-actual-weight-${item.id}`} />
+                              </div>
+                              {Number(rd.qty) > 0 && (
+                                <p className="text-sm font-semibold sm:col-span-2" data-testid={`text-packed-stock-conversion-${item.id}`}>
+                                  {Number(rd.actualNetWeightKg) > 0
+                                    ? `Stock addition = ${(Number(rd.actualNetWeightKg) / 1000).toFixed(3)} MT (actual net weight)`
+                                    : Number(packedMaterial.packedUnitNetWeightKg) > 0
+                                      ? `Stock addition = ${(Number(rd.qty) * Number(packedMaterial.packedUnitNetWeightKg) / 1000).toFixed(3)} MT`
+                                      : Number(packedMaterial.packedUnitVolumeLiters) > 0 && Number(packedMaterial.bulkDensity) > 0
+                                        ? `Stock addition = ${(Number(rd.qty) * Number(packedMaterial.packedUnitVolumeLiters) * Number(packedMaterial.bulkDensity) / 1000).toFixed(3)} MT`
+                                        : "Enter actual net weight or complete the Material Master profile"}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {!packedConfigured && packedMaterial && /bitumen|emulsion/i.test(`${packedMaterial.category ?? ""} ${packedMaterial.name ?? ""}`) && (
+                        <p className="text-xs text-amber-700" data-testid={`text-packed-profile-missing-${item.id}`}>
+                          Set barrel weight in Material Master before receiving this material in barrels or drums.
+                        </p>
+                      )}
                     </div>
                   );
                 })}
@@ -5296,12 +5345,17 @@ export default function PurchaseIndents() {
                       receivingSiteId: bulkReceivingSiteId,
                       items: bulkItems.map(item => {
                         const rd = bulkReceiptData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" };
+                        const packedMaterial = rawMaterialsList?.find((material: any) => Number(material.id) === Number(item.materialId));
+                        const packed = rd.packed === true || rd.packed === "true";
                         return {
                           itemId: item.id,
                           materialId: item.materialId,
                           materialName: item.description,
                           qty: parseFloat(rd.qty) || 0,
-                          uom: rd.uom,
+                          uom: packed && packedMaterial?.packedUnitName ? packedMaterial.packedUnitName : rd.uom,
+                          packedCount: packed ? (parseFloat(rd.qty) || 0) : null,
+                          packedUnitName: packed ? packedMaterial?.packedUnitName ?? null : null,
+                          actualNetWeightKg: packed && rd.actualNetWeightKg ? Number(rd.actualNetWeightKg) : null,
                           vendor: rd.vendor || null,
                           rate: parseFloat(rd.rate) || null,
                           purchaseDate: rd.receiptDate,

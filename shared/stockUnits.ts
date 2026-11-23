@@ -90,6 +90,14 @@ export function roundStockQuantity(value: number): number {
   return Math.abs(rounded) < 0.000001 ? 0 : rounded;
 }
 
+/** Small stock-ledger rounding differences that should not raise an alert. */
+export function stockDifferenceTolerance(uom: string | null | undefined): number {
+  const kind = normalizeUom(normalizeWeightUnit(uom));
+  if (kind === "MT") return 0.01;
+  if (kind === "L") return 1;
+  return 0.0001;
+}
+
 export interface StockLedgerBalanceInput {
   id: number;
   materialId: number;

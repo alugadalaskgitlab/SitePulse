@@ -97,6 +97,7 @@ import {
   ldoLogs,
   stockBalances,
   stockLedger,
+  packedStockDecants,
   materialIssues,
   materialReturns,
   sitePurchases,
@@ -534,8 +535,10 @@ import {
   convertTransferQuantityBetweenBalances,
   normalizeWeightUnit,
   roundStockQuantity,
+  stockDifferenceTolerance,
   stockUnitForMaterial,
 } from "@shared/stockUnits";
+import { packedReceiptStockQuantity } from "@shared/packedStock";
 import { emptyDensitySkips, needsStockDensity, recordDensitySkip, type DensitySkips } from "@shared/siteMaterialStockWarnings";
 import { canonMaterialName } from "@shared/materialMatch";
 import { suggestWorkCategory, suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
@@ -987,6 +990,9 @@ export interface IStorage {
   // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)
   reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }>;
   getStockBalanceLedgerDiscrepancies(): Promise<{ rows: Array<{ materialId: number; materialName: string; partyId: number | null; partyName: string; stockUom: string; storedBalance: number; ledgerBalance: number; difference: number; balanceIds: number[] }>; errors: string[] }>;
+  matchStockBalancesToLedger(actor: { userId: number; name: string }, reason: string, confirmation: string): Promise<{ updated: number }>;
+  getPackedStockPositionSummary(): Promise<Array<{ materialId: number; materialName: string; partyId: number | null; partyName: string; stockUom: string; tank1: number; tank2: number; packed: number; packedCount: number; total: number; totalMt: number | null }>>;
+  decantPackedStock(input: { date: string; materialId: number; partyId: number | null; packedCount: number; quantityMt: number; tankNumber: 1 | 2 }, actor: { userId: number; name: string }): Promise<{ movedQuantity: number; uom: string }>;
 
   // One-time data fix: insert missing LAXMI 0-qty marker rows for dispatches 49 & 50
   // and correct the over-counted HLC borrow entries (Task #427).
@@ -3039,11 +3045,16 @@ export class DatabaseStorage implements IStorage {
     const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
     if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
 
-    // Same conversion the stock-IN used at creation (do not redesign).
+    // Reverse the exact receipt-time packed quantity where applicable.
     let stockQuantity = receipt.quantity;
-    if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
+    let stockUom = receipt.uom;
+    if (receipt.packedCount != null && receipt.packedStockQuantity != null) {
+      stockQuantity = Number(receipt.packedStockQuantity);
+      stockUom = stockUnitForMaterial(material, receipt.uom);
+    } else if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
       if (receipt.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
         stockQuantity = receipt.quantity * material.conversionFactor;
+        stockUom = material.conversionToUom;
       }
     }
     const targetPartyId = receipt.isPlantCommon ? null : (receipt.partyId ?? null);
@@ -3062,7 +3073,7 @@ export class DatabaseStorage implements IStorage {
     // aborts the whole transaction when consumed stock makes a full reversal
     // impossible — the receipt then stays active and stock stays unchanged.
     const { newBalance } = await this._adjustStockBalance(
-      tx, receipt.materialId, targetPartyId, -stockQuantity, null,
+      tx, receipt.materialId, targetPartyId, -stockQuantity, stockUom,
       dieselStockSufficiencyGuard(material.name, "material_receipt_cancel"),
     );
 
@@ -3077,9 +3088,13 @@ export class DatabaseStorage implements IStorage {
       quantityIn: 0,
       quantityOut: stockQuantity,
       balanceAfter: newBalance,
-      uom: material.conversionToUom || receipt.uom,
+      uom: stockUom,
       notes: `Reversal of cancelled Material Receipt #${id} (${receipt.quantity} ${receipt.uom}) by user #${userId}. Reason: ${reason}`,
       tankNumber: receipt.tankNumber ?? null,
+      stockPosition: receipt.packedCount != null
+        ? "packed"
+        : receipt.tankNumber === 1 ? "tank_1" : receipt.tankNumber === 2 ? "tank_2" : null,
+      packedCountOut: receipt.packedCount ?? null,
     });
 
     // A cancelled receipt must stop counting everywhere: remove the linked
@@ -6588,7 +6603,7 @@ export class DatabaseStorage implements IStorage {
         invoiceDate: transactionDate,
         documentStatus: "draft" as const,
       };
-      const [result] = await tx.insert(materialReceipts).values(uppercased).returning();
+      let [result] = await tx.insert(materialReceipts).values(uppercased).returning();
       
       // Determine the target partyId for stock
       const targetPartyId = receipt.isPlantCommon ? null : (receipt.partyId ?? null);
@@ -6603,7 +6618,25 @@ export class DatabaseStorage implements IStorage {
       let stockQuantity = receipt.quantity;
       let stockUom = receipt.uom;
       
-      if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
+      if (receipt.packedCount != null) {
+        if (!receipt.packedUnitName?.trim()) {
+          throw new Error("Select the packed unit configured in Material Master.");
+        }
+        stockUom = stockUnitForMaterial(material, receipt.uom);
+        stockQuantity = packedReceiptStockQuantity({
+          count: Number(receipt.packedCount),
+          actualNetWeightKg: receipt.actualNetWeightKg == null ? null : Number(receipt.actualNetWeightKg),
+          unitNetWeightKg: material.packedUnitNetWeightKg == null ? null : Number(material.packedUnitNetWeightKg),
+          unitVolumeLiters: material.packedUnitVolumeLiters == null ? null : Number(material.packedUnitVolumeLiters),
+          stockUom,
+          bulkDensity: Number(material.bulkDensity) || null,
+        });
+        [result] = await tx.update(materialReceipts).set({
+          packedUnitName: material.packedUnitName,
+          packedStockQuantity: stockQuantity,
+          actualNetWeightKg: receipt.actualNetWeightKg ?? null,
+        }).where(eq(materialReceipts.id, result.id)).returning();
+      } else if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
         // If receipt is in the "from" UOM, convert to "to" UOM
         if (receipt.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
           stockQuantity = receipt.quantity * material.conversionFactor;
@@ -6615,7 +6648,9 @@ export class DatabaseStorage implements IStorage {
       const { newBalance } = await this._adjustStockBalance(tx, receipt.materialId, targetPartyId, stockQuantity, stockUom);
       
       // Add ledger entry (store converted quantity for stock, note original in notes)
-      const conversionNote = stockQuantity !== receipt.quantity 
+      const conversionNote = receipt.packedCount != null
+        ? `${receipt.packedCount} ${material.packedUnitName} recorded as ${stockQuantity.toFixed(3)} ${stockUom}${receipt.actualNetWeightKg != null ? " using actual net weight" : ""}`
+        : stockQuantity !== receipt.quantity 
         ? `From ${receipt.supplier || 'Supplier'} (${receipt.quantity} ${receipt.uom} converted to ${stockQuantity.toFixed(3)} ${stockUom})`
         : receipt.supplier ? `From ${receipt.supplier}` : undefined;
       
@@ -6630,6 +6665,10 @@ export class DatabaseStorage implements IStorage {
         uom: stockUom,
         notes: conversionNote,
         tankNumber: receipt.tankNumber ?? null,
+        stockPosition: receipt.packedCount != null
+          ? "packed"
+          : receipt.tankNumber === 1 ? "tank_1" : receipt.tankNumber === 2 ? "tank_2" : null,
+        packedCountIn: receipt.packedCount ?? null,
       });
 
       // Task #490 — If this is an LDO or DIESEL receipt going to a specific tank,
@@ -6722,7 +6761,10 @@ export class DatabaseStorage implements IStorage {
       if (!oldMaterial) throw new Error(`Plant material #${existing.materialId} not found`);
       let oldStockQuantity = existing.quantity;
       let oldStockUom = existing.uom;
-      if (oldMaterial.conversionFactor && oldMaterial.conversionFromUom && oldMaterial.conversionToUom) {
+      if (existing.packedCount != null && existing.packedStockQuantity != null) {
+        oldStockQuantity = Number(existing.packedStockQuantity);
+        oldStockUom = stockUnitForMaterial(oldMaterial, existing.uom);
+      } else if (oldMaterial.conversionFactor && oldMaterial.conversionFromUom && oldMaterial.conversionToUom) {
         if (existing.uom.toUpperCase() === oldMaterial.conversionFromUom.toUpperCase()) {
           oldStockQuantity = existing.quantity * oldMaterial.conversionFactor;
           oldStockUom = oldMaterial.conversionToUom;
@@ -6735,13 +6777,39 @@ export class DatabaseStorage implements IStorage {
       const newUom = receipt.uom ?? existing.uom;
       const newIsPlantCommon = receipt.isPlantCommon ?? existing.isPlantCommon;
       const newPartyId = receipt.partyId ?? existing.partyId;
+      const newPackedCount = receipt.packedCount !== undefined ? receipt.packedCount : existing.packedCount;
+      const newActualNetWeightKg = receipt.actualNetWeightKg !== undefined
+        ? receipt.actualNetWeightKg
+        : existing.actualNetWeightKg;
       
       const [storedNewMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, newMaterialId)).limit(1);
       const newMaterial = storedNewMaterial ? withEffectiveMaterialDensity(storedNewMaterial) : undefined;
       if (!newMaterial) throw new Error(`Plant material #${newMaterialId} not found`);
       let newStockQuantity = newQuantity;
       let newStockUom = newUom;
-      if (newMaterial.conversionFactor && newMaterial.conversionFromUom && newMaterial.conversionToUom) {
+      if (newPackedCount != null) {
+        if (!newMaterial.packedUnitName?.trim()) throw new Error("Set the packed unit in Material Master before editing this receipt.");
+        newStockUom = stockUnitForMaterial(newMaterial, newUom);
+        newStockQuantity = packedReceiptStockQuantity({
+          count: Number(newPackedCount),
+          actualNetWeightKg: newActualNetWeightKg == null ? null : Number(newActualNetWeightKg),
+          unitNetWeightKg: newMaterial.packedUnitNetWeightKg == null ? null : Number(newMaterial.packedUnitNetWeightKg),
+          unitVolumeLiters: newMaterial.packedUnitVolumeLiters == null ? null : Number(newMaterial.packedUnitVolumeLiters),
+          stockUom: newStockUom,
+          bulkDensity: Number(newMaterial.bulkDensity) || null,
+        });
+        updates.packedCount = newPackedCount;
+        updates.packedUnitName = newMaterial.packedUnitName;
+        updates.packedStockQuantity = newStockQuantity;
+        updates.actualNetWeightKg = newActualNetWeightKg;
+        updates.uom = newMaterial.packedUnitName;
+      } else {
+        updates.packedCount = null;
+        updates.packedUnitName = null;
+        updates.packedStockQuantity = null;
+        updates.actualNetWeightKg = null;
+      }
+      if (newPackedCount == null && newMaterial.conversionFactor && newMaterial.conversionFromUom && newMaterial.conversionToUom) {
         if (newUom.toUpperCase() === newMaterial.conversionFromUom.toUpperCase()) {
           newStockQuantity = newQuantity * newMaterial.conversionFactor;
           newStockUom = newMaterial.conversionToUom;
@@ -6790,8 +6858,14 @@ export class DatabaseStorage implements IStorage {
         quantityIn: newStockQuantity,
         balanceAfter: finalBalance,
         uom: newStockUom,
-        notes: conversionNote,
+        notes: newPackedCount != null
+          ? `${newPackedCount} ${newMaterial.packedUnitName} recorded as ${newStockQuantity.toFixed(3)} ${newStockUom}${newActualNetWeightKg != null ? " using actual net weight" : ""}`
+          : conversionNote,
         tankNumber: receiptTankNumber ?? null,
+        stockPosition: newPackedCount != null
+          ? "packed"
+          : receiptTankNumber === 1 ? "tank_1" : receiptTankNumber === 2 ? "tank_2" : null,
+        packedCountIn: newPackedCount ?? null,
       });
 
       // Task #490 — Sync the linked ldo_flow_readings receipt row.
@@ -6875,11 +6949,17 @@ export class DatabaseStorage implements IStorage {
     const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
     if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
 
-    // Calculate the converted quantity that was added
+    // Calculate the exact converted quantity that was added, including any
+    // receipt-time actual net weight override for packed materials.
     let stockQuantity = receipt.quantity;
-    if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
+    let stockUom = receipt.uom;
+    if (receipt.packedCount != null && receipt.packedStockQuantity != null) {
+      stockQuantity = Number(receipt.packedStockQuantity);
+      stockUom = stockUnitForMaterial(material, receipt.uom);
+    } else if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
       if (receipt.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
         stockQuantity = receipt.quantity * material.conversionFactor;
+        stockUom = material.conversionToUom;
       }
     }
 
@@ -6888,7 +6968,7 @@ export class DatabaseStorage implements IStorage {
       // Reverse the stock balance (row-level locking). Guarded: never let a
       // hard delete leave a negative balance behind when part of the stock
       // has already been consumed — block the delete instead.
-      await this._adjustStockBalance(tx, receipt.materialId, targetPartyId, -stockQuantity, null,
+      await this._adjustStockBalance(tx, receipt.materialId, targetPartyId, -stockQuantity, stockUom,
         dieselStockSufficiencyGuard(material.name, "material_receipt_delete"));
     }
 
@@ -7247,12 +7327,47 @@ export class DatabaseStorage implements IStorage {
       // Get the dispatch to reverse the stock ledger entries
       const [dispatch] = await tx.select().from(truckDispatches).where(eq(truckDispatches.id, id)).limit(1);
       if (!dispatch) return false;
-      
-      // Delete related ledger entries (consumption entries for this dispatch)
+      const dispatchEntries = await tx.select().from(stockLedger).where(and(
+        eq(stockLedger.transactionType, "dispatch"),
+        eq(stockLedger.referenceId, id)
+      ));
+      // Restore the stored stock snapshots in the same transaction as the
+      // ledger removal. These rows represent the net stock effect of this
+      // dispatch; reversing them before deletion keeps the two records aligned.
+      for (const entry of dispatchEntries) {
+        const netChange = Number(entry.quantityIn ?? 0) - Number(entry.quantityOut ?? 0);
+        if (!Number.isFinite(netChange) || netChange === 0) continue;
+        await this._adjustStockBalance(
+          tx,
+          entry.materialId,
+          entry.partyId ?? null,
+          netChange,
+          entry.uom ?? null,
+        );
+      }
+
+      // Delete related ledger entries only after all balance reversals succeed.
       await tx.delete(stockLedger).where(and(
         eq(stockLedger.transactionType, "dispatch"),
         eq(stockLedger.referenceId, id)
       ));
+      for (const materialId of new Set(dispatchEntries.map(entry => Number(entry.materialId)))) {
+        await tx.execute(sql`
+          WITH running AS (
+            SELECT id,
+              SUM(COALESCE(quantity_in, 0) - COALESCE(quantity_out, 0))
+                OVER (PARTITION BY party_id, material_id ORDER BY date, id
+                      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS balance
+            FROM stock_ledger
+            WHERE material_id = ${materialId}
+          )
+          UPDATE stock_ledger AS ledger
+          SET balance_after = ROUND(running.balance::numeric, 6)
+          FROM running
+          WHERE ledger.id = running.id
+            AND ledger.balance_after IS DISTINCT FROM ROUND(running.balance::numeric, 6)
+        `);
+      }
       
       // Delete the dispatch
       await tx.delete(truckDispatches).where(eq(truckDispatches.id, id));
@@ -9219,8 +9334,253 @@ export class DatabaseStorage implements IStorage {
         difference: roundStockQuantity(row.before - row.after),
         balanceIds: row.existingBalanceIds,
       }))
-      .filter(row => row.difference !== 0);
+      .filter(row => Math.abs(row.difference) >= stockDifferenceTolerance(row.stockUom));
     return { rows, errors: preview.errors };
+  }
+
+  async matchStockBalancesToLedger(
+    actor: { userId: number; name: string },
+    reason: string,
+    confirmation: string,
+  ): Promise<{ updated: number }> {
+    const cleanReason = reason.trim();
+    if (confirmation !== "MATCH STOCK") throw new Error('Type "MATCH STOCK" to confirm.');
+    if (!cleanReason) throw new Error("A reason is required.");
+    return db.transaction(async tx => {
+      const [materials, partiesRows, balances, ledgerEntries] = await Promise.all([
+        tx.select().from(plantMaterials),
+        tx.select().from(parties),
+        tx.select().from(stockBalances),
+        tx.select().from(stockLedger),
+      ]);
+      const preview = buildStockBalanceRebuildPreview({
+        materials: materials.map(material => ({
+          id: Number(material.id), name: String(material.name),
+          defaultUom: material.defaultUom ?? null,
+          conversionToUom: material.conversionToUom ?? null,
+          bulkDensity: material.bulkDensity ?? null,
+        })),
+        parties: partiesRows.map(party => ({ id: Number(party.id), name: String(party.name) })),
+        balances: balances.map(balance => ({
+          id: Number(balance.id), materialId: Number(balance.materialId),
+          partyId: balance.partyId == null ? null : Number(balance.partyId),
+          balance: balance.balance, uom: balance.uom ?? null,
+        })),
+        ledger: ledgerEntries.map(entry => ({
+          id: Number(entry.id), materialId: Number(entry.materialId),
+          partyId: entry.partyId == null ? null : Number(entry.partyId),
+          transactionType: String(entry.transactionType),
+          quantityIn: entry.quantityIn, quantityOut: entry.quantityOut, uom: entry.uom ?? null,
+        })),
+      });
+      if (preview.errors.length) throw new Error(`Cannot match balances while the ledger has conversion errors: ${preview.errors.join("; ")}`);
+      const materialById = new Map(materials.map(material => [Number(material.id), material]));
+      const partyClause = (partyId: number | null) =>
+        partyId == null ? sql`${stockBalances.partyId} IS NULL` : eq(stockBalances.partyId, partyId);
+      const changedRows = preview.rows.filter(row =>
+        Math.abs(roundStockQuantity(row.before - row.after)) >= stockDifferenceTolerance(row.stockUom),
+      );
+      for (const row of changedRows) {
+        const [material] = [materialById.get(row.materialId)];
+        if (!material) throw new Error(`Material #${row.materialId} is missing.`);
+        const clause = and(eq(stockBalances.materialId, row.materialId), partyClause(row.partyId));
+        const locked = await tx.select().from(stockBalances).where(clause).for("update");
+        if (locked.length > 1) {
+          throw new Error(`${row.materialName} / ${row.partyName} has multiple stored balance rows; no rows were changed.`);
+        }
+        const old = locked[0];
+        if (old) {
+          await tx.update(stockBalances).set({
+            balance: String(row.after),
+            uom: row.stockUom,
+            lastUpdated: new Date(),
+          }).where(eq(stockBalances.id, old.id));
+          await tx.insert(auditLogs).values({
+            module: "plant_stock",
+            transactionId: old.id,
+            action: "match_stored_balance_to_ledger",
+            userId: actor.userId,
+            userName: actor.name,
+            userRole: "owner",
+            reason: cleanReason,
+            oldValues: { materialId: row.materialId, partyId: row.partyId, balance: old.balance, uom: old.uom },
+            newValues: { materialId: row.materialId, partyId: row.partyId, balance: row.after, uom: row.stockUom },
+          });
+        } else {
+          const [created] = await tx.insert(stockBalances).values({
+            partyId: row.partyId,
+            materialId: row.materialId,
+            balance: String(row.after),
+            uom: row.stockUom,
+            lastUpdated: new Date(),
+          }).returning({ id: stockBalances.id });
+          await tx.insert(auditLogs).values({
+            module: "plant_stock",
+            transactionId: created.id,
+            action: "match_stored_balance_to_ledger",
+            userId: actor.userId,
+            userName: actor.name,
+            userRole: "owner",
+            reason: cleanReason,
+            oldValues: { materialId: row.materialId, partyId: row.partyId, balance: null, uom: null },
+            newValues: { materialId: row.materialId, partyId: row.partyId, balance: row.after, uom: row.stockUom },
+          });
+        }
+      }
+      return { updated: changedRows.length };
+    });
+  }
+
+  async getPackedStockPositionSummary() {
+    const [materials, partiesRows, entries] = await Promise.all([
+      db.select().from(plantMaterials),
+      db.select({ id: parties.id, name: parties.name }).from(parties),
+      db.select().from(stockLedger).where(ne(stockLedger.transactionType, "equipment_issue")),
+    ]);
+    const partyName = new Map(partiesRows.map(row => [Number(row.id), String(row.name)]));
+    const materialById = new Map(materials.map(row => [Number(row.id), withEffectiveMaterialDensity(row)]));
+    const groups = new Map<string, {
+      materialId: number; materialName: string; partyId: number | null; partyName: string; stockUom: string;
+      tank1: number; tank2: number; packed: number; packedCount: number; total: number;
+    }>();
+    for (const entry of entries) {
+      const material = materialById.get(Number(entry.materialId));
+      if (!material || !(/bitumen|emulsion/i.test(`${material.category ?? ""} ${material.name}`))) continue;
+      const key = `${entry.materialId}:${entry.partyId ?? "common"}`;
+      const stockUom = stockUnitForMaterial(material, entry.uom);
+      const row = groups.get(key) ?? {
+        materialId: Number(entry.materialId),
+        materialName: String(material.name),
+        partyId: entry.partyId == null ? null : Number(entry.partyId),
+        partyName: entry.partyId == null ? "Plant common" : partyName.get(Number(entry.partyId)) ?? `Party #${entry.partyId}`,
+        stockUom,
+        tank1: 0,
+        tank2: 0,
+        packed: 0,
+        packedCount: 0,
+        total: 0,
+      };
+      const input = Number(entry.quantityIn ?? 0);
+      const output = Number(entry.quantityOut ?? 0);
+      const inStockUnit = convertStockQuantity(input, entry.uom, stockUom, Number(material.bulkDensity) || null);
+      const outStockUnit = convertStockQuantity(output, entry.uom, stockUom, Number(material.bulkDensity) || null);
+      row.total += inStockUnit - outStockUnit;
+      const position = entry.stockPosition ?? (entry.tankNumber === 1 ? "tank_1" : entry.tankNumber === 2 ? "tank_2" : null);
+      if (position === "tank_1") row.tank1 += inStockUnit - outStockUnit;
+      else if (position === "tank_2") row.tank2 += inStockUnit - outStockUnit;
+      else if (position === "packed") {
+        row.packed += inStockUnit - outStockUnit;
+        row.packedCount += Number(entry.packedCountIn ?? 0) - Number(entry.packedCountOut ?? 0);
+      }
+      groups.set(key, row);
+    }
+    return Array.from(groups.values()).map(row => {
+      const toMt = (value: number): number | null => {
+        try {
+          return roundStockQuantity(convertStockQuantity(value, row.stockUom, "MT",
+            Number(materialById.get(row.materialId)?.bulkDensity) || null));
+        } catch { return null; }
+      };
+      return {
+        ...row,
+        tank1: roundStockQuantity(row.tank1),
+        tank2: roundStockQuantity(row.tank2),
+        packed: roundStockQuantity(row.packed),
+        packedCount: roundStockQuantity(row.packedCount),
+        total: roundStockQuantity(row.total),
+        tank1Mt: toMt(row.tank1),
+        tank2Mt: toMt(row.tank2),
+        packedMt: toMt(row.packed),
+        totalMt: toMt(row.total),
+      };
+    }).sort((a, b) => a.materialName.localeCompare(b.materialName) || a.partyName.localeCompare(b.partyName));
+  }
+
+  async decantPackedStock(
+    input: { date: string; materialId: number; partyId: number | null; packedCount: number; quantityMt: number; tankNumber: 1 | 2 },
+    actor: { userId: number; name: string },
+  ): Promise<{ movedQuantity: number; uom: string }> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new Error("Enter a valid decant date.");
+    if (!Number.isFinite(input.packedCount) || input.packedCount <= 0) throw new Error("Enter a packed-unit count greater than zero.");
+    return db.transaction(async tx => {
+      const [materialRow] = await tx.select().from(plantMaterials)
+        .where(eq(plantMaterials.id, input.materialId)).limit(1).for("update");
+      if (!materialRow) throw new Error("Material not found.");
+      const material = withEffectiveMaterialDensity(materialRow);
+      if (!/bitumen|emulsion/i.test(`${material.category ?? ""} ${material.name}`)) {
+        throw new Error("Only bitumen and emulsion packed stock can be decanted.");
+      }
+      if (!material.packedUnitName?.trim()) throw new Error("Set the packed unit in Material Master first.");
+      const stockUom = stockUnitForMaterial(material, material.defaultUom);
+      if (!Number.isFinite(input.quantityMt) || input.quantityMt <= 0) {
+        throw new Error("Enter the MT to move into the tank.");
+      }
+      const movedQuantity = convertStockQuantity(input.quantityMt, "MT", stockUom, Number(material.bulkDensity) || null);
+      const partyClause = input.partyId == null
+        ? sql`${stockLedger.partyId} IS NULL`
+        : eq(stockLedger.partyId, input.partyId);
+      const packedRows = await tx.select().from(stockLedger).where(and(
+        eq(stockLedger.materialId, input.materialId),
+        partyClause,
+        eq(stockLedger.stockPosition, "packed"),
+      )).for("update");
+      const packedBalance = packedRows.reduce((sum, row) => {
+        const inQty = convertStockQuantity(Number(row.quantityIn ?? 0), row.uom, stockUom, Number(material.bulkDensity) || null);
+        const outQty = convertStockQuantity(Number(row.quantityOut ?? 0), row.uom, stockUom, Number(material.bulkDensity) || null);
+        return sum + inQty - outQty;
+      }, 0);
+      const packedCountBalance = packedRows.reduce((sum, row) =>
+        sum + Number(row.packedCountIn ?? 0) - Number(row.packedCountOut ?? 0), 0);
+      if (input.packedCount > packedCountBalance + 1e-6 || movedQuantity > packedBalance + 1e-6) {
+        throw new Error(`Only ${roundStockQuantity(packedCountBalance)} ${material.packedUnitName.toLowerCase()}s (${roundStockQuantity(packedBalance)} ${stockUom}) are in packed stock.`);
+      }
+      const balancePartyClause = input.partyId == null
+        ? sql`${stockBalances.partyId} IS NULL`
+        : eq(stockBalances.partyId, input.partyId);
+      const [balance] = await tx.select().from(stockBalances).where(and(
+        eq(stockBalances.materialId, input.materialId), balancePartyClause,
+      )).limit(1).for("update");
+      const balanceAfter = Number(balance?.balance ?? 0);
+      await tx.insert(packedStockDecants).values({
+        date: input.date,
+        partyId: input.partyId,
+        materialId: input.materialId,
+        packedCount: input.packedCount,
+        stockQuantity: movedQuantity,
+        stockUom,
+        tankNumber: input.tankNumber,
+        createdByUserId: actor.userId,
+        createdByName: actor.name,
+      });
+      await tx.insert(stockLedger).values([
+        {
+          date: input.date, partyId: input.partyId, materialId: input.materialId,
+          transactionType: "packed_stock_decant", referenceId: null,
+          quantityIn: 0, quantityOut: movedQuantity, balanceAfter, uom: stockUom,
+          notes: `Decanted ${input.packedCount} ${material.packedUnitName}`,
+          stockPosition: "packed", packedCountOut: input.packedCount,
+        },
+        {
+          date: input.date, partyId: input.partyId, materialId: input.materialId,
+          transactionType: "packed_stock_decant", referenceId: null,
+          quantityIn: movedQuantity, quantityOut: 0, balanceAfter, uom: stockUom,
+          notes: `Received from packed stock into tank ${input.tankNumber}`,
+          tankNumber: input.tankNumber,
+          stockPosition: input.tankNumber === 1 ? "tank_1" : "tank_2",
+        },
+      ]);
+      await tx.insert(auditLogs).values({
+        module: "plant_stock",
+        transactionId: input.materialId,
+        action: "packed_stock_decant",
+        userId: actor.userId,
+        userName: actor.name,
+        userRole: "owner_or_plant_in_charge",
+        oldValues: { partyId: input.partyId, packedCount: packedCountBalance, packedStock: packedBalance },
+        newValues: { partyId: input.partyId, decantedCount: input.packedCount, movedQuantity, uom: stockUom, tankNumber: input.tankNumber },
+      });
+      return { movedQuantity: roundStockQuantity(movedQuantity), uom: stockUom };
+    });
   }
 
   async updateStockBalance(partyId: number | null, materialId: number, quantity: number, uom: string): Promise<StockBalance> {
@@ -17651,7 +18011,7 @@ export class DatabaseStorage implements IStorage {
     indentId: number,
     receivingLocation: string,
     receivingSiteId: number | null,
-    items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string }[],
+    items: { itemId: number; materialId?: number; materialName: string; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; purchaseDate?: string; paymentMode?: string; packedCount?: number | null; packedUnitName?: string | null; actualNetWeightKg?: number | null }[],
     createdByUserId: number,
     createdBy: string
   ): Promise<void> {
@@ -17676,7 +18036,10 @@ export class DatabaseStorage implements IStorage {
         materialName: item.materialName || piItem?.description || "",
         materialId: item.materialId ?? piItem?.materialId ?? null,
         qty: item.qty,
-        uom: item.uom,
+        uom: item.packedUnitName || item.uom,
+        packedCount: item.packedCount ?? null,
+        packedUnitName: item.packedUnitName ?? null,
+        actualNetWeightKg: item.actualNetWeightKg ?? null,
         vendor: item.vendor?.toUpperCase() ?? null,
         rate: item.rate ?? null,
         paymentMode: item.paymentMode ?? null,
@@ -17749,6 +18112,9 @@ export class DatabaseStorage implements IStorage {
       materialId: ppr.materialId,
       quantity: ppr.qty,
       uom: ppr.uom,
+      packedCount: ppr.packedCount,
+      packedUnitName: ppr.packedUnitName,
+      actualNetWeightKg: ppr.actualNetWeightKg,
       supplier: ppr.vendor ?? null,
       partyId: null,
       isPlantCommon: 0,

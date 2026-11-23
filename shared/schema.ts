@@ -646,6 +646,9 @@ export const plantMaterials = pgTable("plant_materials", {
   procurementRoute: text("procurement_route"), // 'stores' | 'bulk_plant' | 'material' | null (unconfigured)
   // Instruction 019B §1 — typed alias column (physical column already exists via ALTER TABLE migration)
   aliases: text("aliases"),                                       // JSON array of approved alias strings
+  packedUnitName: text("packed_unit_name"), // e.g. Barrel or Drum; null means ordinary loose receipt
+  packedUnitNetWeightKg: real("packed_unit_net_weight_kg"), // standard net weight per packed unit
+  packedUnitVolumeLiters: real("packed_unit_volume_liters"), // optional standard volume per packed unit
 });
 
 // Material Opening Stocks (per material, per party/stock owner)
@@ -750,6 +753,10 @@ export const materialReceipts = pgTable("material_receipts", {
   materialId: integer("material_id").notNull(),
   quantity: real("quantity").notNull(),
   uom: text("uom").notNull(),
+  packedCount: real("packed_count"), // count at receipt time; nullable for ordinary receipts
+  packedUnitName: text("packed_unit_name"), // receipt-time snapshot of the material's pack label
+  packedStockQuantity: real("packed_stock_quantity"), // packed contents in the material's stock unit
+  actualNetWeightKg: real("actual_net_weight_kg"), // optional total net weight override at receipt
   supplier: text("supplier"),
   transporter: text("transporter"), // Who transported the material (separate from supplier)
   vehicleNumber: text("vehicle_number"),
@@ -1192,6 +1199,9 @@ export const stockLedger = pgTable("stock_ledger", {
   uom: text("uom"),
   notes: text("notes"),
   tankNumber: integer("tank_number"), // For bitumen: which physical tank (1 or 2) this movement belongs to
+  stockPosition: text("stock_position"), // packed | tank_1 | tank_2; null for legacy / unlocated stock
+  packedCountIn: real("packed_count_in"),
+  packedCountOut: real("packed_count_out"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("stock_ledger_date_idx").on(table.date),
@@ -1203,6 +1213,26 @@ export const stockLedger = pgTable("stock_ledger", {
   // "Dispatch ledger deduplication + unique index" block) because drizzle-kit
   // push does not support expression-based columns inside uniqueIndex.on().
   // Index name: stock_ledger_dispatch_dedup_idx
+}));
+
+// A physical packed-stock decant moves stock between positions without changing
+// the party's total balance. The corresponding pair of stock_ledger rows is the
+// quantity history; this row retains the barrel/drum count for the packed position.
+export const packedStockDecants = pgTable("plant_stock_decants", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  partyId: integer("party_id").references(() => parties.id, { onDelete: "set null" }),
+  materialId: integer("material_id").notNull().references(() => plantMaterials.id),
+  packedCount: real("packed_count").notNull(),
+  stockQuantity: real("stock_quantity").notNull(),
+  stockUom: text("stock_uom").notNull(),
+  tankNumber: integer("tank_number").notNull(),
+  createdByUserId: integer("created_by_user_id"),
+  createdByName: text("created_by_name").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, table => ({
+  dateIdx: index("plant_stock_decants_date_idx").on(table.date),
+  materialPartyIdx: index("plant_stock_decants_material_party_idx").on(table.materialId, table.partyId, table.date),
 }));
 
 // Physical Stock Reconciliation — session header (one per posting batch).
@@ -1688,6 +1718,7 @@ export const insertGeneratorLogSchema = createInsertSchema(generatorLogs).omit({
 export const insertLdoLogSchema = createInsertSchema(ldoLogs).omit({ id: true, createdAt: true });
 export const insertStockBalanceSchema = createInsertSchema(stockBalances).omit({ id: true, lastUpdated: true });
 export const insertStockLedgerSchema = createInsertSchema(stockLedger).omit({ id: true, createdAt: true });
+export const insertPackedStockDecantSchema = createInsertSchema(packedStockDecants).omit({ id: true, createdAt: true });
 export const insertMaterialIssueSchema = createInsertSchema(materialIssues).omit({ id: true, createdAt: true });
 export const insertMaterialReturnSchema = createInsertSchema(materialReturns).omit({ id: true, createdAt: true });
 export const insertSiteMaterialTripSchema = createInsertSchema(siteMaterialTrips).omit({ id: true, createdAt: true, supplierVendorId: true, materialSourceVendorId: true });
@@ -1709,6 +1740,7 @@ export type GeneratorLog = typeof generatorLogs.$inferSelect;
 export type LdoLog = typeof ldoLogs.$inferSelect;
 export type StockBalance = typeof stockBalances.$inferSelect;
 export type StockLedgerEntry = typeof stockLedger.$inferSelect;
+export type PackedStockDecant = typeof packedStockDecants.$inferSelect;
 export type MaterialIssue = typeof materialIssues.$inferSelect;
 export type MaterialReturn = typeof materialReturns.$inferSelect;
 // Insert Types
@@ -1726,6 +1758,7 @@ export type InsertGeneratorLog = z.infer<typeof insertGeneratorLogSchema>;
 export type InsertLdoLog = z.infer<typeof insertLdoLogSchema>;
 export type InsertStockBalance = z.infer<typeof insertStockBalanceSchema>;
 export type InsertStockLedger = z.infer<typeof insertStockLedgerSchema>;
+export type InsertPackedStockDecant = z.infer<typeof insertPackedStockDecantSchema>;
 export type InsertMaterialIssue = z.infer<typeof insertMaterialIssueSchema>;
 export type InsertMaterialReturn = z.infer<typeof insertMaterialReturnSchema>;
 export type SiteMaterialTrip = typeof siteMaterialTrips.$inferSelect;
@@ -4902,6 +4935,9 @@ export const pendingPlantReceipts = pgTable("pending_plant_receipts", {
   materialId: integer("material_id"),
   qty: real("qty").notNull(),
   uom: text("uom").notNull(),
+  packedCount: real("packed_count"),
+  packedUnitName: text("packed_unit_name"),
+  actualNetWeightKg: real("actual_net_weight_kg"),
   vendor: text("vendor"),
   rate: real("rate"),
   paymentMode: text("payment_mode"),

@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Link, useSearch, useLocation } from "wouter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X, RotateCcw, ClipboardList, GitCompare, ExternalLink, AlertTriangle, Scale } from "lucide-react";
 import { format, subDays } from "date-fns";
@@ -25,7 +26,7 @@ import { NegativeBalanceBannerMulti } from "@/components/NegativeBalanceBanner";
 import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
 import { contextKeyForReturnPath, resolveInternalReturnTo } from "@/lib/procurementNavigation";
-import { convertStockQuantity, stockUnitForMaterial } from "@shared/stockUnits";
+import { convertStockQuantity, stockDifferenceTolerance, stockUnitForMaterial } from "@shared/stockUnits";
 import { displayName } from "@shared/displayName";
 import { openPrintableHtmlOrPreview } from "@/lib/installedApp";
 
@@ -101,8 +102,9 @@ export default function PlantStock() {
   const backLink = isPortalOrigin
     ? "/"
     : resolveInternalReturnTo(requestedReturnTo, currentTab === "stock" ? "/plant/hub" : "/stores/hub");
-  const [confirmAction, setConfirmAction] = useState<null | "reconcile" | "fix-phantom" | "rebuild" | "reassign">(null);
+  const [confirmAction, setConfirmAction] = useState<null | "reconcile" | "fix-phantom" | "rebuild" | "reassign" | "match-ledger">(null);
   const [confirmText, setConfirmText] = useState("");
+  const [stockMatchReason, setStockMatchReason] = useState("");
   const requiredConfirmText = confirmAction === "reconcile"
     ? "RECONCILE"
     : confirmAction === "fix-phantom"
@@ -111,6 +113,8 @@ export default function PlantStock() {
     ? "REBUILD"
     : confirmAction === "reassign"
     ? "REASSIGN"
+    : confirmAction === "match-ledger"
+    ? "MATCH STOCK"
     : "";
   useEffect(() => {
     if (routeParams.get("context") || isPortalOrigin) return;
@@ -208,9 +212,21 @@ export default function PlantStock() {
 
   const [activeTab, setActiveTab] = useState("summary");
   const [selectedTank, setSelectedTank] = useState<"all" | "1" | "2">("all");
+  const [decantOpen, setDecantOpen] = useState(false);
+  const [decantDate, setDecantDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [decantMaterialId, setDecantMaterialId] = useState("");
+  const [decantPartyId, setDecantPartyId] = useState("");
+  const [decantCount, setDecantCount] = useState("");
+  const [decantQuantityMt, setDecantQuantityMt] = useState("");
+  const [decantMtEdited, setDecantMtEdited] = useState(false);
+  const [decantTankNumber, setDecantTankNumber] = useState<"1" | "2">("1");
 
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
   const { data: materials } = useQuery<PlantMaterial[]>({ queryKey: ["/api/plant-module/materials"] });
+  const packedStockQuery = useQuery<{
+    rows: Array<{ materialId: number; materialName: string; partyId: number | null; partyName: string; stockUom: string; tank1: number; tank2: number; packed: number; packedCount: number; total: number; tank1Mt: number | null; tank2Mt: number | null; packedMt: number | null; totalMt: number | null }>;
+    canDecant: boolean;
+  }>({ queryKey: ["/api/plant-module/packed-stock-positions"] });
   const { data: allStockBalances } = useQuery<{ id: number; partyId: number | null; materialId: number; balance: number; uom: string }[]>({
     queryKey: ["/api/plant-module/stock-balances"],
     select: (rows) => rows.map(r => ({ ...r, balance: Number(r.balance) })),
@@ -221,6 +237,50 @@ export default function PlantStock() {
     queryKey: ["/api/plant-module/stock-balance-ledger-check"],
     enabled: isOwner,
     staleTime: 30_000,
+  });
+  const matchStockBalancesMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/plant-module/stock-balance-ledger-check/match", {
+        confirmation: confirmText.trim(),
+        reason: stockMatchReason.trim(),
+      });
+      return response.json() as Promise<{ updated: number }>;
+    },
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balance-ledger-check"] }),
+      ]);
+      toast({ title: "Stored balances matched", description: `${result.updated} balance row${result.updated === 1 ? "" : "s"} updated. The stock ledger was not changed.` });
+      setConfirmAction(null);
+      setConfirmText("");
+      setStockMatchReason("");
+    },
+    onError: (error: any) => toast({ title: "Could not match balances", description: error?.message || "Please refresh and try again.", variant: "destructive" }),
+  });
+  const decantPackedStockMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/plant-module/packed-stock-decants", {
+        date: decantDate,
+        materialId: Number(decantMaterialId),
+        partyId: decantPartyId === "common" ? null : Number(decantPartyId),
+        packedCount: Number(decantCount),
+        quantityMt: Number(decantQuantityMt),
+        tankNumber: Number(decantTankNumber),
+      });
+      return response.json() as Promise<{ movedQuantity: number; uom: string }>;
+    },
+    onSuccess: async result => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/plant-module/packed-stock-positions"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] }),
+      ]);
+      toast({ title: "Packed stock decanted", description: `${result.movedQuantity} ${result.uom} moved to Tank ${decantTankNumber}. Total stored balance is unchanged.` });
+      setDecantOpen(false);
+      setDecantCount("");
+    },
+    onError: (error: any) => toast({ title: "Could not decant packed stock", description: error?.message || "Please check the count and try again.", variant: "destructive" }),
   });
   const { data: allTemplateComponents } = useQuery<{ id: number; templateId: number; materialId: number; percent: number | null; moistureContent?: number | null; wastageFactor?: number | null }[]>({
     queryKey: ["/api/plant-module/mix-template-components"],
@@ -357,6 +417,12 @@ export default function PlantStock() {
     }
     return Array.from(warnings);
   }, [ledger, materials]);
+  const [stockNoticesExpanded, setStockNoticesExpanded] = useState(false);
+  const negativeStockNoticeCount = (allStockBalances ?? []).filter(balance => {
+    const material = materials?.find(row => row.id === balance.materialId);
+    return Number(balance.balance) <= -stockDifferenceTolerance(balance.uom) && !/bitumen|ldo/i.test(material?.name ?? "");
+  }).length;
+  const stockNoticeCount = negativeStockNoticeCount + stockConversionWarnings.length;
 
   // All-time ledger for Current Balances tab — only fetched when that tab is active
   const { data: allTimeLedger, isLoading: allTimeLedgerLoading } = useQuery<ReceiptDatedLedgerEntry[]>({
@@ -1107,6 +1173,19 @@ export default function PlantStock() {
       const wsSummary = XLSX.utils.json_to_sheet(summaryData);
       const wsLedger = XLSX.utils.json_to_sheet(ledgerData);
       XLSX.utils.book_append_sheet(wb, wsSummary, "Stock Summary");
+      const packedPositionData = (packedStockQuery.data?.rows ?? []).map(row => ({
+        Material: row.materialName,
+        Party: row.partyName,
+        "Tank 1 (MT)": row.tank1Mt,
+        "Tank 2 (MT)": row.tank2Mt,
+        "Packed count": row.packedCount,
+        "Packed (MT)": row.packedMt,
+        "Total (MT)": row.totalMt,
+        "Stock unit total": `${row.total.toFixed(3)} ${row.stockUom}`,
+      }));
+      if (packedPositionData.length) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(packedPositionData), "Packed Positions");
+      }
       XLSX.utils.book_append_sheet(wb, wsLedger, "Stock Ledger");
       
       const filename = buildFilename("xlsx");
@@ -1175,6 +1254,25 @@ export default function PlantStock() {
         styles: { fontSize: 8 },
         margin: { left: 14, right: 14 },
       });
+      if ((packedStockQuery.data?.rows?.length ?? 0) > 0) {
+        doc.addPage();
+        doc.setFontSize(12);
+        doc.text("Packed stock positions", 14, 15);
+        autoTable(doc, {
+          startY: 20,
+          head: [["Material", "Stock Owner", "Tank 1 MT", "Tank 2 MT", "Packed count", "Packed MT", "Total MT", "Stock unit total"]],
+          body: packedStockQuery.data!.rows.map(row => [
+            displayName(row.materialName), displayName(row.partyName),
+            row.tank1Mt == null ? "—" : row.tank1Mt.toFixed(3),
+            row.tank2Mt == null ? "—" : row.tank2Mt.toFixed(3),
+            row.packedCount.toFixed(2), row.packedMt == null ? "—" : row.packedMt.toFixed(3),
+            row.totalMt == null ? "—" : row.totalMt.toFixed(3),
+            `${row.total.toFixed(3)} ${row.stockUom}`,
+          ]),
+          styles: { fontSize: 8 },
+          margin: { left: 14, right: 14 },
+        });
+      }
       
       // Ledger Details section on new page
       doc.addPage();
@@ -1371,6 +1469,22 @@ export default function PlantStock() {
               `).join('')}
             </tbody>
           </table>
+          ${packedPositionRows.length ? `
+          <div class="section-title">Packed stock positions</div>
+          <table><thead><tr>
+            <th>Material</th><th>Stock owner</th><th class="text-right">Tank 1 MT</th><th class="text-right">Tank 2 MT</th>
+            <th class="text-right">Packed count</th><th class="text-right">Packed MT</th><th class="text-right">Total MT</th><th>Stock unit total</th>
+          </tr></thead><tbody>
+          ${packedPositionRows.map(row => `<tr>
+            <td>${escapeHtml(displayName(row.materialName))}</td><td>${escapeHtml(displayName(row.partyName))}</td>
+            <td class="text-right">${row.tank1Mt == null ? "—" : row.tank1Mt.toFixed(3)}</td>
+            <td class="text-right">${row.tank2Mt == null ? "—" : row.tank2Mt.toFixed(3)}</td>
+            <td class="text-right">${row.packedCount.toFixed(2)}</td>
+            <td class="text-right">${row.packedMt == null ? "—" : row.packedMt.toFixed(3)}</td>
+            <td class="text-right">${row.totalMt == null ? "—" : row.totalMt.toFixed(3)}</td>
+            <td>${row.total.toFixed(3)} ${escapeHtml(row.stockUom)}</td>
+          </tr>`).join("")}
+          </tbody></table>` : ""}
           
           <h2>Ledger details</h2>
           <table>
@@ -1460,6 +1574,23 @@ export default function PlantStock() {
   const handleExportPdfClick = () => exportToPDF();
   const handlePrintClick = () => handlePrint();
   const handleReconcileClick = () => reconcileMutation.mutate();
+  const packedPositionRows = packedStockQuery.data?.rows ?? [];
+  const packedMaterialOptions = (materials ?? []).filter(material =>
+    /bitumen|emulsion/i.test(`${material.category ?? ""} ${material.name}`) && !!material.packedUnitName,
+  );
+  const decantMaterial = packedMaterialOptions.find(material => Number(material.id) === Number(decantMaterialId));
+  const decantPartyOptions = packedPositionRows.filter(row =>
+    row.materialId === Number(decantMaterialId) && row.packedCount > 0.000001,
+  );
+  useEffect(() => {
+    if (decantMtEdited || !decantMaterial || !(Number(decantCount) > 0)) return;
+    const standardMt = Number(decantMaterial.packedUnitNetWeightKg) > 0
+      ? Number(decantCount) * Number(decantMaterial.packedUnitNetWeightKg) / 1000
+      : Number(decantMaterial.packedUnitVolumeLiters) > 0 && Number(decantMaterial.bulkDensity) > 0
+        ? Number(decantCount) * Number(decantMaterial.packedUnitVolumeLiters) * Number(decantMaterial.bulkDensity) / 1000
+        : null;
+    setDecantQuantityMt(standardMt == null ? "" : standardMt.toFixed(3));
+  }, [decantMtEdited, decantMaterial, decantCount]);
 
     const fixOrphanMutation = useMutation({
       mutationFn: async () => {
@@ -1484,29 +1615,24 @@ export default function PlantStock() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <NegativeBalanceBannerMulti
-        balances={allStockBalances ?? []}
-        parties={parties}
-        materials={materials}
-        testid="banner-negative-stock"
-      />
-      {stockConversionWarnings.length > 0 && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200" role="alert" data-testid="stock-unit-conversion-warning">
-          <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4" />Some ledger rows are excluded from converted totals</div>
-          <ul className="mt-1 list-inside list-disc">{stockConversionWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
-        </div>
-      )}
-      {isOwner && (stockCheckQuery.data?.rows.length ?? 0) > 0 && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200" role="status" data-testid="stored-ledger-differences">
-          <div className="font-semibold">Stored balances differ from the ledger</div>
-          <ul className="mt-1 list-inside list-disc">
-            {stockCheckQuery.data!.rows.map(row => (
-              <li key={`${row.materialId}:${row.partyId ?? "common"}`}>
-                {row.materialName} / {row.partyName}: stored {row.storedBalance.toFixed(6)} {row.stockUom}, ledger {row.ledgerBalance.toFixed(6)} {row.stockUom}, difference {row.difference > 0 ? "+" : ""}{row.difference.toFixed(6)} {row.stockUom}
-              </li>
-            ))}
-          </ul>
-        </div>
+      {stockNoticeCount > 0 && (
+        <details className="rounded-md border border-amber-300 bg-amber-50 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200" open={stockNoticesExpanded} onToggle={event => setStockNoticesExpanded((event.currentTarget as HTMLDetailsElement).open)} data-testid="stock-notices">
+          <summary className="cursor-pointer px-3 py-2 font-semibold">{stockNoticeCount} stock notices — view</summary>
+          <div className="space-y-3 border-t border-amber-200 p-3 dark:border-amber-800">
+            <NegativeBalanceBannerMulti
+              balances={allStockBalances ?? []}
+              parties={parties}
+              materials={materials}
+              testid="banner-negative-stock"
+            />
+            {stockConversionWarnings.length > 0 && (
+              <div role="alert" data-testid="stock-unit-conversion-warning">
+                <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4" />Some ledger rows are excluded from converted totals</div>
+                <ul className="mt-1 list-inside list-disc">{stockConversionWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
+              </div>
+            )}
+          </div>
+        </details>
       )}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
@@ -1544,6 +1670,50 @@ export default function PlantStock() {
           </div>
         </div>
       </div>
+
+      {packedPositionRows.length > 0 && (
+        <Card data-testid="packed-stock-position-summary">
+          <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+            <div>
+              <CardTitle>Packed bitumen and emulsion</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">Packed stock is separate from tank stock. Decant moves it into a tank without changing the party’s total balance.</p>
+            </div>
+            {packedStockQuery.data?.canDecant && (
+              <Button size="sm" onClick={() => {
+                setDecantMaterialId("");
+                setDecantPartyId("");
+                setDecantCount("");
+                setDecantQuantityMt("");
+                setDecantMtEdited(false);
+                setDecantOpen(true);
+              }} data-testid="button-open-stock-decant">Decant</Button>
+            )}
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b text-left">
+                  <th className="py-2 pr-3">Material</th><th className="py-2 pr-3">Party</th>
+                  <th className="py-2 pr-3 text-right">Tank 1</th><th className="py-2 pr-3 text-right">Tank 2</th>
+                  <th className="py-2 pr-3 text-right">Packed</th><th className="py-2 text-right">Total</th>
+                </tr></thead>
+                <tbody>{packedPositionRows.map(row => (
+                  <tr className="border-b last:border-0" key={`${row.materialId}:${row.partyId ?? "common"}`}>
+                    <td className="py-2 pr-3 font-medium">{row.materialName}</td>
+                    <td className="py-2 pr-3">{row.partyName}</td>
+                    <td className="py-2 pr-3 text-right">{row.tank1Mt == null ? "—" : `${row.tank1Mt.toFixed(3)} MT`}</td>
+                    <td className="py-2 pr-3 text-right">{row.tank2Mt == null ? "—" : `${row.tank2Mt.toFixed(3)} MT`}</td>
+                    <td className="py-2 pr-3 text-right">
+                      {row.packedCount.toLocaleString()} packed · {row.packedMt == null ? "—" : `${row.packedMt.toFixed(3)} MT`}
+                    </td>
+                    <td className="py-2 text-right font-semibold">{row.totalMt == null ? `— (${row.total.toFixed(3)} ${row.stockUom})` : `${row.totalMt.toFixed(3)} MT`}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -3085,6 +3255,7 @@ export default function PlantStock() {
                 <p className="text-sm text-emerald-700 dark:text-emerald-300" data-testid="stock-check-matches">Stored balances match the ledger.</p>
               )}
               {(stockCheckQuery.data?.rows.length ?? 0) > 0 && (
+                <>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm" data-testid="stock-check-table">
                     <thead><tr className="border-b text-left">
@@ -3103,6 +3274,17 @@ export default function PlantStock() {
                     ))}</tbody>
                   </table>
                 </div>
+                {stockCheckQuery.data?.errors.length === 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setConfirmText(""); setStockMatchReason(""); setConfirmAction("match-ledger"); }}
+                    data-testid="button-match-stock-to-ledger"
+                  >
+                    Match stored balance to ledger
+                  </Button>
+                )}
+                </>
               )}
             </section>
 
@@ -3140,6 +3322,72 @@ export default function PlantStock() {
         </details>
       )}
 
+      <Dialog open={decantOpen} onOpenChange={setDecantOpen}>
+        <DialogContent data-testid="dialog-packed-stock-decant">
+          <DialogHeader>
+            <DialogTitle>Decant packed stock</DialogTitle>
+            <DialogDescription>Move packed bitumen or emulsion into Tank 1 or Tank 2. This changes position only; total stock is unchanged.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="decant-date">Date</Label>
+              <Input id="decant-date" type="date" value={decantDate} onChange={event => setDecantDate(event.target.value)} data-testid="input-decant-date" />
+            </div>
+            <div>
+              <Label>Material</Label>
+              <Select value={decantMaterialId} onValueChange={value => { setDecantMaterialId(value); setDecantPartyId(""); setDecantCount(""); setDecantQuantityMt(""); setDecantMtEdited(false); }}>
+                <SelectTrigger data-testid="select-decant-material"><SelectValue placeholder="Choose material" /></SelectTrigger>
+                <SelectContent>{packedMaterialOptions.map(material => (
+                  <SelectItem key={material.id} value={String(material.id)}>{material.name}</SelectItem>
+                ))}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Party / stock owner</Label>
+              <Select value={decantPartyId} onValueChange={setDecantPartyId} disabled={!decantMaterialId}>
+                <SelectTrigger data-testid="select-decant-party"><SelectValue placeholder="Choose packed stock" /></SelectTrigger>
+                <SelectContent>{decantPartyOptions.map(row => (
+                  <SelectItem key={`${row.materialId}:${row.partyId ?? "common"}`} value={row.partyId == null ? "common" : String(row.partyId)}>
+                    {row.partyName} · {row.packedCount} {decantMaterial?.packedUnitName?.toLowerCase()} available
+                  </SelectItem>
+                ))}</SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="decant-count">Packed unit count</Label>
+                <Input id="decant-count" type="number" min="0.01" step="0.01" value={decantCount} onChange={event => { setDecantCount(event.target.value); setDecantMtEdited(false); }} data-testid="input-decant-count" />
+              </div>
+              <div>
+                <Label>Receiving tank</Label>
+                <Select value={decantTankNumber} onValueChange={value => setDecantTankNumber(value as "1" | "2")}>
+                  <SelectTrigger data-testid="select-decant-tank"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="1">Tank 1</SelectItem><SelectItem value="2">Tank 2</SelectItem></SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="decant-quantity-mt">MT to move (editable)</Label>
+              <Input id="decant-quantity-mt" type="number" min="0.001" step="0.001" value={decantQuantityMt}
+                onChange={event => { setDecantQuantityMt(event.target.value); setDecantMtEdited(true); }}
+                data-testid="input-decant-quantity-mt" />
+              <p className="mt-1 text-xs text-muted-foreground">Prefilled from the standard packed-unit weight; enter the actual amount to move.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDecantOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => decantPackedStockMutation.mutate()}
+              disabled={!decantMaterialId || !decantPartyId || !(Number(decantCount) > 0) || !(Number(decantQuantityMt) > 0) || decantPackedStockMutation.isPending}
+              data-testid="button-submit-stock-decant"
+            >
+              {decantPackedStockMutation.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+              Save decant
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) { setConfirmAction(null); setConfirmText(""); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -3149,6 +3397,7 @@ export default function PlantStock() {
               {confirmAction === "fix-phantom" && "Fix Phantom Balances"}
               {confirmAction === "rebuild" && "Rebuild Dispatch Ledger"}
               {confirmAction === "reassign" && "Reassign Ledger Entries"}
+              {confirmAction === "match-ledger" && "Match stored balances to ledger"}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-sm">
@@ -3173,10 +3422,22 @@ export default function PlantStock() {
                     <p className="text-amber-700 dark:text-amber-400">Reassigning stock ledger entries permanently changes party-wise balance totals.</p>
                   </>
                 )}
+                {confirmAction === "match-ledger" && (
+                  <>
+                    <p>This updates only stored balance rows to match the current ledger. No stock ledger entries will be added, changed or removed.</p>
+                    <p className="text-amber-700 dark:text-amber-400">The Owner’s reason and each before/after value will be recorded in the audit history.</p>
+                  </>
+                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-2">
+            {confirmAction === "match-ledger" && (
+              <>
+                <Label htmlFor="stock-match-reason">Reason</Label>
+                <Input id="stock-match-reason" value={stockMatchReason} onChange={event => setStockMatchReason(event.target.value)} maxLength={1000} data-testid="input-stock-match-reason" />
+              </>
+            )}
             <Label htmlFor="input-confirm-stock-action">Type <strong>{requiredConfirmText}</strong> to continue</Label>
             <Input id="input-confirm-stock-action" value={confirmText} onChange={event => setConfirmText(event.target.value)} autoComplete="off" data-testid="input-confirm-stock-action" />
           </div>
@@ -3184,12 +3445,13 @@ export default function PlantStock() {
             <AlertDialogCancel data-testid="button-adv-cancel">Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-amber-600 hover:bg-amber-700 text-white"
-              disabled={confirmText.trim() !== requiredConfirmText}
+              disabled={confirmText.trim() !== requiredConfirmText || (confirmAction === "match-ledger" && (!stockMatchReason.trim() || matchStockBalancesMutation.isPending))}
               onClick={() => {
                 if (confirmAction === "reconcile") { setConfirmAction(null); setConfirmText(""); handleReconcileClick(); }
                 else if (confirmAction === "fix-phantom") { setConfirmAction(null); setConfirmText(""); fixOrphanMutation.mutate(); }
                 else if (confirmAction === "rebuild") { setConfirmAction(null); setConfirmText(""); navigate(appendPlantContext("/plant/ledger-rebuild", { defaultTab: "stock" })); }
                 else if (confirmAction === "reassign") { setConfirmAction(null); setConfirmText(""); navigate(appendPlantContext("/plant/stock-reassign", { defaultTab: "stock" })); }
+                else if (confirmAction === "match-ledger") matchStockBalancesMutation.mutate();
               }}
               data-testid="button-adv-proceed"
             >

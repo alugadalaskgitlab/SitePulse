@@ -284,6 +284,20 @@ export default function PlantShiftLog() {
     },
   });
 
+  const { data: openOrderSummaries = [] } = useQuery<any[]>({
+    queryKey: ["/api/plant-module/supply-orders/open-summaries", date],
+    queryFn: async () => {
+      const response = await fetch(`/api/plant-module/supply-orders/open-summaries?date=${encodeURIComponent(date)}`, { credentials: "include" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: viewMode === "edit" && canEditPlantDay,
+    staleTime: 60_000,
+  });
+  const dailyOrderSummaries = openOrderSummaries.filter((order: any) =>
+    Number(order.dispatchedMtToday) > 0 || Number(order.plannedMtToday) > 0,
+  );
+
   // Collapsible date groups for the list view — mirrors PlantHeatingSessions.tsx.
   // Sorted date keys drive first-visit default and sessionStorage restoration.
   const listGroupedDates = useMemo(() => {
@@ -1528,6 +1542,28 @@ export default function PlantShiftLog() {
           </Link>
         </div>
       </div>
+      {dailyOrderSummaries.length > 0 && (
+        <Card data-testid="shift-log-open-orders">
+          <CardHeader className="pb-2"><CardTitle className="text-base">Open orders for this date</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {dailyOrderSummaries.map((order: any) => {
+              const shortNames = (order.materials ?? [])
+                .filter((material: any) => material.shortage > 0 || (material.daysLeft != null && material.daysLeft < 2))
+                .map((material: any) => material.materialName).join(", ");
+              return (
+                <a key={order.id} href={`/plant/supply-orders?orderId=${order.id}`} className="block rounded border p-2 text-sm hover:bg-muted/40" data-testid={`shift-log-order-${order.id}`}>
+                  <span className="font-semibold">{order.partyName} · {order.orderNo}</span>
+                  <span className="ml-2 text-muted-foreground">{(order.mixNames ?? []).join(", ") || "Mix not listed"}</span>
+                  <span className="ml-2 text-muted-foreground">
+                    {Number(order.dispatchedMtToday) > 0 ? `${Number(order.dispatchedMtToday).toFixed(2)} MT dispatched` : `${Number(order.plannedMtToday).toFixed(2)} MT planned`}
+                    {shortNames ? ` · Short: ${shortNames}` : ""}
+                  </span>
+                </a>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       <DraftRestoredBanner
         show={draftRestored}

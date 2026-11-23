@@ -83,6 +83,19 @@ function HomeDashboard({
 
   // ── Real data queries ──
   const { data: sites = [] } = useQuery<any[]>({ queryKey: ["/api/sites"] });
+  const { data: ownerOpenSupplyOrders = [] } = useQuery<any[]>({
+    queryKey: ["/api/plant-module/supply-orders/open-summaries", todayStr],
+    queryFn: async () => {
+      const response = await fetch(`/api/plant-module/supply-orders/open-summaries?date=${encodeURIComponent(todayStr)}`, { credentials: "include" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!user?.isOwner,
+    staleTime: 60_000,
+  });
+  const ownerMaterialShortCount = ownerOpenSupplyOrders.reduce((sum: number, order: any) =>
+    sum + (order.materials ?? []).filter((material: any) => material.shortage > 0).length, 0,
+  );
 
   const { data: todayDprs = [] } = useQuery<any[]>({
     queryKey: ["/api/dprs", { dateFrom: todayStr, dateTo: todayStr }],
@@ -241,6 +254,18 @@ function HomeDashboard({
                 </p>
               </div>
             </div>
+          )}
+          {user?.isOwner && (
+            <Link href="/plant/supply-orders" className="bg-white rounded-xl border border-amber-200 p-4 flex flex-col gap-3 hover:border-amber-300" data-testid="stat-open-supply-orders">
+              <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
+                <ShoppingCart className="w-4 h-4 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-slate-900 leading-none">{ownerOpenSupplyOrders.length}</p>
+                <p className="text-sm text-slate-700 mt-1 font-medium">Open plant orders</p>
+                <p className="text-xs mt-0.5 font-medium text-slate-500">{ownerMaterialShortCount} material shorts · review orders</p>
+              </div>
+            </Link>
           )}
 
           {/* Total active records in the sites master (not today's reporting count). */}
