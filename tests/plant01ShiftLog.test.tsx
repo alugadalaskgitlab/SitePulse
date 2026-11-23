@@ -129,7 +129,7 @@ describe("PLANT-01 shift readings entry", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps visible readings and LDO dips and boiler meters in More details", async () => {
+  it("keeps both LDO tank dip pairs on the day card and boiler meters in More details", async () => {
     render(<PlantShiftLog />);
     const card = screen.getByTestId("card-shift-start-end");
     const opening = within(screen.getByTestId("section-opening-readings"));
@@ -139,14 +139,14 @@ describe("PLANT-01 shift readings entry", () => {
     await waitFor(() => expect((within(card).getByTestId("input-operator") as HTMLInputElement).value).toBe("Linked Staff Name"));
     expect(opening.getByTestId("input-bitumen-t1-open").isConnected).toBe(true);
     expect(closing.getByTestId("input-bitumen-t1-close").isConnected).toBe(true);
-    expect(opening.queryByTestId("input-ldo-dip-t1-open-main")).toBeNull();
-    expect(opening.queryByTestId("input-ldo-dip-t2-open-main")).toBeNull();
-    expect(closing.queryByTestId("input-ldo-dip-t1-close-main")).toBeNull();
-    expect(closing.queryByTestId("input-ldo-dip-t2-close-main")).toBeNull();
-    expect(moreDetails.getByTestId("input-ldo-dip-t1-open-main").isConnected).toBe(true);
-    expect(moreDetails.getByTestId("input-ldo-dip-t2-open-main").isConnected).toBe(true);
-    expect(moreDetails.getByTestId("input-ldo-dip-t1-close-main").isConnected).toBe(true);
-    expect(moreDetails.getByTestId("input-ldo-dip-t2-close-main").isConnected).toBe(true);
+    expect(opening.getByTestId("input-ldo-dip-t1-open-main").isConnected).toBe(true);
+    expect(opening.getByTestId("input-ldo-dip-t2-open-main").isConnected).toBe(true);
+    expect(closing.getByTestId("input-ldo-dip-t1-close-main").isConnected).toBe(true);
+    expect(closing.getByTestId("input-ldo-dip-t2-close-main").isConnected).toBe(true);
+    expect(moreDetails.queryByTestId("input-ldo-dip-t1-open-main")).toBeNull();
+    expect(moreDetails.queryByTestId("input-ldo-dip-t2-open-main")).toBeNull();
+    expect(moreDetails.queryByTestId("input-ldo-dip-t1-close-main")).toBeNull();
+    expect(moreDetails.queryByTestId("input-ldo-dip-t2-close-main")).toBeNull();
     expect(moreDetails.getByTestId("input-ldo-t1-open").isConnected).toBe(true);
     expect(opening.getByTestId("input-ldo-t2-open").isConnected).toBe(true);
     expect(closing.getByTestId("input-ldo-t2-close").isConnected).toBe(true);
@@ -169,6 +169,19 @@ describe("PLANT-01 shift readings entry", () => {
     await waitFor(() => expect((opening.getByTestId("input-ldo-t1-open") as HTMLInputElement).value).toBe("135.8"));
   });
 
+  it("prefills both opening tank dips from the previous closing readings", async () => {
+    mocks.previous = {
+      date: "2026-11-21",
+      ldoTank1ClosingDip: 87.4,
+      ldoTank2ClosingDip: 65.2,
+    };
+    render(<PlantShiftLog />);
+    await waitFor(() => {
+      expect((screen.getByTestId("input-ldo-dip-t1-open-main") as HTMLInputElement).value).toBe("87.4");
+      expect((screen.getByTestId("input-ldo-dip-t2-open-main") as HTMLInputElement).value).toBe("65.2");
+    });
+  });
+
   it("opens Plant stopped directly in the idle-event dialog with the current time", () => {
     render(<PlantShiftLog />);
     fireEvent.click(screen.getByTestId("button-quick-plant-stopped"));
@@ -183,20 +196,20 @@ describe("PLANT-01 shift readings entry", () => {
     expect(screen.getByTestId("select-dryer-fed-from").textContent).toContain("Tank 1 (small vertical)");
   });
 
-  it("keeps LDO dips and boiler fields in More details and shows only configured DGs", () => {
+  it("keeps LDO dips on the day card, boiler fields in More details, and shows only configured DGs", () => {
     mocks.settings = { dgProductionEquipmentIds: "[]", boilerFuelMeterMode: "dips_only" };
     render(<PlantShiftLog />);
     const opening = within(screen.getByTestId("section-opening-readings"));
     const closing = within(screen.getByTestId("section-closing-readings"));
-    expect(opening.queryByTestId("input-ldo-dip-t1-open-main")).toBeNull();
-    expect(opening.queryByTestId("input-ldo-dip-t2-open-main")).toBeNull();
-    expect(closing.queryByTestId("input-ldo-dip-t1-close-main")).toBeNull();
-    expect(closing.queryByTestId("input-ldo-dip-t2-close-main")).toBeNull();
+    expect(opening.getByTestId("input-ldo-dip-t1-open-main").isConnected).toBe(true);
+    expect(opening.getByTestId("input-ldo-dip-t2-open-main").isConnected).toBe(true);
+    expect(closing.getByTestId("input-ldo-dip-t1-close-main").isConnected).toBe(true);
+    expect(closing.getByTestId("input-ldo-dip-t2-close-main").isConnected).toBe(true);
     const moreDetails = within(screen.getByTestId("details-shift-more"));
-    expect(moreDetails.getByTestId("input-ldo-dip-t1-open-main").isConnected).toBe(true);
-    expect(moreDetails.getByTestId("input-ldo-dip-t2-open-main").isConnected).toBe(true);
-    expect(moreDetails.getByTestId("input-ldo-dip-t1-close-main").isConnected).toBe(true);
-    expect(moreDetails.getByTestId("input-ldo-dip-t2-close-main").isConnected).toBe(true);
+    expect(moreDetails.queryByTestId("input-ldo-dip-t1-open-main")).toBeNull();
+    expect(moreDetails.queryByTestId("input-ldo-dip-t2-open-main")).toBeNull();
+    expect(moreDetails.queryByTestId("input-ldo-dip-t1-close-main")).toBeNull();
+    expect(moreDetails.queryByTestId("input-ldo-dip-t2-close-main")).toBeNull();
     expect(moreDetails.getByTestId("input-ldo-t1-open").isConnected).toBe(true);
     expect(moreDetails.getByTestId("input-ldo-t1-close").isConnected).toBe(true);
     expect(moreDetails.getByTestId("switch-boiler-runs-during-production").isConnected).toBe(true);

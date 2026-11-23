@@ -1585,31 +1585,6 @@ export default function PlantShiftLog() {
               <div><Label>Ambient temperature °C</Label><Input type="number" step="0.1" value={ambientTemp} onChange={e => setAmbientTemp(e.target.value)} data-testid="input-ambient-temp" /></div>
               <div><Label>Bitumen tank 1 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank1Temp} onChange={e => setBitumenTank1Temp(e.target.value)} data-testid="input-bitumen-t1-temp" /></div>
               <div><Label>Bitumen tank 2 — temp (°C)</Label><Input type="number" step="0.1" value={bitumenTank2Temp} onChange={e => setBitumenTank2Temp(e.target.value)} data-testid="input-bitumen-t2-temp" /></div>
-              <div className="md:col-span-3">
-                <p className="mb-2 text-sm font-medium">LDO tank dip readings</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <Label>Tank 1 (small vertical) — opening dip (cm)</Label>
-                    <Input type="number" step="0.1" value={ldoTank1OpeningDip} onChange={event => { setLdoTank1OpeningDip(event.target.value); setAutoFillLdoDipT1Source(""); autoFilledLdoDipT1Ref.current = null; }} data-testid="input-ldo-dip-t1-open-main" />
-                    {ldoDipHint(1, ldoTank1OpeningDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t1-open-litres">{ldoDipHint(1, ldoTank1OpeningDip)}</p>}
-                  </div>
-                  <div>
-                    <Label>Tank 1 (small vertical) — closing dip (cm)</Label>
-                    <Input type="number" step="0.1" value={ldoTank1ClosingDip} onChange={event => { setLdoTank1ClosingDip(event.target.value); setAutoFillLdoDipT1Source(""); autoFilledLdoDipT1Ref.current = null; }} data-testid="input-ldo-dip-t1-close-main" />
-                    {ldoDipHint(1, ldoTank1ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t1-close-litres">{ldoDipHint(1, ldoTank1ClosingDip)}</p>}
-                  </div>
-                  <div>
-                    <Label>Tank 2 (big horizontal) — opening dip (cm)</Label>
-                    <Input type="number" step="0.1" value={ldoTank2OpeningDip} onChange={event => { setLdoTank2OpeningDip(event.target.value); setAutoFillLdoDipT2Source(""); autoFilledLdoDipT2Ref.current = null; }} data-testid="input-ldo-dip-t2-open-main" />
-                    {ldoDipHint(2, ldoTank2OpeningDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t2-open-litres">{ldoDipHint(2, ldoTank2OpeningDip)}</p>}
-                  </div>
-                  <div>
-                    <Label>Tank 2 (big horizontal) — closing dip (cm)</Label>
-                    <Input type="number" step="0.1" value={ldoTank2ClosingDip} onChange={event => { setLdoTank2ClosingDip(event.target.value); setAutoFillLdoDipT2Source(""); autoFilledLdoDipT2Ref.current = null; }} data-testid="input-ldo-dip-t2-close-main" />
-                    {ldoDipHint(2, ldoTank2ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t2-close-litres">{ldoDipHint(2, ldoTank2ClosingDip)}</p>}
-                  </div>
-                </div>
-              </div>
               <div className="flex items-center gap-2 rounded border border-dashed border-amber-300 px-3 py-2">
                 <Switch
                   id="boiler-runs-during-production"
@@ -1663,6 +1638,18 @@ export default function PlantShiftLog() {
                 </div>
               ))}
               <div>
+                <Label>Tank 1 (small vertical) — opening dip (cm)</Label>
+                <Input type="number" step="0.1" value={ldoTank1OpeningDip} onChange={event => { setLdoTank1OpeningDip(event.target.value); setAutoFillLdoDipT1Source(""); autoFilledLdoDipT1Ref.current = null; }} data-testid="input-ldo-dip-t1-open-main" />
+                {autoFillLdoDipT1Source && <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">Auto-filled from {autoFillLdoDipT1Source}</p>}
+                {ldoDipHint(1, ldoTank1OpeningDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t1-open-litres">{ldoDipHint(1, ldoTank1OpeningDip)}</p>}
+              </div>
+              <div>
+                <Label>Tank 2 (big horizontal) — opening dip (cm)</Label>
+                <Input type="number" step="0.1" value={ldoTank2OpeningDip} onChange={event => { setLdoTank2OpeningDip(event.target.value); setAutoFillLdoDipT2Source(""); autoFilledLdoDipT2Ref.current = null; }} data-testid="input-ldo-dip-t2-open-main" />
+                {autoFillLdoDipT2Source && <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">Auto-filled from {autoFillLdoDipT2Source}</p>}
+                {ldoDipHint(2, ldoTank2OpeningDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t2-open-litres">{ldoDipHint(2, ldoTank2OpeningDip)}</p>}
+              </div>
+              <div>
                 <Label>Dryer fuel meter — opening</Label>
                 <Input type="number" step="0.01" value={ldoTank2OpeningMeter} onChange={event => { setLdoTank2OpeningMeter(event.target.value); setAutoFillT2Source(""); }} data-testid="input-ldo-t2-open" />
                 {autoFillT2Source && <p className="mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid="text-autofill-t2">Auto-filled from {autoFillT2Source}</p>}
@@ -1695,6 +1682,16 @@ export default function PlantShiftLog() {
                   <Label>Bitumen tank 2 — closing dip (cm)</Label>
                   <Input type="number" step="0.1" value={bitumenTank2ClosingDip} onChange={event => setBitumenTank2ClosingDip(event.target.value)} data-testid="input-bitumen-t2-close" />
                   {dipHint(bitumenTank2ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip)}</p>}
+                </div>
+                <div>
+                  <Label>Tank 1 (small vertical) — closing dip (cm)</Label>
+                  <Input type="number" step="0.1" value={ldoTank1ClosingDip} onChange={event => { setLdoTank1ClosingDip(event.target.value); setAutoFillLdoDipT1Source(""); autoFilledLdoDipT1Ref.current = null; }} data-testid="input-ldo-dip-t1-close-main" />
+                  {ldoDipHint(1, ldoTank1ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t1-close-litres">{ldoDipHint(1, ldoTank1ClosingDip)}</p>}
+                </div>
+                <div>
+                  <Label>Tank 2 (big horizontal) — closing dip (cm)</Label>
+                  <Input type="number" step="0.1" value={ldoTank2ClosingDip} onChange={event => { setLdoTank2ClosingDip(event.target.value); setAutoFillLdoDipT2Source(""); autoFilledLdoDipT2Ref.current = null; }} data-testid="input-ldo-dip-t2-close-main" />
+                  {ldoDipHint(2, ldoTank2ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t2-close-litres">{ldoDipHint(2, ldoTank2ClosingDip)}</p>}
                 </div>
                 <div>
                   <Label>Dryer fuel meter — closing</Label>
