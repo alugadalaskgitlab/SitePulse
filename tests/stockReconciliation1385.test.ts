@@ -22,6 +22,7 @@ import {
   summarizeSession,
   toleranceForUom,
   computeVarianceWarnings,
+  reconciliationPreviewMatches,
   STATUS_LABELS,
   RECONCILIATION_STATUSES,
 } from "@shared/stockReconciliation";
@@ -90,6 +91,14 @@ describe("Adjustment maths (tests 1–5)", () => {
     expect(isNoChange(computeAdjustment(8.61486, 8.61486))).toBe(true);
     expect(isNoChange(computeAdjustment(100, 100.0000001))).toBe(true); // below tolerance
     expect(isNoChange(computeAdjustment(100, 100.001))).toBe(false);
+  });
+});
+
+describe("reconciliation preview/post balance guard", () => {
+  it("allows the posted adjustment only when the locked ledger still matches the displayed preview", () => {
+    expect(reconciliationPreviewMatches(-58.177513, -58.177513)).toBe(true);
+    expect(reconciliationPreviewMatches(-58.177513, -72.818)).toBe(false);
+    expect(reconciliationPreviewMatches(null, 0)).toBe(false);
   });
 });
 

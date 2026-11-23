@@ -155,7 +155,7 @@ import {
   cutFillOpeningBalances,
   cutFillConsumptions,
 } from "@shared/schema";
-import { resolveConversion, convertToBase, computeAdjustment, isNoChange, computeVarianceWarnings, toFiniteNumber, type VarianceWarning } from "@shared/stockReconciliation";
+import { resolveConversion, convertToBase, computeAdjustment, isNoChange, computeVarianceWarnings, reconciliationPreviewMatches, toFiniteNumber, type VarianceWarning } from "@shared/stockReconciliation";
 import { resolvePermittedSiteIds } from "@shared/siteAccess";
 import { getBaseSiteName, siteMatchesPermitted, vendorBillItemMatchesSite } from "@shared/siteName";
 import { getBillFinancialTotals } from "@shared/vendorBillFinancialReport";
@@ -518,6 +518,7 @@ import { COUNTED_DPR_FLAG, COUNTED_DPR_STATUS, isEligibleSubmittedDpr } from "@s
 import { convertSolidQty } from "@shared/uomConvert";
 import {
   buildStockBalanceRebuildPreview,
+  calculateStockLedgerNet,
   convertStockQuantity,
   convertTransferQuantityBetweenBalances,
   normalizeWeightUnit,
@@ -955,7 +956,7 @@ export interface IStorage {
 
   // Physical Stock Reconciliation (Task #1385) — batch, ledger-backed, idempotent
   ensureStockReconciliationTables(): Promise<void>;
-  postStockReconciliation(data: { countDate: string; postedBy: string; clientRequestId: string; notes?: string; draftId?: number; acknowledgeWarnings?: boolean; items: Array<{ materialId: number; partyId: number | null; sourceQty: number; sourceUom: string; reason: string; note?: string }> }): Promise<{ session: StockReconciliationSession; items: StockReconciliationItem[]; alreadyPosted: boolean; warnings?: import("@shared/stockReconciliation").VarianceWarning[] }>;
+  postStockReconciliation(data: { countDate: string; postedBy: string; clientRequestId: string; notes?: string; draftId?: number; acknowledgeWarnings?: boolean; items: Array<{ materialId: number; partyId: number | null; sourceQty: number; sourceUom: string; reason: string; note?: string; expectedBookBalance: number }> }): Promise<{ session: StockReconciliationSession; items: StockReconciliationItem[]; alreadyPosted: boolean; warnings?: import("@shared/stockReconciliation").VarianceWarning[] }>;
   saveStockReconciliationDraft(data: { id?: number; countDate: string; preparedBy: string; isApprover?: boolean; status: "draft" | "submitted"; notes?: string; rows: unknown[] }): Promise<StockReconciliationSession>;
   rejectStockReconciliationDraft(id: number, rejectedBy: string, note?: string): Promise<StockReconciliationSession>;
   getStockReconciliations(): Promise<Array<StockReconciliationSession & { items: StockReconciliationItem[] }>>;
@@ -969,6 +970,7 @@ export interface IStorage {
   
   // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)
   reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }>;
+  getStockBalanceLedgerDiscrepancies(): Promise<{ rows: Array<{ materialId: number; materialName: string; partyId: number | null; partyName: string; stockUom: string; storedBalance: number; ledgerBalance: number; difference: number; balanceIds: number[] }>; errors: string[] }>;
 
   // One-time data fix: insert missing LAXMI 0-qty marker rows for dispatches 49 & 50
   // and correct the over-counted HLC borrow entries (Task #427).
@@ -9071,6 +9073,68 @@ export class DatabaseStorage implements IStorage {
       } as StockBalance));
   }
 
+  async getStockBalanceLedgerDiscrepancies(): Promise<{
+    rows: Array<{
+      materialId: number;
+      materialName: string;
+      partyId: number | null;
+      partyName: string;
+      stockUom: string;
+      storedBalance: number;
+      ledgerBalance: number;
+      difference: number;
+      balanceIds: number[];
+    }>;
+    errors: string[];
+  }> {
+    const [materials, partiesRows, balances, ledgerEntries] = await Promise.all([
+      db.select().from(plantMaterials),
+      db.select().from(parties),
+      db.select().from(stockBalances),
+      db.select().from(stockLedger),
+    ]);
+    const preview = buildStockBalanceRebuildPreview({
+      materials: materials.map(material => ({
+        id: Number(material.id),
+        name: String(material.name),
+        defaultUom: material.defaultUom ?? null,
+        conversionToUom: material.conversionToUom ?? null,
+        bulkDensity: material.bulkDensity ?? null,
+      })),
+      parties: partiesRows.map(party => ({ id: Number(party.id), name: String(party.name) })),
+      balances: balances.map(balance => ({
+        id: Number(balance.id),
+        materialId: Number(balance.materialId),
+        partyId: balance.partyId == null ? null : Number(balance.partyId),
+        balance: balance.balance,
+        uom: balance.uom ?? null,
+      })),
+      ledger: ledgerEntries.map(entry => ({
+        id: Number(entry.id),
+        materialId: Number(entry.materialId),
+        partyId: entry.partyId == null ? null : Number(entry.partyId),
+        transactionType: String(entry.transactionType),
+        quantityIn: entry.quantityIn,
+        quantityOut: entry.quantityOut,
+        uom: entry.uom ?? null,
+      })),
+    });
+    const rows = preview.rows
+      .map(row => ({
+        materialId: row.materialId,
+        materialName: row.materialName,
+        partyId: row.partyId,
+        partyName: row.partyName,
+        stockUom: row.stockUom,
+        storedBalance: row.before,
+        ledgerBalance: row.after,
+        difference: roundStockQuantity(row.before - row.after),
+        balanceIds: row.existingBalanceIds,
+      }))
+      .filter(row => row.difference !== 0);
+    return { rows, errors: preview.errors };
+  }
+
   async updateStockBalance(partyId: number | null, materialId: number, quantity: number, uom: string): Promise<StockBalance> {
     return db.transaction(async (tx) => {
       const [material] = await tx.select({ name: plantMaterials.name }).from(plantMaterials)
@@ -9716,6 +9780,7 @@ export class DatabaseStorage implements IStorage {
       sourceUom: string;
       reason: string;
       note?: string;
+      expectedBookBalance: number;
     }>;
   }): Promise<{ session: StockReconciliationSession; items: StockReconciliationItem[]; alreadyPosted: boolean; warnings?: VarianceWarning[] }> {
     // Idempotency pre-check (also enforced by the unique index inside the tx).
@@ -9735,6 +9800,9 @@ export class DatabaseStorage implements IStorage {
       for (const it of items) {
         if (!(it.sourceQty >= 0)) throw new Error(`NEGATIVE_QTY: physical quantity must be zero or positive (material ${it.materialId})`);
         if (!it.reason?.trim()) throw new Error(`REASON_REQUIRED: reason missing (material ${it.materialId})`);
+        if (toFiniteNumber(it.expectedBookBalance) === null) {
+          throw new Error(`PREVIEW_REQUIRED: refresh the stock balance preview before posting material ${it.materialId}`);
+        }
       }
     };
     if (!data.draftId) validateItems(data.items);
@@ -9775,10 +9843,12 @@ export class DatabaseStorage implements IStorage {
               sourceUom: String(r.physicalUom || ""),
               reason: String(r.reason || ""),
               note: r.note ? String(r.note) : undefined,
+              expectedBookBalance: Number(r.expectedBookBalance),
             };
           });
           for (const it of postItems) {
-            if (!Number.isFinite(it.materialId) || !it.materialId || !Number.isFinite(it.sourceQty) || !it.sourceUom) {
+            if (!Number.isFinite(it.materialId) || !it.materialId || !Number.isFinite(it.sourceQty) || !it.sourceUom ||
+                !Number.isFinite(it.expectedBookBalance)) {
               throw new Error("DRAFT_CORRUPT: a saved draft row is missing its material, quantity or UOM");
             }
           }
@@ -9811,7 +9881,7 @@ export class DatabaseStorage implements IStorage {
           a.materialId - b.materialId || ((a.partyId ?? -1) - (b.partyId ?? -1)));
         const computed: Array<{
           it: typeof orderedItems[number];
-          balanceRowId: number;
+          balanceRowId: number | null;
           oldBalance: number;
           stockUom: string;
           conv: Exclude<ReturnType<typeof resolveConversion>, null>;
@@ -9829,23 +9899,47 @@ export class DatabaseStorage implements IStorage {
 
           // Lock the balance row (owner isolation: exact party match, NULL = plant-common).
           const partyClause = it.partyId === null ? sql`party_id IS NULL` : sql`party_id = ${it.partyId}`;
-          // ORDER BY id — if duplicate balance rows ever exist for the same
-          // (material, party), we always lock/update the same (oldest) row.
+          // Lock all candidate rows in a deterministic order. A duplicate
+          // snapshot is ambiguous for reconciliation, so refuse to post rather
+          // than picking one and silently leaving another behind.
           const locked = await tx.execute(sql`
             SELECT id, balance, uom FROM stock_balances
             WHERE material_id = ${it.materialId} AND ${partyClause}
-            ORDER BY id LIMIT 1 FOR UPDATE
+            ORDER BY id FOR UPDATE
           `);
-          const row = locked.rows?.[0] as { id: number; balance: string | number; uom: string | null } | undefined;
-          if (!row) throw new Error(`BALANCE_NOT_FOUND: no stock balance for material ${it.materialId} / party ${it.partyId ?? "plant-common"}`);
-          // Calculation-safe: a malformed stored balance must BLOCK the
-          // reconciliation, never be silently treated as zero (which would
-          // post an adjustment that looks valid but isn't).
-          const oldBalance = toFiniteNumber(row.balance);
-          if (oldBalance === null) {
+          const lockedRows = (locked.rows ?? []) as Array<{
+            id: number;
+            balance: string | number;
+            uom: string | null;
+          }>;
+          if (lockedRows.length > 1) {
+            throw new Error(`BALANCE_DUPLICATE: multiple stored balance rows exist for ${material.name} / party ${it.partyId ?? "plant-common"} — resolve the duplicate before reconciling`);
+          }
+          const row = lockedRows[0];
+          if (row && toFiniteNumber(row.balance) === null) {
             throw new Error(`BALANCE_INVALID: stored balance for material ${material.name} / party ${it.partyId ?? "plant-common"} is not numeric — fix the balance row before reconciling`);
           }
-          const stockUom = row.uom ?? material.defaultUom ?? "Units";
+          const stockUom = stockUnitForMaterial(material, row?.uom ?? null);
+          if (!stockUom) {
+            throw new Error(`BALANCE_INVALID: stock unit for ${material.name} is not configured`);
+          }
+          // The ledger is the canonical balance (the same calculation used
+          // by GET /stock-balances). The row lock serializes this read with
+          // stock writers, which lock stock_balances before inserting ledger
+          // rows. Never calculate the posted adjustment from a stale snapshot.
+          const ledgerResult = await tx.execute(sql`
+            SELECT transaction_type AS "transactionType",
+                   quantity_in AS "quantityIn",
+                   quantity_out AS "quantityOut",
+                   uom
+            FROM stock_ledger
+            WHERE material_id = ${it.materialId} AND ${partyClause}
+            ORDER BY id
+          `);
+          const oldBalance = calculateStockLedgerNet(material, ledgerResult.rows ?? [], row?.uom ?? null);
+          if (!reconciliationPreviewMatches(it.expectedBookBalance, oldBalance)) {
+            throw new Error(`PREVIEW_STALE: ${material.name} / party ${it.partyId ?? "plant-common"} changed since preview (preview ${it.expectedBookBalance} ${stockUom}, current ${oldBalance} ${stockUom}) — reopen the reconciliation preview`);
+          }
 
           // Conversion: configured factor only — never invented.
           const conv = resolveConversion(
@@ -9860,7 +9954,7 @@ export class DatabaseStorage implements IStorage {
           // UOM-aware rounding tolerance: rounding dust ⇒ verified, no ledger row.
           const noChange = isNoChange(adjustment, stockUom);
           computed.push({
-            it, balanceRowId: Number(row.id), oldBalance, stockUom, conv,
+            it, balanceRowId: row ? Number(row.id) : null, oldBalance, stockUom, conv,
             physicalBase, adjustment, noChange,
             materialName: material.name, materialCategory: material.category ?? null,
           });
@@ -9901,9 +9995,34 @@ export class DatabaseStorage implements IStorage {
             }).returning();
             ledgerEntryId = entry.id;
 
+            if (c.balanceRowId != null) {
+              await tx.update(stockBalances)
+                .set({ balance: c.physicalBase, uom: c.stockUom, lastUpdated: new Date() })
+                .where(eq(stockBalances.id, c.balanceRowId));
+            } else {
+              await tx.insert(stockBalances).values({
+                materialId: c.it.materialId,
+                partyId: c.it.partyId,
+                balance: c.physicalBase,
+                uom: c.stockUom,
+                lastUpdated: new Date(),
+              });
+            }
+          } else if (c.balanceRowId != null) {
+            // A tiny physical variance is intentionally not posted as a
+            // ledger movement. Still align a stale summary snapshot to the
+            // canonical ledger value so the two views stay in sync.
             await tx.update(stockBalances)
-              .set({ balance: c.physicalBase, lastUpdated: new Date() })
+              .set({ balance: c.oldBalance, uom: c.stockUom, lastUpdated: new Date() })
               .where(eq(stockBalances.id, c.balanceRowId));
+          } else {
+            await tx.insert(stockBalances).values({
+              materialId: c.it.materialId,
+              partyId: c.it.partyId,
+              balance: c.oldBalance,
+              uom: c.stockUom,
+              lastUpdated: new Date(),
+            });
           }
 
           const [saved] = await tx.insert(stockReconciliationItems).values({

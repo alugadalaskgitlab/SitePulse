@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildStockBalanceRebuildPreview,
+  calculateStockLedgerNet,
   convertStockQuantity,
   convertTransferQuantityBetweenBalances,
   normalizeAllowedWeightUoms,
@@ -8,6 +9,38 @@ import {
 } from "../shared/stockUnits";
 
 describe("STOCK-02 stock unit normalization and ledger rebuild", () => {
+  it("computes the canonical ledger figure from mixed CFT and MT rows, ignoring equipment-only rows", () => {
+    const material = {
+      id: 4,
+      name: "DUST",
+      defaultUom: "CFT",
+      conversionToUom: "MT",
+      bulkDensity: 1.65,
+    };
+    const entries = [
+      { transactionType: "opening", quantityIn: 7700, quantityOut: 0, uom: "CFT" },
+      { transactionType: "issue", quantityIn: 0, quantityOut: 75, uom: "CFT" },
+      { transactionType: "receipt", quantityIn: 30, quantityOut: 0, uom: "MT" },
+      { transactionType: "equipment_issue", quantityIn: 0, quantityOut: 1000, uom: "CFT" },
+    ];
+    const expected = calculateStockLedgerNet(material, entries);
+    expect(expected).toBeCloseTo(convertStockQuantity(7625, "CFT", "MT", 1.65) + 30, 6);
+    expect(expected).not.toBeCloseTo(convertStockQuantity(6625, "CFT", "MT", 1.65) + 30, 5);
+  });
+
+  it("uses the same canonical ledger net when stored balance is stale", () => {
+    const material = { id: 4, name: "DUST", defaultUom: "MT", conversionToUom: "MT", bulkDensity: 1.65 };
+    const currentLedger = calculateStockLedgerNet(material, [
+      { transactionType: "adjustment", quantityIn: 39.562487, quantityOut: 97.7444, uom: "MT" },
+    ]);
+    const expectedBookBalance = -58.181913;
+    expect(currentLedger).toBeCloseTo(expectedBookBalance, 6);
+    const physicalCount = 20;
+    expect(physicalCount - currentLedger).toBeCloseTo(78.181913, 6);
+    // The historical stale snapshot would have produced a different adjustment.
+    expect(physicalCount - (-72.818)).not.toBeCloseTo(physicalCount - currentLedger, 3);
+  });
+
   it.each(["T", "t", "TON", "Ton", "TONS", "tonnes", "Tonne"])(
     "normalizes %s to MT",
     unit => {

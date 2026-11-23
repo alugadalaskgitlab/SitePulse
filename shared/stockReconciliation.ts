@@ -176,6 +176,21 @@ export function toFiniteNumber(v: unknown): number | null {
   return null;
 }
 
+/**
+ * Reconciliation posts are bound to the exact ledger balance shown in the
+ * preview. Both values are rounded to the stock system's six-decimal
+ * precision before comparison; missing or invalid previews never match.
+ */
+export function reconciliationPreviewMatches(
+  expectedBookBalance: unknown,
+  currentLedgerBalance: unknown,
+): boolean {
+  const expected = toFiniteNumber(expectedBookBalance);
+  const current = toFiniteNumber(currentLedgerBalance);
+  if (expected === null || current === null) return false;
+  return Math.round(expected * 1_000_000) === Math.round(current * 1_000_000);
+}
+
 /** Display-safe: invalid/missing → "—"; valid → localized fixed-decimal string. */
 export function formatQty(v: unknown, decimals = 3): string {
   const n = toFiniteNumber(v);

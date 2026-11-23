@@ -116,6 +116,40 @@ export interface StockMaterialInput {
   bulkDensity: number | string | null;
 }
 
+export interface StockLedgerNetInput {
+  transactionType: string;
+  quantityIn: number | string | null;
+  quantityOut: number | string | null;
+  uom: string | null;
+}
+
+/**
+ * Return the ledger's current net quantity in the material's canonical stock
+ * unit. This is shared by reconciliation preview/post paths so they cannot
+ * disagree by reading a stale stock_balances snapshot.
+ */
+export function calculateStockLedgerNet(
+  material: StockMaterialInput,
+  entries: StockLedgerNetInput[],
+  fallbackUom?: string | null,
+): number {
+  const stockUom = stockUnitForMaterial(material, fallbackUom);
+  if (!stockUom) throw new Error(`${material.name}: stock unit is not configured.`);
+  let total = 0;
+  for (const entry of entries) {
+    if (entry.transactionType === "equipment_issue") continue;
+    const quantityIn = Number(entry.quantityIn ?? 0);
+    const quantityOut = Number(entry.quantityOut ?? 0);
+    if (!Number.isFinite(quantityIn) || !Number.isFinite(quantityOut)) {
+      throw new Error(`${material.name}: ledger quantity is not numeric.`);
+    }
+    const density = Number(material.bulkDensity) || null;
+    total += convertStockQuantity(quantityIn, entry.uom, stockUom, density);
+    total -= convertStockQuantity(quantityOut, entry.uom, stockUom, density);
+  }
+  return roundStockQuantity(total);
+}
+
 export interface StockBalanceRebuildRow {
   materialId: number;
   materialName: string;

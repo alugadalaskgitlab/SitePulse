@@ -5192,7 +5192,8 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/mix-templates/:id/rebuild-ledger", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+      if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can rebuild the dispatch ledger" });
       const templateId = Number(req.params.id);
       const bodySchema = z.object({
         fromDateTime: z.string().regex(
@@ -7670,6 +7671,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/plant-module/stock-balance-ledger-check", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+    if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can view stored-vs-ledger stock differences" });
+    try {
+      res.json(await storage.getStockBalanceLedgerDiscrepancies());
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Could not compare stored balances with the stock ledger" });
+    }
+  });
+
   app.post("/api/admin/stock-units/preview", async (req, res) => {
     if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
     if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can normalize stock units" });
@@ -7820,10 +7831,12 @@ export async function registerRoutes(
         sourceUom: String(it.sourceUom || ""),
         reason: String(it.reason || ""),
         note: it.note ? String(it.note) : undefined,
+        expectedBookBalance: Number(it.expectedBookBalance),
       }));
       for (const it of cleanItems) {
-        if (!it.materialId || !Number.isFinite(it.sourceQty) || it.sourceQty < 0 || !it.sourceUom || !it.reason) {
-          return res.status(400).json({ message: "Each item needs materialId, sourceQty (>= 0), sourceUom and reason" });
+        if (!it.materialId || !Number.isFinite(it.sourceQty) || it.sourceQty < 0 || !it.sourceUom || !it.reason ||
+            !Number.isFinite(it.expectedBookBalance)) {
+          return res.status(400).json({ message: "Each item needs materialId, sourceQty (>= 0), sourceUom, reason and the displayed system balance" });
         }
       }
       const result = await storage.postStockReconciliation({
@@ -7838,8 +7851,9 @@ export async function registerRoutes(
       res.status(result.alreadyPosted ? 200 : 201).json(result);
     } catch (err: any) {
       const msg = err?.message || "Failed to post stock reconciliation";
-      const code = /^(CONVERSION_NOT_CONFIGURED|BALANCE_NOT_FOUND|MATERIAL_NOT_FOUND|NEGATIVE_QTY|REASON_REQUIRED|NO_ITEMS|WARNINGS_NOT_ACKNOWLEDGED|DRAFT_NOT_FOUND|DRAFT_REJECTED|DRAFT_CORRUPT)/.exec(msg)?.[1];
-      res.status(code ? 422 : 500).json({ message: msg, code: code || undefined, warnings: err?.warnings || undefined });
+      const code = /^(CONVERSION_NOT_CONFIGURED|BALANCE_NOT_FOUND|BALANCE_DUPLICATE|BALANCE_INVALID|MATERIAL_NOT_FOUND|NEGATIVE_QTY|REASON_REQUIRED|NO_ITEMS|PREVIEW_REQUIRED|PREVIEW_STALE|WARNINGS_NOT_ACKNOWLEDGED|DRAFT_NOT_FOUND|DRAFT_REJECTED|DRAFT_CORRUPT)/.exec(msg)?.[1];
+      const status = code === "PREVIEW_STALE" ? 409 : code ? 422 : 500;
+      res.status(status).json({ message: msg, code: code || undefined, warnings: err?.warnings || undefined });
     }
   });
 
@@ -7913,7 +7927,8 @@ export async function registerRoutes(
   // Reconcile stock balances from ledger (admin maintenance endpoint)
   app.post("/api/plant-module/reconcile-stock-balances", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+      if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can reconcile stock balances" });
       const result = await storage.reconcileStockBalancesFromLedger();
       res.json({ 
         message: "Stock balances reconciled from ledger entries", 
@@ -7928,7 +7943,8 @@ export async function registerRoutes(
   // Backfill missing equipment usage ledger entries (admin maintenance endpoint)
   app.post("/api/plant-module/reconcile-equipment-usage-ledger", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+      if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can reconcile stock data" });
       // First create missing ledger entries
       const ledgerResult = await storage.reconcileEquipmentUsageLedger();
       // Then reconcile stock balances from all ledger entries
@@ -7948,7 +7964,8 @@ export async function registerRoutes(
   // Body: { materialId, fromPartyId, toPartyId, transactionType?, dateFrom?, dateTo? }
   app.post("/api/plant-module/reassign-ledger/preview", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+      if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can reassign stock ledger entries" });
       const { materialId, fromPartyId, dateFrom, dateTo, transactionType } = req.body || {};
       if (!materialId || !fromPartyId) {
         return res.status(400).json({ message: "materialId and fromPartyId are required" });
@@ -7971,7 +7988,8 @@ export async function registerRoutes(
   // Auth: session-role check via assertAdmin (no legacy PIN field).
   app.post("/api/plant-module/reassign-ledger/execute", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+      if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can reassign stock ledger entries" });
       const { materialId, fromPartyId, toPartyId, dateFrom, dateTo, transactionType } = req.body || {};
       const actor = currentUserName(req);
       if (!materialId || !fromPartyId || !toPartyId) {
@@ -15840,7 +15858,8 @@ export async function registerRoutes(
 
   app.post("/api/admin/fix-orphan-stock-balances", async (req, res) => {
       try {
-        if (!assertAdmin(req, res)) return;
+        if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
+        if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can fix phantom stock balances" });
         const result = await storage.fixOrphanStockBalances();
         res.json(result);
       } catch (err) {

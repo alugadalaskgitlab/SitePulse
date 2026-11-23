@@ -50,6 +50,7 @@ interface RowDraft {
   reason: string;
   note: string;
   include: boolean;
+  expectedBookBalance?: number | null;
 }
 
 // Display-safe formatter (shared helper): handles pg numeric strings, null,
@@ -145,7 +146,10 @@ export default function PlantStockReconciliation() {
   const draftRowsPayload = () =>
     Object.entries(drafts)
       .filter(([, d]) => d.include)
-      .map(([key, d]) => ({ key, ...d }));
+      .map(([key, d]) => {
+        const current = balances?.find(row => rowKey(row) === key);
+        return { key, ...d, expectedBookBalance: current ? toFiniteNumber(current.balance) : null };
+      });
 
   const saveDraftMutation = useMutation({
     mutationFn: async (status: "draft" | "submitted") => {
@@ -186,7 +190,17 @@ export default function PlantStockReconciliation() {
     try {
       const rows = JSON.parse(s.draftRows || "[]") as Array<RowDraft & { key: string }>;
       const next: Record<string, RowDraft> = {};
-      for (const r of rows) next[r.key] = { physicalQty: r.physicalQty, physicalUom: r.physicalUom, reason: r.reason, note: r.note, include: true };
+      for (const r of rows) {
+        const current = balances?.find(row => rowKey(row) === r.key);
+        next[r.key] = {
+          physicalQty: r.physicalQty,
+          physicalUom: r.physicalUom,
+          reason: r.reason,
+          note: r.note,
+          include: true,
+          expectedBookBalance: current ? toFiniteNumber(current.balance) : (r as any).expectedBookBalance,
+        };
+      }
       setDrafts(next);
       setCountDate(s.countDate);
       setDraftId(s.id);
@@ -223,6 +237,7 @@ export default function PlantStockReconciliation() {
           sourceUom: r.draft.physicalUom || r.stockUom,
           reason: r.draft.reason,
           note: r.draft.note || undefined,
+          expectedBookBalance: r.bookBalance!,
         })),
       });
       return res.json();

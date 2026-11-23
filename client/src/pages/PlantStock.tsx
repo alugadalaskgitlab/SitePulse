@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Link, useSearch, useLocation } from "wouter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useOrigin } from "@/hooks/use-origin";
@@ -56,6 +57,21 @@ type ProcessedLedgerEntry = ReceiptDatedLedgerEntry & {
   _originalQtyOut?: number;
 };
 
+type StockBalanceLedgerCheck = {
+  rows: Array<{
+    materialId: number;
+    materialName: string;
+    partyId: number | null;
+    partyName: string;
+    stockUom: string;
+    storedBalance: number;
+    ledgerBalance: number;
+    difference: number;
+    balanceIds: number[];
+  }>;
+  errors: string[];
+};
+
 const n = (v: unknown): number | null => (v == null ? null : Number(v));
 const normLedger = (e: ReceiptDatedLedgerEntry): ReceiptDatedLedgerEntry => ({
   ...e,
@@ -86,6 +102,16 @@ export default function PlantStock() {
     ? "/"
     : resolveInternalReturnTo(requestedReturnTo, currentTab === "stock" ? "/plant/hub" : "/stores/hub");
   const [confirmAction, setConfirmAction] = useState<null | "reconcile" | "fix-phantom" | "rebuild" | "reassign">(null);
+  const [confirmText, setConfirmText] = useState("");
+  const requiredConfirmText = confirmAction === "reconcile"
+    ? "RECONCILE"
+    : confirmAction === "fix-phantom"
+    ? "FIX PHANTOM"
+    : confirmAction === "rebuild"
+    ? "REBUILD"
+    : confirmAction === "reassign"
+    ? "REASSIGN"
+    : "";
   useEffect(() => {
     if (routeParams.get("context") || isPortalOrigin) return;
     const context = contextKeyForReturnPath(requestedReturnTo) ?? (currentTab === "stock" ? "hmp" : "stores");
@@ -159,6 +185,7 @@ export default function PlantStock() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balance-ledger-check"] });
       const created = data.ledgerEntries?.created || 0;
       const cleaned = data.ledgerEntries?.cleaned || 0;
       let description = "";
@@ -189,6 +216,11 @@ export default function PlantStock() {
     select: (rows) => rows.map(r => ({ ...r, balance: Number(r.balance) })),
     staleTime: 30_000,
     refetchInterval: 60_000,
+  });
+  const stockCheckQuery = useQuery<StockBalanceLedgerCheck>({
+    queryKey: ["/api/plant-module/stock-balance-ledger-check"],
+    enabled: isOwner,
+    staleTime: 30_000,
   });
   const { data: allTemplateComponents } = useQuery<{ id: number; templateId: number; materialId: number; percent: number | null; moistureContent?: number | null; wastageFactor?: number | null }[]>({
     queryKey: ["/api/plant-module/mix-template-components"],
@@ -821,9 +853,14 @@ export default function PlantStock() {
       else if (entry.transactionType === "opening") {
         summaryMap[key].openingStock += getConvertedQty(entry.quantityIn);
       }
-      // Receipts (from Material Receipts) and adjustments
-      else if (entry.transactionType === "receipt" || entry.transactionType === "adjustment") {
+      // Receipts (from Material Receipts)
+      else if (entry.transactionType === "receipt") {
         summaryMap[key].received += getConvertedQty(entry.quantityIn);
+      }
+      // Reconciliation adjustments can add or remove stock.
+      else if (entry.transactionType === "adjustment") {
+        summaryMap[key].received += getConvertedQty(entry.quantityIn);
+        summaryMap[key].consumed += getConvertedQty(entry.quantityOut);
       }
       // Returns: materials returned from site back to stock — treated as received (add-back)
       else if (entry.transactionType === "return") {
@@ -916,9 +953,12 @@ export default function PlantStock() {
         }
       };
 
-      // Receipts: opening, receipt, adjustment, return
+      // Receipts and positive reconciliation adjustments.
       if (entry.transactionType === "opening" || entry.transactionType === "receipt" || entry.transactionType === "adjustment") {
         summaryMap[key].totalReceipts += getConvertedQty(entry.quantityIn);
+      }
+      if (entry.transactionType === "adjustment") {
+        summaryMap[key].totalIssues += getConvertedQty(entry.quantityOut);
       }
       // Returns: material returned from site reduces net issues (adds back to receipts side)
       if (entry.transactionType === "return") {
@@ -934,7 +974,7 @@ export default function PlantStock() {
         if ((entry.quantityOut || 0) > 0) summaryMap[key].totalIssues += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
       // Issues: dispatch, issue, equipment_usage, dpr_equipment_usage
-      if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage") {
+      if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage" || entry.transactionType === "ldo_dip_consumption") {
         summaryMap[key].totalIssues += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
       // Direct purchases bypass plant stock - not counted in balance
@@ -963,6 +1003,27 @@ export default function PlantStock() {
     if (selectedMaterialId !== "all" && b.materialId !== Number(selectedMaterialId)) return false;
     return true;
   });
+
+  const todayDate = format(new Date(), "yyyy-MM-dd");
+  const summaryBalanceWarnings = dateTo === todayDate
+    ? stockSummary.flatMap(item => {
+        const current = allTimeBalances?.find(row =>
+          row.materialId === item.materialId && row.partyId === item.partyId,
+        );
+        if (!current) return [];
+        const difference = Math.round((item.closing - current.balance) * 1_000_000) / 1_000_000;
+        return difference === 0
+          ? []
+          : [{ ...item, difference }];
+      })
+    : [];
+  const displayDate = (value: string) => {
+    if (!value) return "all dates";
+    const date = new Date(`${value}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  };
+  const anyStockFilters = !!dateFrom || !!dateTo || selectedPartyId !== "all" ||
+    selectedMaterialId !== "all" || selectedTransactionType !== "all" || issuedToFilter !== "all";
 
   // Handler to jump to ledger tab with material/party filter
   const jumpToLedger = (materialId: number, partyId: number | null) => {
@@ -1438,6 +1499,7 @@ export default function PlantStock() {
       onSuccess: (data: { fixed: number; details: { party: string; material: string; corrected: number; uom: string }[] }) => {
         queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
         queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balance-ledger-check"] });
         if (data.fixed === 0) {
           toast({ title: "No orphan balances found", description: "All negative balances have backing ledger entries." });
         } else {
@@ -1464,6 +1526,18 @@ export default function PlantStock() {
           <ul className="mt-1 list-inside list-disc">{stockConversionWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
         </div>
       )}
+      {isOwner && (stockCheckQuery.data?.rows.length ?? 0) > 0 && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200" role="status" data-testid="stored-ledger-differences">
+          <div className="font-semibold">Stored balances differ from the ledger</div>
+          <ul className="mt-1 list-inside list-disc">
+            {stockCheckQuery.data!.rows.map(row => (
+              <li key={`${row.materialId}:${row.partyId ?? "common"}`}>
+                {row.materialName} / {row.partyName}: stored {row.storedBalance.toFixed(6)} {row.stockUom}, ledger {row.ledgerBalance.toFixed(6)} {row.stockUom}, difference {row.difference > 0 ? "+" : ""}{row.difference.toFixed(6)} {row.stockUom}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
           <Link href={backLink}>
@@ -1484,70 +1558,20 @@ export default function PlantStock() {
               </Button>
             </Link>
             {canExport && (
-              <Button size="sm" variant="outline" className="gap-1" onClick={handleExportExcelClick} disabled={!stockSummary.length} data-testid="button-export-excel">
-                <Download className="w-4 h-4" /> Export Excel
-              </Button>
-            )}
-            {canExport && (
-              <Button size="sm" variant="outline" className="gap-1" onClick={handleExportPdfClick} disabled={!stockSummary.length} data-testid="button-export-pdf">
-                <Download className="w-4 h-4" /> Export PDF
-              </Button>
-            )}
-            {canExport && (
-              <Button size="sm" variant="outline" className="gap-1" onClick={handlePrintClick} data-testid="button-print">
-                <Printer className="w-4 h-4" /> Print
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline" className="gap-1" data-testid="button-export">
+                    <Download className="w-4 h-4" /> Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={handleExportExcelClick} disabled={!stockSummary.length} data-testid="button-export-excel">Excel</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={handleExportPdfClick} disabled={!stockSummary.length} data-testid="button-export-pdf">PDF</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={handlePrintClick} data-testid="button-print">Print</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
-          {canReconcile && (
-            <div className="flex items-center gap-2 flex-wrap justify-end rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2">
-              <span className="flex items-center gap-1 text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider mr-1" data-testid="label-advanced-tools">
-                <ShieldAlert className="w-3.5 h-3.5" />
-                Advanced
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1 border-amber-300 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
-                onClick={() => setConfirmAction("reconcile")}
-                disabled={reconcileMutation.isPending}
-                data-testid="button-reconcile-data"
-              >
-                {reconcileMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                Reconcile Data
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1 border-amber-300 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
-                onClick={() => setConfirmAction("fix-phantom")}
-                disabled={fixOrphanMutation.isPending}
-                data-testid="button-fix-orphan-balances"
-                title="Find negative stock balances with no backing ledger entries and zero them out"
-              >
-                {fixOrphanMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                Fix Phantom Balances
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1 border-amber-300 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
-                onClick={() => setConfirmAction("reassign")}
-                data-testid="link-stock-reassign"
-              >
-                <ArrowRightLeft className="w-4 h-4" /> Reassign Ledger
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1 border-amber-300 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
-                onClick={() => setConfirmAction("rebuild")}
-                data-testid="link-ledger-rebuild"
-              >
-                <RotateCcw className="w-4 h-4" /> Rebuild Ledger
-              </Button>
-            </div>
-          )}
         </div>
       </div>
 
@@ -1669,6 +1693,24 @@ export default function PlantStock() {
         </CardContent>
       </Card>
 
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm" data-testid="active-stock-filters">
+        <span>
+          {activeTab === "balances"
+            ? "Current balances as of today · all dates"
+            : `Showing ${displayDate(dateFrom)}–${displayDate(dateTo)}`}
+          {" · "}{selectedPartyId === "all" ? "all parties" : selectedPartyId === "common" ? "plant common" : parties?.find(p => String(p.id) === selectedPartyId)?.name ?? "selected party"}
+          {" · "}{selectedMaterialId === "all" ? "all materials" : materials?.find(m => m.id === Number(selectedMaterialId))?.name ?? "selected material"}
+          {activeTab !== "balances" && ` · ${selectedTransactionType === "all" ? "all transaction types" : selectedTransactionType}`}
+          {activeTab === "ledger" && issuedToFilter !== "all" && ` · dispatched to ${issuedToFilter}`}
+          {anyStockFilters && !urlHasStockFilterParams && <span className="text-muted-foreground"> · remembered from last visit</span>}
+        </span>
+        {anyStockFilters && (
+          <Button size="sm" variant="ghost" onClick={resetPersistedFilters} data-testid="button-reset-active-stock-filters">
+            Reset
+          </Button>
+        )}
+      </div>
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className={`grid w-full ${tabColumnClass}`}>
           <TabsTrigger value="summary" className="gap-2 text-sm sm:text-sm">
@@ -1707,10 +1749,22 @@ export default function PlantStock() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Layers className="w-5 h-5" />
-                Stock Summary (Period: {dateFrom} to {dateTo})
+                Stock Summary (Period: {dateFrom || "start"} to {dateTo || "today"})
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {summaryBalanceWarnings.length > 0 && (
+                <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200" role="alert" data-testid="summary-balance-warning">
+                  <strong>Summary closing does not match Current Balances:</strong>
+                  <ul className="mt-1 list-inside list-disc">
+                    {summaryBalanceWarnings.map(row => (
+                      <li key={`${row.materialId}:${row.partyId ?? "common"}`}>
+                        {row.materialName} / {row.partyName}: {row.difference > 0 ? "+" : ""}{row.difference.toFixed(6)} {row.uom}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {ledgerLoading ? (
                 <div className="flex justify-center p-8">
                   <Loader2 className="w-6 h-6 animate-spin" />
@@ -1851,7 +1905,7 @@ export default function PlantStock() {
                     Current stock balances
                   </CardTitle>
                   <p className="text-sm text-muted-foreground">
-                    All-time stock positions. Click on a card to view ledger details.
+                    As of today, all dates. Click on a card to view ledger details.
                   </p>
                 </div>
                 {canReconcile && (
@@ -3002,7 +3056,89 @@ export default function PlantStock() {
 
       </Tabs>
 
-      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) setConfirmAction(null); }}>
+      {isOwner && (
+        <details className="rounded-lg border border-amber-300 dark:border-amber-800" data-testid="advanced-owner-section">
+          <summary className="cursor-pointer px-4 py-3 font-semibold text-amber-800 dark:text-amber-300">
+            Advanced (Owner only)
+          </summary>
+          <div className="space-y-5 border-t p-4">
+            <section className="space-y-3" aria-labelledby="stock-ledger-check-title">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 id="stock-ledger-check-title" className="font-semibold">Stored balance vs ledger check</h2>
+                  <p className="text-sm text-muted-foreground">Read-only comparison in each material’s stock unit. It does not repair or change any record.</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => stockCheckQuery.refetch()} disabled={stockCheckQuery.isFetching} data-testid="button-refresh-stock-check">
+                  {stockCheckQuery.isFetching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
+                  Refresh comparison
+                </Button>
+              </div>
+              {stockCheckQuery.isError && <p className="text-sm text-destructive">Could not load the read-only comparison.</p>}
+              {(stockCheckQuery.data?.errors.length ?? 0) > 0 && (
+                <ul className="list-inside list-disc rounded border border-red-300 p-3 text-sm text-red-700" data-testid="stock-check-errors">
+                  {stockCheckQuery.data!.errors.map((error, index) => <li key={index}>{error}</li>)}
+                </ul>
+              )}
+              {stockCheckQuery.data && stockCheckQuery.data.errors.length === 0 && stockCheckQuery.data.rows.length === 0 && (
+                <p className="text-sm text-emerald-700 dark:text-emerald-300" data-testid="stock-check-matches">Stored balances match the ledger.</p>
+              )}
+              {(stockCheckQuery.data?.rows.length ?? 0) > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm" data-testid="stock-check-table">
+                    <thead><tr className="border-b text-left">
+                      <th className="py-2 pr-3">Material</th><th className="py-2 pr-3">Party</th>
+                      <th className="py-2 pr-3 text-right">Stored</th><th className="py-2 pr-3 text-right">Ledger</th>
+                      <th className="py-2 text-right">Difference</th>
+                    </tr></thead>
+                    <tbody>{stockCheckQuery.data!.rows.map(row => (
+                      <tr className="border-b last:border-0" key={`${row.materialId}:${row.partyId ?? "common"}`}>
+                        <td className="py-2 pr-3">{row.materialName}</td>
+                        <td className="py-2 pr-3">{row.partyName}</td>
+                        <td className="py-2 pr-3 text-right">{row.storedBalance.toFixed(6)} {row.stockUom}</td>
+                        <td className="py-2 pr-3 text-right">{row.ledgerBalance.toFixed(6)} {row.stockUom}</td>
+                        <td className="py-2 text-right">{row.difference > 0 ? "+" : ""}{row.difference.toFixed(6)} {row.stockUom}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            <section className="grid gap-3 sm:grid-cols-2" aria-label="Stock maintenance actions">
+              <div className="rounded-md border p-3">
+                <h3 className="font-medium">Reconcile data</h3>
+                <p className="mb-3 mt-1 text-sm text-muted-foreground">May add missing equipment and dispatch fuel ledger entries and remove orphaned entries, then rebuild stored balances.</p>
+                <Button size="sm" variant="outline" onClick={() => { setConfirmText(""); setConfirmAction("reconcile"); }} disabled={reconcileMutation.isPending} data-testid="button-reconcile-data">
+                  <RefreshCw className="mr-1 h-4 w-4" /> Reconcile data
+                </Button>
+              </div>
+              <div className="rounded-md border p-3">
+                <h3 className="font-medium">Fix phantom balances</h3>
+                <p className="mb-3 mt-1 text-sm text-muted-foreground">Zeros negative stored balances that have no backing ledger entries. This changes stored balances and cannot be undone.</p>
+                <Button size="sm" variant="outline" onClick={() => { setConfirmText(""); setConfirmAction("fix-phantom"); }} disabled={fixOrphanMutation.isPending} data-testid="button-fix-orphan-balances">
+                  <RefreshCw className="mr-1 h-4 w-4" /> Fix phantom balances
+                </Button>
+              </div>
+              <div className="rounded-md border p-3">
+                <h3 className="font-medium">Reassign ledger</h3>
+                <p className="mb-3 mt-1 text-sm text-muted-foreground">Moves selected ledger entries to another party, changing party-wise stock balances.</p>
+                <Button size="sm" variant="outline" onClick={() => { setConfirmText(""); setConfirmAction("reassign"); }} data-testid="link-stock-reassign">
+                  <ArrowRightLeft className="mr-1 h-4 w-4" /> Reassign ledger
+                </Button>
+              </div>
+              <div className="rounded-md border p-3">
+                <h3 className="font-medium">Rebuild ledger</h3>
+                <p className="mb-3 mt-1 text-sm text-muted-foreground">Rewrites aggregate dispatch ledger rows from the selected cutoff using current mix proportions.</p>
+                <Button size="sm" variant="outline" onClick={() => { setConfirmText(""); setConfirmAction("rebuild"); }} data-testid="link-ledger-rebuild">
+                  <RotateCcw className="mr-1 h-4 w-4" /> Rebuild ledger
+                </Button>
+              </div>
+            </section>
+          </div>
+        </details>
+      )}
+
+      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) { setConfirmAction(null); setConfirmText(""); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
@@ -3015,7 +3151,7 @@ export default function PlantStock() {
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-sm">
                 {confirmAction === "reconcile" && (
-                  <p>Re-links equipment and dispatch fuel consumption to tank ledger entries. Corrects mismatches between book entries and physical stock without deleting any records. Safe to run at any time.</p>
+                  <p>This may add missing equipment or dispatch fuel ledger rows and remove orphaned rows, then update stock balance summaries.</p>
                 )}
                 {confirmAction === "fix-phantom" && (
                   <>
@@ -3038,15 +3174,20 @@ export default function PlantStock() {
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="input-confirm-stock-action">Type <strong>{requiredConfirmText}</strong> to continue</Label>
+            <Input id="input-confirm-stock-action" value={confirmText} onChange={event => setConfirmText(event.target.value)} autoComplete="off" data-testid="input-confirm-stock-action" />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-adv-cancel">Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={confirmText.trim() !== requiredConfirmText}
               onClick={() => {
-                if (confirmAction === "reconcile") { setConfirmAction(null); handleReconcileClick(); }
-                else if (confirmAction === "fix-phantom") { setConfirmAction(null); fixOrphanMutation.mutate(); }
-                else if (confirmAction === "rebuild") { setConfirmAction(null); navigate(appendPlantContext("/plant/ledger-rebuild", { defaultTab: "stock" })); }
-                else if (confirmAction === "reassign") { setConfirmAction(null); navigate(appendPlantContext("/plant/stock-reassign", { defaultTab: "stock" })); }
+                if (confirmAction === "reconcile") { setConfirmAction(null); setConfirmText(""); handleReconcileClick(); }
+                else if (confirmAction === "fix-phantom") { setConfirmAction(null); setConfirmText(""); fixOrphanMutation.mutate(); }
+                else if (confirmAction === "rebuild") { setConfirmAction(null); setConfirmText(""); navigate(appendPlantContext("/plant/ledger-rebuild", { defaultTab: "stock" })); }
+                else if (confirmAction === "reassign") { setConfirmAction(null); setConfirmText(""); navigate(appendPlantContext("/plant/stock-reassign", { defaultTab: "stock" })); }
               }}
               data-testid="button-adv-proceed"
             >
