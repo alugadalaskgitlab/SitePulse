@@ -43,3 +43,26 @@ For the phone screenshots, I created a temporary development Owner login, order,
 ![Supply alert on the plant dispatch log at 390 px](ORDERS-01-alert-phone.png)
 
 The development workflow has VAPID keys unset, so actual push delivery was not exercised. The alert records and in-app display paths were tested; the existing push-delivery call remains wired for environments with push configured.
+
+## Add-on — Order details, quantity units and order-specific mixes
+
+- Added work name, division, mandal, district, agreement/estimate reference and SOR year to an order, plus estimate-PDF and party mix-instruction attachments. Party statements and dispatch exports include the linked order number and work name.
+- Order quantities can be entered in MT or cum. Each order stores its editable MT-per-cum factor (default 2.356); the screen shows the entered quantity and its MT/cum equivalent.
+- Added “Copy as order mix” so an order can save its own bitumen percentage, LDO norm and aggregate shares/material links without editing the standard mix template. Dispatches linked to the order use that snapshot. The order screen compares its allowance with actual dispatch-based usage and shows the party-supply shortage.
+- The development fixture tests cover the 700 MT BC example: bitumen 35 MT, 10/12MM 199.5 MT, 6MM DOWN 166.25 MT, and DUST 299.25 MT; 297.1 cum converts to 700 MT at 2.356; 305 MT dispatched gives a 15.25 MT bitumen allowance. The party-stock example reports shortages of 8.2 MT bitumen and 299.25 MT DUST.
+- If the party’s order-mix bitumen percentage is below the source template, the order shows one note identifying the percentage and whether the written instruction is attached.
+- For party-scope LDO, the plant log displays the order’s dispatch LDO plus the PLANT-04 pre-heat/boiler allocation. A single order receives the full day’s pre-heat and boiler allocation; multiple orders split it by dispatched MT. As confirmed by the Owner, this allocation is display-only: it creates no stock-ledger entries and changes no past or current stock figures.
+- No real orders or mixes were created, and no existing dispatch, stock entry, ledger row or standard template was changed.
+
+### Schema and publishing check
+
+- Additive migration `migrations/0061_plant_supply_order_details.sql` is applied to both development databases. Read-only checks confirmed `current_database()` as `sitelog_dev` and `heliumdb`; each has the seven new nullable order columns, two nullable order-line columns, both order-mix tables and the component sort index.
+- The publish schema change attributable to this add-on is additive only: seven nullable columns on `plant_supply_orders`; two nullable columns on `plant_supply_order_lines`; new `plant_supply_order_mix_specs` and `plant_supply_order_mix_components` tables with their foreign keys, uniqueness constraint and sort index. No drops, renames, or data changes are in the migration.
+- Production was not queried or changed, and no publish was run. The running app on `sitelog_dev` reported startup readiness `ready: true` (2,384 columns checked). The previously reported, separate access-migration review-marker issue on `heliumdb` was not changed by this add-on.
+
+### Add-on verification
+
+- Focused order and dispatch tests: **13 passed**.
+- Full suite: **493 test files passed, 2 skipped; 5,955 tests passed, 3 skipped; 0 failures**.
+- `npm run build`: **passed**.
+- The full suite initially exposed a dispatch-form loading-state error when order context had no `lines` array yet. The page now safely waits for that array; the focused and full suites pass.

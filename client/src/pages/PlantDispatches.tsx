@@ -601,7 +601,7 @@ export default function PlantDispatches() {
   const theoreticalValues = useMemo(() => {
     const template = templates?.find(t => t.id === parseInt(mixTemplateId));
     const orderMix = !editingDispatch
-      ? dispatchOrderContext?.lines.find(line => line.mixTemplateId === Number(mixTemplateId))
+      ? dispatchOrderContext?.lines?.find(line => line.mixTemplateId === Number(mixTemplateId))
       : undefined;
     const weight = parseFloat(loadWeight) || 0;
     if (!template || !weight) return null;
@@ -680,7 +680,7 @@ export default function PlantDispatches() {
     || primaryFieldsExpanded;
   const dispatchPartyName = parties?.find(party => String(party.id) === partyId)?.name || "Choose party/job";
   const selectedOrderMix = !editingDispatch
-    ? dispatchOrderContext?.lines.find(line => line.mixTemplateId === Number(mixTemplateId))
+    ? dispatchOrderContext?.lines?.find(line => line.mixTemplateId === Number(mixTemplateId))
     : undefined;
   const dispatchMixName = selectedOrderMix?.isOrderMix
     ? selectedOrderMix.mixName
@@ -1419,7 +1419,7 @@ export default function PlantDispatches() {
                     )}
                     {(() => {
                       const orderLine = !editingDispatch
-                        ? dispatchOrderContext?.lines.find(line => line.mixTemplateId === Number(mixTemplateId))
+                        ? dispatchOrderContext?.lines?.find(line => line.mixTemplateId === Number(mixTemplateId))
                         : undefined;
                       if (!orderLine?.isOrderMix) return null;
                       return (
