@@ -3,11 +3,12 @@ import { registerRoutes, setEarthworkSchemaReady } from "./routes";
 import { autoMapAllUnmappedItems } from "./snlAutoMapper";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { initPush, sendPushToAudience } from "./push";
+import { initPush, sendPushToAudience, sendPushToUser } from "./push";
 import { storage } from "./storage";
 import { pool } from "./db";
 import { verifyStartupReadiness } from "./startupReadiness";
 import { startDispatchProOutboxWorker } from "./dispatchProOutbox";
+import { runPlantSupplyMorningSummary } from "./plantSupplyOrderService";
 
 const app = express();
 const httpServer = createServer(app);
@@ -85,6 +86,7 @@ app.use((req, res, next) => {
     log(`serving on port ${port}`);
   });
   startStaleGrnNotifications();
+  startPlantSupplyMorningSummary();
 })().catch(async error => {
   console.error("Startup stopped without automatic repair:", error);
   await pool.end();
@@ -114,5 +116,42 @@ function startStaleGrnNotifications() {
   setTimeout(() => {
     checkAndNotifyStaleGrns();
     setInterval(checkAndNotifyStaleGrns, 60 * 60 * 1000);
+  }, 30_000);
+}
+
+function startPlantSupplyMorningSummary() {
+  let lastMinuteKey = "";
+  const check = async () => {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date());
+    const part = (type: string) => parts.find(item => item.type === type)?.value ?? "";
+    const dateKey = `${part("year")}-${part("month")}-${part("day")}`;
+    const minuteKey = `${dateKey}T${part("hour")}:${part("minute")}`;
+    if (part("hour") !== "07" || part("minute") !== "00" || minuteKey === lastMinuteKey) return;
+    lastMinuteKey = minuteKey;
+    try {
+      const alerts = await runPlantSupplyMorningSummary(dateKey);
+      await Promise.all(alerts.map(alert => sendPushToUser(
+        alert.recipientUserId,
+        alert.title,
+        alert.message,
+        "/plant/supply-orders",
+      )));
+    } catch (error) {
+      console.error("[PlantSupply] Morning summary failed:", error);
+    }
+  };
+  // Delay the first check: startup itself stays read-only; the scheduled job
+  // runs only at the explicitly configured 07:00 Asia/Kolkata time.
+  setTimeout(() => {
+    void check();
+    setInterval(() => void check(), 30_000);
   }, 30_000);
 }

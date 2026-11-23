@@ -26,10 +26,14 @@ export async function verifyStartupReadiness(pool: {
     }
     if (missing.length) throw new Error(`STARTUP_SCHEMA_NOT_READY: ${missing.join(", ")}. Apply an explicitly reviewed migration; startup will not modify schema.`);
     const indexes = (await client.query(
-      "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='public' AND indexname IN ('hire_statements_equipment_period_uq','equipment_usage_source_usage_successor_uq','stock_ledger_dispatch_dedup_idx')",
+      "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='public' AND indexname IN ('hire_statements_equipment_period_uq','equipment_usage_source_usage_successor_uq','stock_ledger_dispatch_dedup_idx','plant_supply_orders_one_open_party_uq')",
     )).rows;
-    for (const name of ["hire_statements_equipment_period_uq", "equipment_usage_source_usage_successor_uq", "stock_ledger_dispatch_dedup_idx"]) {
+    for (const name of ["hire_statements_equipment_period_uq", "equipment_usage_source_usage_successor_uq", "stock_ledger_dispatch_dedup_idx", "plant_supply_orders_one_open_party_uq"]) {
       if (!indexes.some(r => r.indexname === name)) throw new Error(`STARTUP_INDEX_REQUIRED: ${name}`);
+    }
+    const openOrderIndex = indexes.find(r => r.indexname === "plant_supply_orders_one_open_party_uq")!;
+    if (!/UNIQUE INDEX.*\(party_id\).*WHERE.*status.*open/i.test(openOrderIndex.indexdef)) {
+      throw new Error("STARTUP_INDEX_INCOMPATIBLE: only one open plant supply order is allowed per party");
     }
     const hireIndex = indexes.find(r => r.indexname === "hire_statements_equipment_period_uq")!;
     if (!/UNIQUE INDEX.*USING btree \(equipment_id, period_from, period_to\)$/i.test(hireIndex.indexdef)) {

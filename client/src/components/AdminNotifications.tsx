@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Bell, Check, CheckCheck, Trash2, X, Info, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,8 +19,9 @@ interface Notification {
   type: string;
   title: string;
   message: string;
-  isRead: number;
+  isRead: number | boolean;
   createdAt: string;
+  source?: "global" | "supply";
 }
 
 const playNotificationSound = () => {
@@ -55,17 +56,33 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
   const [open, setOpen] = useState(false);
   const prevUnreadCount = useRef<number>(0);
 
-  const { data: notifications = [] } = useQuery<Notification[]>({
+  const { data: globalNotifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
     refetchInterval: 30000,
   });
 
-  const { data: unreadData } = useQuery<{ count: number }>({
+  const { data: globalUnreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/notifications/unread-count"],
     refetchInterval: 30000,
   });
 
-  const unreadCount = unreadData?.count || 0;
+  const { data: supplyNotifications = [] } = useQuery<any[]>({
+    queryKey: ["/api/plant-supply-alert-notifications"],
+    refetchInterval: 30000,
+  });
+  const { data: supplyUnreadData } = useQuery<{ count: number }>({
+    queryKey: ["/api/plant-supply-alert-notifications/unread-count"],
+    refetchInterval: 30000,
+  });
+  const notifications = useMemo(() => [
+    ...globalNotifications.map(row => ({ ...row, source: "global" as const })),
+    ...supplyNotifications.map(row => ({
+      ...row,
+      type: row.alertType === "borrowed" || row.alertType === "exhausted" ? "warning" : "info",
+      source: "supply" as const,
+    })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [globalNotifications, supplyNotifications]);
+  const unreadCount = (globalUnreadData?.count || 0) + (supplyUnreadData?.count || 0);
 
   useEffect(() => {
     if (unreadCount > prevUnreadCount.current && prevUnreadCount.current !== 0) {
@@ -75,32 +92,51 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
   }, [unreadCount]);
 
   const markReadMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("PATCH", `/api/notifications/${id}/read`);
+    mutationFn: async (notification: Notification) => {
+      await apiRequest(
+        "PATCH",
+        notification.source === "supply"
+          ? `/api/plant-supply-alert-notifications/${notification.id}/read`
+          : `/api/notifications/${notification.id}/read`,
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-supply-alert-notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-supply-alert-notifications/unread-count"] });
     },
   });
 
   const markAllReadMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("PATCH", "/api/notifications/read-all");
+      await Promise.all([
+        apiRequest("PATCH", "/api/notifications/read-all"),
+        apiRequest("PATCH", "/api/plant-supply-alert-notifications/read-all"),
+      ]);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-supply-alert-notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-supply-alert-notifications/unread-count"] });
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/notifications/${id}`);
+    mutationFn: async (notification: Notification) => {
+      await apiRequest(
+        "DELETE",
+        notification.source === "supply"
+          ? `/api/plant-supply-alert-notifications/${notification.id}`
+          : `/api/notifications/${notification.id}`,
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-supply-alert-notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-supply-alert-notifications/unread-count"] });
     },
   });
 
@@ -181,10 +217,13 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
           ) : (
             <div className="divide-y">
               {notifications.map((notification) => (
+                (() => {
+                  const notificationKey = notification.source === "supply" ? `supply-${notification.id}` : String(notification.id);
+                  return (
                 <div 
-                  key={notification.id} 
+                  key={notificationKey}
                   className={`p-3 ${notification.isRead ? 'bg-background' : 'bg-muted/30'}`}
-                  data-testid={`notification-${notification.id}`}
+                  data-testid={`notification-${notificationKey}`}
                 >
                   <div className="flex items-start gap-2">
                     {getIcon(notification.type)}
@@ -201,8 +240,8 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
                           variant="ghost" 
                           size="icon" 
                           className="h-6 w-6"
-                          onClick={() => markReadMutation.mutate(notification.id)}
-                          data-testid={`button-mark-read-${notification.id}`}
+                          onClick={() => markReadMutation.mutate(notification)}
+                          data-testid={`button-mark-read-${notificationKey}`}
                         >
                           <Check className="w-3 h-3" />
                         </Button>
@@ -211,14 +250,16 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
                         variant="ghost" 
                         size="icon" 
                         className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                        onClick={() => deleteMutation.mutate(notification.id)}
-                        data-testid={`button-delete-notification-${notification.id}`}
+                        onClick={() => deleteMutation.mutate(notification)}
+                        data-testid={`button-delete-notification-${notificationKey}`}
                       >
                         <Trash2 className="w-3 h-3" />
                       </Button>
                     </div>
                   </div>
                 </div>
+                  );
+                })()
               ))}
             </div>
           )}

@@ -81,6 +81,10 @@ import {
   equipmentMaster,
   materialReceipts,
   truckDispatches,
+  plantSupplyOrders,
+  plantSupplyOrderMaterialScopes,
+  plantSupplyBorrowings,
+  plantSupplyBorrowingEvents,
   equipmentUsage,
   generatorLogs,
   ldoLogs,
@@ -867,7 +871,7 @@ export interface IStorage {
   updateMaterialReceipt(id: number, receipt: Partial<InsertMaterialReceipt>): Promise<MaterialReceipt | undefined>;
   deleteMaterialReceipt(id: number): Promise<boolean>;
   
-  getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]>;
+  getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<Array<TruckDispatch & { supplyOrderNo?: string | null }>>;
   createTruckDispatch(dispatch: InsertTruckDispatch): Promise<TruckDispatch>;
   updateTruckDispatch(id: number, dispatch: Partial<InsertTruckDispatch>, adjustedBy?: string): Promise<TruckDispatch | undefined>;
   deleteTruckDispatch(id: number): Promise<boolean>;
@@ -949,7 +953,12 @@ export interface IStorage {
   // Enhanced dispatch with stock deduction
   createTruckDispatchWithStockDeduction(
     dispatch: InsertTruckDispatch & { allowHlcFallback?: boolean },
-  ): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }>;
+    actor?: { userId: number; name: string },
+  ): Promise<{
+    dispatch: TruckDispatch;
+    shortages: { materialId: number; required: number; available: number }[];
+    borrowings?: Array<{ borrowingId: number; partyId: number; materialId: number; materialName: string; quantity: number; uom: string }>;
+  }>;
 
   // Physical stock correction (reconcile book stock to physical measurement)
   postStockCorrection(data: { materialId: number; partyId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; ledgerEntry: StockLedgerEntry | null }>;
@@ -6894,15 +6903,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Truck Dispatches
-  async getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]> {
+  async getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<Array<TruckDispatch & { supplyOrderNo?: string | null }>> {
     let conditions = [];
     if (filters?.partyId) conditions.push(eq(truckDispatches.partyId, filters.partyId));
     if (filters?.dateFrom) conditions.push(gte(truckDispatches.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(truckDispatches.date, filters.dateTo));
     
-    return db.select().from(truckDispatches)
+    const rows = await db.select({
+      dispatch: truckDispatches,
+      supplyOrderNo: plantSupplyOrders.orderNo,
+    }).from(truckDispatches)
+      .leftJoin(plantSupplyOrders, eq(plantSupplyOrders.id, truckDispatches.supplyOrderId))
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(truckDispatches.date));
+    return rows.map(({ dispatch, supplyOrderNo }) => ({ ...dispatch, supplyOrderNo: supplyOrderNo ?? null }));
   }
 
   async createTruckDispatch(dispatch: InsertTruckDispatch): Promise<TruckDispatch> {
@@ -10275,9 +10289,26 @@ export class DatabaseStorage implements IStorage {
   // the owner has insufficient stock and the caller did not opt in to HLC borrow.
   async createTruckDispatchWithStockDeduction(
     dispatch: InsertTruckDispatch & { allowHlcFallback?: boolean },
-  ): Promise<{ dispatch: TruckDispatch; shortages: { materialId: number; required: number; available: number }[] }> {
+    actor: { userId: number; name: string } = { userId: 0, name: "Plant operator" },
+  ): Promise<{
+    dispatch: TruckDispatch;
+    shortages: { materialId: number; required: number; available: number }[];
+    borrowings: Array<{ borrowingId: number; partyId: number; materialId: number; materialName: string; quantity: number; uom: string }>;
+  }> {
     const { allowHlcFallback = false, ...dispatchData } = dispatch;
     return db.transaction(async (tx) => {
+      const [supplyOrder] = await tx.select().from(plantSupplyOrders)
+        .where(and(
+          eq(plantSupplyOrders.partyId, dispatchData.partyId),
+          eq(plantSupplyOrders.status, "open"),
+          lte(plantSupplyOrders.periodFrom, dispatchData.date),
+          gte(plantSupplyOrders.periodTo, dispatchData.date),
+        )).limit(1);
+      const supplyScopes = supplyOrder
+        ? await tx.select().from(plantSupplyOrderMaterialScopes)
+          .where(eq(plantSupplyOrderMaterialScopes.orderId, supplyOrder.id))
+        : [];
+      const supplyScopeByMaterial = new Map(supplyScopes.map(row => [row.materialId, row.scope]));
       // Get mix template with components
       const [template] = await tx.select().from(mixTemplates).where(eq(mixTemplates.id, dispatchData.mixTemplateId)).limit(1);
       if (!template) throw new Error(`Mix template #${dispatchData.mixTemplateId} not found`);
@@ -10317,6 +10348,7 @@ export class DatabaseStorage implements IStorage {
       //     - Otherwise we throw a structured error so the API can return 409
       //       and the UI can prompt the user for explicit consent.
       const shortages: { materialId: number; required: number; available: number }[] = [];
+      const borrowedMaterialRows: Array<{ materialId: number; materialName: string; quantity: number; uom: string }> = [];
       const partyId = dispatchData.partyId;
       
       // Find the configured company party; there is no arbitrary-party fallback.
@@ -10491,8 +10523,11 @@ export class DatabaseStorage implements IStorage {
       const shortageDetails: { materialId: number; materialName: string; required: number; available: number; shortfall: number; uom: string }[] = [];
       
       for (const item of plan) {
-        // No receipts for this material → HLC scope only; skip owner shortage check.
-        if (!ownerReceiptMatIds.has(item.matId)) continue;
+        if (supplyOrder) {
+          if ((supplyScopeByMaterial.get(item.matId) ?? "hlc") !== "party") continue;
+        } else if (!ownerReceiptMatIds.has(item.matId)) {
+          continue;
+        }
 
         const { balance: rawBal, uom: balUom } = await getBalanceRow(partyId, item.matId);
         const ownerBal = normalizeBalance(rawBal, balUom, item.uom, item.matId);
@@ -10510,7 +10545,7 @@ export class DatabaseStorage implements IStorage {
       }
       
       // If shortages exist and caller hasn't approved HLC fallback, abort with structured info.
-      if (shortageDetails.length > 0 && !allowHlcFallback) {
+      if (shortageDetails.length > 0 && !allowHlcFallback && !supplyOrder) {
         // Thrown so the route handler can return HTTP 409 with the payload.
         const err = new StockShortageError({
           needsConfirmation: true,
@@ -10527,6 +10562,53 @@ export class DatabaseStorage implements IStorage {
       // Normalise balance to item UOM for the split calculation before calling
       // deductFromSource (which handles its own conversion internally).
       for (const item of plan) {
+        if (supplyOrder) {
+          const scope = supplyScopeByMaterial.get(item.matId) ?? "hlc";
+          if (scope === "hlc") {
+            if (hlcPartyId == null) throw new Error("Select the company party in Admin Settings before using company stock.");
+            await deductFromSource(hlcPartyId, item.matId, item.qty, item.uom, item.label, item.tankNumber);
+            continue;
+          }
+
+          const { balance: rawBal, uom: balUom } = await getBalanceRow(partyId, item.matId);
+          const ownerBal = normalizeBalance(rawBal, balUom, item.uom, item.matId);
+          const fromOwner = Math.min(Math.max(ownerBal, 0), item.qty);
+          if (fromOwner > 0) {
+            await deductFromSource(partyId, item.matId, fromOwner, item.uom, item.label, item.tankNumber);
+          }
+          const remaining = +(item.qty - fromOwner).toFixed(9);
+          if (remaining > 0 && hlcPartyId == null) {
+            throw new Error("Select the company party in Admin Settings before using HLC stock.");
+          }
+          if (remaining > 0 && hlcPartyId != null) {
+            if (fromOwner === 0 && hlcPartyId !== partyId) {
+              const [markerRow] = await tx.insert(stockLedger).values({
+                date: dispatchData.date,
+                partyId,
+                materialId: item.matId,
+                transactionType: "dispatch",
+                quantityOut: 0,
+                balanceAfter: Math.max(ownerBal, 0),
+                uom: item.uom,
+                notes: item.label,
+                tankNumber: item.tankNumber ?? null,
+              }).returning({ id: stockLedger.id });
+              if (markerRow?.id) insertedLedgerIds.push(markerRow.id);
+            }
+            await deductFromSource(hlcPartyId, item.matId, remaining, item.uom, `${item.label} (Borrowed from ${companyShortName})`, item.tankNumber);
+            shortages.push({ materialId: item.matId, required: item.qty, available: Math.max(ownerBal, 0) });
+            if (hlcPartyId !== partyId) {
+              borrowedMaterialRows.push({
+                materialId: item.matId,
+                materialName: matNameById.get(item.matId) ?? `Material #${item.matId}`,
+                quantity: remaining,
+                uom: item.uom,
+              });
+            }
+          }
+          continue;
+        }
+
         // ── HLC-scope material (owner has no receipts) ──────────────────────────
         // The party has never received this material so it is entirely under HLC's
         // scope. Deduct directly from HLC with no owner ledger row written.
@@ -10602,6 +10684,7 @@ export class DatabaseStorage implements IStorage {
       // Create the dispatch record with variance tracking
       const [result] = await tx.insert(truckDispatches).values({
         ...dispatchData,
+        supplyOrderId: supplyOrder?.id ?? null,
         truckNumber: dispatchData.truckNumber.toUpperCase(),
         deliveryLocation: dispatchData.deliveryLocation?.toUpperCase(),
         theoreticalBitumenPercent,
@@ -10618,6 +10701,50 @@ export class DatabaseStorage implements IStorage {
         stockDeducted: 1,
         shortageWarning: shortages.length ? JSON.stringify(shortages) : null,
       }).returning();
+
+      const recordedBorrowings: Array<{
+        borrowingId: number;
+        partyId: number;
+        materialId: number;
+        materialName: string;
+        quantity: number;
+        uom: string;
+      }> = [];
+      for (const borrowed of borrowedMaterialRows) {
+        if (!supplyOrder || !result?.id) continue;
+        const [borrowing] = await tx.insert(plantSupplyBorrowings).values({
+          orderId: supplyOrder.id,
+          dispatchId: result.id,
+          partyId,
+          materialId: borrowed.materialId,
+          quantity: borrowed.quantity,
+          uom: borrowed.uom,
+          status: "pending",
+          borrowedByUserId: actor.userId || null,
+          borrowedByName: actor.name,
+          borrowedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }).returning({ id: plantSupplyBorrowings.id });
+        if (!borrowing) continue;
+        await tx.insert(plantSupplyBorrowingEvents).values({
+          borrowingId: borrowing.id,
+          action: "borrowed",
+          actorUserId: actor.userId || null,
+          actorName: actor.name,
+          quantity: borrowed.quantity,
+          uom: borrowed.uom,
+          note: `Truck ${dispatchData.truckNumber} · ${dispatchData.date} ${dispatchData.time ?? ""}`.trim(),
+        });
+        recordedBorrowings.push({
+          borrowingId: borrowing.id,
+          partyId,
+          materialId: borrowed.materialId,
+          materialName: borrowed.materialName,
+          quantity: borrowed.quantity,
+          uom: borrowed.uom,
+        });
+      }
 
       // Backfill referenceId on all ledger rows created during this transaction
       if (insertedLedgerIds.length > 0) {
@@ -10651,7 +10778,7 @@ export class DatabaseStorage implements IStorage {
         });
       }
       
-      return { dispatch: result, shortages };
+      return { dispatch: result, shortages, borrowings: recordedBorrowings };
     });
   }
 

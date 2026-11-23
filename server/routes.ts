@@ -208,6 +208,31 @@ import { suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendPushToUser, sendTestPush } from "./push";
+import {
+  activeSupplyOrderAlertLines,
+  createPlantSupplyOrder,
+  createSupplyAlertDeliveries,
+  countUserUnreadSupplyAlerts,
+  decideSupplyBorrowing,
+  deleteUserSupplyAlert,
+  getPlantSupplyOrder,
+  getPartySupplyBorrowings,
+  getSupplyOrderOptions,
+  getRecentMatchingReceipts,
+  getSupplyAlertOptions,
+  getSupplyAlertSettings,
+  getUserSupplyAlerts,
+  listPlantSupplyOrders,
+  markAllUserSupplyAlertsRead,
+  markBorrowingReplacement,
+  markUserSupplyAlertRead,
+  registerDispatchSupplyAlerts,
+  saveSupplyAlertSettings,
+  setSupplyOrderStatus,
+  supplyReceiptCandidates,
+  hasSupplyRole,
+  updateSupplyOrderScope,
+} from "./plantSupplyOrderService";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { normalizedEquipmentTypeName, plannedHoursInDateRange } from "./dprActualTheoretical";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
@@ -4871,6 +4896,255 @@ export async function registerRoutes(
   // PLANT MODULE PHASE-1 - API ROUTES
   // ============================================
 
+  // Plant supply orders — additive, forward-looking records only.
+  const plantSupplyOrderCreateSchema = z.object({
+    partyId: z.number().int().positive(),
+    siteId: z.number().int().positive().nullable().optional(),
+    periodFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    periodTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    orderNo: z.string().trim().max(80).nullable().optional(),
+    remarks: z.string().trim().max(1000).nullable().optional(),
+    lines: z.array(z.object({
+      mixTemplateId: z.number().int().positive(),
+      orderedMt: z.number().positive(),
+      plannedMtPerDay: z.number().positive().nullable().optional(),
+    }).strict()).min(1),
+  }).strict();
+
+  app.get("/api/plant-module/supply-orders/options", async (req, res) => {
+    if (!assertView(req, res, "plant_supply_orders")) return;
+    try {
+      const options = await getSupplyOrderOptions();
+      res.json({
+        ...options,
+        canManageLifecycle: !!req.authUser?.isOwner || await hasSupplyRole(Number(req.authUser?.id ?? 0), "P&M In-charge"),
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load supply order options." });
+    }
+  });
+
+  app.get("/api/plant-module/supply-orders", async (req, res) => {
+    if (!assertView(req, res, "plant_supply_orders")) return;
+    try {
+      res.json(await listPlantSupplyOrders());
+    } catch (err) {
+      console.error("[plant supply orders] list", err);
+      res.status(500).json({ message: "Failed to load plant supply orders." });
+    }
+  });
+
+  app.post("/api/plant-module/supply-orders", async (req, res) => {
+    if (!assertCreate(req, res, "plant_supply_orders")) return;
+    try {
+      const input = plantSupplyOrderCreateSchema.parse(req.body);
+      const order = await createPlantSupplyOrder(input, {
+        userId: Number(req.authUser?.id ?? 0),
+        name: currentUserName(req),
+      });
+      res.status(201).json(order);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid order." });
+      const message = err instanceof Error ? err.message : "Failed to create plant supply order.";
+      const status = /already exists|one open|duplicate|unique/i.test(message) ? 409 : 400;
+      res.status(status).json({ message });
+    }
+  });
+
+  app.get("/api/plant-module/supply-orders/borrowings", async (req, res) => {
+    if (!assertView(req, res, "plant_stock")) return;
+    const partyId = Number(req.query.partyId);
+    if (!Number.isInteger(partyId) || partyId <= 0) return res.status(400).json({ message: "A party is required." });
+    try {
+      res.json(await getPartySupplyBorrowings(partyId));
+    } catch {
+      res.status(500).json({ message: "Could not load party borrowing balances." });
+    }
+  });
+
+  app.get("/api/plant-module/supply-orders/active-alerts", async (req, res) => {
+    if (!assertView(req, res, "plant_production")) return;
+    try {
+      res.json(await activeSupplyOrderAlertLines());
+    } catch {
+      res.status(500).json({ message: "Could not load supply alerts." });
+    }
+  });
+
+  app.get("/api/plant-module/supply-orders/:id", async (req, res) => {
+    if (!assertView(req, res, "plant_supply_orders")) return;
+    const order = await getPlantSupplyOrder(Number(req.params.id));
+    if (!order) return res.status(404).json({ message: "Plant supply order not found." });
+    res.json(order);
+  });
+
+  app.patch("/api/plant-module/supply-orders/:id/material-scope", async (req, res) => {
+    if (!assertEdit(req, res, "plant_supply_orders")) return;
+    const input = z.object({
+      materialId: z.number().int().positive(),
+      scope: z.enum(["hlc", "party"]),
+    }).strict().safeParse(req.body);
+    if (!input.success) return res.status(400).json({ message: input.error.errors[0]?.message ?? "Invalid material scope." });
+    try {
+      const order = await updateSupplyOrderScope(
+        Number(req.params.id),
+        input.data.materialId,
+        input.data.scope,
+        { userId: Number(req.authUser?.id ?? 0), name: currentUserName(req) },
+      );
+      res.json(order);
+    } catch (err) {
+      res.status(400).json({ message: err instanceof Error ? err.message : "Could not update material scope." });
+    }
+  });
+
+  app.patch("/api/plant-module/supply-orders/:id/status", async (req, res) => {
+    if (!assertEdit(req, res, "plant_supply_orders")) return;
+    const userId = Number(req.authUser?.id ?? 0);
+    if (!req.authUser?.isOwner && !(await hasSupplyRole(userId, "P&M In-charge"))) {
+      return res.status(403).json({ message: "Only the Owner or P&M In-charge can close or reopen an order." });
+    }
+    const input = z.object({ status: z.enum(["open", "closed"]) }).strict().safeParse(req.body);
+    if (!input.success) return res.status(400).json({ message: "Choose open or closed." });
+    try {
+      const order = await setSupplyOrderStatus(Number(req.params.id), input.data.status, {
+        userId,
+        name: currentUserName(req),
+      });
+      if (!order) return res.status(404).json({ message: "Plant supply order not found." });
+      res.json(order);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not update order status.";
+      res.status(/unique|one open/i.test(message) ? 409 : 400).json({ message });
+    }
+  });
+
+  app.get("/api/plant-module/supply-orders/:id/borrowings/:borrowingId/receipts", async (req, res) => {
+    if (!assertView(req, res, "plant_supply_orders")) return;
+    const order = await getPlantSupplyOrder(Number(req.params.id));
+    const borrowingId = Number(req.params.borrowingId);
+    const borrowing = order?.borrowings.find(row => row.id === borrowingId);
+    if (!order || !borrowing) return res.status(404).json({ message: "Borrowing not found in this order." });
+    try {
+      const [receipts, candidates] = await Promise.all([
+        getRecentMatchingReceipts(order.partyId, borrowing.materialId),
+        supplyReceiptCandidates(order.partyId, borrowing.materialId),
+      ]);
+      res.json({ receipts, borrowings: candidates });
+    } catch {
+      res.status(500).json({ message: "Could not load matching receipts." });
+    }
+  });
+
+  app.post("/api/plant-module/supply-orders/:id/borrowings/:borrowingId/replacements", async (req, res) => {
+    if (!assertEdit(req, res, "plant_supply_orders")) return;
+    const order = await getPlantSupplyOrder(Number(req.params.id));
+    const borrowingId = Number(req.params.borrowingId);
+    if (!order?.borrowings.some(row => row.id === borrowingId)) return res.status(404).json({ message: "Borrowing not found in this order." });
+    const input = z.object({ receiptId: z.number().int().positive(), quantity: z.number().positive() }).strict().safeParse(req.body);
+    if (!input.success) return res.status(400).json({ message: input.error.errors[0]?.message ?? "Invalid replacement." });
+    try {
+      const replacement = await markBorrowingReplacement(
+        { borrowingId, ...input.data },
+        { userId: Number(req.authUser?.id ?? 0), name: currentUserName(req) },
+      );
+      res.status(201).json(replacement);
+    } catch (err) {
+      res.status(400).json({ message: err instanceof Error ? err.message : "Could not mark replacement." });
+    }
+  });
+
+  app.post("/api/plant-module/supply-orders/borrowings/:id/decision", async (req, res) => {
+    if (!assertEdit(req, res, "plant_supply_orders")) return;
+    const userId = Number(req.authUser?.id ?? 0);
+    if (!req.authUser?.isOwner && !(await hasSupplyRole(userId, "P&M In-charge"))) {
+      return res.status(403).json({ message: "Only the Owner or P&M In-charge can review a borrowing." });
+    }
+    const input = z.object({
+      decision: z.enum(["approved", "party_will_replace"]),
+      note: z.string().trim().max(1000).optional(),
+    }).strict().safeParse(req.body);
+    if (!input.success) return res.status(400).json({ message: input.error.errors[0]?.message ?? "Invalid decision." });
+    try {
+      const result = await decideSupplyBorrowing(
+        Number(req.params.id),
+        input.data.decision,
+        { userId, name: currentUserName(req) },
+        input.data.note,
+      );
+      if (!result) return res.status(404).json({ message: "Borrowing not found." });
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ message: err instanceof Error ? err.message : "Could not save decision." });
+    }
+  });
+
+  app.get("/api/plant-module/supply-alert-settings", async (req, res) => {
+    if (!req.authUser?.isOwner) return res.status(403).json({ message: "Only the Owner can manage plant supply alert settings." });
+    if (!assertView(req, res, "plant_supply_alert_settings")) return;
+    try {
+      const [settings, options] = await Promise.all([getSupplyAlertSettings(), getSupplyAlertOptions()]);
+      res.json({ settings, ...options });
+    } catch {
+      res.status(500).json({ message: "Could not load plant supply alert settings." });
+    }
+  });
+
+  app.put("/api/plant-module/supply-alert-settings", async (req, res) => {
+    if (!req.authUser?.isOwner) return res.status(403).json({ message: "Only the Owner can manage plant supply alert settings." });
+    if (!assertEdit(req, res, "plant_supply_alert_settings")) return;
+    const choice = z.object({
+      roles: z.array(z.string().trim().min(1)).max(100),
+      userIds: z.array(z.number().int().positive()).max(500),
+    }).strict();
+    const input = z.object({
+      running_low: choice,
+      exhausted: choice,
+      borrowed: choice,
+    }).strict().safeParse(req.body);
+    if (!input.success) return res.status(400).json({ message: input.error.errors[0]?.message ?? "Invalid recipient settings." });
+    try {
+      const { roles, users: activeUsers } = await getSupplyAlertOptions();
+      const roleNames = new Set(roles.map(row => row.name));
+      const userIds = new Set(activeUsers.map(row => row.id));
+      for (const section of Object.values(input.data)) {
+        if (section.roles.some(role => !roleNames.has(role))) return res.status(400).json({ message: "Choose only existing roles." });
+        if (section.userIds.some(id => !userIds.has(id))) return res.status(400).json({ message: "Choose only active users." });
+      }
+      const result = await saveSupplyAlertSettings(input.data, Number(req.authUser?.id ?? 0));
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ message: err instanceof Error ? err.message : "Could not save alert settings." });
+    }
+  });
+
+  app.get("/api/plant-supply-alert-notifications", async (req, res) => {
+    const userId = Number(req.authUser?.id ?? 0);
+    if (!userId) return res.status(401).json({ message: "Sign in required." });
+    res.json(await getUserSupplyAlerts(userId));
+  });
+  app.get("/api/plant-supply-alert-notifications/unread-count", async (req, res) => {
+    const userId = Number(req.authUser?.id ?? 0);
+    if (!userId) return res.status(401).json({ message: "Sign in required." });
+    res.json({ count: await countUserUnreadSupplyAlerts(userId) });
+  });
+  app.patch("/api/plant-supply-alert-notifications/:id/read", async (req, res) => {
+    const userId = Number(req.authUser?.id ?? 0);
+    if (!userId) return res.status(401).json({ message: "Sign in required." });
+    res.json({ success: await markUserSupplyAlertRead(userId, Number(req.params.id)) });
+  });
+  app.patch("/api/plant-supply-alert-notifications/read-all", async (req, res) => {
+    const userId = Number(req.authUser?.id ?? 0);
+    if (!userId) return res.status(401).json({ message: "Sign in required." });
+    await markAllUserSupplyAlertsRead(userId);
+    res.json({ success: true });
+  });
+  app.delete("/api/plant-supply-alert-notifications/:id", async (req, res) => {
+    const userId = Number(req.authUser?.id ?? 0);
+    if (!userId) return res.status(401).json({ message: "Sign in required." });
+    res.json({ success: await deleteUserSupplyAlert(userId, Number(req.params.id)) });
+  });
+
   // Party/Job Master
   app.get("/api/plant-module/parties", async (req, res) => {
     try {
@@ -6557,8 +6831,25 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "plant_production")) return;
       const input = parseCreateBody(truckDispatchCreateBodySchema, req.body, res);
       if (input === null) return;
-      const result = await storage.createTruckDispatchWithStockDeduction(input);
+      const result = await storage.createTruckDispatchWithStockDeduction(input, {
+        userId: Number(req.authUser?.id ?? 0),
+        name: currentUserName(req),
+      });
       const dispatch = result.dispatch;
+      if (dispatch.supplyOrderId) {
+        try {
+          const alerts = await registerDispatchSupplyAlerts(
+            dispatch.supplyOrderId,
+            dispatch.id,
+            result.borrowings ?? [],
+          );
+          await Promise.all(alerts.map(alert =>
+            sendPushToUser(alert.recipientUserId, alert.title, alert.message, "/plant/supply-orders")
+          ));
+        } catch (alertError) {
+          console.error("[plant supply] dispatch alert delivery failed", alertError);
+        }
+      }
       await storage.createNotification({
         type: "success",
         title: "Mix Dispatched",

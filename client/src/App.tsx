@@ -79,6 +79,8 @@ const PlantMaterialReceipts         = lazy(() => import("@/pages/PlantMaterialRe
 const PlantMaterialIssues           = lazy(() => import("@/pages/PlantMaterialIssues"));
 const PlantMaterialReturns          = lazy(() => import("@/pages/PlantMaterialReturns"));
 const PlantDispatches               = lazy(() => import("@/pages/PlantDispatches"));
+const PlantSupplyOrders             = lazy(() => import("@/pages/PlantSupplyOrders"));
+const PlantSupplyAlertSettings      = lazy(() => import("@/pages/PlantSupplyAlertSettings"));
 const PlantEquipmentUsage           = lazy(() => import("@/pages/PlantEquipmentUsage"));
 const PlantGeneratorLogs            = lazy(() => import("@/pages/PlantGeneratorLogs"));
 const PlantStock                    = lazy(() => import("@/pages/PlantStock"));
@@ -410,6 +412,8 @@ function AuthedShell() {
           <Route path="/plant/material-issues" component={featureGated(PlantMaterialIssues, "issues_stock")} />
           <Route path="/plant/material-returns" component={featureGated(PlantMaterialReturns, "issues_stock")} />
           <Route path="/plant/dispatches" component={featureGated(PlantDispatches, "hmp_rmc")} />
+          <Route path="/plant/supply-orders" component={gated(PlantSupplyOrders, "plant_supply_orders")} />
+          <Route path="/plant/supply-orders/alerts" component={gated(PlantSupplyAlertSettings, "plant_supply_alert_settings")} />
           <Route path="/plant/equipment-usage" component={featureGated(PlantEquipmentUsage, "equipment_usage")} />
           <Route path="/plant/generator-logs" component={featureGated(PlantGeneratorLogs, "maintenance")} />
           <Route path="/plant/maintenance" component={featureGated(PlantMaintenance, "maintenance")} />

@@ -269,13 +269,26 @@ export default function PlantDispatches() {
   }, [searchString]);
   const [autoEditDone, setAutoEditDone] = useState(false);
 
-  const { data: dispatches, isLoading } = useQuery<TruckDispatch[]>({
+  const { data: dispatches, isLoading } = useQuery<Array<TruckDispatch & { supplyOrderNo?: string | null }>>({
     queryKey: ["/api/plant-module/dispatches"],
     refetchInterval: 15_000,
   });
 
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
+  });
+  const { data: supplyAlertLines = [] } = useQuery<Array<{
+    orderId: number; orderNo: string; partyName: string; materialName: string;
+    stockAvailable: number; dailyNeed: number; daysLeft: number | null; uom: string;
+  }>>({
+    queryKey: ["/api/plant-module/supply-orders/active-alerts"],
+    queryFn: async () => {
+      const response = await fetch("/api/plant-module/supply-orders/active-alerts", { credentials: "include" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: canCreate,
+    refetchInterval: 60_000,
   });
 
   const dispatchesForPartyDefaults = useMemo(() => {
@@ -436,7 +449,11 @@ export default function PlantDispatches() {
       } else {
         setDialogOpen(false);
       }
-      toast({ title: "Dispatch recorded successfully" });
+      const borrowingCount = (result as any).borrowings?.length ?? 0;
+      toast({
+        title: "Dispatch recorded successfully",
+        ...(borrowingCount > 0 ? { description: `${borrowingCount} material line${borrowingCount === 1 ? "" : "s"} borrowed from HLC; awaiting review.` } : {}),
+      });
     },
   });
 
@@ -1207,6 +1224,17 @@ export default function PlantDispatches() {
               ? <> — Filtered to plant: <strong>{resolvedMgmtPlantLabel}</strong></>
               : null}
           </span>
+        </div>
+      )}
+
+      {supplyAlertLines.length > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          {supplyAlertLines.map((line, index) => (
+            <p key={`${line.orderId}-${line.materialName}-${index}`}>
+              {line.partyName} · {line.materialName}: {line.stockAvailable.toFixed(3)} {line.uom} available; under one production day.{" "}
+              <a className="font-semibold underline" href={`/plant/supply-orders?orderId=${line.orderId}`}>Open {line.orderNo}</a>
+            </p>
+          ))}
         </div>
       )}
 
@@ -1982,6 +2010,9 @@ export default function PlantDispatches() {
                                 <span className="font-medium">{dispatch.loadWeight} MT</span>
                                 <Badge variant="outline" className="text-sm">{template?.mixType || "-"}</Badge>
                                 <span className="text-sm text-muted-foreground">{getPartyName(dispatch.partyId)}</span>
+                                <Badge variant={dispatch.supplyOrderNo ? "secondary" : "outline"} className="text-xs">
+                                  {dispatch.supplyOrderNo ? `Order ${dispatch.supplyOrderNo}` : "No order"}
+                                </Badge>
                                 {dispatch.dispatchProSyncStatus === "sent" && (
                                   <span className="text-xs text-muted-foreground">{dispatchProSentText(dispatch)}</span>
                                 )}

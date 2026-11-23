@@ -272,6 +272,15 @@ export default function PlantStock() {
     return `/api/plant-module/party-statement?${p.toString()}`;
   };
   const stmtUrl = buildStmtUrl();
+  const supplyBorrowingsQuery = useQuery<{ rows: any[]; totals: any[] }>({
+    queryKey: ["/api/plant-module/supply-orders/borrowings", stmtPartyId],
+    queryFn: async () => {
+      const response = await fetch(`/api/plant-module/supply-orders/borrowings?partyId=${encodeURIComponent(stmtPartyId)}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load supply-order borrowing balances.");
+      return response.json();
+    },
+    enabled: stmtPartyId !== "all",
+  });
 
   const buildReconUrl = () => {
     if (!reconEnabled || stmtPartyId === "all" || stmtMaterialId === "all") return null;
@@ -2702,6 +2711,24 @@ export default function PlantStock() {
                 {stmtLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                 Generate Statement
               </Button>
+
+              {stmtPartyId !== "all" && (
+                <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50/60 p-4" data-testid="supply-order-borrowing-statement">
+                  <h3 className="font-semibold text-amber-950">Supply-order material owed to {companyShortName}</h3>
+                  <p className="mb-3 text-xs text-amber-800">Borrowed from HLC for plant production, less receipts explicitly marked as replacements.</p>
+                  {supplyBorrowingsQuery.isLoading ? <p className="text-sm">Loading borrowing balances…</p> :
+                    (supplyBorrowingsQuery.data?.totals?.length ?? 0) === 0 ? <p className="text-sm text-slate-600">No supply-order borrowing recorded.</p> : (
+                      <div className="space-y-2">
+                        {supplyBorrowingsQuery.data?.totals.map((row: any) => (
+                          <div key={row.materialId} className="flex flex-wrap justify-between gap-2 rounded border border-amber-100 bg-white px-3 py-2 text-sm">
+                            <span>{row.materialName} · borrowed {Number(row.quantity).toFixed(3)} {row.uom} · replaced {Number(row.replaced).toFixed(3)} {row.uom}</span>
+                            <strong>Owed {Number(row.owed).toFixed(3)} {row.uom}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                </div>
+              )}
 
               {stmtData && (() => {
                 const { summary, entries } = stmtData;

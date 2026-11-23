@@ -689,6 +689,7 @@ export default function PurchaseIndents() {
     const qtyRaw = sp.get("qty");
     return {
       material,
+      materialId: Number(sp.get("materialId")) > 0 ? Number(sp.get("materialId")) : null,
       qty: qtyRaw ? Number(qtyRaw) : 1,
       uom: sp.get("uom") || "NOS",
     };
@@ -784,7 +785,7 @@ export default function PurchaseIndents() {
   }, [prefillProject, projectSiteFillApplied, formSiteId]);
   const [formItems, setFormItems] = useState<ItemRow[]>([
     prefill
-      ? { description: prefill.material, spec: "", partNo: "", qty: prefill.qty, uom: prefill.uom, purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: null }
+      ? { description: prefill.material, spec: "", partNo: "", qty: prefill.qty, uom: prefill.uom, purpose: "PLANT", priority: "normal", materialId: prefill.materialId, estRate: null, estAmount: null, requiredBy: null, procurementRoute: null }
       : { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: null },
   ]);
   const [formPiType, setFormPiType] = useState<"stores" | "material">("stores");

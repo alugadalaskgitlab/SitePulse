@@ -381,6 +381,28 @@
       "notify": "Receive notifications for Production & Dispatches, when user notifications and a device subscription are enabled."
     }
   },
+  "plant_supply_orders": {
+    "actions": [
+      "view",
+      "create",
+      "edit"
+    ],
+    "tooltips": {
+      "view": "View plant supply orders, material scopes and borrowing balances.",
+      "create": "Create a plant supply order.",
+      "edit": "Change material supply scope, decisions and receipt replacement links. Closing or reopening remains Owner / P&M In-charge only."
+    }
+  },
+  "plant_supply_alert_settings": {
+    "actions": [
+      "view",
+      "edit"
+    ],
+    "tooltips": {
+      "view": "Open plant supply alert recipient settings. Owner only.",
+      "edit": "Change plant supply alert recipients. Owner only."
+    }
+  },
   "plant_materials": {
     "actions": [
       "view",

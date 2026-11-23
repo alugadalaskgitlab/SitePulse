@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Flame, ClipboardList, Truck, Droplets, Gauge, FileSearch,
+  Flame, ClipboardList, ClipboardCheck, Truck, Droplets, Gauge, FileSearch,
   Fuel, TrendingUp, ShoppingCart, HardHat,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
@@ -57,6 +57,7 @@ export default function HmpHub() {
   const canShift    = sectionVisible("plant_shift_logs");
   const canHeating  = sectionVisible("plant_heating");
   const canProd     = sectionVisible("plant_production");
+  const canSupplyOrders = sectionVisible("plant_supply_orders");
   const canStock    = sectionVisible("plant_stock");
   const canBitumen  = sectionVisible("plant_bitumen");
   const canLdo      = sectionVisible("plant_ldo");
@@ -346,6 +347,15 @@ export default function HmpHub() {
               accent="orange"
               iconBg="bg-orange-100"
               enabled={canProd}
+            />
+            <HubActionTile
+              href={`/plant/supply-orders?returnTo=${HUB}`}
+              icon={ClipboardCheck}
+              title="Plant supply orders"
+              description="Plan mixes, material supply and HLC borrowing"
+              accent="teal"
+              iconBg="bg-teal-100"
+              enabled={canSupplyOrders}
             />
           </div>
         </div>

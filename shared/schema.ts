@@ -825,9 +825,131 @@ export const truckDispatches = pgTable("truck_dispatches", {
   dispatchProLeftAt: timestamp("dispatchpro_left_at"),
   dispatchProLeftByName: text("dispatchpro_left_by_name"),
   dispatchProLastError: text("dispatchpro_last_error"),
+  supplyOrderId: integer("supply_order_id").references(() => plantSupplyOrders.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("truck_dispatches_date_idx").on(table.date),
+  supplyOrderIdx: index("truck_dispatches_supply_order_idx").on(table.supplyOrderId),
+}));
+
+// HMP supply orders are a forward-looking plan. Existing dispatches are not
+// backfilled; only new dispatches within an open order's period are linked.
+export const plantSupplyOrders = pgTable("plant_supply_orders", {
+  id: serial("id").primaryKey(),
+  orderNo: text("order_no").unique(),
+  partyId: integer("party_id").notNull().references(() => parties.id),
+  siteId: integer("site_id").references(() => sites.id),
+  periodFrom: date("period_from").notNull(),
+  periodTo: date("period_to").notNull(),
+  remarks: text("remarks"),
+  status: text("status").notNull().default("open"), // open | closed
+  createdByUserId: integer("created_by_user_id"),
+  createdByName: text("created_by_name"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  closedAt: timestamp("closed_at"),
+  closedByUserId: integer("closed_by_user_id"),
+  closedByName: text("closed_by_name"),
+}, (table) => ({
+  partyPeriodIdx: index("plant_supply_orders_party_period_idx").on(table.partyId, table.periodFrom, table.periodTo),
+  oneOpenOrderPerParty: uniqueIndex("plant_supply_orders_one_open_party_uq")
+    .on(table.partyId)
+    .where(sql`${table.status} = 'open'`),
+}));
+
+export const plantSupplyOrderLines = pgTable("plant_supply_order_lines", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").notNull().references(() => plantSupplyOrders.id, { onDelete: "cascade" }),
+  mixTemplateId: integer("mix_template_id").notNull().references(() => mixTemplates.id),
+  orderedMt: numeric("ordered_mt", { precision: 20, scale: 6, mode: "number" }).notNull(),
+  plannedMtPerDay: numeric("planned_mt_per_day", { precision: 20, scale: 6, mode: "number" }),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orderIdx: index("plant_supply_order_lines_order_idx").on(table.orderId, table.sortOrder),
+  orderMixUq: uniqueIndex("plant_supply_order_lines_order_mix_uq").on(table.orderId, table.mixTemplateId),
+}));
+
+export const plantSupplyOrderMaterialScopes = pgTable("plant_supply_order_material_scopes", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").notNull().references(() => plantSupplyOrders.id, { onDelete: "cascade" }),
+  materialId: integer("material_id").notNull().references(() => plantMaterials.id),
+  scope: text("scope").notNull().default("hlc"), // hlc | party
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedByUserId: integer("updated_by_user_id"),
+}, (table) => ({
+  orderMaterialUq: uniqueIndex("plant_supply_order_material_scopes_order_material_uq").on(table.orderId, table.materialId),
+}));
+
+export const plantSupplyBorrowings = pgTable("plant_supply_borrowings", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").notNull().references(() => plantSupplyOrders.id),
+  dispatchId: integer("dispatch_id").notNull().references(() => truckDispatches.id),
+  partyId: integer("party_id").notNull().references(() => parties.id),
+  materialId: integer("material_id").notNull().references(() => plantMaterials.id),
+  quantity: numeric("quantity", { precision: 20, scale: 6, mode: "number" }).notNull(),
+  uom: text("uom").notNull(),
+  status: text("status").notNull().default("pending"), // pending | approved | party_will_replace
+  borrowedByUserId: integer("borrowed_by_user_id"),
+  borrowedByName: text("borrowed_by_name"),
+  borrowedAt: timestamp("borrowed_at").defaultNow(),
+  decisionByUserId: integer("decision_by_user_id"),
+  decisionByName: text("decision_by_name"),
+  decisionAt: timestamp("decision_at"),
+  decisionNote: text("decision_note"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  dispatchMaterialUq: uniqueIndex("plant_supply_borrowings_dispatch_material_uq").on(table.dispatchId, table.materialId),
+  partyMaterialStatusIdx: index("plant_supply_borrowings_party_material_status_idx").on(table.partyId, table.materialId, table.status),
+  orderIdx: index("plant_supply_borrowings_order_idx").on(table.orderId),
+}));
+
+export const plantSupplyBorrowingEvents = pgTable("plant_supply_borrowing_events", {
+  id: serial("id").primaryKey(),
+  borrowingId: integer("borrowing_id").notNull().references(() => plantSupplyBorrowings.id, { onDelete: "cascade" }),
+  action: text("action").notNull(), // borrowed | approved | party_will_replace | replaced
+  actorUserId: integer("actor_user_id"),
+  actorName: text("actor_name"),
+  quantity: numeric("quantity", { precision: 20, scale: 6, mode: "number" }),
+  uom: text("uom"),
+  note: text("note"),
+  relatedReceiptId: integer("related_receipt_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  borrowingIdx: index("plant_supply_borrowing_events_borrowing_idx").on(table.borrowingId, table.createdAt),
+}));
+
+export const plantSupplyBorrowingReplacements = pgTable("plant_supply_borrowing_replacements", {
+  id: serial("id").primaryKey(),
+  borrowingId: integer("borrowing_id").notNull().references(() => plantSupplyBorrowings.id),
+  receiptId: integer("receipt_id").references(() => materialReceipts.id, { onDelete: "set null" }),
+  quantity: numeric("quantity", { precision: 20, scale: 6, mode: "number" }).notNull(),
+  uom: text("uom").notNull(),
+  markedByUserId: integer("marked_by_user_id"),
+  markedByName: text("marked_by_name"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  borrowingIdx: index("plant_supply_borrowing_replacements_borrowing_idx").on(table.borrowingId),
+  receiptIdx: index("plant_supply_borrowing_replacements_receipt_idx").on(table.receiptId),
+}));
+
+// One recipient row per alert and user: delivery is idempotent and read-state
+// stays private to that recipient rather than changing every user's bell item.
+export const plantSupplyAlertDeliveries = pgTable("plant_supply_alert_deliveries", {
+  id: serial("id").primaryKey(),
+  dedupeKey: text("dedupe_key").notNull(),
+  recipientUserId: integer("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  alertType: text("alert_type").notNull(), // running_low | exhausted | borrowed | morning_summary
+  partyId: integer("party_id").references(() => parties.id, { onDelete: "set null" }),
+  materialId: integer("material_id").references(() => plantMaterials.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  recipientDedupeUq: uniqueIndex("plant_supply_alert_deliveries_dedupe_user_uq").on(table.dedupeKey, table.recipientUserId),
+  recipientCreatedIdx: index("plant_supply_alert_deliveries_recipient_created_idx").on(table.recipientUserId, table.createdAt),
 }));
 
 export const dispatchProOutbox = pgTable("dispatchpro_outbox", {
