@@ -164,51 +164,34 @@ export async function enqueueDispatchProChange(dispatchId: number, operation: "c
 
 export function buildSupplyOrderDispatchProPayload(order: any) {
   return {
-    externalRef: `SP-ORDER-${order.id}`,
-    partyId: order.partyId,
+    sitePulseOrderId: `SP-ORDER-${order.id}`,
     partyName: order.partyName,
-    siteId: order.siteId ?? null,
-    siteName: order.siteName ?? null,
-    orderNo: order.orderNo,
-    mixLines: (order.lines ?? []).map((line: any) => {
-      const now = Date.now();
-      const activeVersion = (line.mixVersions ?? [])
-        .filter((version: any) => version.effectiveAt == null || new Date(version.effectiveAt).getTime() <= now)
-        .sort((a: any, b: any) => new Date(a.effectiveAt ?? 0).getTime() - new Date(b.effectiveAt ?? 0).getTime())
-        .at(-1);
-      const activeMix = activeVersion ?? line.orderMix;
-      return {
-        mixTemplateId: line.mixTemplateId,
-        mixName: activeMix?.mixName ?? line.mixName,
-        orderedMt: Number(line.orderedMt) || 0,
-        enteredQuantity: line.enteredQuantity == null ? null : Number(line.enteredQuantity),
-        enteredUnit: line.enteredUnit ?? null,
-        plannedMtPerDay: line.plannedMtPerDay == null ? null : Number(line.plannedMtPerDay),
-        orderMix: activeMix ? {
-          mixName: activeMix.mixName,
-          sourceBitumenPercent: Number(activeMix.sourceBitumenPercent) || 0,
-          bitumenPercent: Number(activeMix.bitumenPercent) || 0,
-          ldoNorm: activeMix.ldoNorm == null ? null : Number(activeMix.ldoNorm),
-          components: (activeMix.components ?? []).map((component: any) => ({
-            materialId: component.materialId,
-            materialName: component.materialName ?? null,
-            aggregateSharePercent: Number(component.aggregateSharePercent) || 0,
-          })),
-        } : null,
-      };
-    }),
-    periodFrom: order.periodFrom,
-    periodTo: order.periodTo,
-    status: order.status,
+    sitePulsePartyId: String(order.partyId),
+    siteName: order.siteName,
+    sitePulseSiteId: String(order.siteId),
+    orderNumber: order.orderNo,
+    mixLines: (order.lines ?? []).map((line: any) => ({
+      mix: line.dispatchProMixName ?? line.mixTemplateName ?? line.mixName,
+      orderedMT: Number(line.orderedMt),
+    })),
+    periodFrom: dispatchProOrderDate(order.periodFrom),
+    periodTo: dispatchProOrderDate(order.periodTo),
+    status: order.status === "closed" ? "closed" : "open",
   };
+}
+
+function dispatchProOrderDate(value: unknown): string {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value ?? "").slice(0, 10);
 }
 
 export async function enqueueSupplyOrderDispatchPro(order: any) {
   if (!order?.id || !order.partyId || !order.orderNo) {
     return { queued: false, reason: "order_not_ready" };
   }
+  if (!order.siteId) return { queued: false, reason: "site_required" };
   const payload = buildSupplyOrderDispatchProPayload(order);
-  const externalRef = payload.externalRef;
+  const externalRef = payload.sitePulseOrderId;
   const [latest] = await db.select().from(dispatchProOutbox)
     .where(eq(dispatchProOutbox.supplyOrderId, order.id))
     .orderBy(desc(dispatchProOutbox.id)).limit(1);
@@ -487,6 +470,14 @@ async function linkReturnedOrderSite(orderId: number, candidateSiteId: string) {
 }
 
 async function sendSupplyOrderOutboxRow(row: ClaimedDispatchProOutbox, config: { baseUrl: string; sharedSecret: string }) {
+  if (!row.payload?.sitePulseSiteId) {
+    await markOutbox(row, "failed", "Choose a SitePulse site for this order first.");
+    return;
+  }
+  if (!row.payload?.sitePulseOrderId) {
+    await markOutbox(row, "failed", "This order needs a fresh DispatchPro payload. Retry the order.");
+    return;
+  }
   try {
     const response = await fetch(new URL(DISPATCHPRO_ORDERS_PATH, config.baseUrl), {
       method: "POST",

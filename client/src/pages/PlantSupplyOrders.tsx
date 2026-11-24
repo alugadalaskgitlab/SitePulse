@@ -702,7 +702,9 @@ export default function PlantSupplyOrders() {
                           {order.status === "closed" ? " · Closed" : " · Open"}
                         </p>
                         <div className="mt-2 text-sm" data-testid="dispatchpro-order-status" aria-live="polite">
-                          {dispatchProOrder?.needsOwnerChoice ? (
+                          {dispatchProOrder?.hasSite === false ? (
+                            <p className="text-amber-800">DispatchPro: choose a site for this order first</p>
+                          ) : dispatchProOrder?.needsOwnerChoice ? (
                             <div className="space-y-1">
                               <p className="font-medium text-amber-800">
                                 {dispatchProConflictPrefix} {dispatchProExistingLabel} in DispatchPro — use it / replace with {dispatchProCandidateLabel}.
@@ -728,8 +730,6 @@ export default function PlantSupplyOrders() {
                             <p className="text-emerald-800">
                               DispatchPro: linked ✓ ({dispatchProCandidateLabel})
                             </p>
-                          ) : dispatchProOrder?.status === "sent" && !dispatchProOrder?.hasSite ? (
-                            <p className="text-amber-800">DispatchPro: order sent, but no SitePulse site was selected to save a link.</p>
                           ) : dispatchProOrder?.status === "sent" ? (
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-amber-800">DispatchPro: order sent, but the site link was not saved.</span>

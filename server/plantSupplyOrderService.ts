@@ -1459,6 +1459,7 @@ export async function getPlantSupplyOrder(orderId: number) {
     const enteredUnit = line.enteredUnit === "cum" ? "cum" : line.enteredUnit === "MT" ? "MT" : null;
     return {
       ...line,
+      dispatchProMixName: line.mixName,
       mixName: orderMix?.mixName ?? line.mixName,
       orderedMt: finite(line.orderedMt),
       enteredQuantity,

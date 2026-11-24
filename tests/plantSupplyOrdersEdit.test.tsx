@@ -193,4 +193,13 @@ describe("ORDERS-02 order detail and editing UI", () => {
     mock.isOwner = true;
     delete mock.order.dispatchPro;
   });
+
+  it("asks for a SitePulse site instead of offering Retry when the order has no site", async () => {
+    mock.order.dispatchPro = { status: "not_sent", lastError: null, hasSite: false };
+    render(<PlantSupplyOrders />);
+
+    expect(await screen.findByText("DispatchPro: choose a site for this order first")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Retry/ })).not.toBeInTheDocument();
+    mock.order.dispatchPro = null;
+  });
 });

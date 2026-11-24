@@ -180,4 +180,30 @@ describe("SP-DP-LINK-01 supply order routes", () => {
       .send({ choice: "replace" });
     expect(response.status).toBe(403);
   });
+
+  it("retries DispatchPro using the current order details", async () => {
+    state.order = {
+      id: 91,
+      partyId: 7,
+      partyName: "Ashok Contractor",
+      siteId: 18,
+      siteName: "Current site",
+      orderNo: "PO-CURRENT",
+      periodFrom: "2026-11-01",
+      periodTo: "2026-12-15",
+      status: "open",
+      lines: [{ mixTemplateId: 4, mixName: "Current template", orderedMt: 225 }],
+    };
+
+    const response = await request(app)
+      .post("/api/plant-module/supply-orders/91/dispatchpro/retry")
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(state.queued.at(-1)).toMatchObject({
+      id: 91,
+      orderNo: "PO-CURRENT",
+      lines: [{ mixTemplateId: 4, mixName: "Current template", orderedMt: 225 }],
+    });
+  });
 });

@@ -100,42 +100,57 @@ describe("SP-DP-LINK-01 supply order DispatchPro outbox", () => {
       externalRef: "SP-ORDER-91",
       status: "pending",
       payload: {
-        partyId: 7,
+        sitePulseOrderId: "SP-ORDER-91",
         partyName: "North party",
-        siteId: 18,
+        sitePulsePartyId: "7",
         siteName: "Test road",
-        orderNo: "PO-91",
+        sitePulseSiteId: "18",
+        orderNumber: "PO-91",
         periodFrom: "2026-11-01",
         periodTo: "2026-11-30",
         status: "open",
-        mixLines: [{ mixName: "BC order", orderedMt: 100 }],
+        mixLines: [{ mix: "BC", orderedMT: 100 }],
       },
     });
   });
 
-  it("sends the active mix version after an order mix change", () => {
+  it.each(["open", "closed"] as const)("builds the exact DispatchPro contract for a %s order", (status) => {
     const payload = buildSupplyOrderDispatchProPayload(order({
+      status,
       lines: [{
         mixTemplateId: 4,
-        mixName: "BC base",
+        mixName: "Order-specific mix label",
+        dispatchProMixName: "BC template",
         orderedMt: 100,
-        orderMix: { mixName: "BC base", bitumenPercent: 5, components: [] },
+        orderMix: { mixName: "Order-specific mix label", bitumenPercent: 5, components: [] },
         mixVersions: [
-          { mixName: "BC base", bitumenPercent: 5, effectiveAt: "2026-01-01T00:00:00.000Z", components: [] },
-          { mixName: "BC revised", bitumenPercent: 5.3, sourceBitumenPercent: 5, ldoNorm: 8, effectiveAt: new Date().toISOString(), components: [{ materialId: 13, materialName: "Dust", aggregateSharePercent: 100 }] },
+          { mixName: "Later order mix version", bitumenPercent: 5.3, effectiveAt: "2026-11-02T00:00:00.000Z", components: [] },
         ],
       }],
     }));
 
-    expect(payload.mixLines[0]).toMatchObject({
-      mixName: "BC revised",
-      orderMix: {
-        mixName: "BC revised",
-        bitumenPercent: 5.3,
-        ldoNorm: 8,
-        components: [{ materialId: 13, materialName: "Dust", aggregateSharePercent: 100 }],
-      },
+    expect(Object.keys(payload).sort()).toEqual([
+      "sitePulseOrderId", "partyName", "sitePulsePartyId", "siteName", "sitePulseSiteId",
+      "orderNumber", "mixLines", "periodFrom", "periodTo", "status",
+    ].sort());
+    expect(payload).toEqual({
+      sitePulseOrderId: "SP-ORDER-91",
+      partyName: "North party",
+      sitePulsePartyId: "7",
+      siteName: "Test road",
+      sitePulseSiteId: "18",
+      orderNumber: "PO-91",
+      mixLines: [{ mix: "BC template", orderedMT: 100 }],
+      periodFrom: "2026-11-01",
+      periodTo: "2026-11-30",
+      status,
     });
+    expect(Object.keys(payload.mixLines[0]).sort()).toEqual(["mix", "orderedMT"]);
+    expect(payload.mixLines[0].orderedMT).toBeGreaterThan(0);
+    expect(payload.periodFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(payload.periodTo).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(payload.periodFrom <= payload.periodTo).toBe(true);
+    expect(["open", "closed"]).toContain(payload.status);
   });
 
   it("coalesces later edits and close/reopen states into the pending order payload", async () => {
@@ -143,15 +158,85 @@ describe("SP-DP-LINK-01 supply order DispatchPro outbox", () => {
     await enqueueSupplyOrderDispatchPro(order({
       status: "closed",
       periodTo: "2026-12-15",
-      lines: [{ mixTemplateId: 4, mixName: "BC revised", orderedMt: 120 }],
+      lines: [{ mixTemplateId: 4, mixName: "BC order label", dispatchProMixName: "BC", orderedMt: 120 }],
     }));
 
     expect(mockDb.state.inserts).toHaveLength(0);
     expect(mockDb.state.updates[0]).toMatchObject({
       status: "pending",
       operation: "order",
-      payload: { status: "closed", periodTo: "2026-12-15", mixLines: [{ mixName: "BC revised", orderedMt: 120 }] },
+      payload: {
+        sitePulseOrderId: "SP-ORDER-91",
+        status: "closed",
+        periodTo: "2026-12-15",
+        mixLines: [{ mix: "BC", orderedMT: 120 }],
+      },
     });
+  });
+
+  it("does not queue an order without a SitePulse site", async () => {
+    const result = await enqueueSupplyOrderDispatchPro(order({ siteId: null }));
+    expect(result).toEqual({ queued: false, reason: "site_required" });
+    expect(mockDb.state.inserts).toHaveLength(0);
+    expect(mockDb.state.selections).toHaveLength(0);
+  });
+
+  it("does not send an older no-site payload to DispatchPro", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await sendDispatchProOutboxRow({
+      id: 14,
+      dispatch_id: 0,
+      supply_order_id: 91,
+      external_ref: "SP-ORDER-91",
+      operation: "order",
+      payload: { externalRef: "SP-ORDER-91", siteId: null },
+      attempt_count: 1,
+      created_at: new Date(),
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockDb.state.updates).toContainEqual(expect.objectContaining({
+      status: "failed",
+      lastError: "Choose a SitePulse site for this order first.",
+    }));
+  });
+
+  it("rebuilds a failed outbox row from the current order when retried", async () => {
+    mockDb.state.selections.push([{ id: 5, status: "failed" }]);
+    const currentOrder = order({
+      partyName: "Ashok Contractor",
+      orderNo: "PO-CURRENT",
+      periodTo: "2026-12-15",
+      lines: [{ mixTemplateId: 4, mixName: "Current order label", dispatchProMixName: "BC", orderedMt: 225 }],
+    });
+
+    await enqueueSupplyOrderDispatchPro(currentOrder);
+
+    expect(mockDb.state.updates[0]).toMatchObject({
+      status: "pending",
+      payload: {
+        sitePulseOrderId: "SP-ORDER-91",
+        partyName: "Ashok Contractor",
+        orderNumber: "PO-CURRENT",
+        mixLines: [{ mix: "BC", orderedMT: 225 }],
+        periodTo: "2026-12-15",
+      },
+    });
+  });
+
+  it("uses the same exact mix-template name as the truck payload", async () => {
+    mockDb.state.selections.push(
+      [{ id: 45, partyId: 7, mixTemplateId: 4, truckNumber: "TG12UH4799", loadWeight: 12, driverName: "Driver" }],
+      [{ dispatchProSiteId: "DP-TEST" }],
+      [{ name: "BC template exact" }],
+    );
+    await enqueueDispatchProChange(45, "create");
+    const truckMix = mockDb.state.inserts[0].payload.mixType;
+    const orderPayload = buildSupplyOrderDispatchProPayload(order({
+      lines: [{ mixTemplateId: 4, mixName: "Current order version", dispatchProMixName: "BC template exact", orderedMt: 100 }],
+    }));
+    expect(orderPayload.mixLines[0].mix).toBe(truckMix);
   });
 
   it("posts an order, stores the returned site id, and links it to the SitePulse site", async () => {
