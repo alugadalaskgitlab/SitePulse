@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
 const mock = vi.hoisted(() => ({
@@ -9,10 +9,26 @@ const mock = vi.hoisted(() => ({
     orderNo: "PO-TEST-101",
     partyId: 3,
     partyName: "Fixture party",
+    partyContactPerson: "Fixture contact",
+    partyMobile: "9876543210",
+    partyGstNo: "GST-TEST",
+    partyAddress: "Fixture address",
     dispatchProSiteId: null,
+    siteId: 5,
+    siteName: "Fixture site",
+    siteWorkDetails: {
+      workName: "Current master road",
+      clientDepartment: "PWD",
+      division: "North",
+      mandal: "Test mandal",
+      district: "Test district",
+      agreementEstimateRef: "AG-1",
+      estimateSorYear: "2026",
+      mtPerCumFactor: "2.400",
+    },
     periodFrom: "2026-11-01",
     periodTo: "2026-11-30",
-    workName: "Fixture road",
+    workName: "Old order snapshot",
     status: "open",
     createdAt: "2026-11-01T04:00:00.000Z",
     mtPerCumFactor: "2.356",
@@ -73,7 +89,18 @@ vi.mock("@tanstack/react-query", () => ({
     if (key === "/api/plant-module/supply-orders/options") return {
       data: {
         parties: [{ id: 3, name: "Fixture party", dispatchProSiteId: null }],
-        sites: [],
+        sites: [{
+          id: 5,
+          name: "Fixture site",
+          workName: "Current master road",
+          clientDepartment: "PWD",
+          division: "North",
+          mandal: "Test mandal",
+          district: "Test district",
+          agreementEstimateRef: "AG-1",
+          estimateSorYear: "2026",
+          mtPerCumFactor: "2.400",
+        }],
         mixes: [{ id: 4, name: "BC fixture", mixType: "BC", partyId: null, bitumenPercent: 5.2, ldoNorm: 6 }],
         materials: [{ id: 9, name: "20MM", defaultUom: "MT" }],
         mixComponents: [],
@@ -123,5 +150,17 @@ describe("ORDERS-02 order detail and editing UI", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Edit order/i })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: /Change mix from a date and time/i })).toBeInTheDocument();
     expect(screen.getByText(/Order history/)).toBeInTheDocument();
+  });
+
+  it("shows current site and party master details and previews explicit copying from the order", async () => {
+    render(<PlantSupplyOrders />);
+    await waitFor(() => expect(screen.getByTestId("order-party-master-details")).toBeInTheDocument());
+    expect(screen.getAllByText("Current master road").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("order-party-master-details").textContent).toContain("Fixture contact");
+    expect(screen.queryByText("Old order snapshot")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Copy work details to Site master/i }));
+    expect((await screen.findAllByText(/Current master road/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Old order snapshot/)).length).toBeGreaterThan(0);
   });
 });

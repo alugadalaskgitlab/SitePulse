@@ -359,6 +359,8 @@ export default function PlantStock() {
 
   type PartyStatementResult = {
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
+    partyDetails: { name: string; contactPerson: string | null; mobile: string | null; gstNo: string | null; address: string | null } | null;
+    siteDetails: Array<Record<string, string | null> & { siteName: string }>;
     entries: (ReceiptDatedLedgerEntry & {
       displayType: string;
       borrowedQty: number;
@@ -367,6 +369,8 @@ export default function PlantStock() {
       ownQty?: number;
       supplyOrderNo?: string | null;
       supplyOrderWorkName?: string | null;
+      supplyOrderSiteName?: string | null;
+      supplyOrderSiteWorkDetails?: Record<string, string | null> | null;
     })[];
   };
   type HlcReconResult = {
@@ -386,6 +390,8 @@ export default function PlantStock() {
         outstanding: Number(d.summary.outstanding),
         uom: d.summary.uom,
       },
+      partyDetails: d.partyDetails ?? null,
+      siteDetails: d.siteDetails ?? [],
       entries: d.entries.map(e => ({
         ...normLedger(e),
         displayType: e.displayType,
@@ -2938,10 +2944,18 @@ export default function PlantStock() {
                   .filter(entry => entry.supplyOrderNo)
                   .map(entry => [entry.supplyOrderNo, {
                     orderNo: entry.supplyOrderNo!,
-                    workName: entry.supplyOrderWorkName,
+                    workName: entry.supplyOrderSiteName
+                      ? entry.supplyOrderSiteWorkDetails?.workName
+                      : entry.supplyOrderWorkName,
+                    siteName: entry.supplyOrderSiteName,
                   }])).values()]
-                  .map(order => [order.orderNo, order.workName].filter(Boolean).join(" · "))
+                  .map(order => [order.orderNo, order.workName, order.siteName].filter(Boolean).join(" · "))
                   .join(" | ");
+                const partyMasterLine = [stmtData.partyDetails?.contactPerson, stmtData.partyDetails?.mobile, stmtData.partyDetails?.gstNo, stmtData.partyDetails?.address].filter(Boolean).join(" · ");
+                const siteMasterLines = stmtData.siteDetails.map(site => [
+                  site.siteName, site.workName, site.clientDepartment, site.division, site.mandal, site.district,
+                  site.agreementEstimateRef, site.estimateSorYear,
+                ].filter(Boolean).join(" · "));
 
                 const typeLabel = (dt: string) => {
                   switch (dt) {
@@ -3007,6 +3021,8 @@ export default function PlantStock() {
                     <h2>Party supply obligation statement</h2>
                     ${orderHeading ? `<p><strong>Supply order:</strong> ${escapeHtml(orderHeading)}</p>` : ""}
                     <p><strong>Party:</strong> ${displayName(partyName)} &nbsp;|&nbsp; <strong>Material:</strong> ${materialName} &nbsp;|&nbsp; <strong>Period:</strong> ${dateRange}</p>
+                     ${partyMasterLine ? `<p><strong>Party details:</strong> ${escapeHtml(partyMasterLine)}</p>` : ""}
+                     ${siteMasterLines.map(line => `<p><strong>Site work:</strong> ${escapeHtml(line)}</p>`).join("")}
                     <div class="summary">
                       <div class="card"><div class="card-label">Total Received</div><div class="card-value">${summary.totalReceived.toFixed(3)} ${uom}</div></div>
                       <div class="card"><div class="card-label">From Own Stock</div><div class="card-value">${summary.dispatchedOwn.toFixed(3)} ${uom}</div></div>
@@ -3052,7 +3068,13 @@ export default function PlantStock() {
                     doc.text(`Supply order: ${orderHeading}`, 14, 27);
                     statementSummaryY = 39;
                   }
-                  doc.text(`Party: ${displayName(partyName)}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, orderHeading ? 33 : 27);
+                   const contactText = partyMasterLine ? `Party details: ${partyMasterLine}` : "";
+                   const siteText = siteMasterLines.join(" | ");
+                   const detailLines = [contactText, siteText ? `Site work: ${siteText}` : ""].filter(Boolean);
+                   const detailStartY = orderHeading ? 33 : 27;
+                   doc.text(`Party: ${displayName(partyName)}   |   Material: ${materialName}   |   Period: ${dateRange}`, 14, detailStartY, { maxWidth: 270 });
+                   detailLines.forEach((line, index) => doc.text(line, 14, detailStartY + (index + 1) * 5, { maxWidth: 270 }));
+                   statementSummaryY = detailStartY + (detailLines.length + 1) * 5;
                   doc.text([
                     `Received: ${summary.totalReceived.toFixed(3)} ${uom}`,
                     `From Own Stock: ${summary.dispatchedOwn.toFixed(3)} ${uom}`,
@@ -3127,6 +3149,12 @@ export default function PlantStock() {
 
                 return (
                   <div>
+                    {(partyMasterLine || siteMasterLines.length > 0) && (
+                      <div className="mb-4 rounded-md border bg-slate-50 p-3 text-sm" data-testid="party-statement-master-details">
+                        {partyMasterLine && <p><strong>Party details:</strong> {partyMasterLine}</p>}
+                        {siteMasterLines.map((line, index) => <p key={`${index}-${line}`}><strong>Site work:</strong> {line}</p>)}
+                      </div>
+                    )}
                     {/* Summary cards */}
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
                       {[

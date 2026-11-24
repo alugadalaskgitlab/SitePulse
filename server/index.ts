@@ -142,7 +142,7 @@ function startPlantSupplyMorningSummary() {
         alert.recipientUserId,
         alert.title,
         alert.message,
-        "/plant/supply-orders",
+        "/plant/hub#hmp-open-order-material-alerts",
       )));
     } catch (error) {
       console.error("[PlantSupply] Morning summary failed:", error);

@@ -342,14 +342,31 @@ export function dispatchCrossesStockZero(beforeDispatch: number, afterDispatch: 
   return Number.isFinite(beforeDispatch) && Number.isFinite(afterDispatch) && beforeDispatch > 0 && afterDispatch <= 0;
 }
 
-export function formatPlantSupplyMorningSummary(order: {
+export type SupplyOrderNotice = {
+  partyName: string;
   orderNo: string;
-  lines: Array<{ mixName: string; balanceMt: number }>;
-  materials: Array<{ materialName: string; daysLeft: number | null }>;
-}): string {
-  const mixBalances = order.lines.map(line => `${line.mixName}: ${line.balanceMt.toFixed(3)} MT to go`);
-  const materialDays = order.materials.map(material =>
-    `${material.materialName}: ${material.daysLeft == null ? "days remaining unavailable" : `${material.daysLeft.toFixed(1)} days left`}`,
+  periodFrom: string;
+  periodTo: string;
+  lines: Array<{ mixName: string; orderedMt: number; dispatchedMt: number; balanceMt: number }>;
+  problemPrefix?: string;
+  problems?: Array<{ label: string; quantity: number; uom: string }>;
+};
+
+function noticeQuantity(value: number): string {
+  return Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
+export function formatPlantSupplyOrderNotification(order: SupplyOrderNotice, reason?: string): string {
+  const firstLine = `${order.partyName} · ${order.orderNo}${reason ? ` · ${reason}` : ""}`;
+  const mixLines = order.lines.map(line =>
+    `${line.mixName} ${noticeQuantity(line.orderedMt)} MT · ${order.periodFrom}–${order.periodTo} · dispatched ${noticeQuantity(line.dispatchedMt)} MT · balance ${noticeQuantity(line.balanceMt)} MT`,
   );
-  return [order.orderNo, ...mixBalances, ...materialDays].join(" · ");
+  const problemLine = order.problems?.length
+    ? `${order.problemPrefix ?? "Short"}: ${order.problems.map(problem => `${problem.label} ${noticeQuantity(problem.quantity)} ${problem.uom}`).join(" · ")}`
+    : "";
+  return [firstLine, ...mixLines, problemLine].filter(Boolean).join("\n");
+}
+
+export function formatPlantSupplyMorningSummary(orders: SupplyOrderNotice[]): string {
+  return orders.map(order => formatPlantSupplyOrderNotification(order)).join("\n\n");
 }

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -123,6 +124,14 @@ export default function HmpHub() {
     staleTime: 60_000,
   });
 
+  useEffect(() => {
+    if (window.location.hash !== "#hmp-open-order-material-alerts" || !openSupplyOrderSummaries.length) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById("hmp-open-order-material-alerts")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [openSupplyOrderSummaries.length]);
+
   const { data: equipmentUsageToday = [], isLoading: equipLoading } = useQuery<any[]>({
     queryKey: ["/api/plant-module/equipment-usage", TODAY],
     queryFn: async () => {
@@ -192,7 +201,7 @@ export default function HmpHub() {
         </div>
 
         {canSupplyOrders && openSupplyOrderSummaries.length > 0 && (
-          <Card className="border-amber-200 shadow-sm" data-testid="hmp-open-order-material-alerts">
+          <Card id="hmp-open-order-material-alerts" className="border-amber-200 shadow-sm" data-testid="hmp-open-order-material-alerts">
             <CardHeader className="pb-2 pt-4 px-5">
               <CardTitle className="text-base">Open orders — material status</CardTitle>
             </CardHeader>

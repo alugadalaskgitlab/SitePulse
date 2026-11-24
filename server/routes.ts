@@ -374,11 +374,11 @@ function verifyRoleCookie(val: string | undefined): 'admin' | 'manager' | null {
 }
 
 const partyCreateBodySchema = insertPartySchema
-  .pick({ name: true, notes: true, dispatchProSiteId: true })
+  .pick({ name: true, notes: true, dispatchProSiteId: true, contactPerson: true, mobile: true, gstNo: true, address: true })
   .strict();
 
 const partyUpdateBodySchema = insertPartySchema
-  .pick({ name: true, notes: true, dispatchProSiteId: true })
+  .pick({ name: true, notes: true, dispatchProSiteId: true, contactPerson: true, mobile: true, gstNo: true, address: true })
   .partial()
   .strict();
 
@@ -1944,11 +1944,20 @@ export async function registerRoutes(
 
   app.post("/api/sites", async (req, res) => {
     try {
-      if (!assertCreateEither(req, res, "sites_plants_manage", "admin_settings")) return;
+      if (!assertCreateEither(req, res, "sites_plants_manage", "admin_settings", "master_parties")) return;
       const input = insertSiteSchema.parse(req.body);
       const site = await storage.createSite({
         ...input,
         tallyCostCentreName: trimTallyMappingName(input.tallyCostCentreName),
+      });
+      await storage.logAudit({
+        module: "site_master",
+        transactionId: site.id,
+        action: "create",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "granted_user",
+        newValues: input,
       });
       res.status(201).json(site);
     } catch (err) {
@@ -1961,8 +1970,10 @@ export async function registerRoutes(
 
   app.patch("/api/sites/:id", async (req, res) => {
     try {
-      if (!assertEditEither(req, res, "sites_plants_manage", "admin_settings")) return;
+      if (!assertEditEither(req, res, "sites_plants_manage", "admin_settings", "master_parties")) return;
       const id = parseInt(req.params.id);
+      const before = (await storage.getSites()).find(row => row.id === id);
+      if (!before) return res.status(404).json({ message: "Site not found" });
       const updates = { ...req.body };
       if (Object.prototype.hasOwnProperty.call(updates, "tallyCostCentreName")) {
         const value = updates.tallyCostCentreName;
@@ -1973,6 +1984,24 @@ export async function registerRoutes(
       }
       const site = await storage.updateSite(id, updates);
       if (!site) return res.status(404).json({ message: "Site not found" });
+      const oldValues: Record<string, unknown> = {};
+      const newValues: Record<string, unknown> = {};
+      for (const [field, value] of Object.entries(updates)) {
+        if (JSON.stringify((before as any)[field] ?? null) !== JSON.stringify(value ?? null)) {
+          oldValues[field] = (before as any)[field] ?? null;
+          newValues[field] = value ?? null;
+        }
+      }
+      if (Object.keys(newValues).length) await storage.logAudit({
+        module: "site_master",
+        transactionId: id,
+        action: "edit",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "granted_user",
+        oldValues,
+        newValues,
+      });
       res.json(site);
     } catch (err) {
       res.status(500).json({ message: "Failed to update site" });
@@ -2171,6 +2200,28 @@ export async function registerRoutes(
     }
   });
 
+  async function assertSiteAttachmentAccess(req: any, res: any, siteId: number, write: boolean) {
+    if (!req.authUser) {
+      res.status(401).json({ message: "not_authenticated" });
+      return false;
+    }
+    const allowed = write
+      ? assertEditEither(req, res, "sites_plants_manage", "master_parties", "admin_settings")
+      : assertViewEither(req, res, "sites_plants_manage", "master_parties", "admin_settings");
+    if (!allowed) return false;
+    const siteExists = (await storage.getSites()).some(site => site.id === siteId);
+    if (!siteExists) {
+      res.status(404).json({ message: "Site not found." });
+      return false;
+    }
+    const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id, !!req.authFeatureAccess?.rolesConfigured);
+    if (permittedIds !== null && !permittedIds.includes(siteId)) {
+      res.status(403).json({ message: "You do not have access to this site's documents." });
+      return false;
+    }
+    return true;
+  }
+
   app.get("/api/attachments", async (req, res) => {
     try {
       const moduleType = String(req.query.moduleType || "");
@@ -2178,6 +2229,7 @@ export async function registerRoutes(
       if (!moduleType || !Number.isFinite(linkedRecordId)) {
         return res.status(400).json({ message: "moduleType and linkedRecordId are required" });
       }
+      if (moduleType === "site" && !(await assertSiteAttachmentAccess(req, res, linkedRecordId, false))) return;
       if (moduleType === "plant_supply_order") {
         if (!assertView(req, res, "plant_supply_orders")) return;
         if (!(await getPlantSupplyOrder(linkedRecordId))) return res.status(404).json({ message: "Plant supply order not found." });
@@ -2219,6 +2271,9 @@ export async function registerRoutes(
         return res.status(400).json({ message: "moduleType and ids are required" });
       }
       if (moduleType === "plant_supply_order" && !assertView(req, res, "plant_supply_orders")) return;
+      if (moduleType === "site") {
+        for (const id of ids) if (!(await assertSiteAttachmentAccess(req, res, id, false))) return;
+      }
       if (moduleType === "plant_supply_order_mix_version") {
         if (!assertView(req, res, "plant_supply_orders")) return;
         for (const id of ids) {
@@ -2261,6 +2316,10 @@ export async function registerRoutes(
         if (parsed.docType === "estimate_pdf" && parsed.mimeType !== "application/pdf") {
           return res.status(400).json({ message: "The estimate attachment must be a PDF." });
         }
+      }
+      if (parsed.moduleType === "site") {
+        if (!(await assertSiteAttachmentAccess(req, res, parsed.linkedRecordId, true))) return;
+        if (parsed.docType !== "site_work_detail") return res.status(400).json({ message: "Choose site_work_detail for a Site master document." });
       }
       if (parsed.moduleType === "plant_supply_order_mix_version") {
         if (!assertCreateOrEdit(req, res, "plant_supply_orders")) return;
@@ -2307,6 +2366,15 @@ export async function registerRoutes(
         if (duplicate) return res.status(200).json(duplicate);
       }
       const record = await storage.createAttachment({ ...parsed, uploadedBy: req.authUser.id });
+      if (parsed.moduleType === "site") await storage.logAudit({
+        module: "site_master",
+        transactionId: parsed.linkedRecordId,
+        action: "attachment_added",
+        userId: req.authUser.id,
+        userName: currentUserName(req),
+        userRole: req.authUser.isOwner ? "owner" : req.authUser.isAdmin ? "admin" : "granted_user",
+        newValues: { attachmentId: record.id, fileName: record.fileName, docType: record.docType },
+      });
       res.status(201).json(record);
     } catch (err: any) {
       if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
@@ -2323,6 +2391,7 @@ export async function registerRoutes(
       // Evidence removal uses the underlying module's explicitly delegated Delete.
       let allowed = false;
       switch (attachment.moduleType) {
+        case "site": allowed = await assertSiteAttachmentAccess(req, res, attachment.linkedRecordId, true); break;
         case "diesel_purchase": allowed = assertDeleteEither(req, res, "site_diesel", "diesel_req_raise"); break;
         case "dpr_progress": case "dpr_material": allowed = assertDelete(req, res, "site_dprs"); break;
         case "material_receipt": case "hmp_rmc_stock_receipt": allowed = assertDelete(req, res, "plant_materials"); break;
@@ -2364,6 +2433,18 @@ export async function registerRoutes(
       }
       const deleted = await storage.deleteAttachment(id);
       if (!deleted) return res.status(404).json({ message: "Attachment not found" });
+      if (attachment.moduleType === "site") {
+        await storage.logAudit({
+          module: "site_master",
+          transactionId: attachment.linkedRecordId,
+          action: "attachment_removed",
+          userId: req.authUser.id,
+          userName: currentUserName(req),
+          userRole: req.authUser.isOwner ? "owner" : req.authUser.isAdmin ? "admin" : "granted_user",
+          oldValues: { attachmentId: id, fileName: attachment.fileName, docType: attachment.docType },
+          newValues: null,
+        });
+      }
       if (supplyOrderIdForAttachment != null) {
         await storage.logAudit({
           module: "plant_supply_order",
@@ -5186,6 +5267,69 @@ export async function registerRoutes(
     res.json(order);
   });
 
+  app.post("/api/plant-module/supply-orders/:id/copy-work-details-to-site", async (req, res) => {
+    try {
+      if (!req.authUser?.isOwner) return res.status(403).json({ error: "Owner access required." });
+      if (!assertEditEither(req, res, "plant_supply_orders", "sites_plants_manage", "admin_settings")) return;
+      const orderId = Number(req.params.id);
+      const order = await getPlantSupplyOrder(orderId);
+      if (!order) return res.status(404).json({ error: "Supply order not found." });
+      if (!order.siteId) return res.status(400).json({ error: "This order has no site linked." });
+      const overwrite = req.body?.overwrite === true;
+      const site = (await storage.getSites()).find(row => row.id === order.siteId);
+      if (!site) return res.status(404).json({ error: "Site not found." });
+      const copyable = {
+        workName: order.workName,
+        division: order.division,
+        mandal: order.mandal,
+        district: order.district,
+        agreementEstimateRef: order.agreementEstimateRef,
+        estimateSorYear: order.estimateSorYear,
+        mtPerCumFactor: order.mtPerCumFactor,
+      };
+      const oldValues: Record<string, unknown> = {};
+      const newValues: Record<string, unknown> = {};
+      const updatedFields: string[] = [];
+      const skippedFields: string[] = [];
+      const patch: Record<string, unknown> = {};
+      for (const [field, rawValue] of Object.entries(copyable)) {
+        if (rawValue == null || String(rawValue).trim() === "") {
+          skippedFields.push(field);
+          continue;
+        }
+        const current = (site as any)[field];
+        if (!overwrite && current != null && String(current).trim() !== "") {
+          skippedFields.push(field);
+          continue;
+        }
+        const value = field === "mtPerCumFactor" ? String(rawValue) : String(rawValue).trim();
+        if (String(current ?? "") === value) continue;
+        patch[field] = value;
+        oldValues[field] = current ?? null;
+        newValues[field] = value;
+        updatedFields.push(field);
+      }
+      if (updatedFields.length) {
+        const updated = await storage.updateSite(order.siteId, patch as any);
+        if (!updated) return res.status(409).json({ error: "Site could not be updated; review it again." });
+        await storage.logAudit({
+          module: "site_master",
+          transactionId: order.siteId,
+          action: "copy_order_work_details",
+          userId: req.authUser!.id,
+          userName: currentUserName(req),
+          userRole: "owner",
+          oldValues,
+          newValues: { ...newValues, sourceOrderId: orderId, sourceOrderNo: order.orderNo, overwrite },
+        });
+      }
+      return res.json({ updatedFields, skippedFields, site: (await storage.getSites()).find(row => row.id === order.siteId) ?? null });
+    } catch (error) {
+      console.error("[supply orders] copy work details", error);
+      return res.status(500).json({ error: "Could not copy work details to Site master." });
+    }
+  });
+
   app.patch("/api/plant-module/supply-orders/:id", async (req, res) => {
     if (!assertEdit(req, res, "plant_supply_orders")) return;
     const userId = Number(req.authUser?.id ?? 0);
@@ -5431,6 +5575,15 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only the Owner can link a party to DispatchPro." });
       }
       const party = await storage.createParty(input);
+      await storage.logAudit({
+        module: "party_master",
+        transactionId: party.id,
+        action: "create",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "granted_user",
+        newValues: input,
+      });
       res.status(201).json(party);
     } catch (err) {
       res.status(500).json({ message: "Failed to create party" });
@@ -5445,8 +5598,28 @@ export async function registerRoutes(
       if (parsed.data.dispatchProSiteId !== undefined && !req.authUser?.isOwner) {
         return res.status(403).json({ message: "Only the Owner can link a party to DispatchPro." });
       }
-      const party = await storage.updateParty(Number(req.params.id), parsed.data);
+      const partyId = Number(req.params.id);
+      const before = (await storage.getParties()).find(row => row.id === partyId);
+      const party = await storage.updateParty(partyId, parsed.data);
       if (!party) return res.status(404).json({ message: "Party not found" });
+      const oldValues: Record<string, unknown> = {};
+      const newValues: Record<string, unknown> = {};
+      for (const [field, value] of Object.entries(parsed.data)) {
+        if (JSON.stringify((before as any)?.[field] ?? null) !== JSON.stringify(value ?? null)) {
+          oldValues[field] = (before as any)?.[field] ?? null;
+          newValues[field] = value ?? null;
+        }
+      }
+      if (Object.keys(newValues).length) await storage.logAudit({
+        module: "party_master",
+        transactionId: partyId,
+        action: "edit",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "granted_user",
+        oldValues,
+        newValues,
+      });
       res.json(party);
     } catch (err) {
       res.status(500).json({ message: "Failed to update party" });
@@ -7111,7 +7284,14 @@ export async function registerRoutes(
             result.borrowings ?? [],
           );
           await Promise.all(alerts.map(alert =>
-            sendPushToUser(alert.recipientUserId, alert.title, alert.message, "/plant/supply-orders")
+            sendPushToUser(
+              alert.recipientUserId,
+              alert.title,
+              alert.message,
+              alert.orderId
+                ? `/plant/supply-orders?orderId=${alert.orderId}&section=material-status#order-material-status`
+                : "/plant/supply-orders",
+            )
           ));
         } catch (alertError) {
           console.error("[plant supply] dispatch alert delivery failed", alertError);

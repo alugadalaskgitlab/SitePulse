@@ -31,8 +31,15 @@ type MixLine = {
   orderMix: OrderMixDraft | null;
 };
 type OrderOptions = {
-  parties: Array<{ id: number; name: string; dispatchProSiteId: string | null }>;
-  sites: Array<{ id: number; name: string; partyId: number | null }>;
+  parties: Array<{
+    id: number; name: string; dispatchProSiteId: string | null;
+    contactPerson: string | null; mobile: string | null; gstNo: string | null; address: string | null;
+  }>;
+  sites: Array<{
+    id: number; name: string; partyId: number | null;
+    workName: string | null; clientDepartment: string | null; division: string | null; mandal: string | null;
+    district: string | null; agreementEstimateRef: string | null; estimateSorYear: string | null; mtPerCumFactor: string | null;
+  }>;
   mixes: Array<{ id: number; name: string; mixType: string; partyId: number | null; bitumenPercent: number | null; ldoNorm: number | null }>;
   materials: Array<{ id: number; name: string; defaultUom: string | null }>;
   mixComponents: Array<{ templateId: number; materialId: number; materialName: string; percent: number | null; moistureContent: number | null; wastageFactor: number | null }>;
@@ -49,6 +56,25 @@ async function fetchJson<T>(url: string): Promise<T> {
 
 function errorText(error: unknown) {
   return error instanceof Error ? error.message.replace(/^\d+:\s*/, "") : "Could not complete this action.";
+}
+
+const ORDER_WORK_DETAIL_FIELDS = [
+  { key: "workName", label: "Work name" },
+  { key: "clientDepartment", label: "Client / department" },
+  { key: "division", label: "Division" },
+  { key: "mandal", label: "Mandal" },
+  { key: "district", label: "District" },
+  { key: "agreementEstimateRef", label: "Agreement / estimate ref" },
+  { key: "estimateSorYear", label: "SOR year" },
+] as const;
+
+function workDetailEntries(source: Record<string, unknown> | null | undefined): Array<[string, string]> {
+  const entries: Array<[string, string]> = [];
+  for (const field of ORDER_WORK_DETAIL_FIELDS) {
+    const value = typeof source?.[field.key] === "string" ? (source[field.key] as string).trim() : "";
+    if (value) entries.push([field.label, value]);
+  }
+  return entries;
 }
 
 function localDateTimeInput(date: Date) {
@@ -91,12 +117,6 @@ export default function PlantSupplyOrders() {
   const [periodFrom, setPeriodFrom] = useState(today);
   const [periodTo, setPeriodTo] = useState(today);
   const [orderNo, setOrderNo] = useState("");
-  const [workName, setWorkName] = useState("");
-  const [division, setDivision] = useState("");
-  const [mandal, setMandal] = useState("");
-  const [district, setDistrict] = useState("");
-  const [agreementEstimateRef, setAgreementEstimateRef] = useState("");
-  const [estimateSorYear, setEstimateSorYear] = useState("");
   const [mtPerCumFactor, setMtPerCumFactor] = useState("2.356");
   const [remarks, setRemarks] = useState("");
   const [estimatePdf, setEstimatePdf] = useState<File | null>(null);
@@ -118,6 +138,8 @@ export default function PlantSupplyOrders() {
   const [mixChangeAt, setMixChangeAt] = useState("");
   const [mixChangeReason, setMixChangeReason] = useState("");
   const [mixChangeFile, setMixChangeFile] = useState<File | null>(null);
+  const [copySiteDetailsOpen, setCopySiteDetailsOpen] = useState(false);
+  const [overwriteSiteDetails, setOverwriteSiteDetails] = useState(false);
   useEffect(() => {
     const requestedId = Number(new URLSearchParams(search).get("orderId"));
     if (Number.isInteger(requestedId) && requestedId > 0) setSelectedId(requestedId);
@@ -136,6 +158,16 @@ export default function PlantSupplyOrders() {
     queryFn: () => fetchJson(`/api/plant-module/supply-orders/${selectedId}`),
     enabled: selectedId != null,
   });
+  const createSiteAttachmentsQuery = useQuery<any[]>({
+    queryKey: ["/api/attachments", "site", siteId],
+    queryFn: () => fetchJson(`/api/attachments?moduleType=site&linkedRecordId=${encodeURIComponent(siteId)}`),
+    enabled: Boolean(siteId),
+  });
+  const orderSiteAttachmentsQuery = useQuery<any[]>({
+    queryKey: ["/api/attachments", "site", orderQuery.data?.siteId],
+    queryFn: () => fetchJson(`/api/attachments?moduleType=site&linkedRecordId=${encodeURIComponent(String(orderQuery.data?.siteId ?? ""))}`),
+    enabled: Boolean(orderQuery.data?.siteId),
+  });
   const replacementQuery = useQuery<any>({
     queryKey: ["/api/plant-module/supply-orders", selectedId, "replacement", replacementBorrowingId],
     queryFn: () => fetchJson(`/api/plant-module/supply-orders/${selectedId}/borrowings/${replacementBorrowingId}/receipts`),
@@ -144,6 +176,26 @@ export default function PlantSupplyOrders() {
   const activeOrders = useMemo(() => ordersQuery.data ?? [], [ordersQuery.data]);
   const options = optionsQuery.data;
   const order = orderQuery.data;
+  useEffect(() => {
+    const requestedSection = new URLSearchParams(search).get("section");
+    if (requestedSection !== "material-status" || !order || order.id !== selectedId) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById("order-material-status")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [order?.id, search, selectedId]);
+  const siteWorkEntriesForOrder = workDetailEntries(order?.siteWorkDetails);
+  const savedOrderWorkEntries = workDetailEntries(order ? {
+    workName: order.workName,
+    division: order.division,
+    mandal: order.mandal,
+    district: order.district,
+    agreementEstimateRef: order.agreementEstimateRef,
+    estimateSorYear: order.estimateSorYear,
+  } : null);
+  const visibleWorkEntries = order?.siteId
+    ? siteWorkEntriesForOrder
+    : savedOrderWorkEntries;
 
   const invalidate = async () => {
     await Promise.all([
@@ -217,12 +269,6 @@ export default function PlantSupplyOrders() {
         periodFrom,
         periodTo,
         orderNo: orderNo.trim() || null,
-        workName: workName.trim() || null,
-        division: division.trim() || null,
-        mandal: mandal.trim() || null,
-        district: district.trim() || null,
-        agreementEstimateRef: agreementEstimateRef.trim() || null,
-        estimateSorYear: estimateSorYear.trim() || null,
         mtPerCumFactor: Number(mtPerCumFactor),
         remarks: remarks.trim() || null,
         lines: lines.filter(line => !isBlankMixLine(line)).map(line => ({
@@ -248,12 +294,6 @@ export default function PlantSupplyOrders() {
       setCreateOpen(false);
       setLines([{ mixTemplateId: "", enteredQuantity: "", enteredUnit: "MT", plannedMtPerDay: "", orderMix: null }]);
       setOrderNo("");
-      setWorkName("");
-      setDivision("");
-      setMandal("");
-      setDistrict("");
-      setAgreementEstimateRef("");
-      setEstimateSorYear("");
       setMtPerCumFactor("2.356");
       setRemarks("");
       const files = [
@@ -289,6 +329,30 @@ export default function PlantSupplyOrders() {
       apiRequest("PATCH", `/api/plant-module/supply-orders/${selectedId}/status`, { status }),
     onSuccess: async () => { await invalidate(); },
     onError: error => toast({ title: "Could not update order", description: errorText(error), variant: "destructive" }),
+  });
+
+  const copyWorkDetailsToSiteMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", `/api/plant-module/supply-orders/${selectedId}/copy-work-details-to-site`, {
+        overwrite: overwriteSiteDetails,
+      });
+      return response.json();
+    },
+    onSuccess: async (result: any) => {
+      setCopySiteDetailsOpen(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/plant-module/supply-orders", selectedId] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/plant-module/supply-orders/options"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/sites"] }),
+      ]);
+      toast({
+        title: "Site master updated",
+        description: result.updatedFields?.length
+          ? `Copied: ${result.updatedFields.join(", ")}`
+          : "No site fields needed updating.",
+      });
+    },
+    onError: error => toast({ title: "Could not copy work details", description: errorText(error), variant: "destructive" }),
   });
 
   const editOrderMutation = useMutation({
@@ -406,6 +470,17 @@ export default function PlantSupplyOrders() {
 
   const chosenParty = options?.parties.find(row => row.id === Number(partyId));
   const siteOptions = options?.sites.filter(row => !row.partyId || row.partyId === Number(partyId)) ?? [];
+  const selectedSite = siteOptions.find(row => row.id === Number(siteId));
+  const siteWorkEntries = selectedSite ? workDetailEntries({
+    workName: selectedSite.workName,
+    clientDepartment: selectedSite.clientDepartment,
+    division: selectedSite.division,
+    mandal: selectedSite.mandal,
+    district: selectedSite.district,
+    agreementEstimateRef: selectedSite.agreementEstimateRef,
+    estimateSorYear: selectedSite.estimateSorYear,
+  }) : [];
+  const siteFactorSet = Number(selectedSite?.mtPerCumFactor) > 0;
   const mixOptions = options?.mixes.filter(row => !row.partyId || row.partyId === Number(partyId)) ?? [];
 
   const emptyMixLine = (): MixLine => ({
@@ -516,6 +591,39 @@ export default function PlantSupplyOrders() {
 
   return (
     <HubShell title="Plant supply orders" subtitle="Planned mixes, material supply and borrowing" backHref="/plant/hub" backLabel="HMP Operations">
+      {order && (
+        <>
+          <style>{`@media print { body * { visibility: hidden !important; } #supply-order-print, #supply-order-print * { visibility: visible !important; } #supply-order-print { display: block !important; position: absolute; inset: 0; width: 100%; padding: 24px; color: #111; background: #fff; font: 12pt Arial, sans-serif; } }`}</style>
+          <div id="supply-order-print" className="hidden print:block">
+            <h1>{order.orderNo} · {order.partyName}</h1>
+            <p>{order.periodFrom} – {order.periodTo}{order.siteName ? ` · ${order.siteName}` : ""}</p>
+            {[order.partyContactPerson, order.partyMobile, order.partyGstNo, order.partyAddress].filter(Boolean).length > 0 && (
+              <p>{[order.partyContactPerson, order.partyMobile, order.partyGstNo, order.partyAddress].filter(Boolean).join(" · ")}</p>
+            )}
+            {visibleWorkEntries.map(([label, value]) => <p key={label}>{label}: {value}</p>)}
+            <p>MT per cum factor: {Number(order.siteWorkDetails?.mtPerCumFactor || order.mtPerCumFactor || 2.356).toFixed(3)}</p>
+            <h2>Mixes</h2>
+            <table className="w-full border-collapse">
+              <thead><tr><th className="border p-2 text-left">Mix</th><th className="border p-2 text-right">Ordered MT</th><th className="border p-2 text-right">Dispatched MT</th><th className="border p-2 text-right">Balance MT</th></tr></thead>
+              <tbody>{order.lines.map((line: any) => <tr key={line.id}>
+                <td className="border p-2">{line.mixName}</td>
+                <td className="border p-2 text-right">{Number(line.orderedMt).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</td>
+                <td className="border p-2 text-right">{Number(line.dispatchedMt).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</td>
+                <td className="border p-2 text-right">{Number(line.balanceMt).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</td>
+              </tr>)}</tbody>
+            </table>
+            <h2>Material status</h2>
+            <table className="w-full border-collapse">
+              <thead><tr><th className="border p-2 text-left">Material</th><th className="border p-2 text-right">Need</th><th className="border p-2 text-right">Short</th></tr></thead>
+              <tbody>{order.materials.map((material: any) => <tr key={material.materialId}>
+                <td className="border p-2">{material.materialName}</td>
+                <td className="border p-2 text-right">{Number(material.need).toLocaleString("en-IN", { maximumFractionDigits: 2 })} {material.uom}</td>
+                <td className="border p-2 text-right">{Number(material.shortage).toLocaleString("en-IN", { maximumFractionDigits: 2 })} {material.uom}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        </>
+      )}
       <div className="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -542,7 +650,11 @@ export default function PlantSupplyOrders() {
                     className={`w-full rounded-lg border px-3 py-2 text-left ${selectedId === row.id ? "border-teal-500 bg-teal-50" : "border-slate-200 hover:bg-slate-50"}`}
                   >
                     <span className="block font-medium">{row.orderNo}</span>
-                    {row.workName && <span className="block text-sm text-slate-700">{row.workName}</span>}
+                    {(row.siteId ? row.siteWorkDetails?.workName : row.workName) && (
+                      <span className="block text-sm text-slate-700">
+                        {row.siteId ? row.siteWorkDetails?.workName : row.workName}
+                      </span>
+                    )}
                     <span className="block text-sm text-slate-600">{row.partyName}</span>
                     <span className="block text-xs text-slate-500">{row.periodFrom} – {row.periodTo} · {row.status}</span>
                   </button>
@@ -558,21 +670,39 @@ export default function PlantSupplyOrders() {
                     <CardHeader className="flex flex-row items-start justify-between gap-3">
                       <div>
                         <CardTitle>{order.orderNo} · {order.partyName}</CardTitle>
-                        {order.workName && <p className="mt-1 font-medium text-slate-800">{order.workName}</p>}
+                        {visibleWorkEntries.map(([label, value]) => (
+                          <p key={label} className={label === "Work name" ? "mt-1 font-medium text-slate-800" : "text-sm text-slate-600"}>
+                            {label === "Work name" ? value : `${label}: ${value}`}
+                          </p>
+                        ))}
                         <p className="mt-1 text-sm text-slate-600">
                           {order.periodFrom} – {order.periodTo}
                           {order.siteName ? ` · ${order.siteName}` : order.dispatchProSiteId ? " · DispatchPro site linked" : ""}
                           {order.status === "closed" ? " · Closed" : " · Open"}
                         </p>
-                        <p className="text-xs text-slate-500">Quantity conversion: {Number(order.mtPerCumFactor || 2.356).toFixed(3)} MT/cum</p>
-                        {(order.division || order.mandal || order.district) && (
-                          <p className="mt-1 text-sm text-slate-600">{[order.division, order.mandal, order.district].filter(Boolean).join(" · ")}</p>
+                        {order.siteId && !siteWorkEntriesForOrder.length && (
+                          <p className="mt-1 text-sm text-amber-800" data-testid="order-no-site-master-details">
+                            No work details in Site master. <Link className="underline" href="/plant/dashboard#site-master">Edit Site master</Link>
+                          </p>
                         )}
-                        {order.agreementEstimateRef && <p className="text-sm text-slate-600">Agreement / estimate: {order.agreementEstimateRef}</p>}
-                        {order.estimateSorYear && <p className="text-sm text-slate-600">Estimate SOR: {order.estimateSorYear}</p>}
+                        <p className="text-xs text-slate-500">
+                          Quantity conversion: {Number(order.siteWorkDetails?.mtPerCumFactor || order.mtPerCumFactor || 2.356).toFixed(3)} MT/cum
+                          {Number(order.siteWorkDetails?.mtPerCumFactor) > 0 ? " · from Site master" : ""}
+                        </p>
+                        {(order.partyContactPerson || order.partyMobile || order.partyGstNo || order.partyAddress) && (
+                          <p className="mt-1 text-sm text-slate-600" data-testid="order-party-master-details">
+                            {[order.partyContactPerson, order.partyMobile, order.partyGstNo, order.partyAddress].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
                         {order.remarks && <p className="mt-2 text-sm text-slate-600">{order.remarks}</p>}
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => window.print()} data-testid="button-print-supply-order">Print order</Button>
+                        {isOwner && order.siteId && savedOrderWorkEntries.length > 0 && (
+                          <Button size="sm" variant="outline" onClick={() => { setOverwriteSiteDetails(false); setCopySiteDetailsOpen(true); }}>
+                            Copy work details to Site master
+                          </Button>
+                        )}
                         {options?.canManageLifecycle && order.status === "open" && (
                           <Button size="sm" variant="outline" onClick={openOrderEdit}>
                             <Pencil className="mr-2 h-4 w-4" />Edit order
@@ -604,6 +734,31 @@ export default function PlantSupplyOrders() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-5">
+                      {(orderSiteAttachmentsQuery.data ?? []).length > 0 && (
+                        <section data-testid="order-site-attachments">
+                          <h2 className="mb-2 font-semibold">Site master documents</h2>
+                          <div className="flex flex-wrap gap-3 text-sm">
+                            {(orderSiteAttachmentsQuery.data ?? []).map((attachment: any) => (
+                              <a key={attachment.id} className="underline" href={attachment.objectPath} target="_blank" rel="noreferrer">
+                                {attachment.fileName}
+                              </a>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+                      <section id="order-material-status" className="scroll-mt-4">
+                        <h2 className="mb-2 font-semibold">Material status</h2>
+                        <div className="space-y-2">
+                          {order.materials.map((material: any) => (
+                            <div key={material.materialId} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
+                              <span className="font-medium">{material.materialName}</span>
+                              <span>Need {Number(material.need).toLocaleString("en-IN", { maximumFractionDigits: 2 })} {material.uom}</span>
+                              <span>Dispatched {Number(material.dispatched ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })} {material.uom}</span>
+                              <span>Short {Number(material.shortage ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })} {material.uom}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
                       <section>
                         <h2 className="mb-2 font-semibold">Mix balance</h2>
                         <div className="space-y-2">
@@ -1007,14 +1162,24 @@ export default function PlantSupplyOrders() {
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-2"><Label>Party / job</Label>
-                <Select value={partyId} onValueChange={value => { setPartyId(value); setSiteId(""); }}>
+                <Select value={partyId} onValueChange={value => { setPartyId(value); setSiteId(""); setMtPerCumFactor("2.356"); }}>
                   <SelectTrigger><SelectValue placeholder="Choose party" /></SelectTrigger>
                   <SelectContent>{options?.parties.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent>
                 </Select>
                 {chosenParty?.dispatchProSiteId && <p className="text-xs text-slate-500">DispatchPro site linked</p>}
+                {(chosenParty?.contactPerson || chosenParty?.mobile || chosenParty?.gstNo || chosenParty?.address) && (
+                  <p className="text-xs text-slate-600" data-testid="order-party-contact">
+                    {[chosenParty.contactPerson, chosenParty.mobile, chosenParty.gstNo, chosenParty.address].filter(Boolean).join(" · ")}
+                  </p>
+                )}
               </div>
               <div className="space-y-2"><Label>Site (optional)</Label>
-                <Select value={siteId || "none"} onValueChange={value => setSiteId(value === "none" ? "" : value)}>
+                <Select value={siteId || "none"} onValueChange={value => {
+                  const nextSiteId = value === "none" ? "" : value;
+                  const nextSite = siteOptions.find(site => site.id === Number(nextSiteId));
+                  setSiteId(nextSiteId);
+                  setMtPerCumFactor(nextSite?.mtPerCumFactor ? String(nextSite.mtPerCumFactor) : "2.356");
+                }}>
                   <SelectTrigger><SelectValue placeholder="No site selected" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No site selected</SelectItem>
@@ -1023,22 +1188,41 @@ export default function PlantSupplyOrders() {
                 </Select>
               </div>
             </div>
+            {siteId && (
+              <div className="rounded-md border bg-slate-50 p-3" data-testid="order-site-work-details">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold">Work details from Site master</h3>
+                  <Link href="/plant/dashboard#site-master" className="text-sm underline">Edit in Site master</Link>
+                </div>
+                {siteWorkEntries.length ? (
+                  <dl className="mt-2 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
+                    {siteWorkEntries.map(([label, value]) => <div key={label}><dt className="inline text-slate-500">{label}: </dt><dd className="inline">{value}</dd></div>)}
+                  </dl>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-600" data-testid="order-no-site-work-details">No work details in Site master.</p>
+                )}
+                {(createSiteAttachmentsQuery.data ?? []).length > 0 && (
+                  <div className="mt-2 text-sm">
+                    <p className="font-medium">Site attachments</p>
+                    {(createSiteAttachmentsQuery.data ?? []).map((attachment: any) => (
+                      <p key={attachment.id}><a className="underline" href={attachment.objectPath}>{attachment.fileName}</a></p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2"><Label>Period from</Label><Input type="date" value={periodFrom} onChange={e => setPeriodFrom(e.target.value)} /></div>
               <div className="space-y-2"><Label>Period to</Label><Input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} /></div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2"><Label>Order number (optional)</Label><Input value={orderNo} onChange={e => setOrderNo(e.target.value)} placeholder="Auto-number if blank" /></div>
-              <div className="space-y-2"><Label>Work name</Label><Input value={workName} onChange={e => setWorkName(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Division</Label><Input value={division} onChange={e => setDivision(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Mandal</Label><Input value={mandal} onChange={e => setMandal(e.target.value)} /></div>
-              <div className="space-y-2"><Label>District</Label><Input value={district} onChange={e => setDistrict(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Agreement / estimate reference</Label><Input value={agreementEstimateRef} onChange={e => setAgreementEstimateRef(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Estimate SOR year</Label><Input value={estimateSorYear} onChange={e => setEstimateSorYear(e.target.value)} placeholder="e.g. 2025–26" /></div>
               <div className="space-y-2">
                 <Label>MT per cum factor</Label>
-                <Input type="number" min="0.001" step="0.001" value={mtPerCumFactor} onChange={e => setMtPerCumFactor(e.target.value)} />
-                <p className="text-xs text-muted-foreground">Used only when an order quantity is entered in cum. Default: 2.356.</p>
+                <Input type="number" min="0.001" step="0.001" value={mtPerCumFactor} readOnly={siteFactorSet} onChange={e => setMtPerCumFactor(e.target.value)} />
+                <p className="text-xs text-muted-foreground">
+                  Used only for quantities entered in cum. {siteFactorSet ? "From the Site master." : "Fallback: 2.356; editable for this order."}
+                </p>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1148,6 +1332,47 @@ export default function PlantSupplyOrders() {
           <DialogHeader><DialogTitle>Party will replace</DialogTitle></DialogHeader>
           <div className="space-y-2"><Label>Note (required)</Label><Textarea value={decisionNote} onChange={e => setDecisionNote(e.target.value)} /></div>
           <DialogFooter><Button variant="outline" onClick={() => setDecisionBorrowingId(null)}>Cancel</Button><Button disabled={!decisionNote.trim() || decisionMutation.isPending} onClick={() => decisionBorrowingId && decisionMutation.mutate({ id: decisionBorrowingId, decision: "party_will_replace", note: decisionNote })}>Save decision</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={copySiteDetailsOpen} onOpenChange={setCopySiteDetailsOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader><DialogTitle>Copy work details to Site master</DialogTitle></DialogHeader>
+          <p className="text-sm text-slate-600">Review each field before saving. Blank Site master fields are filled; existing values stay unchanged unless overwrite is selected.</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={overwriteSiteDetails} onChange={event => setOverwriteSiteDetails(event.target.checked)} />
+            Overwrite existing Site master values
+          </label>
+          <div className="space-y-2">
+            {ORDER_WORK_DETAIL_FIELDS.filter(field => field.key !== "clientDepartment").map(field => {
+              const sourceValue = field.key === "workName" ? order?.workName
+                : field.key === "division" ? order?.division
+                : field.key === "mandal" ? order?.mandal
+                : field.key === "district" ? order?.district
+                : field.key === "agreementEstimateRef" ? order?.agreementEstimateRef
+                : order?.estimateSorYear;
+              const currentValue = order?.siteWorkDetails?.[field.key];
+              const willCopy = Boolean(sourceValue?.trim()) && (overwriteSiteDetails || !String(currentValue ?? "").trim());
+              return (
+                <div key={field.key} className="grid gap-1 rounded border p-2 text-sm sm:grid-cols-[150px_1fr_1fr]">
+                  <strong>{field.label}</strong>
+                  <span>Site: {currentValue || "—"}</span>
+                  <span>Order: {sourceValue || "—"} · {willCopy ? (currentValue ? "will replace" : "will fill") : "will stay unchanged"}</span>
+                </div>
+              );
+            })}
+            <div className="grid gap-1 rounded border p-2 text-sm sm:grid-cols-[150px_1fr_1fr]">
+              <strong>MT per cum factor</strong>
+              <span>Site: {order?.siteWorkDetails?.mtPerCumFactor || "—"}</span>
+              <span>Order: {order?.mtPerCumFactor || "—"} · {overwriteSiteDetails || !Number(order?.siteWorkDetails?.mtPerCumFactor) ? "will copy" : "will stay unchanged"}</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCopySiteDetailsOpen(false)}>Cancel</Button>
+            <Button disabled={copyWorkDetailsToSiteMutation.isPending} onClick={() => copyWorkDetailsToSiteMutation.mutate()}>
+              {copyWorkDetailsToSiteMutation.isPending ? "Copying…" : "Apply reviewed copy"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </HubShell>

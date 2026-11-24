@@ -19,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION, NO_CREATE_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useUpload } from "@/hooks/use-upload";
 import { normalizeWeightUnit } from "@shared/stockUnits";
 import {
   shouldShowMixTemplateProportionMaterial,
@@ -2266,6 +2267,7 @@ function MastersTab() {
 
 export function SitesMasterSection() {
   const { toast } = useToast();
+  const { uploadFile, isUploading: isUploadingSiteFile } = useUpload();
   const { sectionCan, featureCan } = useAuth();
   const canEdit = sectionCan("master_parties", "edit") || sectionCan("sites_plants_manage", "edit") || sectionCan("admin_settings", "edit");
   const canCreate = sectionCan("master_parties", "create") || sectionCan("sites_plants_manage", "create") || sectionCan("admin_settings", "create");
@@ -2277,6 +2279,12 @@ export function SitesMasterSection() {
   const [editingSiteName, setEditingSiteName] = useState("");
   const [editingSitePartyId, setEditingSitePartyId] = useState<string>("all");
   const [editingSiteTallyCostCentreName, setEditingSiteTallyCostCentreName] = useState("");
+  const [editingWorkSiteId, setEditingWorkSiteId] = useState<number | null>(null);
+  const [siteWorkDraft, setSiteWorkDraft] = useState({
+    workName: "", clientDepartment: "", division: "", mandal: "", district: "",
+    agreementEstimateRef: "", estimateSorYear: "", mtPerCumFactor: "",
+  });
+  const [siteWorkFiles, setSiteWorkFiles] = useState<File[]>([]);
 
   const { data: sitesList = [], isLoading: sitesLoading } = useQuery<Site[]>({
     queryKey: ["/api/sites"],
@@ -2284,6 +2292,61 @@ export function SitesMasterSection() {
 
   const { data: partiesList = [] } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
+  });
+
+  const siteWorkAttachmentsQuery = useQuery<any[]>({
+    queryKey: ["/api/attachments", "site", editingWorkSiteId],
+    queryFn: async () => {
+      const response = await fetch(`/api/attachments?moduleType=site&linkedRecordId=${editingWorkSiteId}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load site attachments.");
+      return response.json();
+    },
+    enabled: editingWorkSiteId != null,
+  });
+
+  const saveSiteWorkDetailsMutation = useMutation({
+    mutationFn: async () => {
+      if (editingWorkSiteId == null) throw new Error("Choose a site.");
+      const response = await apiRequest("PATCH", `/api/sites/${editingWorkSiteId}`, {
+        ...siteWorkDraft,
+        mtPerCumFactor: siteWorkDraft.mtPerCumFactor.trim() || null,
+      });
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).message || "Could not save Site work details.");
+      for (const file of siteWorkFiles) {
+        const uploaded = await uploadFile(file);
+        if (!uploaded) throw new Error(`Could not upload ${file.name}.`);
+        const attachment = await apiRequest("POST", "/api/attachments", {
+          moduleType: "site",
+          linkedRecordId: editingWorkSiteId,
+          docType: "site_work_detail",
+          objectPath: uploaded.objectPath,
+          fileName: uploaded.metadata.name,
+          mimeType: uploaded.metadata.contentType,
+          fileSize: uploaded.metadata.size,
+        });
+        if (!attachment.ok) throw new Error((await attachment.json().catch(() => ({}))).message || `Could not save ${file.name}.`);
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/sites"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/attachments", "site", editingWorkSiteId] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/plant-module/supply-orders/options"] }),
+      ]);
+      setEditingWorkSiteId(null);
+      setSiteWorkFiles([]);
+      toast({ title: "Site work details saved" });
+    },
+    onError: (error: any) => toast({ title: "Could not save Site work details", description: error.message, variant: "destructive" }),
+  });
+
+  const removeSiteAttachmentMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/attachments/${id}`),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/attachments", "site", editingWorkSiteId] });
+      toast({ title: "Site attachment removed" });
+    },
+    onError: (error: any) => toast({ title: "Could not remove attachment", description: error.message, variant: "destructive" }),
   });
 
   const getPartyName = (partyId: number | null) => {
@@ -2387,6 +2450,7 @@ export function SitesMasterSection() {
   };
 
   return (
+    <>
     <Card id="material-master">
       <CardHeader>
         <div className="flex items-center gap-3">
@@ -2520,6 +2584,27 @@ export function SitesMasterSection() {
                     </div>
                     {canEdit && (
                       <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingWorkSiteId(site.id);
+                          setSiteWorkDraft({
+                            workName: site.workName ?? "",
+                            clientDepartment: site.clientDepartment ?? "",
+                            division: site.division ?? "",
+                            mandal: site.mandal ?? "",
+                            district: site.district ?? "",
+                            agreementEstimateRef: site.agreementEstimateRef ?? "",
+                            estimateSorYear: site.estimateSorYear ?? "",
+                            mtPerCumFactor: site.mtPerCumFactor == null ? "" : String(site.mtPerCumFactor),
+                          });
+                          setSiteWorkFiles([]);
+                        }}
+                        data-testid={`button-site-work-details-${site.id}`}
+                      >Work details</Button>
+                    )}
+                    {canEdit && (
+                      <Button
                         size="icon"
                         variant="ghost"
                         title={site.isActive === 0 ? "Reactivate site" : "Mark as closed"}
@@ -2572,7 +2657,53 @@ export function SitesMasterSection() {
         )}
       </CardContent>
     </Card>
-
+    <Dialog open={editingWorkSiteId != null} onOpenChange={open => { if (!open) { setEditingWorkSiteId(null); setSiteWorkFiles([]); } }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Site work details</DialogTitle>
+          <DialogDescription>Optional details used on supply orders, statements, dispatch exports and order prints.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[
+            ["workName", "Work name"],
+            ["clientDepartment", "Client / department"],
+            ["division", "Division"],
+            ["mandal", "Mandal"],
+            ["district", "District"],
+            ["agreementEstimateRef", "Agreement / estimate ref"],
+            ["estimateSorYear", "SOR year"],
+          ].map(([key, label]) => (
+            <div key={key} className="space-y-1">
+              <Label>{label}</Label>
+              <Input value={(siteWorkDraft as any)[key]} onChange={event => setSiteWorkDraft(current => ({ ...current, [key]: event.target.value }))} />
+            </div>
+          ))}
+          <div className="space-y-1">
+            <Label>MT per cum factor (optional)</Label>
+            <Input type="number" min="0.001" max="100" step="0.001" value={siteWorkDraft.mtPerCumFactor} onChange={event => setSiteWorkDraft(current => ({ ...current, mtPerCumFactor: event.target.value }))} />
+          </div>
+          <div className="space-y-1 sm:col-span-2">
+            <Label>Site documents (optional)</Label>
+            <Input type="file" accept="image/*,application/pdf,.pdf" multiple onChange={event => setSiteWorkFiles(Array.from(event.target.files ?? []))} />
+            {siteWorkFiles.length > 0 && <p className="text-xs text-muted-foreground">Ready to upload: {siteWorkFiles.map(file => file.name).join(", ")}</p>}
+            {siteWorkAttachmentsQuery.data?.map(attachment => (
+              <div key={attachment.id} className="flex items-center justify-between gap-2 text-sm">
+                <a className="underline" href={attachment.objectPath} target="_blank" rel="noreferrer">{attachment.fileName}</a>
+                <Button size="sm" variant="ghost" onClick={() => removeSiteAttachmentMutation.mutate(attachment.id)}>Remove</Button>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setEditingWorkSiteId(null)}>Cancel</Button>
+          <Button
+            disabled={saveSiteWorkDetailsMutation.isPending || isUploadingSiteFile || (siteWorkDraft.mtPerCumFactor.trim() !== "" && (!Number.isFinite(Number(siteWorkDraft.mtPerCumFactor)) || Number(siteWorkDraft.mtPerCumFactor) <= 0 || Number(siteWorkDraft.mtPerCumFactor) > 100))}
+            onClick={() => saveSiteWorkDetailsMutation.mutate()}
+          >{saveSiteWorkDetailsMutation.isPending || isUploadingSiteFile ? "Saving…" : "Save work details"}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -2588,9 +2719,20 @@ export function PartyMaster() {
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
   const [dispatchProSiteId, setDispatchProSiteId] = useState("");
+  const [contactPerson, setContactPerson] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [gstNo, setGstNo] = useState("");
+  const [address, setAddress] = useState("");
 
   const exportToExcel = (data: Party[]) => {
-    const ws = XLSX.utils.json_to_sheet(data.map(p => ({ Name: p.name, Notes: p.notes || "" })));
+    const ws = XLSX.utils.json_to_sheet(data.map(p => ({
+      Name: p.name,
+      "Contact person": p.contactPerson || "",
+      Mobile: p.mobile || "",
+      "GST no": p.gstNo || "",
+      Address: p.address || "",
+      Notes: p.notes || "",
+    })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Parties");
     XLSX.writeFile(wb, "parties.xlsx");
@@ -2616,7 +2758,7 @@ export function PartyMaster() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; notes?: string; dispatchProSiteId?: string | null }) =>
+    mutationFn: (data: { name: string; notes?: string; dispatchProSiteId?: string | null; contactPerson?: string | null; mobile?: string | null; gstNo?: string | null; address?: string | null }) =>
       apiRequest("POST", "/api/plant-module/parties", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/parties"] });
@@ -2634,7 +2776,7 @@ export function PartyMaster() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { name: string; notes?: string; dispatchProSiteId?: string | null } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { name: string; notes?: string; dispatchProSiteId?: string | null; contactPerson?: string | null; mobile?: string | null; gstNo?: string | null; address?: string | null } }) =>
       apiRequest("PATCH", `/api/plant-module/parties/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/parties"] });
@@ -2671,6 +2813,10 @@ export function PartyMaster() {
     setName("");
     setNotes("");
     setDispatchProSiteId("");
+    setContactPerson("");
+    setMobile("");
+    setGstNo("");
+    setAddress("");
     setEditingParty(null);
   };
 
@@ -2682,6 +2828,10 @@ export function PartyMaster() {
         data: {
           name,
           notes,
+          contactPerson: contactPerson.trim() || null,
+          mobile: mobile.trim() || null,
+          gstNo: gstNo.trim() || null,
+          address: address.trim() || null,
           ...(user?.isOwner ? { dispatchProSiteId: dispatchProSiteId || null } : {}),
         },
       });
@@ -2689,6 +2839,10 @@ export function PartyMaster() {
       createMutation.mutate({
         name,
         notes,
+        contactPerson: contactPerson.trim() || null,
+        mobile: mobile.trim() || null,
+        gstNo: gstNo.trim() || null,
+        address: address.trim() || null,
         ...(user?.isOwner && dispatchProSiteId ? { dispatchProSiteId } : {}),
       });
     }
@@ -2699,6 +2853,10 @@ export function PartyMaster() {
     setName(party.name);
     setNotes(party.notes || "");
     setDispatchProSiteId(party.dispatchProSiteId || "");
+    setContactPerson(party.contactPerson || "");
+    setMobile(party.mobile || "");
+    setGstNo(party.gstNo || "");
+    setAddress(party.address || "");
     setDialogOpen(true);
   };
 
@@ -2753,6 +2911,12 @@ export function PartyMaster() {
                   data-testid="input-party-notes"
                 />
               </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div><Label htmlFor="party-contact-person">Contact person</Label><Input id="party-contact-person" value={contactPerson} onChange={event => setContactPerson(event.target.value)} /></div>
+                <div><Label htmlFor="party-mobile">Mobile</Label><Input id="party-mobile" value={mobile} onChange={event => setMobile(event.target.value)} /></div>
+                <div><Label htmlFor="party-gst-no">GST no</Label><Input id="party-gst-no" value={gstNo} onChange={event => setGstNo(event.target.value)} /></div>
+                <div><Label htmlFor="party-address">Address</Label><Input id="party-address" value={address} onChange={event => setAddress(event.target.value)} /></div>
+              </div>
               {user?.isOwner && (
                 <div>
                   <Label htmlFor="party-dispatchpro-site">DispatchPro site</Label>
@@ -2799,6 +2963,9 @@ export function PartyMaster() {
               <div key={party.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
                 <div>
                   <p className="font-medium">{party.name}</p>
+                  {[party.contactPerson, party.mobile, party.gstNo, party.address].filter(Boolean).length > 0 && (
+                    <p className="text-sm text-muted-foreground">{[party.contactPerson, party.mobile, party.gstNo, party.address].filter(Boolean).join(" · ")}</p>
+                  )}
                   {party.notes && <p className="text-sm text-muted-foreground">{party.notes}</p>}
                 </div>
                 {canEdit && (

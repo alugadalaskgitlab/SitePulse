@@ -620,6 +620,10 @@ export const parties = pgTable("parties", {
   name: text("name").notNull(),
   dispatchProSiteId: text("dispatchpro_site_id"),
   notes: text("notes"),
+  contactPerson: text("contact_person"),
+  mobile: text("mobile"),
+  gstNo: text("gst_no"),
+  address: text("address"),
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -1019,6 +1023,7 @@ export const plantSupplyAlertDeliveries = pgTable("plant_supply_alert_deliveries
   dedupeKey: text("dedupe_key").notNull(),
   recipientUserId: integer("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   alertType: text("alert_type").notNull(), // running_low | exhausted | borrowed | morning_summary
+  orderId: integer("order_id").references(() => plantSupplyOrders.id, { onDelete: "set null" }),
   partyId: integer("party_id").references(() => parties.id, { onDelete: "set null" }),
   materialId: integer("material_id").references(() => plantMaterials.id, { onDelete: "set null" }),
   title: text("title").notNull(),
@@ -2338,6 +2343,14 @@ export const sites = pgTable("sites", {
   name: text("name").notNull(),
   tallyCostCentreName: text("tally_cost_centre_name"),
   partyId: integer("party_id"),
+  workName: text("work_name"),
+  clientDepartment: text("client_department"),
+  division: text("division"),
+  mandal: text("mandal"),
+  district: text("district"),
+  agreementEstimateRef: text("agreement_estimate_ref"),
+  estimateSorYear: text("estimate_sor_year"),
+  mtPerCumFactor: numeric("mt_per_cum_factor", { precision: 12, scale: 6 }),
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
   // Module packaging: which optional modules are enabled for this site.
@@ -4758,6 +4771,7 @@ export const attachmentModuleTypes = [
   "diesel_purchase",
   "plant_supply_order",
   "plant_supply_order_mix_version",
+  "site",
 ] as const;
 export type AttachmentModuleType = typeof attachmentModuleTypes[number];
 

@@ -273,7 +273,13 @@ export default function PlantDispatches() {
   const [autoEditDone, setAutoEditDone] = useState(false);
   const [lastDispatchActionAt, setLastDispatchActionAt] = useState(0);
 
-  const { data: dispatches, isLoading } = useQuery<Array<TruckDispatch & { supplyOrderNo?: string | null; supplyOrderWorkName?: string | null; supplyOrderMixName?: string | null }>>({
+  const { data: dispatches, isLoading } = useQuery<Array<TruckDispatch & {
+    supplyOrderNo?: string | null;
+    supplyOrderWorkName?: string | null;
+    supplyOrderSiteName?: string | null;
+    supplyOrderSiteWorkDetails?: Record<string, string | null> | null;
+    supplyOrderMixName?: string | null;
+  }>>({
     queryKey: ["/api/plant-module/dispatches"],
     refetchInterval: (query) => {
       const rows = query.state.data ?? [];
@@ -965,6 +971,27 @@ export default function PlantDispatches() {
   const exportPartyName = filterPartyId !== "all"
     ? getPartyName(Number(filterPartyId))
     : "ALL PARTIES";
+  const exportParty = filterPartyId !== "all"
+    ? parties?.find(party => party.id === Number(filterPartyId))
+    : null;
+  const exportPartyDetails = [exportParty?.contactPerson, exportParty?.mobile, exportParty?.gstNo, exportParty?.address].filter(Boolean).join(" · ");
+  const exportOrders = Array.from(new Map(filteredDispatches
+    .filter(dispatch => dispatch.supplyOrderNo)
+    .map(dispatch => [dispatch.supplyOrderNo, dispatch])).values());
+  const exportOrderHeading = exportOrders.map(order => [
+    order.supplyOrderNo,
+    order.supplyOrderSiteName
+      ? order.supplyOrderSiteWorkDetails?.workName
+      : order.supplyOrderWorkName,
+    order.supplyOrderSiteName,
+  ].filter(Boolean).join(" · ")).join(" | ");
+  const exportSiteWorkLines = Array.from(new Set(exportOrders.map(order => {
+    const details = order.supplyOrderSiteWorkDetails;
+    return [
+      order.supplyOrderSiteName, details?.clientDepartment, details?.division, details?.mandal, details?.district,
+      details?.agreementEstimateRef, details?.estimateSorYear,
+    ].filter(Boolean).join(" · ");
+  }).filter(Boolean)));
   const exportPrintedOn = istDateTimeLabel(new Date());
 
   // Filenames follow the same naming rule for both the dispatch log and party statement.
@@ -989,14 +1016,7 @@ export default function PlantDispatches() {
   // Export functions
   const exportToExcel = async () => {
     try {
-      const orderHeading = Array.from(new Map(filteredDispatches
-        .filter(dispatch => dispatch.supplyOrderNo)
-        .map(dispatch => [dispatch.supplyOrderNo, {
-          orderNo: dispatch.supplyOrderNo!,
-          workName: dispatch.supplyOrderWorkName,
-        }])).values())
-        .map(order => [order.orderNo, order.workName].filter(Boolean).join(" · "))
-        .join(" | ");
+      const orderHeading = exportOrderHeading;
       const data = filteredDispatches.map(d => {
         const template = templates?.find(t => t.id === d.mixTemplateId);
         const dispatchAt = dispatchDateTime(d.date, d.time);
@@ -1034,6 +1054,8 @@ export default function PlantDispatches() {
         [filterPartyId !== "all" ? exportPartyName : "Dispatch log — all parties"],
         ...(orderHeading ? [[`Supply order / work: ${orderHeading}`]] : []),
         [`Date range: ${exportDateRange.from} to ${exportDateRange.to}`],
+        ...(exportPartyDetails ? [[`Party contact: ${exportPartyDetails}`]] : []),
+        ...exportSiteWorkLines.map(line => [`Site work: ${line}`]),
         [`Printed on ${exportPrintedOn}`],
         [],
         [...mainHeaders, "Bitumen (MT)", "LDO (L)"],
@@ -1091,14 +1113,7 @@ export default function PlantDispatches() {
   const exportToPDF = async () => {
     try {
       const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-      const orderHeading = Array.from(new Map(filteredDispatches
-        .filter(dispatch => dispatch.supplyOrderNo)
-        .map(dispatch => [dispatch.supplyOrderNo, {
-          orderNo: dispatch.supplyOrderNo!,
-          workName: dispatch.supplyOrderWorkName,
-        }])).values())
-        .map(order => [order.orderNo, order.workName].filter(Boolean).join(" · "))
-        .join(" | ");
+      const orderHeading = exportOrderHeading;
       const title = filterPartyId !== "all" ? "Party daily statement" : "Dispatch log";
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
@@ -1107,8 +1122,10 @@ export default function PlantDispatches() {
       doc.text(`${title} — ${exportPartyName}`, 10, 16);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
-      if (orderHeading) doc.text(`Supply order / work: ${orderHeading}`, 10, 21, { maxWidth: 275 });
-      const headingY = orderHeading ? 26 : 21;
+      let headingY = 21;
+      if (orderHeading) { doc.text(`Supply order / work: ${orderHeading}`, 10, headingY, { maxWidth: 275 }); headingY += 5; }
+      if (exportPartyDetails) { doc.text(`Party contact: ${exportPartyDetails}`, 10, headingY, { maxWidth: 275 }); headingY += 5; }
+      for (const line of exportSiteWorkLines) { doc.text(`Site work: ${line}`, 10, headingY, { maxWidth: 275}); headingY += 5; }
       doc.text(`Date range: ${exportDateRange.from} to ${exportDateRange.to}`, 10, headingY);
       doc.text(`Printed on ${exportPrintedOn}`, 10, headingY + 5);
 
@@ -1143,7 +1160,7 @@ export default function PlantDispatches() {
       ];
       const notUnloaded = filteredDispatches.filter(d => !d.dispatchProLeftAt);
       autoTable(doc, {
-        startY: orderHeading ? 35 : 30,
+        startY: headingY + 13,
         head: [headers],
         body: tableData,
         theme: "grid",

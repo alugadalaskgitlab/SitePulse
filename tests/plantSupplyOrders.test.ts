@@ -6,6 +6,7 @@ import {
   daysOfStockLeft,
   dispatchedByMix,
   formatPlantSupplyMorningSummary,
+  formatPlantSupplyOrderNotification,
   isRunningLow,
   includeSupplyAlertOwners,
   materialAvailabilityForScope,
@@ -239,17 +240,42 @@ describe("HMP plant supply order calculations", () => {
     expect(daysOfStockLeft(10, 0)).toBeNull();
   });
 
-  it("detects a dispatch that takes party stock to zero and formats every open order in the morning summary", () => {
+  it("detects stock exhaustion and formats one morning summary with all orders and short materials", () => {
     expect(dispatchCrossesStockZero(4, 0)).toBe(true);
     expect(dispatchCrossesStockZero(4, -1)).toBe(true);
     expect(dispatchCrossesStockZero(0, -1)).toBe(false);
-    expect(formatPlantSupplyMorningSummary({
+    const summary = formatPlantSupplyMorningSummary([
+      {
+        partyName: "G SANGANNA",
+        orderNo: "HLC/PO-HMP/26-27/0001",
+        periodFrom: "2026-11-01",
+        periodTo: "2026-11-30",
+        lines: [{ mixName: "BC", orderedMt: 900, dispatchedMt: 10, balanceMt: 890 }],
+        problems: [{ label: "Dust", quantity: 299, uom: "MT" }],
+      },
+      {
+        partyName: "MD FASIUDDIN",
+        orderNo: "HLC/PO-HMP/26-27/0002",
+        periodFrom: "2026-11-10",
+        periodTo: "2026-11-30",
+        lines: [{ mixName: "DBM", orderedMt: 800, dispatchedMt: 0, balanceMt: 800 }],
+      },
+    ]);
+    expect(summary).toContain("G SANGANNA · HLC/PO-HMP/26-27/0001");
+    expect(summary).toContain("BC 900 MT · 2026-11-01–2026-11-30 · dispatched 10 MT · balance 890 MT");
+    expect(summary).toContain("Short: Dust 299 MT");
+    expect(summary).toContain("MD FASIUDDIN · HLC/PO-HMP/26-27/0002");
+    expect(summary).not.toContain("890.000");
+    expect(summary.split("\n\n")).toHaveLength(2);
+  });
+
+  it("formats alert-specific intro and omits the problem line when no material is short", () => {
+    expect(formatPlantSupplyOrderNotification({
+      partyName: "G SANGANNA",
       orderNo: "HLC/PO-HMP/26-27/0001",
-      lines: [
-        { mixName: "BC", balanceMt: 890 },
-        { mixName: "DBM", balanceMt: 800 },
-      ],
-      materials: [{ materialName: "Bitumen VG-30", daysLeft: 0.8 }],
-    })).toBe("HLC/PO-HMP/26-27/0001 · BC: 890.000 MT to go · DBM: 800.000 MT to go · Bitumen VG-30: 0.8 days left");
+      periodFrom: "2026-11-01",
+      periodTo: "2026-11-30",
+      lines: [{ mixName: "BC", orderedMt: 900, dispatchedMt: 10, balanceMt: 890 }],
+    }, "Bitumen running low")).toContain("G SANGANNA · HLC/PO-HMP/26-27/0001 · Bitumen running low");
   });
 });

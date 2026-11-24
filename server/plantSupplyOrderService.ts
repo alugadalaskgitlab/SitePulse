@@ -31,6 +31,7 @@ import {
   dailyMixTonnes,
   dispatchCrossesStockZero,
   dispatchedByMix,
+  formatPlantSupplyOrderNotification,
   formatPlantSupplyMorningSummary,
   includeSupplyAlertOwners,
   materialAvailabilityForScope,
@@ -93,9 +94,29 @@ function finite(value: unknown): number {
 
 export async function getSupplyOrderOptions() {
   const [partyRows, siteRows, templateRows, materialRows, componentRows] = await Promise.all([
-    db.select({ id: parties.id, name: parties.name, dispatchProSiteId: parties.dispatchProSiteId })
+    db.select({
+      id: parties.id,
+      name: parties.name,
+      dispatchProSiteId: parties.dispatchProSiteId,
+      contactPerson: parties.contactPerson,
+      mobile: parties.mobile,
+      gstNo: parties.gstNo,
+      address: parties.address,
+    })
       .from(parties).where(eq(parties.isActive, 1)).orderBy(asc(parties.name)),
-    db.select({ id: sites.id, name: sites.name, partyId: sites.partyId })
+    db.select({
+      id: sites.id,
+      name: sites.name,
+      partyId: sites.partyId,
+      workName: sites.workName,
+      clientDepartment: sites.clientDepartment,
+      division: sites.division,
+      mandal: sites.mandal,
+      district: sites.district,
+      agreementEstimateRef: sites.agreementEstimateRef,
+      estimateSorYear: sites.estimateSorYear,
+      mtPerCumFactor: sites.mtPerCumFactor,
+    })
       .from(sites).where(eq(sites.isActive, 1)).orderBy(asc(sites.name)),
     db.select({
       id: mixTemplates.id,
@@ -149,7 +170,27 @@ export async function createPlantSupplyOrder(input: {
     } | null;
   }>;
 }, actor: { userId: number; name: string }) {
-  const mtPerCumFactor = input.mtPerCumFactor ?? 2.356;
+  const [party] = await db.select({ id: parties.id }).from(parties)
+    .where(eq(parties.id, input.partyId)).limit(1);
+  if (!party) throw new Error("Choose an active party.");
+  const [site] = input.siteId
+    ? await db.select().from(sites).where(eq(sites.id, input.siteId)).limit(1)
+    : [];
+  if (input.siteId && (!site || (site.partyId != null && site.partyId !== input.partyId))) {
+    throw new Error("Choose a site linked to this party.");
+  }
+  const masterMtPerCumFactor = Number(site?.mtPerCumFactor);
+  const mtPerCumFactor = Number.isFinite(masterMtPerCumFactor) && masterMtPerCumFactor > 0
+    ? masterMtPerCumFactor
+    : input.mtPerCumFactor ?? 2.356;
+  const orderWorkDetails = {
+    workName: site ? site.workName : input.workName,
+    division: site ? site.division : input.division,
+    mandal: site ? site.mandal : input.mandal,
+    district: site ? site.district : input.district,
+    agreementEstimateRef: site ? site.agreementEstimateRef : input.agreementEstimateRef,
+    estimateSorYear: site ? site.estimateSorYear : input.estimateSorYear,
+  };
   if (!Number.isFinite(mtPerCumFactor) || mtPerCumFactor <= 0 || mtPerCumFactor > 100) {
     throw new Error("Enter an MT-per-cum factor greater than zero.");
   }
@@ -172,17 +213,6 @@ export async function createPlantSupplyOrder(input: {
     throw new Error("Each mix can be listed only once.");
   }
   if (input.periodTo < input.periodFrom) throw new Error("The period end must be on or after the start.");
-
-  const [party] = await db.select({ id: parties.id }).from(parties)
-    .where(eq(parties.id, input.partyId)).limit(1);
-  if (!party) throw new Error("Choose an active party.");
-  if (input.siteId) {
-    const [site] = await db.select({ id: sites.id, partyId: sites.partyId }).from(sites)
-      .where(eq(sites.id, input.siteId)).limit(1);
-    if (!site || (site.partyId != null && site.partyId !== input.partyId)) {
-      throw new Error("Choose a site linked to this party.");
-    }
-  }
 
   const templateIds = normalizedLines.map(line => line.mixTemplateId);
   const templates = await db.select({
@@ -227,12 +257,12 @@ export async function createPlantSupplyOrder(input: {
       siteId: input.siteId ?? null,
       periodFrom: input.periodFrom,
       periodTo: input.periodTo,
-      workName: input.workName?.trim() || null,
-      division: input.division?.trim() || null,
-      mandal: input.mandal?.trim() || null,
-      district: input.district?.trim() || null,
-      agreementEstimateRef: input.agreementEstimateRef?.trim() || null,
-      estimateSorYear: input.estimateSorYear?.trim() || null,
+      workName: orderWorkDetails.workName?.trim() || null,
+      division: orderWorkDetails.division?.trim() || null,
+      mandal: orderWorkDetails.mandal?.trim() || null,
+      district: orderWorkDetails.district?.trim() || null,
+      agreementEstimateRef: orderWorkDetails.agreementEstimateRef?.trim() || null,
+      estimateSorYear: orderWorkDetails.estimateSorYear?.trim() || null,
       mtPerCumFactor: String(mtPerCumFactor),
       remarks: input.remarks?.trim() || null,
       createdByUserId: actor.userId,
@@ -308,12 +338,12 @@ export async function createPlantSupplyOrder(input: {
         periodFrom: input.periodFrom,
         periodTo: input.periodTo,
         lines: normalizedLines,
-        workName: input.workName?.trim() || null,
-        division: input.division?.trim() || null,
-        mandal: input.mandal?.trim() || null,
-        district: input.district?.trim() || null,
-        agreementEstimateRef: input.agreementEstimateRef?.trim() || null,
-        estimateSorYear: input.estimateSorYear?.trim() || null,
+        workName: orderWorkDetails.workName?.trim() || null,
+        division: orderWorkDetails.division?.trim() || null,
+        mandal: orderWorkDetails.mandal?.trim() || null,
+        district: orderWorkDetails.district?.trim() || null,
+        agreementEstimateRef: orderWorkDetails.agreementEstimateRef?.trim() || null,
+        estimateSorYear: orderWorkDetails.estimateSorYear?.trim() || null,
         mtPerCumFactor,
       },
     });
@@ -880,8 +910,20 @@ export async function getPlantSupplyOrder(orderId: number) {
     partyId: plantSupplyOrders.partyId,
     partyName: parties.name,
     dispatchProSiteId: parties.dispatchProSiteId,
+    partyContactPerson: parties.contactPerson,
+    partyMobile: parties.mobile,
+    partyGstNo: parties.gstNo,
+    partyAddress: parties.address,
     siteId: plantSupplyOrders.siteId,
     siteName: sites.name,
+    siteWorkName: sites.workName,
+    siteClientDepartment: sites.clientDepartment,
+    siteDivision: sites.division,
+    siteMandal: sites.mandal,
+    siteDistrict: sites.district,
+    siteAgreementEstimateRef: sites.agreementEstimateRef,
+    siteEstimateSorYear: sites.estimateSorYear,
+    siteMtPerCumFactor: sites.mtPerCumFactor,
     periodFrom: plantSupplyOrders.periodFrom,
     periodTo: plantSupplyOrders.periodTo,
     workName: plantSupplyOrders.workName,
@@ -1409,6 +1451,16 @@ export async function getPlantSupplyOrder(orderId: number) {
   }));
   return {
     ...order,
+    siteWorkDetails: {
+      workName: order.siteWorkName,
+      clientDepartment: order.siteClientDepartment,
+      division: order.siteDivision,
+      mandal: order.siteMandal,
+      district: order.siteDistrict,
+      agreementEstimateRef: order.siteAgreementEstimateRef,
+      estimateSorYear: order.siteEstimateSorYear,
+      mtPerCumFactor: order.siteMtPerCumFactor,
+    },
     attachments: orderAttachments,
     history: orderHistory,
     lines: lineResults,
@@ -1820,6 +1872,7 @@ export async function createSupplyAlertDeliveries(input: {
   kind: SupplyAlertKind;
   title: string;
   message: string;
+  orderId?: number | null;
   partyId?: number | null;
   materialId?: number | null;
 }) {
@@ -1829,6 +1882,7 @@ export async function createSupplyAlertDeliveries(input: {
     dedupeKey: input.dedupeKey,
     recipientUserId,
     alertType: input.kind,
+    orderId: input.orderId ?? null,
     partyId: input.partyId ?? null,
     materialId: input.materialId ?? null,
     title: input.title,
@@ -1836,6 +1890,7 @@ export async function createSupplyAlertDeliveries(input: {
   }))).onConflictDoNothing().returning({
     id: plantSupplyAlertDeliveries.id,
     recipientUserId: plantSupplyAlertDeliveries.recipientUserId,
+    orderId: plantSupplyAlertDeliveries.orderId,
     title: plantSupplyAlertDeliveries.title,
     message: plantSupplyAlertDeliveries.message,
   });
@@ -1850,6 +1905,7 @@ export async function getUserSupplyAlerts(userId: number) {
     isRead: plantSupplyAlertDeliveries.isRead,
     createdAt: plantSupplyAlertDeliveries.createdAt,
     alertType: plantSupplyAlertDeliveries.alertType,
+    orderId: plantSupplyAlertDeliveries.orderId,
     partyId: plantSupplyAlertDeliveries.partyId,
   }).from(plantSupplyAlertDeliveries)
     .where(eq(plantSupplyAlertDeliveries.recipientUserId, userId))
@@ -1954,6 +2010,24 @@ export async function registerDispatchSupplyAlerts(orderId: number, dispatchId: 
     time: truckDispatches.time,
   }).from(truckDispatches).where(eq(truckDispatches.id, dispatchId)).limit(1);
   const deliveries = [];
+  const orderNotice = (
+    reason: string,
+    problems: Array<{ label: string; quantity: number; uom: string }>,
+    problemPrefix = "Short",
+  ) => formatPlantSupplyOrderNotification({
+    partyName: order.partyName,
+    orderNo: order.orderNo ?? `Order #${order.id}`,
+    periodFrom: order.periodFrom,
+    periodTo: order.periodTo,
+    lines: order.lines.map((line: any) => ({
+      mixName: line.mixName,
+      orderedMt: finite(line.orderedMt),
+      dispatchedMt: finite(line.dispatchedMt),
+      balanceMt: finite(line.balanceMt),
+    })),
+    problemPrefix,
+    problems,
+  }, reason);
   const partyStockRows = await db.select({
     materialId: stockLedger.materialId,
     quantityOut: stockLedger.quantityOut,
@@ -1979,11 +2053,16 @@ export async function registerDispatchSupplyAlerts(orderId: number, dispatchId: 
       const [materialRow] = material ? [] : await db.select({ name: plantMaterials.name })
         .from(plantMaterials).where(eq(plantMaterials.id, row.materialId)).limit(1);
       const materialName = material?.materialName ?? materialRow?.name ?? `Material #${row.materialId}`;
+      const materialStatus = order.materials.find(item => item.materialId === row.materialId);
       const created = await createSupplyAlertDeliveries({
         dedupeKey: `supply-exhausted:${dispatchId}:${row.materialId}`,
         kind: "exhausted",
         title: "Party material stock exhausted",
-        message: `${order.partyName} — ${materialName} finished${dispatch?.truckNumber ? ` at truck ${dispatch.truckNumber}` : ""}${dispatch?.time ? `, ${dispatch.time}` : ""}.`,
+        message: orderNotice(
+          `${materialName} exhausted${dispatch?.truckNumber ? ` at truck ${dispatch.truckNumber}` : ""}${dispatch?.time ? `, ${dispatch.time}` : ""}`,
+          [{ label: materialName, quantity: finite(materialStatus?.shortage), uom: materialStatus?.uom ?? "" }],
+        ),
+        orderId,
         partyId: order.partyId,
         materialId: row.materialId,
       });
@@ -1996,7 +2075,18 @@ export async function registerDispatchSupplyAlerts(orderId: number, dispatchId: 
         dedupeKey: `supply-low:${order.partyId}:${row.materialId}:${date}`,
         kind: "running_low",
         title: "Plant material running low",
-        message: `${order.partyName} — ${row.materialName} ${row.stockAvailable.toFixed(3)} ${row.uom} left; less than one production day.`,
+        message: orderNotice(
+          `${row.materialName} running low`,
+          order.materials
+            .filter((material: any) => material.shortage > 0 || material.runningLow)
+            .map((material: any) => ({
+              label: material.materialName,
+              quantity: material.shortage > 0 ? finite(material.shortage) : finite(material.stockAvailable),
+              uom: material.uom,
+            })),
+          order.materials.some((material: any) => material.shortage > 0) ? "Short" : "Stock left",
+        ),
+        orderId,
         partyId: order.partyId,
         materialId: row.materialId,
       });
@@ -2008,7 +2098,12 @@ export async function registerDispatchSupplyAlerts(orderId: number, dispatchId: 
       dedupeKey: `supply-borrowed:${row.borrowingId}`,
       kind: "borrowed",
       title: "Party borrowed from HLC stock",
-      message: `${order.partyName}: ${row.quantity.toFixed(3)} ${row.uom} ${row.materialName} borrowed from HLC; approval is pending.`,
+      message: orderNotice(
+        `${row.materialName} borrowed from HLC`,
+        [{ label: row.materialName, quantity: finite(row.quantity), uom: row.uom }],
+        "Borrowed",
+      ),
+      orderId,
       partyId: row.partyId,
       materialId: row.materialId,
     });
@@ -2020,27 +2115,35 @@ export async function registerDispatchSupplyAlerts(orderId: number, dispatchId: 
 export async function runPlantSupplyMorningSummary(dateKey: string) {
   const openOrders = await db.select({ id: plantSupplyOrders.id }).from(plantSupplyOrders)
     .where(eq(plantSupplyOrders.status, "open"));
-  const created: Array<{ id: number; recipientUserId: number; title: string; message: string }> = [];
-  for (let index = 0; index < openOrders.length; index += 1) {
-    const order = await getPlantSupplyOrder(openOrders[index].id);
-    if (!order) continue;
-    const message = formatPlantSupplyMorningSummary({
-      orderNo: order.orderNo ?? "Supply order",
-      lines: order.lines.map((line: any) => ({ mixName: line.mixName, balanceMt: line.balanceMt })),
-      materials: order.materials.map((material: any) => ({
-        materialName: material.materialName,
-        daysLeft: material.daysLeft,
+  const orders = (await Promise.all(openOrders.map(row => getPlantSupplyOrder(row.id))))
+    .filter((order): order is NonNullable<typeof order> => Boolean(order));
+  if (!orders.length) return [];
+  const message = formatPlantSupplyMorningSummary(orders.map(order => ({
+    partyName: order.partyName,
+    orderNo: order.orderNo ?? `Order #${order.id}`,
+    periodFrom: order.periodFrom,
+    periodTo: order.periodTo,
+    lines: order.lines.map((line: any) => ({
+      mixName: line.mixName,
+      orderedMt: finite(line.orderedMt),
+      dispatchedMt: finite(line.dispatchedMt),
+      balanceMt: finite(line.balanceMt),
+    })),
+    problemPrefix: "Short",
+    problems: order.materials
+      .filter((material: any) => material.shortage > 0)
+      .map((material: any) => ({
+        label: material.materialName,
+        quantity: finite(material.shortage),
+        uom: material.uom,
       })),
-    });
-    created.push(...await createSupplyAlertDeliveries({
-      dedupeKey: `supply-morning:${order.id}:${dateKey}`,
-      kind: "morning_summary",
-      title: `Morning supply summary — ${order.partyName}`,
-      message,
-      partyId: order.partyId,
-    }));
-  }
-  return created;
+  })));
+  return createSupplyAlertDeliveries({
+    dedupeKey: `supply-morning:${dateKey}`,
+    kind: "morning_summary",
+    title: `Morning supply summary · ${orders.length} open order${orders.length === 1 ? "" : "s"}`,
+    message,
+  });
 }
 
 export async function supplyReceiptCandidates(partyId: number, materialId: number) {

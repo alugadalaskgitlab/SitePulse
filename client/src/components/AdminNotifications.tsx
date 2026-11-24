@@ -22,6 +22,16 @@ interface Notification {
   isRead: number | boolean;
   createdAt: string;
   source?: "global" | "supply";
+  alertType?: string;
+  orderId?: number | null;
+}
+
+export function plantSupplyNotificationHref(notification: Pick<Notification, "source" | "alertType" | "orderId">) {
+  if (notification.source !== "supply") return null;
+  if (notification.alertType === "morning_summary") return "/plant/hub#hmp-open-order-material-alerts";
+  return notification.orderId
+    ? `/plant/supply-orders?orderId=${notification.orderId}&section=material-status#order-material-status`
+    : null;
 }
 
 const playNotificationSound = () => {
@@ -54,6 +64,7 @@ const playNotificationSound = () => {
  */
 export function AdminNotifications({ compact = false }: { compact?: boolean } = {}) {
   const [open, setOpen] = useState(false);
+  const [expandedNotificationKey, setExpandedNotificationKey] = useState<string | null>(null);
   const prevUnreadCount = useRef<number>(0);
 
   const { data: globalNotifications = [] } = useQuery<Notification[]>({
@@ -140,6 +151,15 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
     },
   });
 
+  const notificationHref = (notification: Notification) => {
+    return plantSupplyNotificationHref(notification);
+  };
+
+  const openOrder = async (notification: Notification, href: string) => {
+    if (!notification.isRead) await markReadMutation.mutateAsync(notification);
+    window.location.assign(href);
+  };
+
   const getIcon = (type: string) => {
     switch (type) {
       case "success":
@@ -219,6 +239,8 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
               {notifications.map((notification) => (
                 (() => {
                   const notificationKey = notification.source === "supply" ? `supply-${notification.id}` : String(notification.id);
+                  const expanded = expandedNotificationKey === notificationKey;
+                  const openHref = notificationHref(notification);
                   return (
                 <div 
                   key={notificationKey}
@@ -229,7 +251,22 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
                     {getIcon(notification.type)}
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm">{notification.title}</p>
-                      <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{notification.message}</p>
+                      <button
+                        type="button"
+                        className={`mt-0.5 block w-full text-left text-sm text-muted-foreground ${expanded ? "whitespace-pre-line break-words" : "line-clamp-2"}`}
+                        onClick={() => setExpandedNotificationKey(expanded ? null : notificationKey)}
+                        aria-expanded={expanded}
+                        data-testid={`button-expand-notification-${notificationKey}`}
+                      >{notification.message}</button>
+                      {expanded && openHref && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 h-8"
+                          onClick={() => void openOrder(notification, openHref)}
+                          data-testid={`button-open-order-notification-${notificationKey}`}
+                        >Open order</Button>
+                      )}
                       <p className="text-sm text-muted-foreground mt-1">
                         {format(new Date(notification.createdAt), "MMM d, h:mm a")}
                       </p>

@@ -7001,7 +7001,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Truck Dispatches
-  async getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<Array<TruckDispatch & { supplyOrderNo?: string | null; supplyOrderWorkName?: string | null; supplyOrderMixName?: string | null }>> {
+  async getTruckDispatches(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<Array<TruckDispatch & {
+    supplyOrderNo?: string | null; supplyOrderWorkName?: string | null; supplyOrderSiteName?: string | null;
+    supplyOrderSiteWorkDetails?: Record<string, string | null> | null; supplyOrderMixName?: string | null;
+  }>> {
     let conditions = [];
     if (filters?.partyId) conditions.push(eq(truckDispatches.partyId, filters.partyId));
     if (filters?.dateFrom) conditions.push(gte(truckDispatches.date, filters.dateFrom));
@@ -7011,8 +7014,18 @@ export class DatabaseStorage implements IStorage {
       dispatch: truckDispatches,
       supplyOrderNo: plantSupplyOrders.orderNo,
       supplyOrderWorkName: plantSupplyOrders.workName,
+      supplyOrderSiteName: sites.name,
+      supplyOrderSiteWorkName: sites.workName,
+      supplyOrderSiteClientDepartment: sites.clientDepartment,
+      supplyOrderSiteDivision: sites.division,
+      supplyOrderSiteMandal: sites.mandal,
+      supplyOrderSiteDistrict: sites.district,
+      supplyOrderSiteAgreementEstimateRef: sites.agreementEstimateRef,
+      supplyOrderSiteEstimateSorYear: sites.estimateSorYear,
+      supplyOrderSiteMtPerCumFactor: sites.mtPerCumFactor,
     }).from(truckDispatches)
       .leftJoin(plantSupplyOrders, eq(plantSupplyOrders.id, truckDispatches.supplyOrderId))
+      .leftJoin(sites, eq(sites.id, plantSupplyOrders.siteId))
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(truckDispatches.date));
     const orderIds = [...new Set(rows.map(row => row.dispatch.supplyOrderId).filter((id): id is number => id != null))];
@@ -7035,10 +7048,21 @@ export class DatabaseStorage implements IStorage {
           .where(inArray(plantSupplyOrderMixVersions.id, versionIds))
       : [];
     const versionNameById = new Map(versionNames.map(version => [version.id, version.mixName]));
-    return rows.map(({ dispatch, supplyOrderNo, supplyOrderWorkName }) => ({
+    return rows.map(({ dispatch, supplyOrderNo, supplyOrderWorkName, ...siteWork }) => ({
       ...dispatch,
       supplyOrderNo: supplyOrderNo ?? null,
       supplyOrderWorkName: supplyOrderWorkName ?? null,
+      supplyOrderSiteName: siteWork.supplyOrderSiteName ?? null,
+      supplyOrderSiteWorkDetails: siteWork.supplyOrderSiteName ? {
+        workName: siteWork.supplyOrderSiteWorkName,
+        clientDepartment: siteWork.supplyOrderSiteClientDepartment,
+        division: siteWork.supplyOrderSiteDivision,
+        mandal: siteWork.supplyOrderSiteMandal,
+        district: siteWork.supplyOrderSiteDistrict,
+        agreementEstimateRef: siteWork.supplyOrderSiteAgreementEstimateRef,
+        estimateSorYear: siteWork.supplyOrderSiteEstimateSorYear,
+        mtPerCumFactor: siteWork.supplyOrderSiteMtPerCumFactor,
+      } : null,
       supplyOrderMixName: (dispatch.supplyOrderMixVersionId != null
         ? versionNameById.get(dispatch.supplyOrderMixVersionId)
         : null) ?? orderMixNameByKey.get(`${dispatch.supplyOrderId}:${dispatch.mixTemplateId}`) ?? null,
@@ -9708,6 +9732,18 @@ export class DatabaseStorage implements IStorage {
 
   async getPartyStatement(partyId: number, materialId: number, dateFrom?: string, dateTo?: string): Promise<{
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
+    partyDetails: { name: string; contactPerson: string | null; mobile: string | null; gstNo: string | null; address: string | null } | null;
+    siteDetails: Array<{
+      siteName: string;
+      workName: string | null;
+      clientDepartment: string | null;
+      division: string | null;
+      mandal: string | null;
+      district: string | null;
+      agreementEstimateRef: string | null;
+      estimateSorYear: string | null;
+      mtPerCumFactor: string | null;
+    }>;
     entries: (StockLedgerEntry & {
       displayType: string;
       borrowedQty: number;
@@ -9719,6 +9755,13 @@ export class DatabaseStorage implements IStorage {
       entryTime: string | null;
     })[];
   }> {
+    const [partyDetails] = await db.select({
+      name: parties.name,
+      contactPerson: parties.contactPerson,
+      mobile: parties.mobile,
+      gstNo: parties.gstNo,
+      address: parties.address,
+    }).from(parties).where(eq(parties.id, partyId)).limit(1);
     // Fetch ledger entries for this party+material in the date range
     const conditions = [
       eq(stockLedger.partyId, partyId),
@@ -9756,9 +9799,19 @@ export class DatabaseStorage implements IStorage {
           actualLdoQty: truckDispatches.actualLdoQty,
           supplyOrderNo: plantSupplyOrders.orderNo,
           supplyOrderWorkName: plantSupplyOrders.workName,
+          siteName: sites.name,
+          siteWorkName: sites.workName,
+          siteClientDepartment: sites.clientDepartment,
+          siteDivision: sites.division,
+          siteMandal: sites.mandal,
+          siteDistrict: sites.district,
+          siteAgreementEstimateRef: sites.agreementEstimateRef,
+          siteEstimateSorYear: sites.estimateSorYear,
+          siteMtPerCumFactor: sites.mtPerCumFactor,
         })
           .from(truckDispatches)
           .leftJoin(plantSupplyOrders, eq(plantSupplyOrders.id, truckDispatches.supplyOrderId))
+          .leftJoin(sites, eq(sites.id, plantSupplyOrders.siteId))
           .where(inArray(truckDispatches.id, refIds))
       : [];
     const dispatchMeta = new Map(dispatches.map(d => [d.id, {
@@ -9768,7 +9821,22 @@ export class DatabaseStorage implements IStorage {
       actualLdoQty: d.actualLdoQty,
       supplyOrderNo: d.supplyOrderNo,
       supplyOrderWorkName: d.supplyOrderWorkName,
+      siteName: d.siteName,
+      siteWorkDetails: {
+        workName: d.siteWorkName,
+        clientDepartment: d.siteClientDepartment,
+        division: d.siteDivision,
+        mandal: d.siteMandal,
+        district: d.siteDistrict,
+        agreementEstimateRef: d.siteAgreementEstimateRef,
+        estimateSorYear: d.siteEstimateSorYear,
+        mtPerCumFactor: d.siteMtPerCumFactor,
+      },
     }]));
+    const siteDetailsByKey = new Map<string, NonNullable<typeof dispatches[number]>>();
+    for (const dispatch of dispatches) {
+      if (dispatch.siteName) siteDetailsByKey.set(`${dispatch.siteName}:${dispatch.supplyOrderNo ?? ""}`, dispatch);
+    }
 
     // Resolve material UOM and name (name is used below to detect LDO for templateQty fallback)
     const [mat] = await db.select({ defaultUom: plantMaterials.defaultUom, conversionToUom: plantMaterials.conversionToUom, name: plantMaterials.name })
@@ -9869,6 +9937,8 @@ export class DatabaseStorage implements IStorage {
       ownQty?: number;
       supplyOrderNo?: string | null;
       supplyOrderWorkName?: string | null;
+      supplyOrderSiteName?: string | null;
+      supplyOrderSiteWorkDetails?: Record<string, string | null> | null;
     };
     const detail: DetailEntry[] = [];
 
@@ -9989,6 +10059,8 @@ export class DatabaseStorage implements IStorage {
           runningBalance: running,
           supplyOrderNo: dispatchInfo?.supplyOrderNo ?? null,
           supplyOrderWorkName: dispatchInfo?.supplyOrderWorkName ?? null,
+          supplyOrderSiteName: dispatchInfo?.siteName ?? null,
+          supplyOrderSiteWorkDetails: dispatchInfo?.siteWorkDetails ?? null,
         });
       } else if (e.transactionType === 'transfer') {
         if (qOut > 0) {
@@ -10013,6 +10085,11 @@ export class DatabaseStorage implements IStorage {
 
     return {
       summary: { totalReceived, dispatchedOwn, borrowedFromHlc, replenishedToHlc, outstanding, uom },
+      partyDetails: partyDetails ?? null,
+      siteDetails: Array.from(siteDetailsByKey.values()).map(dispatch => ({
+        siteName: dispatch.siteName!,
+        ...dispatch.siteWorkDetails,
+      })),
       entries: detail,
     };
   }
