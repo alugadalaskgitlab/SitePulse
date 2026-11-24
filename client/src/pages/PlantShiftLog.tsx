@@ -29,6 +29,7 @@ import { getLdoVolumeAtDepth, getLdoDeadStockVolume } from "@shared/ldo-dip-char
 import { calculatePlantLdo, formatStoppedTime } from "@shared/plantLdoAccounting";
 import DryerSourceFixDialog from "@/components/DryerSourceFixDialog";
 import type { DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
+import { BitumenTankBookStock } from "@/components/BitumenTankBookStock";
 
 type ManpowerRow = {
   name: string;
@@ -43,6 +44,7 @@ import { ReportExportGate } from "@/components/ReportExportGate";
 import { formatPackedUnitLabel } from "@shared/packedStock";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { personnelNameOptions } from "@/lib/personnelNameOptions";
 
 export default function PlantShiftLog() {
   const { toast } = useToast();
@@ -124,6 +126,7 @@ export default function PlantShiftLog() {
     openingReading: string;
     closingReading: string;
     openingDiesel: string;
+    dieselFilled: string;
     closingDiesel: string;
     prefillFrom?: string | null;
   }>>([]);
@@ -270,6 +273,8 @@ export default function PlantShiftLog() {
     },
   });
   const linkedOperatorName = personnelList.find(person => person.id === user?.personnelId)?.name ?? "";
+  const operatorNameOptions = personnelNameOptions(personnelList, operatorName);
+  const supervisorNameOptions = personnelNameOptions(personnelList, supervisorName);
 
   // List view query: all shift logs in the chosen date range.
   const { data: shiftLogs, isLoading: listLoading } = useQuery<PlantShiftLogRow[]>({
@@ -683,6 +688,7 @@ export default function PlantShiftLog() {
       openingReading: (usage?.openingReading ?? openingMeterPrefill) == null ? "" : String(usage?.openingReading ?? openingMeterPrefill),
       closingReading: usage?.closingReading == null ? "" : String(usage.closingReading),
       openingDiesel: (usage?.openingDiesel ?? openingDieselPrefill) == null ? "" : String(usage?.openingDiesel ?? openingDieselPrefill),
+      dieselFilled: usage?.dieselIssued == null ? "" : String(usage.dieselIssued),
       closingDiesel: usage?.dieselBalanceInTank == null ? "" : String(usage.dieselBalanceInTank),
       prefillFrom,
     })));
@@ -838,6 +844,7 @@ export default function PlantShiftLog() {
             openingReading: reading.openingReading.trim() === "" ? null : Number(reading.openingReading),
             closingReading: reading.closingReading.trim() === "" ? null : Number(reading.closingReading),
             openingDiesel: reading.openingDiesel.trim() === "" ? null : Number(reading.openingDiesel),
+            dieselFilled: reading.dieselFilled.trim() === "" ? null : Number(reading.dieselFilled),
             closingDiesel: reading.closingDiesel.trim() === "" ? null : Number(reading.closingDiesel),
           })),
         });
@@ -889,8 +896,8 @@ export default function PlantShiftLog() {
           const mismatches = sessions.filter(s => s.dryerFedFrom && s.dryerFedFrom !== savedDryerFedFrom && s.id != null);
           if (mismatches.length > 0) {
             const firstMismatch = mismatches[0];
-            const slLabel = savedDryerFedFrom === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
-            const hsLabel = firstMismatch.dryerFedFrom === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
+            const slLabel = savedDryerFedFrom === "TANK_1" ? "LDO tank 1 (small vertical)" : "LDO tank 2 (big horizontal)";
+            const hsLabel = firstMismatch.dryerFedFrom === "TANK_1" ? "LDO tank 1 (small vertical)" : "LDO tank 2 (big horizontal)";
             const fixTarget: DryerSourceFixTarget = {
               mode: "heating-session",
               sessionIds: mismatches.map(s => s.id as number),
@@ -1260,6 +1267,26 @@ export default function PlantShiftLog() {
     totalDispatchedMt,
   ]);
 
+  const dgUsageDisplay = (reading: typeof dgReadings[number]) => {
+    const openingHours = numOrNullSafe(reading.openingReading);
+    const closingHours = numOrNullSafe(reading.closingReading);
+    const openingDiesel = numOrNullSafe(reading.openingDiesel);
+    const filledDiesel = numOrNullSafe(reading.dieselFilled) ?? 0;
+    const closingDiesel = numOrNullSafe(reading.closingDiesel);
+    const hours = openingHours == null || closingHours == null ? null : closingHours - openingHours;
+    const dieselUsed = openingDiesel == null || closingDiesel == null
+      ? null
+      : openingDiesel + filledDiesel - closingDiesel;
+    const dieselText = dieselUsed == null
+      ? "—"
+      : `${openingDiesel!.toFixed(1)} + ${filledDiesel.toFixed(1)} − ${closingDiesel!.toFixed(1)} = ${dieselUsed.toFixed(1)}`;
+    const perHour = dieselUsed != null && hours != null && hours > 0 ? `${(dieselUsed / hours).toFixed(2)} L/h` : "— L/h";
+    const perMt = dieselUsed != null && totalDispatchedMt != null && totalDispatchedMt > 0
+      ? `${(dieselUsed / totalDispatchedMt).toFixed(2)} L/MT`
+      : "— L/MT";
+    return `${reading.equipmentName}: ${hours == null ? "—" : hours.toFixed(2)} h · diesel used = ${dieselText} L · ${perHour} · ${perMt}`;
+  };
+
   const exportShiftLogsToExcel = useCallback(() => {
     const rows = (shiftLogs || [])
       .filter(r => listDryerFilter === "all" || r.dryerFedFrom === listDryerFilter)
@@ -1373,8 +1400,8 @@ export default function PlantShiftLog() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All tanks</SelectItem>
-                <SelectItem value="TANK_1">Tank 1 (small vertical)</SelectItem>
-                <SelectItem value="TANK_2">Tank 2 (big horizontal)</SelectItem>
+                <SelectItem value="TANK_1">LDO tank 1 (small vertical)</SelectItem>
+                <SelectItem value="TANK_2">LDO tank 2 (big horizontal)</SelectItem>
               </SelectContent>
             </Select>
             <Link href={appendPlantContext("/plant/shift-log-manpower-review", { forceTab: "operations" })}>
@@ -1393,7 +1420,7 @@ export default function PlantShiftLog() {
           <CardHeader><CardTitle>Plant Logs {listDateFrom} → {listDateTo}</CardTitle></CardHeader>
           <CardContent>
             {listLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
-              !sorted.length ? <p className="text-sm text-muted-foreground">{listDryerFilter !== "all" ? `No plant logs with dryer fed from ${listDryerFilter === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)"} in this date range.` : "No plant logs in this date range."}</p> :
+              !sorted.length ? <p className="text-sm text-muted-foreground">{listDryerFilter !== "all" ? `No plant logs with dryer fed from ${listDryerFilter === "TANK_1" ? "LDO tank 1 (small vertical)" : "LDO tank 2 (big horizontal)"} in this date range.` : "No plant logs in this date range."}</p> :
               <div className="space-y-1">
                 {Object.keys(grouped).map(d => {
                   const isOpen = openDateGroups.has(d);
@@ -1619,7 +1646,18 @@ export default function PlantShiftLog() {
             </div>
             <div><Label>{noMainPlantOps ? "Shift start" : "Plant start"}</Label><Input type="time" value={plantStartTime} onChange={e => setPlantStartTime(e.target.value)} data-testid="input-plant-start" /></div>
             <div><Label>{noMainPlantOps ? "Shift end" : "Plant stop"}</Label><Input type="time" value={plantStopTime} onChange={e => setPlantStopTime(e.target.value)} data-testid="input-plant-stop" /></div>
-            <div><Label>Operator</Label><Input value={operatorName} onChange={e => setOperatorName(e.target.value)} data-testid="input-operator" /></div>
+            <div>
+              <Label>Operator</Label>
+              <Select value={operatorName || "__none__"} onValueChange={value => setOperatorName(value === "__none__" ? "" : value)}>
+                <SelectTrigger data-testid="input-operator"><SelectValue placeholder="Select operator" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Select operator</SelectItem>
+                  {operatorNameOptions.map(name => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div><Label>Plant</Label><Input value={plantName} onChange={e => setPlantName(e.target.value)} data-testid="input-plant-name" /></div>
           </div>
 
@@ -1631,7 +1669,18 @@ export default function PlantShiftLog() {
           >
             <summary className="cursor-pointer text-sm font-medium">More details</summary>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3">
-              <div><Label>Supervisor</Label><Input value={supervisorName} onChange={e => setSupervisorName(e.target.value)} data-testid="input-supervisor" /></div>
+              <div>
+                <Label>Supervisor</Label>
+                <Select value={supervisorName || "__none__"} onValueChange={value => setSupervisorName(value === "__none__" ? "" : value)}>
+                  <SelectTrigger data-testid="input-supervisor"><SelectValue placeholder="Select supervisor" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Select supervisor</SelectItem>
+                    {supervisorNameOptions.map(name => (
+                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div><Label>Weather</Label>
                 <Select value={weather} onValueChange={setWeather}>
                   <SelectTrigger data-testid="select-weather"><SelectValue placeholder="Select" /></SelectTrigger>
@@ -1680,8 +1729,8 @@ export default function PlantShiftLog() {
                     <SelectValue placeholder="Select tank…" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="TANK_1">Tank 1 (small vertical)</SelectItem>
-                    <SelectItem value="TANK_2">Tank 2 (big horizontal)</SelectItem>
+                    <SelectItem value="TANK_1">LDO tank 1 (small vertical)</SelectItem>
+                    <SelectItem value="TANK_2">LDO tank 2 (big horizontal)</SelectItem>
                   </SelectContent>
                 </Select>
                 {dryerFedFromNote && <p className="text-xs text-muted-foreground">{dryerFedFromNote}</p>}
@@ -1689,24 +1738,25 @@ export default function PlantShiftLog() {
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {[
-                { label: "Bitumen tank 1 — opening dip (cm)", value: bitumenTank1OpeningDip, set: setBitumenTank1OpeningDip, testId: "input-bitumen-t1-open", source: autoFillBitumenT1Source, sourceId: "text-autofill-bitumen-t1-open", hintId: "text-bitumen-t1-open-mt", hint: dipHint(bitumenTank1OpeningDip), onEdit: () => { setAutoFillBitumenT1Source(""); autoFilledBitumenT1Ref.current = null; } },
-                { label: "Bitumen tank 2 — opening dip (cm)", value: bitumenTank2OpeningDip, set: setBitumenTank2OpeningDip, testId: "input-bitumen-t2-open", source: autoFillBitumenT2Source, sourceId: "text-autofill-bitumen-t2-open", hintId: "text-bitumen-t2-open-mt", hint: dipHint(bitumenTank2OpeningDip), onEdit: () => { setAutoFillBitumenT2Source(""); autoFilledBitumenT2Ref.current = null; } },
-              ].map(({ label, value, set, testId, source, sourceId, hintId, hint, onEdit }) => (
+                { label: "Bitumen tank 1 — opening dip (cm)", value: bitumenTank1OpeningDip, set: setBitumenTank1OpeningDip, testId: "input-bitumen-t1-open", source: autoFillBitumenT1Source, sourceId: "text-autofill-bitumen-t1-open", hintId: "text-bitumen-t1-open-mt", hint: dipHint(bitumenTank1OpeningDip), tankNumber: 1 as const, onEdit: () => { setAutoFillBitumenT1Source(""); autoFilledBitumenT1Ref.current = null; } },
+                { label: "Bitumen tank 2 — opening dip (cm)", value: bitumenTank2OpeningDip, set: setBitumenTank2OpeningDip, testId: "input-bitumen-t2-open", source: autoFillBitumenT2Source, sourceId: "text-autofill-bitumen-t2-open", hintId: "text-bitumen-t2-open-mt", hint: dipHint(bitumenTank2OpeningDip), tankNumber: 2 as const, onEdit: () => { setAutoFillBitumenT2Source(""); autoFilledBitumenT2Ref.current = null; } },
+              ].map(({ label, value, set, testId, source, sourceId, hintId, hint, tankNumber, onEdit }) => (
                 <div key={testId}>
                   <Label>{label}</Label>
                   <Input type="number" step="0.1" value={value} onChange={event => { set(event.target.value); onEdit(); }} data-testid={testId} />
                   {source && <p className="mt-1 text-xs text-blue-600 dark:text-blue-400" data-testid={sourceId}>Auto-filled from {source}</p>}
                   {hint && <p className="mt-1 text-sm font-medium" data-testid={hintId}>{hint}</p>}
+                  <BitumenTankBookStock plantName={plantName} tankNumber={tankNumber} dipCm={value} showBookSummary />
                 </div>
               ))}
               <div>
-                <Label>Tank 1 (small vertical) — opening dip (cm)</Label>
+                <Label>LDO tank 1 (small vertical) — opening dip (cm)</Label>
                 <Input type="number" step="0.1" value={ldoTank1OpeningDip} onChange={event => { setLdoTank1OpeningDip(event.target.value); setAutoFillLdoDipT1Source(""); autoFilledLdoDipT1Ref.current = null; }} data-testid="input-ldo-dip-t1-open-main" />
                 {autoFillLdoDipT1Source && <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">Auto-filled from {autoFillLdoDipT1Source}</p>}
                 {ldoDipHint(1, ldoTank1OpeningDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t1-open-litres">{ldoDipHint(1, ldoTank1OpeningDip)}</p>}
               </div>
               <div>
-                <Label>Tank 2 (big horizontal) — opening dip (cm)</Label>
+                <Label>LDO tank 2 (big horizontal) — opening dip (cm)</Label>
                 <Input type="number" step="0.1" value={ldoTank2OpeningDip} onChange={event => { setLdoTank2OpeningDip(event.target.value); setAutoFillLdoDipT2Source(""); autoFilledLdoDipT2Ref.current = null; }} data-testid="input-ldo-dip-t2-open-main" />
                 {autoFillLdoDipT2Source && <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">Auto-filled from {autoFillLdoDipT2Source}</p>}
                 {ldoDipHint(2, ldoTank2OpeningDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t2-open-litres">{ldoDipHint(2, ldoTank2OpeningDip)}</p>}
@@ -1727,6 +1777,10 @@ export default function PlantShiftLog() {
                 <Input id={`dg-${reading.equipmentId}-openingDiesel`} type="number" min="0" step="0.1" value={reading.openingDiesel}
                   onChange={event => setDgReadings(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, openingDiesel: event.target.value } : row))}
                   data-testid={`input-dg-${reading.equipmentId}-openingDiesel`} />
+                <Label htmlFor={`dg-${reading.equipmentId}-dieselFilled`} className="mt-2 block">Diesel filled (L)</Label>
+                <Input id={`dg-${reading.equipmentId}-dieselFilled`} type="number" min="0" step="0.1" value={reading.dieselFilled}
+                  onChange={event => setDgReadings(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, dieselFilled: event.target.value } : row))}
+                  data-testid={`input-dg-${reading.equipmentId}-dieselFilled`} />
               </div>)}
             </div>
           </div>}
@@ -1739,19 +1793,21 @@ export default function PlantShiftLog() {
                   <Label>Bitumen tank 1 — closing dip (cm)</Label>
                   <Input type="number" step="0.1" value={bitumenTank1ClosingDip} onChange={event => setBitumenTank1ClosingDip(event.target.value)} data-testid="input-bitumen-t1-close" />
                   {dipHint(bitumenTank1ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-bitumen-t1-close-mt">{dipHint(bitumenTank1ClosingDip)}</p>}
+                  <BitumenTankBookStock plantName={plantName} tankNumber={1} dipCm={bitumenTank1ClosingDip} />
                 </div>
                 <div>
                   <Label>Bitumen tank 2 — closing dip (cm)</Label>
                   <Input type="number" step="0.1" value={bitumenTank2ClosingDip} onChange={event => setBitumenTank2ClosingDip(event.target.value)} data-testid="input-bitumen-t2-close" />
                   {dipHint(bitumenTank2ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip)}</p>}
+                  <BitumenTankBookStock plantName={plantName} tankNumber={2} dipCm={bitumenTank2ClosingDip} />
                 </div>
                 <div>
-                  <Label>Tank 1 (small vertical) — closing dip (cm)</Label>
+                  <Label>LDO tank 1 (small vertical) — closing dip (cm)</Label>
                   <Input type="number" step="0.1" value={ldoTank1ClosingDip} onChange={event => { setLdoTank1ClosingDip(event.target.value); setAutoFillLdoDipT1Source(""); autoFilledLdoDipT1Ref.current = null; }} data-testid="input-ldo-dip-t1-close-main" />
                   {ldoDipHint(1, ldoTank1ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t1-close-litres">{ldoDipHint(1, ldoTank1ClosingDip)}</p>}
                 </div>
                 <div>
-                  <Label>Tank 2 (big horizontal) — closing dip (cm)</Label>
+                  <Label>LDO tank 2 (big horizontal) — closing dip (cm)</Label>
                   <Input type="number" step="0.1" value={ldoTank2ClosingDip} onChange={event => { setLdoTank2ClosingDip(event.target.value); setAutoFillLdoDipT2Source(""); autoFilledLdoDipT2Ref.current = null; }} data-testid="input-ldo-dip-t2-close-main" />
                   {ldoDipHint(2, ldoTank2ClosingDip) && <p className="mt-1 text-sm font-medium" data-testid="text-ldo-dip-t2-close-litres">{ldoDipHint(2, ldoTank2ClosingDip)}</p>}
                 </div>
@@ -1770,6 +1826,9 @@ export default function PlantShiftLog() {
                 <Input id={`dg-${reading.equipmentId}-closingDiesel`} type="number" min="0" step="0.1" value={reading.closingDiesel}
                   onChange={event => setDgReadings(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, closingDiesel: event.target.value } : row))}
                   data-testid={`input-dg-${reading.equipmentId}-closingDiesel`} />
+                <p className="mt-2 text-xs text-muted-foreground" data-testid={`text-dg-${reading.equipmentId}-diesel-summary`}>
+                  {dgUsageDisplay(reading)}
+                </p>
               </div>)}
             </div>
           </div>
@@ -2285,7 +2344,7 @@ export default function PlantShiftLog() {
           <AlertDialogHeader>
             <AlertDialogTitle>Dryer feed tank not selected</AlertDialogTitle>
             <AlertDialogDescription>
-              You haven't selected which tank feeds the dryer this shift. LDO stock consumption will be recorded against Tank 2 (big horizontal) by default, which may produce incorrect stock balances if the dryer is actually fed from Tank 1 (small vertical).
+              You haven't selected which tank feeds the dryer this shift. LDO stock consumption will be recorded against LDO tank 2 (big horizontal) by default, which may produce incorrect stock balances if the dryer is actually fed from LDO tank 1 (small vertical).
               <br /><br />
               Please go back and select the correct tank, or confirm to proceed with Tank 2 as the default.
             </AlertDialogDescription>

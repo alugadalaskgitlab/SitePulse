@@ -5,7 +5,16 @@ import "@testing-library/jest-dom";
 import { getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
 
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => ({ data: [], isLoading: false }),
+  useQuery: (options: { queryKey?: unknown[] }) => ({
+    data: options.queryKey?.[0] === "/api/personnel"
+      ? [
+          { id: 1, name: "Active Plant Staff", isActive: 1 },
+          { id: 2, name: "Saved Inactive Staff", isActive: 0 },
+          { id: 3, name: "Other Inactive Staff", isActive: 0 },
+        ]
+      : [],
+    isLoading: false,
+  }),
   useMutation: () => ({ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }),
 }));
 vi.mock("@/lib/queryClient", () => ({
@@ -60,5 +69,22 @@ describe("PLANT-04 heating session fuel readings", () => {
     fireEvent.change(screen.getByTestId("input-ldo-dip-t2-open"), { target: { value: "" } });
     fireEvent.change(screen.getByTestId("input-ldo-dip-t2-close"), { target: { value: "" } });
     expect(screen.getByTestId("text-ldo-consumed").textContent).toBe("30.00");
+  });
+
+  it("keeps an old saved staff name visible on the staff picker", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      json: async () => [],
+    }) as Response));
+    render(<HeatingSessionDialog
+      open
+      date="2026-11-22"
+      plantName="Main Plant"
+      onOpenChange={vi.fn()}
+      session={{ id: 12, date: "2026-11-22", plantName: "Main Plant", sessionType: "NIGHT_PREHEAT", staffName: "Saved Inactive Staff" } as any}
+    />);
+
+    const staffSelect = screen.getByTestId("input-staff-name");
+    expect(staffSelect).toHaveTextContent("Saved Inactive Staff");
   });
 });

@@ -221,8 +221,8 @@ export default function PlantDailyReport() {
       {mismatch && mismatch.shiftLogValue && (() => {
         const slValue = mismatch.shiftLogValue;
         const oppValue = slValue === "TANK_1" ? "TANK_2" : "TANK_1";
-        const slLabel = slValue === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
-        const oppLabel = slValue === "TANK_1" ? "Tank 2 (big horizontal)" : "Tank 1 (small vertical)";
+        const slLabel = slValue === "TANK_1" ? "LDO tank 1 (small vertical)" : "LDO tank 2 (big horizontal)";
+        const oppLabel = slValue === "TANK_1" ? "LDO tank 2 (big horizontal)" : "LDO tank 1 (small vertical)";
         const sessionIds = mismatch.conflictingSessions.map(s => s.id);
         const n = sessionIds.length;
         return (
@@ -618,12 +618,12 @@ export default function PlantDailyReport() {
                 <div className="md:col-span-4 text-sm text-muted-foreground">
                   Tank stock deducted today (dryer meter is routed to{" "}
                   <span className="font-medium" data-testid="text-dryer-fed-from-summary">
-                    {data.ldo.dryerFedFrom === "TANK_1" ? "Tank 1 (small vertical)" : data.ldo.dryerFedFrom === "TANK_2" ? "Tank 2 (big horizontal)" : "Not set"}
+                    {data.ldo.dryerFedFrom === "TANK_1" ? "LDO tank 1 (small vertical)" : data.ldo.dryerFedFrom === "TANK_2" ? "LDO tank 2 (big horizontal)" : "Not set"}
                   </span>
                   )
                 </div>
-                <KV label="Tank 1 (small vertical) stock used (L)" value={fmt(data.ldo.tank1DeductedL ?? null, 1)} />
-                <KV label="Tank 2 (big horizontal) stock used (L)" value={fmt(data.ldo.tank2DeductedL ?? null, 1)} />
+                <KV label="LDO tank 1 (small vertical) stock used (L)" value={fmt(data.ldo.tank1DeductedL ?? null, 1)} />
+                <KV label="LDO tank 2 (big horizontal) stock used (L)" value={fmt(data.ldo.tank2DeductedL ?? null, 1)} />
               </CardContent>
 
               {/* Separator between LDO Detail and Heating Sessions */}

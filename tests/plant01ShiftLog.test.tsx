@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import "@testing-library/jest-dom";
 
 const mocks = vi.hoisted(() => ({
-  personnel: [{ id: 42, name: "Linked Staff Name", isActive: 1 }],
+  personnel: [
+    { id: 42, name: "Linked Staff Name", isActive: 1 },
+    { id: 43, name: "Inactive Staff Name", isActive: 0 },
+  ],
   dgs: [{
     equipmentId: 5,
     equipmentName: "DG-5",
@@ -35,6 +39,10 @@ vi.mock("@tanstack/react-query", () => ({
         : mocks.noDgs;
       return { data: readings, isLoading: false };
     }
+    if (key === "/api/plant-module/dispatches") return {
+      data: [{ loadWeight: 10, plantName: "HMP Plant" }],
+      isLoading: false,
+    };
     if (key === "/api/plant-module/heating-sessions/dryer-source-mismatches") return { data: [], isLoading: false };
     if (key === "/api/plant-module/heating-sessions") return { data: [], isLoading: false };
     if (key === "/api/plant-module/shift-logs/reconciliation") return { data: {}, isLoading: false };
@@ -136,7 +144,9 @@ describe("PLANT-01 shift readings entry", () => {
     const closing = within(screen.getByTestId("section-closing-readings"));
     const moreDetails = within(screen.getByTestId("details-shift-more"));
 
-    await waitFor(() => expect((within(card).getByTestId("input-operator") as HTMLInputElement).value).toBe("Linked Staff Name"));
+    await waitFor(() => expect(within(card).getByTestId("input-operator")).toHaveTextContent("Linked Staff Name"));
+    expect(opening.getByText(/LDO tank 1 \(small vertical\) — opening dip/i)).toBeInTheDocument();
+    expect(opening.getByTestId("bitumen-book-stock-1")).toHaveTextContent("Book stock is loading");
     expect(opening.getByTestId("input-bitumen-t1-open").isConnected).toBe(true);
     expect(closing.getByTestId("input-bitumen-t1-close").isConnected).toBe(true);
     expect(opening.getByTestId("input-ldo-dip-t1-open-main").isConnected).toBe(true);
@@ -152,8 +162,10 @@ describe("PLANT-01 shift readings entry", () => {
     expect(closing.getByTestId("input-ldo-t2-close").isConnected).toBe(true);
     expect((opening.getByTestId("input-dg-5-openingReading") as HTMLInputElement).value).toBe("123.4");
     expect((opening.getByTestId("input-dg-5-openingDiesel") as HTMLInputElement).value).toBe("78");
+    expect((opening.getByTestId("input-dg-5-dieselFilled") as HTMLInputElement).value).toBe("");
     expect(closing.getByTestId("input-dg-5-closingReading").isConnected).toBe(true);
     expect(closing.getByTestId("input-dg-5-closingDiesel").isConnected).toBe(true);
+    expect(closing.getByTestId("text-dg-5-diesel-summary")).toHaveTextContent("DG-5:");
   });
 
   it("shows boiler meter readings in More details when boiler operation is selected", async () => {
@@ -167,6 +179,27 @@ describe("PLANT-01 shift readings entry", () => {
     expect(opening.getByTestId("input-ldo-t1-open").isConnected).toBe(true);
     expect(closing.getByTestId("input-ldo-t1-close").isConnected).toBe(true);
     await waitFor(() => expect((opening.getByTestId("input-ldo-t1-open") as HTMLInputElement).value).toBe("135.8"));
+  });
+
+  it("keeps the linked operator prefilled from the personnel master", async () => {
+    render(<PlantShiftLog />);
+    await waitFor(() => expect(screen.getByTestId("input-operator")).toHaveTextContent("Linked Staff Name"));
+    expect(screen.getByTestId("input-supervisor")).toHaveTextContent("Select supervisor");
+  });
+
+  it("calculates DG diesel used, litres per hour, and litres per dispatched MT", async () => {
+    render(<PlantShiftLog />);
+    const change = (testId: string, value: string) => fireEvent.change(screen.getByTestId(testId), { target: { value } });
+    change("input-dg-5-openingReading", "100");
+    change("input-dg-5-closingReading", "105");
+    change("input-dg-5-openingDiesel", "80");
+    change("input-dg-5-dieselFilled", "12");
+    change("input-dg-5-closingDiesel", "65");
+    await waitFor(() => {
+      expect(screen.getByTestId("text-dg-5-diesel-summary")).toHaveTextContent(
+        "DG-5: 5.00 h · diesel used = 80.0 + 12.0 − 65.0 = 27.0 L · 5.40 L/h · 2.70 L/MT",
+      );
+    });
   });
 
   it("prefills both opening tank dips from the previous closing readings", async () => {
@@ -193,7 +226,7 @@ describe("PLANT-01 shift readings entry", () => {
     mocks.previous = { dryerFedFrom: "TANK_1" };
     render(<PlantShiftLog />);
     expect(await screen.findByText("Same as previous day")).toBeTruthy();
-    expect(screen.getByTestId("select-dryer-fed-from").textContent).toContain("Tank 1 (small vertical)");
+    expect(screen.getByTestId("select-dryer-fed-from").textContent).toContain("LDO tank 1 (small vertical)");
   });
 
   it("keeps LDO dips on the day card, boiler fields in More details, and shows only configured DGs", () => {

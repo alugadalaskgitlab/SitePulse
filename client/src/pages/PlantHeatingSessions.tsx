@@ -704,7 +704,7 @@ export default function PlantHeatingSessions() {
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
-      const label = variables.targetValue === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
+      const label = variables.targetValue === "TANK_1" ? "LDO tank 1 (small vertical)" : "LDO tank 2 (big horizontal)";
       toast({ title: `${data.updatedCount} session${data.updatedCount !== 1 ? "s" : ""} aligned to ${label}` });
     },
     onError: (err: any) => {
@@ -890,8 +890,8 @@ export default function PlantHeatingSessions() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All tanks</SelectItem>
-              <SelectItem value="TANK_1">Tank 1 (small vertical)</SelectItem>
-              <SelectItem value="TANK_2">Tank 2 (big horizontal)</SelectItem>
+              <SelectItem value="TANK_1">LDO tank 1 (small vertical)</SelectItem>
+              <SelectItem value="TANK_2">LDO tank 2 (big horizontal)</SelectItem>
             </SelectContent>
           </Select>
           <Link href={appendPlantContext("/plant/heating-trends", { forceTab: "operations" })}>
@@ -978,7 +978,7 @@ export default function PlantHeatingSessions() {
             ) : null;
           })()}
           {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
-            groupedDates.length === 0 ? <p className="text-sm text-muted-foreground">{filterDryerSource !== "all" ? `No heating sessions fed from ${filterDryerSource === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)"} in this date range.` : "No heating sessions in this date range."}</p> :
+            groupedDates.length === 0 ? <p className="text-sm text-muted-foreground">{filterDryerSource !== "all" ? `No heating sessions fed from ${filterDryerSource === "TANK_1" ? "LDO tank 1 (small vertical)" : "LDO tank 2 (big horizontal)"} in this date range.` : "No heating sessions in this date range."}</p> :
             <div className="space-y-1">
               {groupedDates.map(date => {
                 const isOpen = openDateGroups.has(date);
@@ -1050,9 +1050,9 @@ export default function PlantHeatingSessions() {
                                 {/* Shift-log mismatch: show guided one-click fix */}
                                 {hasShiftLogConflict && (() => {
                                   const slValue = dm.shiftLogValue!;
-                                  const slLabel = slValue === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
+                                  const slLabel = slValue === "TANK_1" ? "LDO tank 1 (small vertical)" : "LDO tank 2 (big horizontal)";
                                   const oppValue = slValue === "TANK_1" ? "TANK_2" : "TANK_1";
-                                  const oppLabel = slValue === "TANK_1" ? "Tank 2 (big horizontal)" : "Tank 1 (small vertical)";
+                                  const oppLabel = slValue === "TANK_1" ? "LDO tank 2 (big horizontal)" : "LDO tank 1 (small vertical)";
                                   const n = shiftLogConflictSessions.length;
                                   const fixSessionIds = shiftLogConflictSessions.map(s => s.id);
                                   return (
@@ -1140,7 +1140,7 @@ export default function PlantHeatingSessions() {
                                         {intraConflictSessions.map(s => {
                                           const label = heatingSessionTypeLabel(s.sessionType);
                                           const timeLabel = s.startTime ? ` · ${s.startTime}` : "";
-                                          const sourceLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1 (small vertical)" : s.dryerFedFrom === "TANK_2" ? "Tank 2 (big horizontal)" : s.dryerFedFrom;
+                                          const sourceLabel = s.dryerFedFrom === "TANK_1" ? "LDO tank 1 (small vertical)" : s.dryerFedFrom === "TANK_2" ? "LDO tank 2 (big horizontal)" : s.dryerFedFrom;
                                           return (
                                             <li key={s.id}>
                                               <button
@@ -1169,11 +1169,11 @@ export default function PlantHeatingSessions() {
                                       <div className="flex flex-wrap gap-2">
                                         <Button size="sm" variant="outline" className="h-7 text-sm border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_1" })} data-testid={`button-align-intra-tank1-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                           {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                                          Set all → Tank 1 (small vertical)
+                                          Set all → LDO tank 1 (small vertical)
                                         </Button>
                                         <Button size="sm" variant="outline" className="h-7 text-sm border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_2" })} data-testid={`button-align-intra-tank2-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                           {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                                          Set all → Tank 2 (big horizontal)
+                                          Set all → LDO tank 2 (big horizontal)
                                         </Button>
                                       </div>
                                     </>
@@ -1263,11 +1263,11 @@ export default function PlantHeatingSessions() {
                               )}
                               {(s.dryerFedFrom === "TANK_1" || s.dryerFedFrom === "TANK_2") && (
                                 <Badge variant="outline" className="text-sm border-sky-400 text-sky-700 dark:text-sky-400" data-testid={`badge-dryer-fed-${s.id}`}>
-                                  Dryer fed from: {s.dryerFedFrom === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)"}
+                                  Dryer fed from: {s.dryerFedFrom === "TANK_1" ? "LDO tank 1 (small vertical)" : "LDO tank 2 (big horizontal)"}
                                 </Badge>
                               )}
                               {conflictingSessionIds.has(s.id) && (() => {
-                                const hsLabel = s.dryerFedFrom === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
+                                const hsLabel = s.dryerFedFrom === "TANK_1" ? "LDO tank 1 (small vertical)" : "LDO tank 2 (big horizontal)";
                                 const isShiftLogConflict = shiftLogConflictIds.has(s.id);
                                 const isIntraConflict = intraSessionConflictIds.has(s.id);
                                 const attributionDate = s.countsForDate || s.date;
@@ -1275,7 +1275,7 @@ export default function PlantHeatingSessions() {
                                 let badgeLabel = "⚠ Dryer conflict";
                                 let tooltipText = "";
                                 if (isShiftLogConflict) {
-                                  const slLabel = dm?.shiftLogValue === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
+                                  const slLabel = dm?.shiftLogValue === "TANK_1" ? "LDO tank 1 (small vertical)" : "LDO tank 2 (big horizontal)";
                                   badgeLabel = "⚠ Dryer mismatch — fix this session";
                                   tooltipText = `This session says dryer fed from ${hsLabel}, but the ${s.plantName} shift log for ${attributionDate} says ${slLabel}. Click to edit this session and correct it.`;
                                   if (isIntraConflict) tooltipText += " Also conflicts with other sessions on this date.";
@@ -1285,7 +1285,7 @@ export default function PlantHeatingSessions() {
                                   if (dm?.shiftLogId == null) tooltipText += " No shift log exists yet — create one to set the authoritative dryer source.";
                                 }
                                 const dm2 = dryerMismatchByKey.get(`${attributionDate}||${s.plantName}`);
-                                const slLabel2 = dm2?.shiftLogValue === "TANK_1" ? "Tank 1 (small vertical)" : dm2?.shiftLogValue === "TANK_2" ? "Tank 2 (big horizontal)" : null;
+                                const slLabel2 = dm2?.shiftLogValue === "TANK_1" ? "LDO tank 1 (small vertical)" : dm2?.shiftLogValue === "TANK_2" ? "LDO tank 2 (big horizontal)" : null;
                                 return (
                                   <div className="inline-flex flex-col gap-0.5" key={`dryer-conflict-wrap-${s.id}`}>
                                     <span className="inline-flex items-center gap-1.5">
@@ -1510,7 +1510,7 @@ export default function PlantHeatingSessions() {
               <CardHeader className="py-3"><CardTitle className="text-base">LDO tank dip readings</CardTitle></CardHeader>
               <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div>
-                  <Label>Tank 1 (small vertical) — opening dip (cm)</Label>
+                  <Label>LDO tank 1 (small vertical) — opening dip (cm)</Label>
                   <Input type="number" step="0.1" value={form.ldoTank1OpeningDip}
                     onChange={e => setForm(p => ({ ...p, ldoTank1OpeningDip: e.target.value, autoFilledDipT1: false }))}
                     data-testid="input-ldo-dip-t1-open" />
@@ -1524,7 +1524,7 @@ export default function PlantHeatingSessions() {
                   )}
                 </div>
                 <div>
-                  <Label>Tank 1 (small vertical) — closing dip (cm)</Label>
+                  <Label>LDO tank 1 (small vertical) — closing dip (cm)</Label>
                   <Input type="number" step="0.1" value={form.ldoTank1ClosingDip}
                     onChange={e => setField("ldoTank1ClosingDip", e.target.value)}
                     data-testid="input-ldo-dip-t1-close" />
@@ -1534,7 +1534,7 @@ export default function PlantHeatingSessions() {
                   })()}
                 </div>
                 <div>
-                  <Label>Tank 2 (big horizontal) — opening dip (cm)</Label>
+                  <Label>LDO tank 2 (big horizontal) — opening dip (cm)</Label>
                   <Input type="number" step="0.1" value={form.ldoTank2OpeningDip}
                     onChange={e => setForm(p => ({ ...p, ldoTank2OpeningDip: e.target.value, autoFilledDipT2: false }))}
                     data-testid="input-ldo-dip-t2-open" />
@@ -1548,7 +1548,7 @@ export default function PlantHeatingSessions() {
                   )}
                 </div>
                 <div>
-                  <Label>Tank 2 (big horizontal) — closing dip (cm)</Label>
+                  <Label>LDO tank 2 (big horizontal) — closing dip (cm)</Label>
                   <Input type="number" step="0.1" value={form.ldoTank2ClosingDip}
                     onChange={e => setField("ldoTank2ClosingDip", e.target.value)}
                     data-testid="input-ldo-dip-t2-close" />

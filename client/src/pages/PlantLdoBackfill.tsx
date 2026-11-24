@@ -578,7 +578,7 @@ export default function PlantLdoBackfill() {
                     <th className="text-left p-2">T1 Closing</th>
                     <th className="text-left p-2">T2 Opening<br /><span className="text-[12px] normal-case text-muted-foreground">{TANK_LABELS[2]}</span></th>
                     <th className="text-left p-2">T2 Closing</th>
-                    <th className="text-left p-2 min-w-[130px]">Dryer fed from<br /><span className="text-[12px] normal-case text-muted-foreground">Tank 2 (big horizontal) by default</span></th>
+                    <th className="text-left p-2 min-w-[130px]">Dryer fed from<br /><span className="text-[12px] normal-case text-muted-foreground">LDO tank 2 (big horizontal) by default</span></th>
                     <th className="text-left p-2 min-w-[180px]">Remarks</th>
                     <th className="text-left p-2">Notes</th>
                     <th className="text-left p-2">Actions</th>
@@ -636,11 +636,11 @@ export default function PlantLdoBackfill() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="TANK_2">Tank 2 (big horizontal, default)</SelectItem>
-                              <SelectItem value="TANK_1">Tank 1 (small vertical)</SelectItem>
+                              <SelectItem value="TANK_1">LDO tank 1 (small vertical)</SelectItem>
                             </SelectContent>
                           </Select>
                           {row.dryerFedFrom2 === "TANK_1" && (
-                            <p className="text-[12px] text-amber-600 mt-1">Debits Tank 1 (small vertical)</p>
+                            <p className="text-[12px] text-amber-600 mt-1">Debits LDO tank 1 (small vertical)</p>
                           )}
                         </td>
                         <td className="p-2">

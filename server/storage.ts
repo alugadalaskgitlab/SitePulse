@@ -1021,7 +1021,12 @@ export interface IStorage {
 
   // Compute per-tank bitumen balance from the stock_ledger.
   // Returns { tank1: number, tank2: number } in MT, optionally scoped by partyId.
-  getBitumenTankBalances(partyId?: number | null): Promise<{ tank1: number; tank2: number; total: number }>;
+  getBitumenTankBalances(partyId?: number | null): Promise<{
+    tank1: number;
+    tank2: number;
+    total: number;
+    byParty: Array<{ partyId: number | null; partyName: string | null; tank1: number; tank2: number }>;
+  }>;
 
   // Rebuild aggregate dispatch ledger entries for a template from a date+time cutoff
   rebuildDispatchLedgerForTemplate(opts: {
@@ -26434,15 +26439,15 @@ export class DatabaseStorage implements IStorage {
       // is absent we cannot compute the full combined consumption and would risk
       // a false-positive warning from the missing half.
       if (meterDeltaT1 != null && meterDeltaT2 != null && dipDeltaT1 != null) {
-        pushDivergenceWarning("Tank 1 (Boiler+Dryer combined, fed from Tank 1)", meterDeltaT1 + meterDeltaT2, dipDeltaT1);
+        pushDivergenceWarning("LDO tank 1 (small vertical; boiler + dryer combined)", meterDeltaT1 + meterDeltaT2, dipDeltaT1);
       }
     } else {
       // dryerFedFrom === "TANK_2" (default): each meter draws from its own tank.
       if (meterDeltaT1 != null && dipDeltaT1 != null) {
-        pushDivergenceWarning("Tank 1 (small vertical)", meterDeltaT1, dipDeltaT1);
+        pushDivergenceWarning("LDO tank 1 (small vertical)", meterDeltaT1, dipDeltaT1);
       }
       if (meterDeltaT2 != null && dipDeltaT2 != null) {
-        pushDivergenceWarning("Tank 2 (big horizontal)", meterDeltaT2, dipDeltaT2);
+        pushDivergenceWarning("LDO tank 2 (big horizontal)", meterDeltaT2, dipDeltaT2);
       }
     }
 
@@ -28933,12 +28938,17 @@ export class DatabaseStorage implements IStorage {
 
   // Compute per-tank bitumen balance from stock_ledger entries tagged with tankNumber.
   // Optionally scoped to a partyId (or all parties if null/undefined).
-  async getBitumenTankBalances(partyId?: number | null): Promise<{ tank1: number; tank2: number; total: number }> {
+  async getBitumenTankBalances(partyId?: number | null): Promise<{
+    tank1: number;
+    tank2: number;
+    total: number;
+    byParty: Array<{ partyId: number | null; partyName: string | null; tank1: number; tank2: number }>;
+  }> {
       const [bitumenMat] = await db.select({ id: plantMaterials.id })
         .from(plantMaterials)
         .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
         .limit(1);
-      if (!bitumenMat) return { tank1: 0, tank2: 0, total: 0 };
+      if (!bitumenMat) return { tank1: 0, tank2: 0, total: 0, byParty: [] };
 
       // Per-tank balance — only rows with a tank number assigned (guidance for tank selector)
       const perTankConditions: ReturnType<typeof and>[] = [
@@ -28950,20 +28960,34 @@ export class DatabaseStorage implements IStorage {
       }
 
       const rows = await db.select({
+        partyId: stockLedger.partyId,
+        partyName: parties.name,
         tankNumber: stockLedger.tankNumber,
         quantityIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
         quantityOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
       })
         .from(stockLedger)
+        .leftJoin(parties, eq(stockLedger.partyId, parties.id))
         .where(and(...perTankConditions))
-        .groupBy(stockLedger.tankNumber);
+        .groupBy(stockLedger.partyId, parties.name, stockLedger.tankNumber);
 
       let tank1 = 0;
       let tank2 = 0;
+      const byParty = new Map<number | null, { partyId: number | null; partyName: string | null; tank1: number; tank2: number }>();
       for (const row of rows) {
         const net = Number(row.quantityIn) - Number(row.quantityOut);
-        if (row.tankNumber === 1) tank1 = net;
-        else if (row.tankNumber === 2) tank2 = net;
+        if (row.tankNumber !== 1 && row.tankNumber !== 2) continue;
+        const current = byParty.get(row.partyId) ?? {
+          partyId: row.partyId,
+          partyName: row.partyName ?? null,
+          tank1: 0,
+          tank2: 0,
+        };
+        if (row.tankNumber === 1) current.tank1 += net;
+        else current.tank2 += net;
+        byParty.set(row.partyId, current);
+        if (row.tankNumber === 1) tank1 += net;
+        else tank2 += net;
       }
 
       // True total: all rows regardless of tankNumber (includes older entries without tank assigned).
@@ -28982,7 +29006,7 @@ export class DatabaseStorage implements IStorage {
         .where(and(...totalConditions));
       const total = totalRow ? Number(totalRow.quantityIn) - Number(totalRow.quantityOut) : 0;
 
-      return { tank1, tank2, total };
+      return { tank1, tank2, total, byParty: Array.from(byParty.values()) };
     }
 
   // Backfill tankNumber on existing bitumen stock_ledger entries that have no tankNumber yet.

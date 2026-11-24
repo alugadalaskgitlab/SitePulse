@@ -112,14 +112,14 @@ describe("STOCK-02 Material Master category fields", () => {
   });
 
   it("uses material-specific tank labels without changing tank numbers", () => {
-    expect(materialTankLabel("LDO", 1)).toBe("Tank 1 (small vertical)");
+    expect(materialTankLabel("LDO", 1)).toBe("LDO tank 1 (small vertical)");
     expect(materialTankLabel("Bitumen VG-30", 2)).toBe("Bitumen tank 2");
     expect(materialTankLabel("Emulsion", 1)).toBe("Emulsion tank 1");
     expect(materialTankLabel("Diesel", 2)).toBe("Tank 2");
     expect(materialTankLabel("VG-30", 1, "Bitumen")).toBe("Bitumen tank 1");
     expect(materialTankLabel("Emulsion", 1, "Bitumen")).toBe("Emulsion tank 1");
     expect(materialTankLabel("RS-1", 2, "Emulsion")).toBe("Emulsion tank 2");
-    expect(materialTankLabel("High-speed fuel", 1, "LDO")).toBe("Tank 1 (small vertical)");
+    expect(materialTankLabel("High-speed fuel", 1, "LDO")).toBe("LDO tank 1 (small vertical)");
     expect(materialTankLabel("Bitumen cable", 2, "Electricals")).toBe("Tank 2");
   });
 });

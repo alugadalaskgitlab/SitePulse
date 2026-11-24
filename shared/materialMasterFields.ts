@@ -63,7 +63,7 @@ export function materialTankLabel(
   if (categoryValue.includes("emulsion") || name === "emulsion") return `Emulsion tank ${tankNumber}`;
   if (categoryValue.includes("bitumen") || name === "bitumen" || (!categoryValue && /\bbitumen\b/.test(name))) return `Bitumen tank ${tankNumber}`;
   if (categoryValue.includes("ldo") || name === "ldo" || (!categoryValue && /light diesel oil/.test(name))) {
-    return tankNumber === 1 ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
+    return tankNumber === 1 ? "LDO tank 1 (small vertical)" : "LDO tank 2 (big horizontal)";
   }
   return `Tank ${tankNumber}`;
 }

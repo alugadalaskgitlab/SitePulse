@@ -10258,19 +10258,26 @@ export async function registerRoutes(
           openingReading: numberOrUndefined(raw.openingReading, "Opening hour meter"),
           closingReading: numberOrUndefined(raw.closingReading, "Closing hour meter"),
           openingDiesel: numberOrUndefined(raw.openingDiesel, "Opening diesel level"),
+          dieselIssued: numberOrUndefined(raw.dieselFilled, "Diesel filled"),
           dieselBalanceInTank: numberOrUndefined(raw.closingDiesel, "Closing diesel level"),
           dieselBalanceConfirmed: raw.closingDiesel != null && raw.closingDiesel !== "",
         };
-        if (input.openingReading == null && input.closingReading == null && input.openingDiesel == null && input.dieselBalanceInTank == null) continue;
+        if (input.openingReading == null && input.closingReading == null && input.openingDiesel == null && input.dieselIssued == null && input.dieselBalanceInTank == null) continue;
         const matches = existingRows.filter((row: any) =>
           row.equipmentId === equipmentId && String(row.plantName || "").toLowerCase() === plantName.toLowerCase()
         );
         if (matches.length > 1) {
           return res.status(409).json({ message: `More than one DG usage row exists for ${generator.name} on ${date}; resolve it in Equipment Usage first.` });
         }
+        const dieselSource = input.dieselIssued != null && input.dieselIssued > 0
+          ? (matches[0]?.dieselSource || "plant_stock")
+          : matches[0]?.dieselSource;
         if (matches[0]) {
           if (!assertEdit(req, res, "plant_shift_logs")) return;
-          const updated = await storage.updateEquipmentUsage(matches[0].id, input);
+          const updated = await storage.updateEquipmentUsage(matches[0].id, {
+            ...input,
+            ...(dieselSource ? { dieselSource } : {}),
+          });
           if (!updated) throw new Error(`DG usage row for ${generator.name} was not updated.`);
           saved.push(updated);
         } else {
@@ -10280,8 +10287,9 @@ export async function registerRoutes(
             equipmentId,
             plantName,
             entryType: "time_meter",
-            dieselIssued: 0,
             ...input,
+            dieselIssued: input.dieselIssued ?? 0,
+            ...(dieselSource ? { dieselSource } : {}),
           } as any);
           saved.push(created);
         }
@@ -10638,8 +10646,8 @@ export async function registerRoutes(
       }
       doc.moveDown(0.3).fontSize(9).font("Helvetica-Bold").text("Tank stock and dip detail");
       doc.font("Helvetica").fontSize(10);
-      line("Tank 1 (small vertical) stock used (L)", summary.ldo.tank1DeductedL?.toFixed(1) ?? "—");
-      line("Tank 2 (big horizontal) stock used (L)", summary.ldo.tank2DeductedL?.toFixed(1) ?? "—");
+      line("LDO tank 1 (small vertical) stock used (L)", summary.ldo.tank1DeductedL?.toFixed(1) ?? "—");
+      line("LDO tank 2 (big horizontal) stock used (L)", summary.ldo.tank2DeductedL?.toFixed(1) ?? "—");
       const dryerFedFromLabel = summary.ldo.dryerFedFrom === "TANK_1" ? "Tank 1" : summary.ldo.dryerFedFrom === "TANK_2" ? "Tank 2" : null;
       if (dryerFedFromLabel) {
         line("Dryer fed from", dryerFedFromLabel);

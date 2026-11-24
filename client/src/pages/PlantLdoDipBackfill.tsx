@@ -21,7 +21,7 @@ import type { LdoDipReading } from "@shared/schema";
 import { getLdoVolumeAtDepth, getLdoMaxDepth, getLdoDeadStockVolume } from "@shared/ldo-dip-chart";
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 
-const TANK_LABELS: Record<number, string> = { 1: "Tank 1 (small vertical)", 2: "Tank 2 (big horizontal)" };
+const TANK_LABELS: Record<number, string> = { 1: "LDO tank 1 (small vertical)", 2: "LDO tank 2 (big horizontal)" };
 const DEFAULT_FROM = "2026-02-25";
 
 type RowSource = "manual" | "backfill" | "empty";

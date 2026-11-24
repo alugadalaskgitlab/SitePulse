@@ -14,10 +14,12 @@ import { Save, Loader2, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { HEATING_SESSION_TYPE_LABELS } from "@shared/schema";
-import type { BitumenHeatingSession, GeneratorLog } from "@shared/schema";
+import type { BitumenHeatingSession, GeneratorLog, Personnel } from "@shared/schema";
 import DryerSourceFixDialog, { type DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
 import { getLdoVolumeAtDepth, getLdoDeadStockVolume } from "@shared/ldo-dip-chart";
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
+import { BitumenTankBookStock } from "@/components/BitumenTankBookStock";
+import { personnelNameOptions } from "@/lib/personnelNameOptions";
 
 type DgMode = "none" | "inline" | "link";
 
@@ -154,6 +156,17 @@ export function HeatingSessionDialog({
   const [newGenDialogOpen, setNewGenDialogOpen] = useState(false);
   const [newGenNameInput, setNewGenNameInput] = useState("");
   const [dgAdvancedOpen, setDgAdvancedOpen] = useState(false);
+  const { data: personnelList = [] } = useQuery<Personnel[]>({
+    queryKey: ["/api/personnel", "includeInactive"],
+    queryFn: async () => {
+      const response = await fetch("/api/personnel?includeInactive=true", { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load personnel.");
+      return response.json();
+    },
+    enabled: open,
+    staleTime: 60_000,
+  });
+  const staffNameOptions = personnelNameOptions(personnelList, form.staffName);
 
   useEffect(() => {
     if (!open) return;
@@ -473,8 +486,8 @@ export function HeatingSessionDialog({
             ? sl.dryerFedFrom
             : null;
           if (shiftLogDryerSource && shiftLogDryerSource !== saved.dryerFedFrom) {
-            const hsLabel = saved.dryerFedFrom === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
-            const slLabel = shiftLogDryerSource === "TANK_1" ? "Tank 1 (small vertical)" : "Tank 2 (big horizontal)";
+            const hsLabel = saved.dryerFedFrom === "TANK_1" ? "LDO tank 1 (small vertical)" : "LDO tank 2 (big horizontal)";
+            const slLabel = shiftLogDryerSource === "TANK_1" ? "LDO tank 1 (small vertical)" : "LDO tank 2 (big horizontal)";
             const fixTarget: DryerSourceFixTarget = {
               mode: "shift-log",
               recordId: sl.id,
@@ -545,7 +558,18 @@ export function HeatingSessionDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Staff name</Label><Input value={form.staffName} onChange={e => setField("staffName", e.target.value)} data-testid="input-staff-name" /></div>
+            <div>
+              <Label>Staff name</Label>
+              <Select value={form.staffName || "__none__"} onValueChange={value => setField("staffName", value === "__none__" ? "" : value)}>
+                <SelectTrigger data-testid="input-staff-name"><SelectValue placeholder="Select staff" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Select staff</SelectItem>
+                  {staffNameOptions.map(name => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div><Label>Staff role</Label><Input value={form.staffRole} onChange={e => setField("staffRole", e.target.value)} placeholder="Boiler operator" data-testid="input-staff-role" /></div>
             <div><Label>Start time</Label><Input type="time" value={form.startTime} onChange={e => setField("startTime", e.target.value)} data-testid="input-start-time" /></div>
             <div><Label>End time</Label><Input type="time" value={form.endTime} onChange={e => setField("endTime", e.target.value)} data-testid="input-end-time" /></div>
@@ -559,9 +583,17 @@ export function HeatingSessionDialog({
               <div><Label>Hot-oil forward °C</Label><Input type="number" step="0.1" value={form.hotOilSupplyTemp} onChange={e => setField("hotOilSupplyTemp", e.target.value)} data-testid="input-hot-oil-supply" /></div>
               <div><Label>Hot-oil return °C</Label><Input type="number" step="0.1" value={form.hotOilReturnTemp} onChange={e => setField("hotOilReturnTemp", e.target.value)} data-testid="input-hot-oil-return" /></div>
               <div className="md:col-span-2" />
-              <div><Label>Bitumen T1 Start °C</Label><Input type="number" step="0.1" value={form.bitumenTank1TempStart} onChange={e => setField("bitumenTank1TempStart", e.target.value)} data-testid="input-bit-t1-start" /></div>
+              <div>
+                <Label>Bitumen tank 1 start °C</Label>
+                <Input type="number" step="0.1" value={form.bitumenTank1TempStart} onChange={e => setField("bitumenTank1TempStart", e.target.value)} data-testid="input-bit-t1-start" />
+                <BitumenTankBookStock plantName={form.plantName} tankNumber={1} showBookSummary />
+              </div>
               <div><Label>Bitumen T1 End °C</Label><Input type="number" step="0.1" value={form.bitumenTank1TempEnd} onChange={e => setField("bitumenTank1TempEnd", e.target.value)} data-testid="input-bit-t1-end" /></div>
-              <div><Label>Bitumen T2 Start °C</Label><Input type="number" step="0.1" value={form.bitumenTank2TempStart} onChange={e => setField("bitumenTank2TempStart", e.target.value)} data-testid="input-bit-t2-start" /></div>
+              <div>
+                <Label>Bitumen tank 2 start °C</Label>
+                <Input type="number" step="0.1" value={form.bitumenTank2TempStart} onChange={e => setField("bitumenTank2TempStart", e.target.value)} data-testid="input-bit-t2-start" />
+                <BitumenTankBookStock plantName={form.plantName} tankNumber={2} showBookSummary />
+              </div>
               <div><Label>Bitumen T2 End °C</Label><Input type="number" step="0.1" value={form.bitumenTank2TempEnd} onChange={e => setField("bitumenTank2TempEnd", e.target.value)} data-testid="input-bit-t2-end" /></div>
             </CardContent>
           </Card>
@@ -579,8 +611,8 @@ export function HeatingSessionDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="TANK_1">Tank 1 (small vertical)</SelectItem>
-                      <SelectItem value="TANK_2">Tank 2 (big horizontal)</SelectItem>
+                      <SelectItem value="TANK_1">LDO tank 1 (small vertical)</SelectItem>
+                      <SelectItem value="TANK_2">LDO tank 2 (big horizontal)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -615,7 +647,7 @@ export function HeatingSessionDialog({
             <CardHeader className="py-3"><CardTitle className="text-base">LDO tank dip readings</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
-                <Label>Tank 1 (small vertical) — opening dip (cm)</Label>
+                <Label>LDO tank 1 (small vertical) — opening dip (cm)</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -635,7 +667,7 @@ export function HeatingSessionDialog({
                 )}
               </div>
               <div>
-                <Label>Tank 1 (small vertical) — closing dip (cm)</Label>
+                <Label>LDO tank 1 (small vertical) — closing dip (cm)</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -649,7 +681,7 @@ export function HeatingSessionDialog({
                 }
               </div>
               <div>
-                <Label>Tank 2 (big horizontal) — opening dip (cm)</Label>
+                <Label>LDO tank 2 (big horizontal) — opening dip (cm)</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -669,7 +701,7 @@ export function HeatingSessionDialog({
                 )}
               </div>
               <div>
-                <Label>Tank 2 (big horizontal) — closing dip (cm)</Label>
+                <Label>LDO tank 2 (big horizontal) — closing dip (cm)</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -684,8 +716,8 @@ export function HeatingSessionDialog({
               </div>
               {(() => {
                 const parts = [
-                  { tank: 1, openStr: form.ldoTank1OpeningDip, closeStr: form.ldoTank1ClosingDip, label: "Tank 1 (small vertical)" },
-                  { tank: 2, openStr: form.ldoTank2OpeningDip, closeStr: form.ldoTank2ClosingDip, label: "Tank 2 (big horizontal)" },
+                  { tank: 1, openStr: form.ldoTank1OpeningDip, closeStr: form.ldoTank1ClosingDip, label: "LDO tank 1 (small vertical)" },
+                  { tank: 2, openStr: form.ldoTank2OpeningDip, closeStr: form.ldoTank2ClosingDip, label: "LDO tank 2 (big horizontal)" },
                 ];
                 const results = parts.map(({ tank, openStr, closeStr, label }) => {
                   const o = parseFloat(openStr);
