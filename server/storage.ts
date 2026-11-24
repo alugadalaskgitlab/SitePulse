@@ -971,7 +971,7 @@ export interface IStorage {
   }>;
 
   // Physical stock correction (reconcile book stock to physical measurement)
-  postStockCorrection(data: { materialId: number; partyId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; ledgerEntry: StockLedgerEntry | null }>;
+  postStockCorrection(data: { materialId: number; partyId: number; physicalQty: number; tank1L?: number; tank2L?: number; uom: string; date: string; notes: string; correctedBy: string }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; uom: string; ledgerEntry: StockLedgerEntry | null }>;
 
   // Physical Stock Reconciliation (Task #1385) — batch, ledger-backed, idempotent
   ensureStockReconciliationTables(): Promise<void>;
@@ -10133,15 +10133,17 @@ export class DatabaseStorage implements IStorage {
     materialId: number;
     partyId: number;
     physicalQty: number;
+    tank1L?: number;
+    tank2L?: number;
     uom: string;
     date: string;
     notes: string;
     correctedBy: string;
-  }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; ledgerEntry: StockLedgerEntry | null }> {
+  }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; uom: string; ledgerEntry: StockLedgerEntry | null }> {
     return db.transaction(async (tx) => {
       // Storage-boundary validation must happen before the balance lock/write
       // and before the correction ledger entry.
-      const [material] = await tx.select({ name: plantMaterials.name }).from(plantMaterials)
+      const [material] = await tx.select().from(plantMaterials)
         .where(eq(plantMaterials.id, data.materialId)).limit(1);
       if (!material) throw new Error(`Plant material #${data.materialId} not found`);
       assertValidDieselPhysicalStock(material.name, data.physicalQty);
@@ -10155,10 +10157,70 @@ export class DatabaseStorage implements IStorage {
       `);
       const existing = locked.rows?.[0] as { id: number; balance: string | number; uom: string | null } | undefined;
       const previousBalance = existing?.balance != null ? Number(existing.balance) : 0;
-      const adjustment = Math.round((data.physicalQty - previousBalance) * 1e6) / 1e6;
       // Always use the existing balance's UOM so the ledger stays consistent.
       // The caller's uom is only a fallback when no balance row exists yet.
       const effectiveUom = existing?.uom ?? data.uom;
+
+      if (/^ldo$/i.test(material.name.trim()) && data.tank1L != null && data.tank2L != null) {
+        if (![data.tank1L, data.tank2L].every(value => Number.isFinite(value) && value >= 0)) {
+          throw new Error("Enter non-negative physical quantities for both LDO tanks.");
+        }
+        const ledgerRows = await tx.select({
+          quantityIn: stockLedger.quantityIn,
+          quantityOut: stockLedger.quantityOut,
+          uom: stockLedger.uom,
+          stockPosition: stockLedger.stockPosition,
+          tankNumber: stockLedger.tankNumber,
+        }).from(stockLedger).where(and(
+          eq(stockLedger.materialId, data.materialId),
+          eq(stockLedger.partyId, data.partyId),
+        )).orderBy(asc(stockLedger.id)).for("update");
+        const density = Number(material.bulkDensity) || null;
+        const tank1Before = tankPositionBalance({ entries: ledgerRows, tankNumber: 1, stockUom: "Liters", bulkDensity: density });
+        const tank2Before = tankPositionBalance({ entries: ledgerRows, tankNumber: 2, stockUom: "Liters", bulkDensity: density });
+        const balanceDelta = (targetLiters: number, previousLiters: number) =>
+          convertStockQuantity(targetLiters - previousLiters, "Liters", effectiveUom, density);
+        const delta1 = balanceDelta(data.tank1L, tank1Before);
+        const delta2 = balanceDelta(data.tank2L, tank2Before);
+        const newBalance = roundStockQuantity(previousBalance + delta1 + delta2);
+        let runningBalance = previousBalance;
+        let ledgerEntry: StockLedgerEntry | null = null;
+        for (const [tankNumber, delta] of [[1, delta1], [2, delta2]] as const) {
+          if (Math.abs(delta) < 1e-6) continue;
+          runningBalance = roundStockQuantity(runningBalance + delta);
+          const [entry] = await tx.insert(stockLedger).values({
+            date: data.date,
+            partyId: data.partyId,
+            materialId: data.materialId,
+            transactionType: "adjustment",
+            quantityIn: delta > 0 ? delta : 0,
+            quantityOut: delta < 0 ? -delta : 0,
+            balanceAfter: runningBalance,
+            uom: effectiveUom,
+            notes: `Physical Tank ${tankNumber} correction by ${data.correctedBy}${data.notes ? ` — ${data.notes}` : ""}`,
+            tankNumber,
+            stockPosition: tankNumber === 1 ? "tank_1" : "tank_2",
+          }).returning();
+          ledgerEntry = entry ?? ledgerEntry;
+        }
+        if (existing) {
+          await tx.update(stockBalances).set({ balance: newBalance, lastUpdated: new Date() })
+            .where(eq(stockBalances.id, Number(existing.id)));
+        } else {
+          await tx.insert(stockBalances).values({
+            partyId: data.partyId, materialId: data.materialId, balance: newBalance, uom: effectiveUom,
+          });
+        }
+        return {
+          adjustment: roundStockQuantity(newBalance - previousBalance),
+          previousBalance,
+          newBalance,
+          uom: effectiveUom,
+          ledgerEntry,
+        };
+      }
+
+      const adjustment = Math.round((data.physicalQty - previousBalance) * 1e6) / 1e6;
 
       // Update or create the party's balance
       if (existing) {
@@ -10189,7 +10251,7 @@ export class DatabaseStorage implements IStorage {
         ledgerEntry = entry;
       }
 
-      return { adjustment, previousBalance, newBalance: data.physicalQty, ledgerEntry };
+      return { adjustment, previousBalance, newBalance: data.physicalQty, uom: effectiveUom, ledgerEntry };
     });
   }
 

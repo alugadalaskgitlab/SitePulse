@@ -8390,9 +8390,12 @@ export async function registerRoutes(
   app.post("/api/plant-module/stock-correction", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
-      const { materialId, partyId, physicalQty, uom, date, notes, correctedBy } = req.body;
+      const { materialId, partyId, physicalQty, tank1L, tank2L, uom, date, notes, correctedBy } = req.body;
       if (!materialId || !partyId || physicalQty === undefined || !uom || !date) {
         return res.status(400).json({ message: "materialId, partyId, physicalQty, uom and date are required" });
+      }
+      if ((tank1L !== undefined && !Number.isFinite(Number(tank1L))) || (tank2L !== undefined && !Number.isFinite(Number(tank2L)))) {
+        return res.status(400).json({ message: "Tank readings must be valid numbers" });
       }
       const numericPhysicalQty = Number(physicalQty);
       const correctionMaterial = (await storage.getAllPlantMaterials()).find((m) => m.id === Number(materialId));
@@ -8409,6 +8412,8 @@ export async function registerRoutes(
         materialId: Number(materialId),
         partyId: Number(partyId),
         physicalQty: numericPhysicalQty,
+        tank1L: tank1L === undefined ? undefined : Number(tank1L),
+        tank2L: tank2L === undefined ? undefined : Number(tank2L),
         uom,
         date,
         notes: notes || "",
