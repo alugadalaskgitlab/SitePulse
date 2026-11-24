@@ -1058,6 +1058,10 @@ export const dispatchProOutbox = pgTable("dispatchpro_outbox", {
   dispatchIdx: index("dispatchpro_outbox_dispatch_idx").on(table.dispatchId, table.id),
   externalRefIdx: index("dispatchpro_outbox_external_ref_idx").on(table.externalRef),
   supplyOrderIdx: index("dispatchpro_outbox_supply_order_idx").on(table.supplyOrderId, table.id),
+  operationCheck: check(
+    "dispatchpro_outbox_operation_check",
+    sql`${table.operation} IN ('create', 'patch', 'cancel', 'order')`,
+  ),
 }));
 
 // Equipment Usage Entry (with meter readings and diesel tank tracking)
