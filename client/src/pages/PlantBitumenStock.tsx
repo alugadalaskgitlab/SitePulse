@@ -22,6 +22,7 @@ import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
 import { format, parseISO } from "date-fns";
 import type { BitumenDipReading, Party, MixTemplate, TruckDispatch } from "@shared/schema";
 import { formatQty, toFiniteNumber } from "@shared/stockReconciliation";
+import { calculateHlcBitumenCorrectionTarget } from "@shared/plantNormVsActual";
 import {
   BITUMEN_DIP_CHART,
   BITUMEN_DENSITY_KG_PER_LITER,
@@ -51,7 +52,8 @@ function classifyReadingSource(r: { sourceShiftLogId?: number | null; sourceHeat
 export default function PlantBitumenStock() {
   const { toast } = useToast();
   const { sectionCan, featureCan, user } = useAuth();
-  const { companyName, companyShortName, defaultPlantName, logoFile } = useFeatureFlags();
+  const canViewNormActual = sectionCan("plant_norm_vs_actual", "view");
+  const { companyName, companyShortName, defaultPlantName, logoFile, ownCompanyPartyId, ownCompanyPartyName } = useFeatureFlags();
   const canCreate = featureCan("plant_receipts", "add");
   const canEdit = featureCan("plant_receipts", "edit");
   const canDelete = featureCan("hmp_rmc", "cancel");
@@ -981,7 +983,7 @@ export default function PlantBitumenStock() {
       </div>
 
       {/* ── Physical Stock Correction Card ── */}
-      {user?.isOwner && bitumenMaterialId && (
+      {user?.isOwner && bitumenMaterialId && ownCompanyPartyId != null && (
         <Card className="border-blue-200 dark:border-blue-800">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -991,9 +993,7 @@ export default function PlantBitumenStock() {
               </div>
               {!showCorrForm && (
                 <Button size="sm" variant="outline" onClick={() => {
-                  if (!corrPartyId && bitumenPartyBalances.length > 0) {
-                    setCorrPartyId(String(bitumenPartyBalances[0].partyId));
-                  }
+                  setCorrPartyId(String(ownCompanyPartyId));
                   const t1MT = (tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3);
                   const t2MT = (tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3);
                   if (!corrTank1MT) setCorrTank1MT(t1MT);
@@ -1044,7 +1044,7 @@ export default function PlantBitumenStock() {
                     </div>
                   );
                 })() : <div className="text-muted-foreground">—</div>}
-                <div className="text-sm text-muted-foreground mt-1">Post a correction to align a party's book stock with actual physical measurement</div>
+                <div className="text-sm text-muted-foreground mt-1">Any shared-tank difference is posted to HLC; dispatch-based party balances are left unchanged.</div>
               </div>
             </div>
 
@@ -1052,27 +1052,15 @@ export default function PlantBitumenStock() {
               <div className="border rounded-lg p-4 space-y-4 bg-blue-50/50 dark:bg-blue-950/20">
                 <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Post Physical Stock Correction</p>
 
-                {/* Party selector */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-sm">Party to Correct</Label>
-                    <Select value={corrPartyId} onValueChange={id => setCorrPartyId(id)}>
-                      <SelectTrigger data-testid="select-corr-party">
-                        <SelectValue placeholder="Select party" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {parties?.map(p => (
-                          <SelectItem key={p.id} value={String(p.id)}>
-                            {p.name}
-                            {bitumenPartyBalances.find(b => b.partyId === p.id) !== undefined &&
-                              ` (${formatQty(bitumenPartyBalances.find(b => b.partyId === p.id)?.balance, 3)} MT)`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label className="text-sm">Correction party</Label>
+                    <p className="rounded-md border bg-muted px-3 py-2 text-sm font-semibold" data-testid="text-bitumen-correction-party">
+                      {ownCompanyPartyName || "HLC company party"}
+                    </p>
                     {corrPartyId && selectedPartyBalance !== null && (
                       <p className="text-sm text-muted-foreground mt-1">
-                        Current book stock: <span className={(toFiniteNumber(selectedPartyBalance) ?? 0) < 0 ? "text-red-500 font-medium" : "font-medium"}>{formatQty(selectedPartyBalance, 3)} MT</span>
+                        HLC book stock: <span className={(toFiniteNumber(selectedPartyBalance) ?? 0) < 0 ? "text-red-500 font-medium" : "font-medium"}>{formatQty(selectedPartyBalance, 3)} MT</span>
                       </p>
                     )}
                   </div>
@@ -1118,19 +1106,19 @@ export default function PlantBitumenStock() {
                     </div>
                     {corrPartyId && selectedPartyBalance !== null && (corrTank1MT || corrTank2MT) && (
                       <div className={`rounded-lg p-2 text-center ${
-                        ((parseFloat(corrTank1MT) || 0) + (parseFloat(corrTank2MT) || 0)) - selectedPartyBalance > 0
+                        bitumenBookStockMT !== null && ((parseFloat(corrTank1MT) || 0) + (parseFloat(corrTank2MT) || 0)) - bitumenBookStockMT > 0
                           ? "bg-green-50 dark:bg-green-900/20"
                           : "bg-red-50 dark:bg-red-900/20"
                       }`}>
-                        <div className="text-sm text-muted-foreground">Adjustment</div>
+                        <div className="text-sm text-muted-foreground">HLC adjustment</div>
                         <div className={`font-bold text-base ${
-                          ((parseFloat(corrTank1MT) || 0) + (parseFloat(corrTank2MT) || 0)) - selectedPartyBalance > 0
+                          bitumenBookStockMT !== null && ((parseFloat(corrTank1MT) || 0) + (parseFloat(corrTank2MT) || 0)) - bitumenBookStockMT > 0
                             ? "text-green-700 dark:text-green-400"
                             : "text-red-700 dark:text-red-400"
                         }`}>
                           {(() => {
                             const total = (parseFloat(corrTank1MT) || 0) + (parseFloat(corrTank2MT) || 0);
-                            const adj = total - selectedPartyBalance;
+                            const adj = bitumenBookStockMT === null ? 0 : total - bitumenBookStockMT;
                             return `${adj > 0 ? "+" : ""}${adj.toFixed(3)} MT`;
                           })()}
                         </div>
@@ -1147,20 +1135,26 @@ export default function PlantBitumenStock() {
                 <div className="flex gap-2">
                   <Button
                     size="sm"
-                    disabled={!corrPartyId || (!corrTank1MT && !corrTank2MT) || correctionMutation.isPending}
+                    disabled={!ownCompanyPartyId || corrPartyId !== String(ownCompanyPartyId) || (!corrTank1MT && !corrTank2MT) || correctionMutation.isPending}
                     onClick={() => {
                       if (!bitumenMaterialId || !corrPartyId) return;
                       const t1 = parseFloat(corrTank1MT) || 0;
                       const t2 = parseFloat(corrTank2MT) || 0;
                       const total = t1 + t2;
-                      const partyName = parties?.find(p => String(p.id) === corrPartyId)?.name || `Party ${corrPartyId}`;
+                      if (bitumenBookStockMT == null) return;
+                      const correction = calculateHlcBitumenCorrectionTarget({
+                        physicalTotalMt: total,
+                        allPartyBookMt: bitumenBookStockMT,
+                        hlcBookMt: selectedPartyBalance ?? 0,
+                      });
+                      const partyName = ownCompanyPartyName || "HLC";
                       correctionMutation.mutate({
                         materialId: bitumenMaterialId,
                         partyId: parseInt(corrPartyId),
-                        physicalQty: total,
+                        physicalQty: correction.targetHlcMt,
                         uom: "MT",
                         date: corrDate,
-                        notes: corrNotes || `Bitumen dip reconciliation — T1: ${t1.toFixed(3)} MT, T2: ${t2.toFixed(3)} MT (${partyName})`,
+                        notes: corrNotes || `Shared-tank dip/book difference ${correction.adjustmentMt.toFixed(3)} MT posted to ${partyName} only — T1: ${t1.toFixed(3)} MT, T2: ${t2.toFixed(3)} MT`,
                         correctedBy: "admin",
                       });
                     }}
@@ -1178,7 +1172,7 @@ export default function PlantBitumenStock() {
         </Card>
       )}
 
-      <Card>
+      {canViewNormActual && <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-amber-600" />
@@ -1378,7 +1372,7 @@ export default function PlantBitumenStock() {
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card>}
 
       {dailySummary.length > 0 && (
         <Card>

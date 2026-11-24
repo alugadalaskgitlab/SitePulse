@@ -575,6 +575,16 @@ export function canLegacySection(
   state: FeatureAccessState,
   path?: string,
 ): boolean {
+  // Plant norm-vs-actual is HLC-only business information. It deliberately
+  // does not inherit a broad plant or Reports feature grant. Owner access is
+  // implicit; other users need an explicit permission-matrix grant.
+  if (section === "plant_norm_vs_actual") {
+    if (!user || user.isActive === false) return false;
+    if (user.isOwner) return true;
+    const explicit = (state.legacyPermissions ?? matrix)?.[section] as Record<string, boolean> | undefined;
+    const legacyAction = action === "add" ? "create" : action === "cancel" ? "delete" : action;
+    return !!explicit?.[legacyAction];
+  }
   if (section === "lab_tests") {
     if (!user || user.isActive === false) return false;
     if (user.isOwner) return true;
@@ -669,5 +679,8 @@ export function projectFeaturePermissions(
       if (feature === "reports") row.view_reports ||= allowed("view");
     }
   }
+  // This confidential operational report is granted through its explicit
+  // user permission entry, not a broad feature role.
+  projected.plant_norm_vs_actual = { ...legacyMatrix.plant_norm_vs_actual };
   return projected;
 }

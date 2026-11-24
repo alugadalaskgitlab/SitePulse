@@ -917,6 +917,22 @@ function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: str
           </Card>
         </Link>
         )}
+        {sectionVisible("plant_norm_vs_actual") && (
+        <Link href={opLink("/plant/norm-vs-actual")}>
+          <Card className="hover-elevate cursor-pointer h-full border-slate-300" data-testid="tile-plant-norm-vs-actual">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                <BarChart3 className="w-7 h-7 text-slate-700 dark:text-slate-300" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Plant norm vs actual</h3>
+                <p className="text-sm text-muted-foreground">Confidential bitumen and LDO dip comparison</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+        )}
       </div>
     </div>
   );

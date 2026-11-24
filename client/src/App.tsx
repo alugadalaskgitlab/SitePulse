@@ -99,6 +99,7 @@ const PlantShiftLogManpowerReview   = lazy(() => import("@/pages/PlantShiftLogMa
 const PlantShiftLog                 = lazy(() => import("@/pages/PlantShiftLog"));
 const PlantDailyReport              = lazy(() => import("@/pages/PlantDailyReport"));
 const PlantDailyReports             = lazy(() => import("@/pages/PlantDailyReports"));
+const PlantNormActualReport         = lazy(() => import("@/pages/PlantNormActualReport"));
 const PlantHeatingSessions          = lazy(() => import("@/pages/PlantHeatingSessions"));
 const PlantHeatingTrends            = lazy(() => import("@/pages/PlantHeatingTrends"));
 const PlantProjectReport            = lazy(() => import("@/pages/PlantProjectReport"));
@@ -441,6 +442,7 @@ function AuthedShell() {
           <Route path="/plant/shift-log" component={gated(PlantShiftLog, "plant_shift_logs")} />
           <Route path="/plant/shift-log/:date" component={gated(PlantShiftLog, "plant_shift_logs")} />
           <Route path="/plant/daily-reports" component={gated(PlantDailyReports, "plant_daily_reports")} />
+          <Route path="/plant/norm-vs-actual" component={gated(PlantNormActualReport, "plant_norm_vs_actual")} />
           <Route path="/plant/daily-report" component={gated(PlantDailyReport, "plant_daily_reports")} />
           <Route path="/plant/daily-report/:date" component={gated(PlantDailyReport, "plant_daily_reports")} />
           <Route path="/plant/heating-sessions" component={gated(PlantHeatingSessions, "plant_heating")} />

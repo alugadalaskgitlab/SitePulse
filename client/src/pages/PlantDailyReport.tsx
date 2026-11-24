@@ -18,6 +18,8 @@ import DryerSourceFixDialog, { type DryerSourceFixTarget } from "@/components/Dr
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { PlantNormActualDaySummary } from "@/components/PlantNormActualSummary";
+import { useAuth } from "@/lib/auth-context";
 
 type DailyPlantSummary = {
   date: string;
@@ -120,6 +122,8 @@ export default function PlantDailyReport() {
   const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const { toast } = useToast();
   const { defaultPlantName } = useFeatureFlags();
+  const { sectionCan } = useAuth();
+  const canViewNormActual = sectionCan("plant_norm_vs_actual", "view");
   const [, params] = useRoute("/plant/daily-report/:date");
   const backHref = appendPlantContext("/plant/daily-reports", { defaultTab: "reports" });
   const [date, setDate] = useState(params?.date || format(new Date(), "yyyy-MM-dd"));
@@ -217,6 +221,8 @@ export default function PlantDailyReport() {
           </InstalledDocumentLink></ReportExportGate>
         </div>
       </div>
+
+      <PlantNormActualDaySummary date={date} plantName={plantName} />
 
       {mismatch && mismatch.shiftLogValue && (() => {
         const slValue = mismatch.shiftLogValue;
@@ -328,9 +334,9 @@ export default function PlantDailyReport() {
               <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <KV label="Loads" value={data.production.totalLoads} testId="text-loads" />
                 <KV label="Total MT" value={fmt(data.production.totalProductionMT)} testId="text-mt" />
-                <KV label="Theoretical Bitumen MT" value={fmt(data.production.theoreticalBitumenMT, 3)} />
-                <KV label="Theoretical LDO L" value={fmt(data.production.theoreticalLdoL, 1)} />
-                {bitConsumedMt != null && (
+                {canViewNormActual && <KV label="Theoretical Bitumen MT" value={fmt(data.production.theoreticalBitumenMT, 3)} />}
+                {canViewNormActual && <KV label="Theoretical LDO L" value={fmt(data.production.theoreticalLdoL, 1)} />}
+                {canViewNormActual && bitConsumedMt != null && (
                   <KV label="Actual Bitumen MT (dip)" value={fmtMt(bitConsumedMt)} />
                 )}
               </CardContent>
@@ -357,7 +363,7 @@ export default function PlantDailyReport() {
                 </CardContent>
               )}
 
-              {!data.shift?.noMainPlantOps && (data.ldo.consumedT1L != null || data.ldo.consumedT2L != null) && (() => {
+              {canViewNormActual && !data.shift?.noMainPlantOps && (data.ldo.consumedT1L != null || data.ldo.consumedT2L != null) && (() => {
                 const totalL = data.ldo.consumedTotalL ?? 0;
                 const shiftHrs = (totalL > 0 && data.ldo.lPerHour && data.ldo.lPerHour > 0)
                   ? totalL / data.ldo.lPerHour : null;
@@ -466,7 +472,7 @@ export default function PlantDailyReport() {
                     );
                   })}
                 </div>
-                {bitConsumedMt != null && (
+                {canViewNormActual && bitConsumedMt != null && (
                   <div className="border-t pt-3 grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="md:col-span-4 text-sm font-medium text-muted-foreground">Consumed today (opening − closing dip)</div>
                     {bitT1Consumed != null && <KV label="Tank 1 Consumed MT" value={fmtMt(bitT1Consumed)} />}

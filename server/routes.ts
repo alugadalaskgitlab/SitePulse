@@ -28,6 +28,8 @@ import { getNormBookState, isSnlItemFromActiveSource, isSnlItemFromSourceCode, i
 import { MORTH_SDB_DISPLAY_NAME, MORTH_SDB_SOURCE_CODE, NORM_BOOK_SETTING_KEY } from "@shared/normBook";
 import PDFDocument from 'pdfkit';
 import { projectBillHireReviews, hireReviewTable, MONTHLY_BILL_HEADERS } from "../shared/vendorBillLayout";
+import { enforceBitumenCorrectionParty } from "@shared/plantNormVsActual";
+import { buildPlantNormActualReport, validPlantNormActualRange } from "./plantNormActual";
 import { getBillFinancialTotals } from "../shared/vendorBillFinancialReport";
 import { buildSavedBillPresentationRows } from "../shared/vendorBillPresentation";
 import { getBaseSiteName } from "../shared/siteName";
@@ -8585,6 +8587,16 @@ export async function registerRoutes(
       const numericPhysicalQty = Number(physicalQty);
       const correctionMaterial = (await storage.getAllPlantMaterials()).find((m) => m.id === Number(materialId));
       if (!correctionMaterial) return res.status(400).json({ code: "MATERIAL_NOT_FOUND", message: `Plant material #${materialId} not found` });
+      let correctionPartyId = Number(partyId);
+      try {
+        correctionPartyId = enforceBitumenCorrectionParty(
+          correctionMaterial.name,
+          correctionPartyId,
+          await storage.getOwnCompanyPartyId(),
+        );
+      } catch (err: any) {
+        return res.status(400).json({ message: err?.message || "Bitumen correction must use the company party." });
+      }
       try {
         assertValidDieselPhysicalStock(correctionMaterial.name, numericPhysicalQty);
       } catch (err) {
@@ -8595,7 +8607,7 @@ export async function registerRoutes(
       }
       const result = await storage.postStockCorrection({
         materialId: Number(materialId),
-        partyId: Number(partyId),
+        partyId: correctionPartyId,
         physicalQty: numericPhysicalQty,
         tank1L: tank1L === undefined ? undefined : Number(tank1L),
         tank2L: tank2L === undefined ? undefined : Number(tank2L),
@@ -10410,6 +10422,133 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Could not build plant reconciliation." });
+    }
+  });
+
+  // Confidential HLC-only comparison. Kept separate from party statements and
+  // DispatchPro payloads so the variance can never leak through those paths.
+  app.get("/api/plant-module/norm-vs-actual/day/:date", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_norm_vs_actual")) return;
+      const date = String(req.params.date || "");
+      const plantName = String(req.query.plant || await storage.getDefaultPlantName());
+      if (!validPlantNormActualRange(date, date)) {
+        return res.status(400).json({ message: "Choose a valid date." });
+      }
+      if (!await assertReportPlant(req, res, plantName)) return;
+      const report = await buildPlantNormActualReport(storage, { from: date, to: date, plantName });
+      res.json({
+        date,
+        plantName,
+        daily: report.daily[0] ?? { date, bitumenNormMt: 0, bitumenActualMt: null, ldoNormL: 0, ldoActualL: null },
+        totals: report.totals,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Could not build norm-vs-actual summary." });
+    }
+  });
+
+  app.get("/api/plant-module/norm-vs-actual", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_norm_vs_actual")) return;
+      const from = String(req.query.from || "");
+      const to = String(req.query.to || "");
+      const plantName = String(req.query.plant || await storage.getDefaultPlantName());
+      if (!validPlantNormActualRange(from, to)) {
+        return res.status(400).json({ message: "Choose a valid date range of no more than 367 days." });
+      }
+      if (!await assertReportPlant(req, res, plantName)) return;
+      res.json(await buildPlantNormActualReport(storage, { from, to, plantName }));
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Could not build norm-vs-actual report." });
+    }
+  });
+
+  app.get("/api/plant-module/norm-vs-actual/export", async (req, res) => {
+    try {
+      if (!assertReportExport(req, res, "plant_norm_vs_actual")) return;
+      const from = String(req.query.from || "");
+      const to = String(req.query.to || "");
+      const plantName = String(req.query.plant || await storage.getDefaultPlantName());
+      const format = String(req.query.format || "xlsx").toLowerCase();
+      if (!validPlantNormActualRange(from, to)) {
+        return res.status(400).json({ message: "Choose a valid date range of no more than 367 days." });
+      }
+      if (format !== "xlsx" && format !== "pdf") {
+        return res.status(400).json({ message: "Choose PDF or Excel." });
+      }
+      if (!await assertReportPlant(req, res, plantName)) return;
+      const report = await buildPlantNormActualReport(storage, { from, to, plantName });
+      const safeRange = `${from}-to-${to}`;
+      if (format === "xlsx") {
+        const workbook = xlsx.utils.book_new();
+        const summaryRows = report.groups.map(row => ({
+          Party: row.partyName,
+          Order: row.orderNo || "No linked order",
+          Mix: row.mixName,
+          "Bitumen norm (MT)": row.bitumenNormMt,
+          "Bitumen actual (MT)": "Shared tank — see HLC total",
+          "LDO norm (L)": row.ldoNormL,
+          "LDO actual (L)": "Shared plant — see HLC total",
+        }));
+        summaryRows.push({
+          Party: "HLC plant total",
+          Order: "",
+          Mix: "",
+          "Bitumen norm (MT)": report.totals.bitumenNormMt,
+          "Bitumen actual (MT)": report.totals.bitumenActualMt ?? "Unavailable",
+          "LDO norm (L)": report.totals.ldoNormL,
+          "LDO actual (L)": report.totals.ldoActualL ?? "Unavailable",
+        });
+        xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(summaryRows), "Party and order");
+        xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(report.daily.map(day => ({
+          Date: day.date,
+          "Bitumen norm (MT)": day.bitumenNormMt,
+          "Bitumen actual (MT)": day.bitumenActualMt ?? "",
+          "Bitumen saved / excess (MT)": day.bitumenActualMt == null ? "" : Number((day.bitumenNormMt - day.bitumenActualMt).toFixed(3)),
+          "LDO norm (L)": day.ldoNormL,
+          "LDO actual (L)": day.ldoActualL ?? "",
+          "LDO saved / excess (L)": day.ldoActualL == null ? "" : Number((day.ldoNormL - day.ldoActualL).toFixed(1)),
+        }))), "Daily");
+        const buffer = xlsx.write(workbook, { type: "buffer", bookType: "xlsx" });
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", `attachment; filename="plant-norm-vs-actual-${safeRange}.xlsx"`);
+        return res.send(buffer);
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="plant-norm-vs-actual-${safeRange}.pdf"`);
+      const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 34 });
+      doc.pipe(res);
+      doc.font("Helvetica-Bold").fontSize(16).text("Plant norm vs actual");
+      doc.font("Helvetica").fontSize(10).text(`${plantName} · ${from} to ${to}`);
+      doc.moveDown(0.6);
+      doc.font("Helvetica-Bold").text("Party / order / mix norms");
+      doc.font("Helvetica").fontSize(8);
+      doc.text("Party | Order | Mix | Bitumen norm MT | LDO norm L");
+      doc.moveTo(34, doc.y + 2).lineTo(808, doc.y + 2).stroke();
+      doc.moveDown(0.35);
+      for (const row of report.groups) {
+        if (doc.y > 520) doc.addPage();
+        doc.text(`${row.partyName} | ${row.orderNo || "No linked order"} | ${row.mixName} | ${row.bitumenNormMt.toFixed(3)} | ${row.ldoNormL.toFixed(1)}`, { width: 770 });
+      }
+      doc.moveDown(0.6);
+      doc.font("Helvetica-Bold").text("HLC plant total — shared tank actuals are not assigned to parties or orders.");
+      doc.font("Helvetica").text(`Bitumen: norm ${report.totals.bitumenNormMt.toFixed(3)} MT · actual ${report.totals.bitumenActualMt == null ? "unavailable" : `${report.totals.bitumenActualMt.toFixed(3)} MT`} · ${report.totals.bitumenVariance.saved == null ? "variance unavailable" : `${Math.abs(report.totals.bitumenVariance.saved).toFixed(3)} MT ${report.totals.bitumenVariance.label}`} (${report.totals.bitumenMeasuredDays}/${report.totals.normDays} norm days measured)`);
+      doc.text(`LDO: norm ${report.totals.ldoNormL.toFixed(1)} L · actual ${report.totals.ldoActualL == null ? "unavailable" : `${report.totals.ldoActualL.toFixed(1)} L`} · ${report.totals.ldoVariance.saved == null ? "variance unavailable" : `${Math.abs(report.totals.ldoVariance.saved).toFixed(1)} L ${report.totals.ldoVariance.label}`} (${report.totals.ldoMeasuredDays}/${report.totals.normDays} norm days measured)`);
+      doc.moveDown(0.6);
+      doc.font("Helvetica-Bold").text("Daily actuals");
+      doc.font("Helvetica").fontSize(8).text("Date | Bitumen norm MT | dips MT | LDO norm L | actual L");
+      doc.moveTo(34, doc.y + 2).lineTo(808, doc.y + 2).stroke();
+      doc.moveDown(0.35);
+      for (const day of report.daily) {
+        if (doc.y > 535) doc.addPage();
+        doc.text(`${day.date} | ${day.bitumenNormMt.toFixed(3)} | ${day.bitumenActualMt == null ? "—" : day.bitumenActualMt.toFixed(3)} | ${day.ldoNormL.toFixed(1)} | ${day.ldoActualL == null ? "—" : day.ldoActualL.toFixed(1)}`);
+      }
+      doc.end();
+    } catch (err: any) {
+      if (!res.headersSent) res.status(500).json({ message: err?.message || "Could not export norm-vs-actual report." });
+      else res.end();
     }
   });
 

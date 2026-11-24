@@ -467,6 +467,16 @@
       "notify": "Receive notifications for Daily Plant Reports (single day + PDF bulk), when user notifications and a device subscription are enabled."
     }
   },
+  "plant_norm_vs_actual": {
+    "actions": [
+      "view",
+      "export"
+    ],
+    "tooltips": {
+      "view": "View confidential HLC plant norm-versus-actual fuel information.",
+      "export": "Export the confidential HLC plant norm-versus-actual report."
+    }
+  },
   "plant_stock": {
     "actions": [
       "view",

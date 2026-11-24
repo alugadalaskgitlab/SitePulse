@@ -29,6 +29,7 @@ import { getLdoVolumeAtDepth, getLdoMaxDepth, getLdoDeadStockDepth, getLdoDeadSt
 import { materialTankLabel } from "@shared/materialMasterFields";
 import { computeTankStock } from "@/lib/ldoStock";
 import { LdoUsableStockStrip } from "@/components/LdoUsableStockStrip";
+import { PlantNormActualPeriodSummary } from "@/components/PlantNormActualSummary";
 
 const TANK_LABELS: Record<number, string> = { 1: "Boiler Meter", 2: "Dryer Meter" };
 
@@ -60,6 +61,7 @@ export default function PlantLdoFlowMeter() {
   const { toast } = useToast();
   const { companyShortName, defaultPlantName } = useFeatureFlags();
   const { sectionCan, user, featureCan } = useAuth();
+  const canViewNormActual = sectionCan("plant_norm_vs_actual", "view");
   const isOwner = user?.isOwner === true;
   const canCreate = featureCan("plant_receipts", "add");
   const canEdit = featureCan("plant_receipts", "edit");
@@ -1181,6 +1183,11 @@ export default function PlantLdoFlowMeter() {
           </Button>
         </Link>
       </div>
+      <PlantNormActualPeriodSummary
+        from={filterDateFrom || (new Date(Date.now() - 9 * 86_400_000)).toISOString().slice(0, 10)}
+        to={filterDateTo || new Date().toISOString().slice(0, 10)}
+        plantName={urlPlant}
+      />
 
       {/* Header strip — shows DIP-BASED usable stock (physical measurement).
           Flow-meter stock is shown inside each tank panel below as a reference.
@@ -1377,7 +1384,7 @@ export default function PlantLdoFlowMeter() {
         </Card>
       </div>
 
-      <Card>
+      {canViewNormActual && <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-blue-600" />
@@ -1577,7 +1584,7 @@ export default function PlantLdoFlowMeter() {
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card>}
 
       {dipDailySummary.length > 0 && (
         <Card>
@@ -1632,8 +1639,8 @@ export default function PlantLdoFlowMeter() {
       {dailySummary.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Daily LDO Consumption — Flow Meter</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">Shows actual LDO consumed per day per meter (opening → closing delta). Dryer meter is active; Boiler meter readings available when restored.</p>
+            <CardTitle className="text-sm font-medium">Meter readings — daily LDO consumption</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">Meter readings per day (opening → closing delta). The dip-based actual comparison above follows the plant log summary.</p>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">

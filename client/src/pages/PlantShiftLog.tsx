@@ -45,12 +45,14 @@ import { formatPackedUnitLabel } from "@shared/packedStock";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { personnelNameOptions } from "@/lib/personnelNameOptions";
+import { PlantNormActualDaySummary } from "@/components/PlantNormActualSummary";
 
 export default function PlantShiftLog() {
   const { toast } = useToast();
   const { defaultPlantName } = useFeatureFlags();
-  const { featureCan, user } = useAuth();
+  const { featureCan, sectionCan, user } = useAuth();
   const canVerify = featureCan("hmp_rmc", "verify");
+  const canViewNormActual = sectionCan("plant_norm_vs_actual", "view");
   const canAddPlantReceipt = featureCan("plant_receipts", "add");
   const canEditPlantDay = featureCan("hmp_rmc", "add") || featureCan("hmp_rmc", "edit");
   const { isFromPortal, appendPlantContext, getPlantBackLink } = useOrigin();
@@ -1570,6 +1572,7 @@ export default function PlantShiftLog() {
           </Link>
         </div>
       </div>
+      <PlantNormActualDaySummary date={date} plantName={plantName} />
       {dailyOrderSummaries.length > 0 && (
         <Card data-testid="shift-log-open-orders">
           <CardHeader className="pb-2"><CardTitle className="text-base">Open orders for this date</CardTitle></CardHeader>
@@ -2188,7 +2191,7 @@ export default function PlantShiftLog() {
         </DialogContent>
       </Dialog>
 
-      {canVerify && (
+      {canVerify && canViewNormActual && (
         <Card data-testid="card-end-of-day-reconciliation">
           <CardHeader><CardTitle>End-of-day reconciliation</CardTitle></CardHeader>
           <CardContent className="space-y-4">

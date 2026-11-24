@@ -57,6 +57,7 @@ export const SECTION_KEYS = [
 
   // ── HMP Plant — Reports & Ledgers ─────────────────────────────────────────
   "plant_daily_reports",
+  "plant_norm_vs_actual",
   "plant_stock",
   "plant_ldo_reconciliation",
   "plant_variance",
@@ -196,6 +197,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
 
   // HMP Reports
   plant_daily_reports: "Daily Plant Reports (single day + PDF bulk)",
+  plant_norm_vs_actual: "Norm vs actual (savings)",
   plant_stock: "Material Stock Ledger",
   plant_ldo_reconciliation: "LDO Book vs Physical Reconciliation",
   plant_variance: "Stock Variance Report",
@@ -281,6 +283,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
 export const SECTION_DESCRIPTIONS: Partial<Record<SectionKey, string>> = {
   fund_planner: "Bill value, material cost and margin planning",
   boq_item_sections: "Owner-only by default; does not change saved BOQ quantities",
+  plant_norm_vs_actual: "Confidential plant fuel comparison; Owner-only unless explicitly granted",
 };
 
 export const ACTIONS = ["view", "create", "edit", "delete", "view_reports", "export", "approve", "notify"] as const;
@@ -351,6 +354,9 @@ export function fullMatrix(): PermissionMatrix {
   for (const k of SECTION_KEYS) out[k] = { ...FULL_PERMISSION };
   out.vendor_financials = { ...EMPTY_PERMISSION };
   out.boq_item_sections = { ...EMPTY_PERMISSION };
+  // Savings are confidential by default; grant only through an explicit
+  // user permission. Owners bypass the matrix.
+  out.plant_norm_vs_actual = { ...EMPTY_PERMISSION };
   return out;
 }
 
