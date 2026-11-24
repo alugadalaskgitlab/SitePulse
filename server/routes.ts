@@ -118,7 +118,9 @@ import {
   dispatchProKeyMatches,
   enqueueDispatchProCancellation,
   enqueueDispatchProChange,
+  enqueueSupplyOrderDispatchPro,
   getDispatchProSites,
+  resolveSupplyOrderDispatchProLink,
   retryDispatchProChange,
 } from "./dispatchProOutbox";
 import {
@@ -1948,6 +1950,9 @@ export async function registerRoutes(
   app.post("/api/sites", async (req, res) => {
     try {
       if (!assertCreateEither(req, res, "sites_plants_manage", "admin_settings")) return;
+      if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "dispatchProSiteId") && !req.authUser?.isOwner) {
+        return res.status(403).json({ message: "Only the Owner can link a site to DispatchPro." });
+      }
       const input = insertSiteSchema.parse(req.body);
       const site = await storage.createSite({
         ...input,
@@ -1974,6 +1979,9 @@ export async function registerRoutes(
   app.patch("/api/sites/:id", async (req, res) => {
     try {
       if (!assertEditEither(req, res, "sites_plants_manage", "admin_settings")) return;
+      if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "dispatchProSiteId") && !req.authUser?.isOwner) {
+        return res.status(403).json({ message: "Only the Owner can link a site to DispatchPro." });
+      }
       const id = parseInt(req.params.id);
       const before = (await storage.getSites()).find(row => row.id === id);
       if (!before) return res.status(404).json({ message: "Site not found" });
@@ -5123,6 +5131,26 @@ export async function registerRoutes(
     effectiveAt: z.string().datetime({ offset: true }),
     reason: z.string().trim().min(1).max(1000),
   }).strict();
+  const queueSupplyOrderDispatch = async (order: any) => {
+    if (!order) return order;
+    let queueFailed = false;
+    try {
+      await enqueueSupplyOrderDispatchPro(order);
+    } catch {
+      queueFailed = true;
+      console.error("[DispatchPro] Could not queue supply order.");
+    }
+    const refreshed = await getPlantSupplyOrder(order.id) ?? order;
+    if (!queueFailed) return refreshed;
+    return {
+      ...refreshed,
+      dispatchPro: {
+        ...(refreshed.dispatchPro ?? {}),
+        status: "failed",
+        lastError: "Could not queue the order for DispatchPro.",
+      },
+    };
+  };
 
   app.get("/api/plant-module/supply-orders/options", async (req, res) => {
     if (!assertView(req, res, "plant_supply_orders")) return;
@@ -5202,10 +5230,11 @@ export async function registerRoutes(
     if (!assertCreate(req, res, "plant_supply_orders")) return;
     try {
       const input = plantSupplyOrderCreateSchema.parse(req.body);
-      const order = await createPlantSupplyOrder(input, {
+      const created = await createPlantSupplyOrder(input, {
         userId: Number(req.authUser?.id ?? 0),
         name: currentUserName(req),
       });
+      const order = await queueSupplyOrderDispatch(created);
       res.status(201).json(order);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid order." });
@@ -5344,10 +5373,11 @@ export async function registerRoutes(
       return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid order changes." });
     }
     try {
-      res.json(await editPlantSupplyOrder(Number(req.params.id), parsed.data, {
+      const edited = await editPlantSupplyOrder(Number(req.params.id), parsed.data, {
         userId,
         name: currentUserName(req),
-      }));
+      });
+      res.json(await queueSupplyOrderDispatch(edited));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not save order changes.";
       res.status(/already exists|unique/i.test(message) ? 409 : 400).json({ message });
@@ -5371,6 +5401,7 @@ export async function registerRoutes(
         parsed.data,
         { userId, name: currentUserName(req) },
       );
+      await queueSupplyOrderDispatch(result.order);
       res.json(result);
     } catch (err) {
       res.status(400).json({ message: err instanceof Error ? err.message : "Could not save the new mix version." });
@@ -5421,15 +5452,49 @@ export async function registerRoutes(
     const input = z.object({ status: z.enum(["open", "closed"]) }).strict().safeParse(req.body);
     if (!input.success) return res.status(400).json({ message: "Choose open or closed." });
     try {
-      const order = await setSupplyOrderStatus(Number(req.params.id), input.data.status, {
+      const updated = await setSupplyOrderStatus(Number(req.params.id), input.data.status, {
         userId,
         name: currentUserName(req),
       });
-      if (!order) return res.status(404).json({ message: "Plant supply order not found." });
+      if (!updated) return res.status(404).json({ message: "Plant supply order not found." });
+      const order = await queueSupplyOrderDispatch(updated);
       res.json(order);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not update order status.";
       res.status(/unique|one open/i.test(message) ? 409 : 400).json({ message });
+    }
+  });
+
+  app.post("/api/plant-module/supply-orders/:id/dispatchpro/retry", async (req, res) => {
+    if (!assertEdit(req, res, "plant_supply_orders")) return;
+    const userId = Number(req.authUser?.id ?? 0);
+    if (!req.authUser?.isOwner && !(await hasSupplyRole(userId, "P&M In-charge"))) {
+      return res.status(403).json({ message: "Only the Owner or P&M In-charge can retry an order send." });
+    }
+    const order = await getPlantSupplyOrder(Number(req.params.id));
+    if (!order) return res.status(404).json({ message: "Plant supply order not found." });
+    try {
+      await enqueueSupplyOrderDispatchPro(order);
+      return res.json(await getPlantSupplyOrder(order.id));
+    } catch {
+      return res.status(500).json({ message: "Could not queue the DispatchPro retry." });
+    }
+  });
+
+  app.post("/api/plant-module/supply-orders/:id/dispatchpro/link-choice", async (req, res) => {
+    if (!req.authUser?.isOwner) return res.status(403).json({ message: "Only the Owner can choose a DispatchPro site link." });
+    if (!assertEdit(req, res, "plant_supply_orders")) return;
+    const input = z.object({ choice: z.enum(["use_existing", "replace"]) }).strict().safeParse(req.body);
+    if (!input.success) return res.status(400).json({ message: "Choose whether to use the existing site or replace it." });
+    try {
+      await resolveSupplyOrderDispatchProLink(
+        Number(req.params.id),
+        input.data.choice,
+        { userId: Number(req.authUser.id), name: currentUserName(req) },
+      );
+      return res.json(await getPlantSupplyOrder(Number(req.params.id)));
+    } catch (error) {
+      return res.status(400).json({ message: error instanceof Error ? error.message : "Could not save the DispatchPro site choice." });
     }
   });
 

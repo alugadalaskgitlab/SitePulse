@@ -1,13 +1,22 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import crypto from "node:crypto";
 import { db, pool } from "./db";
-import { dispatchProOutbox, mixTemplates, parties, truckDispatches } from "@shared/schema";
+import {
+  auditLogs,
+  dispatchProOutbox,
+  mixTemplates,
+  parties,
+  plantSupplyOrders,
+  sites,
+  truckDispatches,
+} from "@shared/schema";
 
-type DispatchOperation = "create" | "patch" | "cancel";
+type DispatchOperation = "create" | "patch" | "cancel" | "order";
 type DispatchRecord = typeof truckDispatches.$inferSelect;
 type DispatchSite = { id: string; name: string };
 
 const DISPATCHPRO_DISPATCHES_PATH = "/api/integrations/sitepulse/dispatches";
+const DISPATCHPRO_ORDERS_PATH = "/api/integrations/sitepulse/orders";
 const MAX_RETRY_AGE_MS = 24 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 12_000;
 
@@ -77,7 +86,21 @@ function dispatchPayload(dispatch: DispatchRecord, siteId: string, mixType: stri
   };
 }
 
-async function linkedSiteId(partyId: number): Promise<string | null> {
+async function linkedSiteId(partyId: number, supplyOrderId?: number | null): Promise<string | null> {
+  if (supplyOrderId) {
+    const [order] = await db.select({
+      siteDispatchProSiteId: sites.dispatchProSiteId,
+      partyDispatchProSiteId: parties.dispatchProSiteId,
+    }).from(plantSupplyOrders)
+      .innerJoin(parties, eq(parties.id, plantSupplyOrders.partyId))
+      .leftJoin(sites, eq(sites.id, plantSupplyOrders.siteId))
+      .where(and(eq(plantSupplyOrders.id, supplyOrderId), eq(plantSupplyOrders.partyId, partyId)))
+      .limit(1);
+    const siteId = order?.siteDispatchProSiteId?.trim();
+    if (siteId) return siteId;
+    const orderPartyId = order?.partyDispatchProSiteId?.trim();
+    if (orderPartyId) return orderPartyId;
+  }
   const [party] = await db.select({ dispatchProSiteId: parties.dispatchProSiteId })
     .from(parties).where(eq(parties.id, partyId)).limit(1);
   return party?.dispatchProSiteId?.trim() || null;
@@ -86,7 +109,7 @@ async function linkedSiteId(partyId: number): Promise<string | null> {
 export async function enqueueDispatchProChange(dispatchId: number, operation: "create" | "patch") {
   const [dispatch] = await db.select().from(truckDispatches).where(eq(truckDispatches.id, dispatchId)).limit(1);
   if (!dispatch) return { queued: false, reason: "dispatch_not_found" };
-  const siteId = await linkedSiteId(dispatch.partyId);
+  const siteId = await linkedSiteId(dispatch.partyId, dispatch.supplyOrderId);
   if (!siteId) return { queued: false, reason: "party_not_linked" };
   const [template] = await db.select({ name: mixTemplates.name })
     .from(mixTemplates).where(eq(mixTemplates.id, dispatch.mixTemplateId)).limit(1);
@@ -139,8 +162,176 @@ export async function enqueueDispatchProChange(dispatchId: number, operation: "c
   return { queued: true, externalRef: payload.externalRef };
 }
 
-export async function enqueueDispatchProCancellation(dispatch: Pick<DispatchRecord, "id" | "partyId">) {
-  const siteId = await linkedSiteId(dispatch.partyId);
+export function buildSupplyOrderDispatchProPayload(order: any) {
+  return {
+    externalRef: `SP-ORDER-${order.id}`,
+    partyId: order.partyId,
+    partyName: order.partyName,
+    siteId: order.siteId ?? null,
+    siteName: order.siteName ?? null,
+    orderNo: order.orderNo,
+    mixLines: (order.lines ?? []).map((line: any) => {
+      const now = Date.now();
+      const activeVersion = (line.mixVersions ?? [])
+        .filter((version: any) => version.effectiveAt == null || new Date(version.effectiveAt).getTime() <= now)
+        .sort((a: any, b: any) => new Date(a.effectiveAt ?? 0).getTime() - new Date(b.effectiveAt ?? 0).getTime())
+        .at(-1);
+      const activeMix = activeVersion ?? line.orderMix;
+      return {
+        mixTemplateId: line.mixTemplateId,
+        mixName: activeMix?.mixName ?? line.mixName,
+        orderedMt: Number(line.orderedMt) || 0,
+        enteredQuantity: line.enteredQuantity == null ? null : Number(line.enteredQuantity),
+        enteredUnit: line.enteredUnit ?? null,
+        plannedMtPerDay: line.plannedMtPerDay == null ? null : Number(line.plannedMtPerDay),
+        orderMix: activeMix ? {
+          mixName: activeMix.mixName,
+          sourceBitumenPercent: Number(activeMix.sourceBitumenPercent) || 0,
+          bitumenPercent: Number(activeMix.bitumenPercent) || 0,
+          ldoNorm: activeMix.ldoNorm == null ? null : Number(activeMix.ldoNorm),
+          components: (activeMix.components ?? []).map((component: any) => ({
+            materialId: component.materialId,
+            materialName: component.materialName ?? null,
+            aggregateSharePercent: Number(component.aggregateSharePercent) || 0,
+          })),
+        } : null,
+      };
+    }),
+    periodFrom: order.periodFrom,
+    periodTo: order.periodTo,
+    status: order.status,
+  };
+}
+
+export async function enqueueSupplyOrderDispatchPro(order: any) {
+  if (!order?.id || !order.partyId || !order.orderNo) {
+    return { queued: false, reason: "order_not_ready" };
+  }
+  const payload = buildSupplyOrderDispatchProPayload(order);
+  const externalRef = payload.externalRef;
+  const [latest] = await db.select().from(dispatchProOutbox)
+    .where(eq(dispatchProOutbox.supplyOrderId, order.id))
+    .orderBy(desc(dispatchProOutbox.id)).limit(1);
+
+  if (latest && ["pending", "retry", "failed"].includes(latest.status)) {
+    await db.update(dispatchProOutbox).set({
+      operation: "order",
+      externalRef,
+      payload,
+      status: "pending",
+      attemptCount: 0,
+      nextAttemptAt: new Date(),
+      lastError: null,
+      responseSiteId: null,
+      responseSiteName: null,
+      linkChoice: null,
+      updatedAt: new Date(),
+      completedAt: null,
+    }).where(eq(dispatchProOutbox.id, latest.id));
+    return { queued: true, externalRef, coalesced: true };
+  }
+
+  await db.insert(dispatchProOutbox).values({
+    dispatchId: 0,
+    supplyOrderId: order.id,
+    externalRef,
+    operation: "order",
+    payload,
+    status: "pending",
+    nextAttemptAt: new Date(),
+  });
+  return { queued: true, externalRef };
+}
+
+export async function resolveSupplyOrderDispatchProLink(
+  orderId: number,
+  choice: "use_existing" | "replace",
+  actor: { userId: number; name: string },
+) {
+  return db.transaction(async (tx) => {
+    const [order] = await tx.select({
+      id: plantSupplyOrders.id,
+      partyId: plantSupplyOrders.partyId,
+      siteId: plantSupplyOrders.siteId,
+    }).from(plantSupplyOrders)
+      .where(eq(plantSupplyOrders.id, orderId)).limit(1);
+    if (!order) throw new Error("Plant supply order not found.");
+    if (!order.siteId) throw new Error("This order has no SitePulse site to link.");
+
+    const [latest] = await tx.select({
+      status: dispatchProOutbox.status,
+      responseSiteId: dispatchProOutbox.responseSiteId,
+      responseSiteName: dispatchProOutbox.responseSiteName,
+      id: dispatchProOutbox.id,
+    }).from(dispatchProOutbox)
+      .where(eq(dispatchProOutbox.supplyOrderId, orderId))
+      .orderBy(desc(dispatchProOutbox.id)).limit(1);
+    if (latest?.status !== "sent" || !latest.responseSiteId) {
+      throw new Error("DispatchPro has not returned a site id for this order yet.");
+    }
+    const [party] = await tx.select({
+      name: parties.name,
+      dispatchProSiteId: parties.dispatchProSiteId,
+    }).from(parties).where(eq(parties.id, order.partyId)).for("update").limit(1);
+    const [site] = await tx.select({
+      name: sites.name,
+      dispatchProSiteId: sites.dispatchProSiteId,
+    }).from(sites).where(eq(sites.id, order.siteId)).for("update").limit(1);
+    if (!party || !site) throw new Error("The linked party or site no longer exists.");
+
+    const partyLink = party.dispatchProSiteId?.trim() || null;
+    const siteLink = site.dispatchProSiteId?.trim() || null;
+    const target = choice === "replace"
+      ? latest.responseSiteId
+      : (partyLink && partyLink !== latest.responseSiteId)
+        ? partyLink
+        : (siteLink && siteLink !== latest.responseSiteId)
+          ? siteLink
+          : partyLink ?? siteLink;
+    if (!target) throw new Error("There is no existing DispatchPro site to use.");
+
+    if (choice === "replace" && partyLink && partyLink !== latest.responseSiteId) {
+      await tx.update(parties).set({ dispatchProSiteId: latest.responseSiteId })
+        .where(eq(parties.id, order.partyId));
+    }
+    await tx.update(sites).set({ dispatchProSiteId: target }).where(eq(sites.id, order.siteId));
+    await tx.update(dispatchProOutbox).set({ linkChoice: choice, updatedAt: new Date() })
+      .where(eq(dispatchProOutbox.id, latest.id));
+    await tx.insert(auditLogs).values({
+      module: "plant_supply_order",
+      transactionId: orderId,
+      action: "dispatchpro_site_link_choice",
+      userId: actor.userId,
+      userName: actor.name,
+      userRole: "owner",
+      oldValues: {
+        siteId: order.siteId,
+        siteName: site.name,
+        siteDispatchProSiteId: siteLink,
+        partyId: order.partyId,
+        partyName: party.name,
+        partyDispatchProSiteId: partyLink,
+      },
+      newValues: {
+        siteId: order.siteId,
+        siteName: site.name,
+        dispatchProSiteId: target,
+        choice,
+        proposedDispatchProSiteId: latest.responseSiteId,
+        proposedDispatchProSiteName: latest.responseSiteName,
+        partyId: order.partyId,
+        partyName: party.name,
+        partyDispatchProSiteId: choice === "replace" && partyLink ? latest.responseSiteId : partyLink,
+      },
+    });
+    return { dispatchProSiteId: target };
+  });
+}
+
+export async function enqueueDispatchProCancellation(
+  dispatch: Pick<DispatchRecord, "id" | "partyId"> & Partial<Pick<DispatchRecord, "supplyOrderId">>,
+) {
+  const siteId = await linkedSiteId(dispatch.partyId, dispatch.supplyOrderId);
   if (!siteId) return { queued: false, reason: "party_not_linked" };
   const externalRef = `SP-${dispatch.id}`;
   await db.insert(dispatchProOutbox).values({
@@ -177,6 +368,7 @@ export async function retryDispatchProChange(dispatchId: number) {
 export type ClaimedDispatchProOutbox = {
   id: number;
   dispatch_id: number;
+  supply_order_id: number | null;
   external_ref: string;
   operation: DispatchOperation;
   payload: Record<string, unknown>;
@@ -189,7 +381,7 @@ async function claimNext(): Promise<ClaimedDispatchProOutbox | null> {
   try {
     await client.query("BEGIN");
     const selected = await client.query<ClaimedDispatchProOutbox>(
-      `SELECT id, dispatch_id, external_ref, operation, payload, attempt_count, created_at
+      `SELECT id, dispatch_id, supply_order_id, external_ref, operation, payload, attempt_count, created_at
          FROM dispatchpro_outbox
         WHERE ((status IN ('pending', 'retry') AND next_attempt_at <= now())
            OR (status = 'sending' AND updated_at < now() - interval '10 minutes'))
@@ -219,7 +411,12 @@ async function claimNext(): Promise<ClaimedDispatchProOutbox | null> {
   }
 }
 
-async function markOutbox(row: ClaimedDispatchProOutbox, status: "sent" | "retry" | "failed", error?: string) {
+async function markOutbox(
+  row: ClaimedDispatchProOutbox,
+  status: "sent" | "retry" | "failed",
+  error?: string,
+  responseSite?: { id: string; name: string } | null,
+) {
   const ageMs = Date.now() - new Date(row.created_at).getTime();
   const expired = ageMs >= MAX_RETRY_AGE_MS;
   const finalStatus = status === "retry" && expired ? "failed" : status;
@@ -230,7 +427,12 @@ async function markOutbox(row: ClaimedDispatchProOutbox, status: "sent" | "retry
     nextAttemptAt: new Date(Date.now() + delayMs),
     updatedAt: new Date(),
     completedAt: finalStatus === "sent" || finalStatus === "failed" ? new Date() : null,
+    ...(responseSite ? {
+      responseSiteId: responseSite.id,
+      responseSiteName: responseSite.name,
+    } : {}),
   }).where(eq(dispatchProOutbox.id, row.id));
+  if (row.supply_order_id != null) return;
   if (finalStatus === "sent") return;
   const dispatchProSyncStatus = finalStatus === "retry"
     ? "waiting"
@@ -241,15 +443,94 @@ async function markOutbox(row: ClaimedDispatchProOutbox, status: "sent" | "retry
   }).where(eq(truckDispatches.id, row.dispatch_id));
 }
 
+function safeSupplyOrderError(responseStatus: number, error?: unknown) {
+  if (/auth|token|credential|unauthor/i.test(String(error ?? ""))) {
+    return "DispatchPro connection needs attention.";
+  }
+  if (responseStatus === 429 || responseStatus >= 500 || !responseStatus) {
+    return "Could not reach DispatchPro. Try again.";
+  }
+  return "DispatchPro could not accept this order. Check the order details and retry.";
+}
+
+function returnedOrderSite(body: any): { id: string; name: string } | null {
+  const result = body?.order ?? body?.data?.order ?? body?.data ?? body;
+  const site = result?.site ?? result?.dispatchProSite ?? body?.site ?? body?.data?.site ?? {};
+  const rawId = site.id ?? site.siteId ?? site.site_id ??
+    result?.siteId ?? result?.dispatchProSiteId ?? result?.dispatchproSiteId ??
+    body?.siteId ?? body?.dispatchProSiteId;
+  if (rawId == null || String(rawId).trim() === "") return null;
+  const name = site.siteCode ?? site.code ?? result?.siteCode ?? body?.siteCode ??
+    site.name ?? site.siteName ?? result?.siteName ?? body?.siteName ?? String(rawId);
+  return { id: String(rawId).trim(), name: String(name).trim() || String(rawId).trim() };
+}
+
+async function linkReturnedOrderSite(orderId: number, candidateSiteId: string) {
+  const [order] = await db.select({
+    partyId: plantSupplyOrders.partyId,
+    siteId: plantSupplyOrders.siteId,
+  }).from(plantSupplyOrders).where(eq(plantSupplyOrders.id, orderId)).limit(1);
+  if (!order?.siteId) return;
+
+  await db.transaction(async (tx) => {
+    const [party] = await tx.select({ dispatchProSiteId: parties.dispatchProSiteId })
+      .from(parties).where(eq(parties.id, order.partyId)).for("update").limit(1);
+    const [site] = await tx.select({ dispatchProSiteId: sites.dispatchProSiteId })
+      .from(sites).where(eq(sites.id, order.siteId!)).for("update").limit(1);
+    if (!party || !site) return;
+    const partyLink = party.dispatchProSiteId?.trim() || null;
+    const siteLink = site.dispatchProSiteId?.trim() || null;
+    if ((partyLink && partyLink !== candidateSiteId) || (siteLink && siteLink !== candidateSiteId)) return;
+    await tx.update(sites).set({ dispatchProSiteId: candidateSiteId })
+      .where(eq(sites.id, order.siteId!));
+  });
+}
+
+async function sendSupplyOrderOutboxRow(row: ClaimedDispatchProOutbox, config: { baseUrl: string; sharedSecret: string }) {
+  try {
+    const response = await fetch(new URL(DISPATCHPRO_ORDERS_PATH, config.baseUrl), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-SitePulse-Key": config.sharedSecret,
+      },
+      body: JSON.stringify(row.payload),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    const text = await response.text();
+    let body: any = null;
+    try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+    if (!response.ok) {
+      const error = safeSupplyOrderError(response.status, body?.message ?? body?.error);
+      const permanent = response.status >= 400 && response.status < 500 && response.status !== 429;
+      await markOutbox(row, permanent ? "failed" : "retry", error);
+      return;
+    }
+    const site = returnedOrderSite(body);
+    if (!site) {
+      await markOutbox(row, "failed", "DispatchPro did not return a site id for this order. Retry.");
+      return;
+    }
+    await markOutbox(row, "sent", undefined, site);
+    await linkReturnedOrderSite(row.supply_order_id!, site.id);
+  } catch {
+    await markOutbox(row, "retry", "Could not reach DispatchPro. Try again.");
+  }
+}
+
 export async function sendDispatchProOutboxRow(row: ClaimedDispatchProOutbox) {
   const config = dispatchProConfig();
   if (!config) {
     await db.update(dispatchProOutbox).set({
       status: "pending",
       nextAttemptAt: new Date(Date.now() + 60_000),
-      lastError: null,
+      lastError: row.supply_order_id != null ? "DispatchPro is not configured. Retry when the connection is available." : null,
       updatedAt: new Date(),
     }).where(eq(dispatchProOutbox.id, row.id));
+    return;
+  }
+  if (row.supply_order_id != null || row.operation === "order") {
+    await sendSupplyOrderOutboxRow(row, config);
     return;
   }
   const target = row.operation === "create"

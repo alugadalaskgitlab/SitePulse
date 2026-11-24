@@ -1038,8 +1038,9 @@ export const plantSupplyAlertDeliveries = pgTable("plant_supply_alert_deliveries
 export const dispatchProOutbox = pgTable("dispatchpro_outbox", {
   id: serial("id").primaryKey(),
   dispatchId: integer("dispatch_id").notNull(),
+  supplyOrderId: integer("supply_order_id").references(() => plantSupplyOrders.id, { onDelete: "set null" }),
   externalRef: text("external_ref").notNull(),
-  operation: text("operation").notNull(), // create | patch | cancel
+  operation: text("operation").notNull(), // create | patch | cancel | order
   payload: jsonb("payload").notNull(),
   status: text("status").notNull().default("pending"), // pending | sending | retry | sent | failed
   attemptCount: integer("attempt_count").notNull().default(0),
@@ -1049,10 +1050,14 @@ export const dispatchProOutbox = pgTable("dispatchpro_outbox", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   completedAt: timestamp("completed_at"),
+  responseSiteId: text("response_site_id"),
+  responseSiteName: text("response_site_name"),
+  linkChoice: text("link_choice"),
 }, (table) => ({
   dueIdx: index("dispatchpro_outbox_due_idx").on(table.status, table.nextAttemptAt, table.id),
   dispatchIdx: index("dispatchpro_outbox_dispatch_idx").on(table.dispatchId, table.id),
   externalRefIdx: index("dispatchpro_outbox_external_ref_idx").on(table.externalRef),
+  supplyOrderIdx: index("dispatchpro_outbox_supply_order_idx").on(table.supplyOrderId, table.id),
 }));
 
 // Equipment Usage Entry (with meter readings and diesel tank tracking)
@@ -2343,6 +2348,7 @@ export const sites = pgTable("sites", {
   name: text("name").notNull(),
   tallyCostCentreName: text("tally_cost_centre_name"),
   partyId: integer("party_id"),
+  dispatchProSiteId: text("dispatchpro_site_id"),
   workName: text("work_name"),
   clientDepartment: text("client_department"),
   division: text("division"),

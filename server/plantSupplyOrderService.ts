@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-o
 import {
   appSettings,
   auditLogs,
+  dispatchProOutbox,
   mixTemplateComponents,
   mixTemplates,
   materialReceipts,
@@ -108,6 +109,7 @@ export async function getSupplyOrderOptions() {
       id: sites.id,
       name: sites.name,
       partyId: sites.partyId,
+      dispatchProSiteId: sites.dispatchProSiteId,
       workName: sites.workName,
       clientDepartment: sites.clientDepartment,
       division: sites.division,
@@ -916,6 +918,7 @@ export async function getPlantSupplyOrder(orderId: number) {
     partyAddress: parties.address,
     siteId: plantSupplyOrders.siteId,
     siteName: sites.name,
+    siteDispatchProSiteId: sites.dispatchProSiteId,
     siteWorkName: sites.workName,
     siteClientDepartment: sites.clientDepartment,
     siteDivision: sites.division,
@@ -942,6 +945,27 @@ export async function getPlantSupplyOrder(orderId: number) {
     .leftJoin(sites, eq(sites.id, plantSupplyOrders.siteId))
     .where(eq(plantSupplyOrders.id, orderId)).limit(1);
   if (!order) return null;
+  const [latestDispatchProOrder] = await db.select({
+    status: dispatchProOutbox.status,
+    lastError: dispatchProOutbox.lastError,
+    responseSiteId: dispatchProOutbox.responseSiteId,
+    responseSiteName: dispatchProOutbox.responseSiteName,
+    linkChoice: dispatchProOutbox.linkChoice,
+  }).from(dispatchProOutbox)
+    .where(eq(dispatchProOutbox.supplyOrderId, orderId))
+    .orderBy(desc(dispatchProOutbox.id)).limit(1);
+  const partyDispatchProSiteId = order.dispatchProSiteId?.trim() || null;
+  const siteDispatchProSiteId = order.siteDispatchProSiteId?.trim() || null;
+  const responseDispatchProSiteId = latestDispatchProOrder?.responseSiteId?.trim() || null;
+  const dispatchProConflictSource = responseDispatchProSiteId && partyDispatchProSiteId && partyDispatchProSiteId !== responseDispatchProSiteId
+    ? "party"
+    : responseDispatchProSiteId && siteDispatchProSiteId && siteDispatchProSiteId !== responseDispatchProSiteId
+      ? "site"
+      : null;
+  const dispatchProNeedsOwnerChoice = !!responseDispatchProSiteId && !latestDispatchProOrder?.linkChoice && (
+    (!!partyDispatchProSiteId && partyDispatchProSiteId !== responseDispatchProSiteId) ||
+    (!!siteDispatchProSiteId && siteDispatchProSiteId !== responseDispatchProSiteId)
+  );
 
   const lines = await db.select({
     id: plantSupplyOrderLines.id,
@@ -1451,6 +1475,18 @@ export async function getPlantSupplyOrder(orderId: number) {
   }));
   return {
     ...order,
+    dispatchPro: {
+      status: latestDispatchProOrder?.status ?? "not_sent",
+      lastError: latestDispatchProOrder?.lastError ?? null,
+      responseSiteId: responseDispatchProSiteId,
+      responseSiteName: latestDispatchProOrder?.responseSiteName ?? null,
+      linkedSiteId: siteDispatchProSiteId ?? partyDispatchProSiteId,
+      partyLinkId: partyDispatchProSiteId,
+      conflictSource: dispatchProConflictSource,
+      existingLinkId: dispatchProConflictSource === "party" ? partyDispatchProSiteId : siteDispatchProSiteId ?? partyDispatchProSiteId,
+      needsOwnerChoice: dispatchProNeedsOwnerChoice,
+      hasSite: order.siteId != null,
+    },
     siteWorkDetails: {
       workName: order.siteWorkName,
       clientDepartment: order.siteClientDepartment,

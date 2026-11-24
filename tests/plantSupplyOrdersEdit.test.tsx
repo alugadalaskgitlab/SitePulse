@@ -78,9 +78,11 @@ const mock = vi.hoisted(() => ({
     history: [],
     borrowings: [],
     alerts: [],
+    dispatchPro: null as any,
   },
   invalidate: vi.fn(),
   toast: vi.fn(),
+  isOwner: true,
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -120,7 +122,7 @@ vi.mock("wouter", () => ({
   useSearch: () => "?orderId=101",
 }));
 vi.mock("@/lib/auth-context", () => ({
-  useAuth: () => ({ isOwner: true, sectionVisible: () => true }),
+  useAuth: () => ({ isOwner: mock.isOwner, sectionVisible: () => true }),
 }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: mock.toast }) }));
 vi.mock("@/hooks/use-upload", () => ({ useUpload: () => ({ uploadFile: vi.fn() }) }));
@@ -162,5 +164,33 @@ describe("ORDERS-02 order detail and editing UI", () => {
     fireEvent.click(screen.getByRole("button", { name: /Copy work details to Site master/i }));
     expect((await screen.findAllByText(/Current master road/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/Old order snapshot/)).length).toBeGreaterThan(0);
+  });
+
+  it("shows the DispatchPro link status and Owner-only conflict choices", async () => {
+    mock.order.dispatchPro = {
+      status: "sent",
+      lastError: null,
+      responseSiteId: "DP-NEW",
+      responseSiteName: "NEW-SITE",
+      linkedSiteId: "MANUAL-3",
+      partyLinkId: "MANUAL-3",
+      existingLinkId: "MANUAL-3",
+      conflictSource: "party",
+      needsOwnerChoice: true,
+      hasSite: true,
+    };
+    mock.isOwner = true;
+    render(<PlantSupplyOrders />);
+    expect(await screen.findByText(/Party already linked to MANUAL-3 in DispatchPro/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use it" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Replace" })).toBeInTheDocument();
+
+    cleanup();
+    mock.isOwner = false;
+    render(<PlantSupplyOrders />);
+    expect(screen.getByText("Waiting for the Owner to choose.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Use it" })).not.toBeInTheDocument();
+    mock.isOwner = true;
+    delete mock.order.dispatchPro;
   });
 });

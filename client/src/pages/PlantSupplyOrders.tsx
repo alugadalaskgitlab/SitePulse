@@ -37,6 +37,7 @@ type OrderOptions = {
   }>;
   sites: Array<{
     id: number; name: string; partyId: number | null;
+    dispatchProSiteId?: string | null;
     workName: string | null; clientDepartment: string | null; division: string | null; mandal: string | null;
     district: string | null; agreementEstimateRef: string | null; estimateSorYear: string | null; mtPerCumFactor: string | null;
   }>;
@@ -157,6 +158,8 @@ export default function PlantSupplyOrders() {
     queryKey: ["/api/plant-module/supply-orders", selectedId],
     queryFn: () => fetchJson(`/api/plant-module/supply-orders/${selectedId}`),
     enabled: selectedId != null,
+    refetchInterval: query => ["pending", "sending"].includes(query.state.data?.dispatchPro?.status) &&
+      !query.state.data?.dispatchPro?.lastError ? 4_000 : false,
   });
   const createSiteAttachmentsQuery = useQuery<any[]>({
     queryKey: ["/api/attachments", "site", siteId],
@@ -196,6 +199,10 @@ export default function PlantSupplyOrders() {
   const visibleWorkEntries = order?.siteId
     ? siteWorkEntriesForOrder
     : savedOrderWorkEntries;
+  const dispatchProOrder = order?.dispatchPro;
+  const dispatchProCandidateLabel = dispatchProOrder?.responseSiteName || dispatchProOrder?.responseSiteId;
+  const dispatchProExistingLabel = dispatchProOrder?.existingLinkId || dispatchProOrder?.partyLinkId || dispatchProOrder?.linkedSiteId;
+  const dispatchProConflictPrefix = dispatchProOrder?.conflictSource === "site" ? "Site already linked to" : "Party already linked to";
 
   const invalidate = async () => {
     await Promise.all([
@@ -329,6 +336,19 @@ export default function PlantSupplyOrders() {
       apiRequest("PATCH", `/api/plant-module/supply-orders/${selectedId}/status`, { status }),
     onSuccess: async () => { await invalidate(); },
     onError: error => toast({ title: "Could not update order", description: errorText(error), variant: "destructive" }),
+  });
+
+  const dispatchProRetryMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/plant-module/supply-orders/${selectedId}/dispatchpro/retry`, {}),
+    onSuccess: async () => { await invalidate(); },
+    onError: error => toast({ title: "Could not retry DispatchPro", description: errorText(error), variant: "destructive" }),
+  });
+
+  const dispatchProLinkChoiceMutation = useMutation({
+    mutationFn: (choice: "use_existing" | "replace") =>
+      apiRequest("POST", `/api/plant-module/supply-orders/${selectedId}/dispatchpro/link-choice`, { choice }),
+    onSuccess: async () => { await invalidate(); toast({ title: "DispatchPro site link saved" }); },
+    onError: error => toast({ title: "Could not save DispatchPro site link", description: errorText(error), variant: "destructive" }),
   });
 
   const copyWorkDetailsToSiteMutation = useMutation({
@@ -681,6 +701,66 @@ export default function PlantSupplyOrders() {
                           {order.siteName ? ` · ${order.siteName}` : order.dispatchProSiteId ? " · DispatchPro site linked" : ""}
                           {order.status === "closed" ? " · Closed" : " · Open"}
                         </p>
+                        <div className="mt-2 text-sm" data-testid="dispatchpro-order-status" aria-live="polite">
+                          {dispatchProOrder?.needsOwnerChoice ? (
+                            <div className="space-y-1">
+                              <p className="font-medium text-amber-800">
+                                {dispatchProConflictPrefix} {dispatchProExistingLabel} in DispatchPro — use it / replace with {dispatchProCandidateLabel}.
+                              </p>
+                              {isOwner ? (
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={dispatchProLinkChoiceMutation.isPending}
+                                    onClick={() => dispatchProLinkChoiceMutation.mutate("use_existing")}
+                                  >Use it</Button>
+                                  <Button
+                                    size="sm"
+                                    disabled={dispatchProLinkChoiceMutation.isPending}
+                                    onClick={() => dispatchProLinkChoiceMutation.mutate("replace")}
+                                  >Replace</Button>
+                                </div>
+                              ) : <p className="text-xs text-slate-500">Waiting for the Owner to choose.</p>}
+                            </div>
+                          ) : dispatchProOrder?.status === "sent" && dispatchProOrder?.hasSite &&
+                            dispatchProOrder?.responseSiteId && dispatchProOrder?.linkedSiteId === dispatchProOrder?.responseSiteId ? (
+                            <p className="text-emerald-800">
+                              DispatchPro: linked ✓ ({dispatchProCandidateLabel})
+                            </p>
+                          ) : dispatchProOrder?.status === "sent" && !dispatchProOrder?.hasSite ? (
+                            <p className="text-amber-800">DispatchPro: order sent, but no SitePulse site was selected to save a link.</p>
+                          ) : dispatchProOrder?.status === "sent" ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-amber-800">DispatchPro: order sent, but the site link was not saved.</span>
+                              {options?.canManageLifecycle && (
+                                <Button size="sm" variant="outline" disabled={dispatchProRetryMutation.isPending} onClick={() => dispatchProRetryMutation.mutate()}>
+                                  {dispatchProRetryMutation.isPending ? "Retrying…" : "Retry"}
+                                </Button>
+                              )}
+                            </div>
+                          ) : dispatchProOrder?.lastError ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-amber-800">DispatchPro: {dispatchProOrder.lastError}</span>
+                              {options?.canManageLifecycle && (
+                                <Button size="sm" variant="outline" disabled={dispatchProRetryMutation.isPending} onClick={() => dispatchProRetryMutation.mutate()}>
+                                  {dispatchProRetryMutation.isPending ? "Retrying…" : "Retry"}
+                                </Button>
+                              )}
+                            </div>
+                          ) : dispatchProOrder?.status === "pending" || dispatchProOrder?.status === "retry" || dispatchProOrder?.status === "sending" ? (
+                            <p className="text-slate-600">DispatchPro: queued for delivery</p>
+                          ) : (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-slate-600">DispatchPro: not sent</span>
+                              {options?.canManageLifecycle && (
+                                <Button size="sm" variant="outline" disabled={dispatchProRetryMutation.isPending} onClick={() => dispatchProRetryMutation.mutate()}>
+                                  {dispatchProRetryMutation.isPending ? "Retrying…" : "Retry"}
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                         {order.siteId && !siteWorkEntriesForOrder.length && (
                           <p className="mt-1 text-sm text-amber-800" data-testid="order-no-site-master-details">
                             No work details in Site master. <Link className="underline" href="/plant/dashboard#site-master">Edit Site master</Link>
