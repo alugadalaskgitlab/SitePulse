@@ -44,6 +44,7 @@ import { isPartyNonPurchaseReceipt } from "@shared/materialReceiptParty";
 import { formatPersonName } from "@shared/personName";
 import { convertStockQuantity, stockUnitForMaterial } from "@shared/stockUnits";
 import type { DieselReceiptState } from "@shared/dieselReceiptStatus";
+import { materialTankLabel } from "@shared/materialMasterFields";
 import { formatEnteredByDisplay, type MaterialReceiptSlipData } from "@/lib/materialReceiptSlipTypes";
 import { dieselTotalIssued } from "@/lib/dieselIssued";
 
@@ -1025,6 +1026,10 @@ export default function PlantMaterialReceipts() {
   const handlePrintClick = () => handlePrint();
 
   const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || "Unknown";
+  const getMaterialTankLabel = (id: number, tank: number) => {
+    const material = materials?.find(m => m.id === id);
+    return materialTankLabel(material?.name, tank, material?.category);
+  };
   const getPartyName = (id: number | null, receiptMaterialId: number) => stockOwnerLabel({
     partyId: id,
     materialName: materials?.find((m) => m.id === receiptMaterialId)?.name,
@@ -1512,8 +1517,8 @@ export default function PlantMaterialReceipts() {
                         <SelectValue placeholder="Select tank" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="1">Tank 1 (small vertical)</SelectItem>
-                        <SelectItem value="2">Tank 2 (big horizontal)</SelectItem>
+                        <SelectItem value="1">{materialTankLabel(selectedMat?.name, 1, selectedMat?.category)}</SelectItem>
+                        <SelectItem value="2">{materialTankLabel(selectedMat?.name, 2, selectedMat?.category)}</SelectItem>
                       </SelectContent>
                     </Select>
                     {isFuel && (
@@ -2460,7 +2465,7 @@ export default function PlantMaterialReceipts() {
                                   {receipt.tankNumber && (
                                     <div>
                                       <span className="text-muted-foreground text-sm block">Tank</span>
-                                      <Badge variant="outline">T{receipt.tankNumber}</Badge>
+                                      <Badge variant="outline">{getMaterialTankLabel(receipt.materialId, receipt.tankNumber)}</Badge>
                                     </div>
                                   )}
                                 </div>

@@ -26,6 +26,7 @@ import { format, parseISO } from "date-fns";
 import type { LdoFlowReading, LdoDipReading, TruckDispatch, Party, MixTemplate } from "@shared/schema";
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoVolumeAtDepth, getLdoMaxDepth, getLdoDeadStockDepth, getLdoDeadStockVolume, getLdoUsableVolume } from "@shared/ldo-dip-chart";
+import { materialTankLabel } from "@shared/materialMasterFields";
 import { computeTankStock } from "@/lib/ldoStock";
 import { LdoUsableStockStrip } from "@/components/LdoUsableStockStrip";
 
@@ -1208,8 +1209,8 @@ export default function PlantLdoFlowMeter() {
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left">
                 <th className="py-2 pr-3">Party</th>
-                <th className="py-2 pr-3 text-right">Tank 1</th>
-                <th className="py-2 pr-3 text-right">Tank 2</th>
+                <th className="py-2 pr-3 text-right">{materialTankLabel("LDO", 1)}</th>
+                <th className="py-2 pr-3 text-right">{materialTankLabel("LDO", 2)}</th>
                 <th className="py-2 pr-3 text-right">Packed</th>
                 <th className="py-2 pr-3 text-right">Legacy / unassigned</th>
                 <th className="py-2 text-right">Total</th>
@@ -1219,8 +1220,8 @@ export default function PlantLdoFlowMeter() {
                 .map(row => (
                   <tr key={`${row.materialId}:${row.partyId ?? "common"}`} className="border-b last:border-0">
                     <td className="py-2 pr-3">{row.partyName}</td>
-                    <td className="py-2 pr-3 text-right">{(row.tank1L ?? row.tank1).toLocaleString()} L</td>
-                    <td className="py-2 pr-3 text-right">{(row.tank2L ?? row.tank2).toLocaleString()} L</td>
+                    <td className="py-2 pr-3 text-right">{materialTankLabel("LDO", 1)}: {(row.tank1L ?? row.tank1).toLocaleString()} L</td>
+                    <td className="py-2 pr-3 text-right">{materialTankLabel("LDO", 2)}: {(row.tank2L ?? row.tank2).toLocaleString()} L</td>
                     <td className="py-2 pr-3 text-right">{row.packedCount.toLocaleString()} {formatPackedUnitLabel(row.packedUnitName, row.packedCount)} · {(row.packedL ?? row.packed).toLocaleString()} L</td>
                     <td className="py-2 pr-3 text-right">{row.unassigned.toLocaleString()} L</td>
                     <td className="py-2 text-right font-semibold">{(row.totalL ?? row.total).toLocaleString()} L</td>

@@ -394,6 +394,7 @@ const plantMaterialCreateBodySchema = insertPlantMaterialSchema
     looseFactor: true,
     wastagePct: true,
     procurementRoute: true,
+    aliases: true,
     packedUnitName: true,
     packedUnitNetWeightKg: true,
     packedUnitVolumeLiters: true,

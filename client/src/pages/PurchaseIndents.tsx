@@ -33,8 +33,36 @@ import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { PurchaseOrderWorkflow } from "@/components/purchase-order-workflow";
 import { vendorIdentityDisplayName } from "@shared/vendorIdentityDisplay";
 import { convertStockQuantity, stockUnitForMaterial } from "@shared/stockUnits";
+import { materialAliasesJson, materialMasterDefaultUom, materialMasterFieldGroup, materialTankLabel } from "@shared/materialMasterFields";
+import { MaterialCategoryProfileFields, type MaterialProfileFields } from "@/components/MaterialCategoryProfileFields";
+import { buildMaterialProfileSaveFields } from "@/lib/materialMasterForm";
 
 type StoreItem = { id: number; name: string; uom: string; category: string };
+type AddStoreItemForm = MaterialProfileFields & {
+  name: string;
+  category: string;
+  uom: string;
+  procurementRoute: string;
+  aliasesText: string;
+};
+
+const emptyAddStoreItemForm = (): AddStoreItemForm => ({
+  name: "",
+  category: "",
+  uom: "",
+  procurementRoute: "",
+  aliasesText: "",
+  volumeUom: "CFT",
+  bulkDensity: "",
+  rolledDensity: "",
+  rollingPct: "98",
+  extraLoosePct: "",
+  wastagePct: "",
+  materialThicknessMm: "",
+  packedUnitName: "",
+  packedUnitNetWeightKg: "",
+  packedUnitVolumeLiters: "",
+});
 
 function materialCreateErrorMessage(error: unknown): string {
   const parsed = parseApiError(error);
@@ -938,12 +966,34 @@ export default function PurchaseIndents() {
 
   const [addStoreItemOpen, setAddStoreItemOpen] = useState(false);
   const [addStoreItemTargetIdx, setAddStoreItemTargetIdx] = useState<number | null>(null);
-  const [addStoreItemForm, setAddStoreItemForm] = useState({ name: "", category: "Aggregate", uom: "NOS" });
+  const [addStoreItemForm, setAddStoreItemForm] = useState<AddStoreItemForm>(emptyAddStoreItemForm);
   // tracks whether the "Add to Catalogue" was triggered from the GRN dialog (vs the PI item form)
   const [addStoreItemFromGrn, setAddStoreItemFromGrn] = useState(false);
+  const updateAddStoreItemProfileField = (key: keyof MaterialProfileFields, value: string) => {
+    setAddStoreItemForm(form => {
+      return { ...form, [key]: value };
+    });
+  };
+  const handleAddStoreItemCategoryChange = (category: string) => {
+    setAddStoreItemForm(form => {
+      const recommendedUom = materialMasterDefaultUom(materialMasterFieldGroup(category, form.name));
+      return { ...form, category, uom: recommendedUom ?? form.uom };
+    });
+  };
 
   const addStoreItemMutation = useMutation({
-    mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/plant-module/materials", data); return res.json(); },
+    mutationFn: async (form: AddStoreItemForm) => {
+      const data = {
+        name: form.name.trim(),
+        category: form.category || null,
+        defaultUom: form.uom || null,
+        procurementRoute: form.procurementRoute,
+        aliases: materialAliasesJson(form.aliasesText),
+        ...buildMaterialProfileSaveFields(form),
+      };
+      const res = await apiRequest("POST", "/api/plant-module/materials", data);
+      return res.json();
+    },
     onSuccess: (newItem: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
       toast({ title: `"${newItem.name}" added to materials catalogue` });
@@ -967,7 +1017,7 @@ export default function PurchaseIndents() {
         setFormItems(updated);
       }
       setAddStoreItemOpen(false);
-      setAddStoreItemForm({ name: "", category: "Aggregate", uom: "NOS" });
+      setAddStoreItemForm(emptyAddStoreItemForm());
       setAddStoreItemTargetIdx(null);
       setAddStoreItemFromGrn(false);
     },
@@ -3145,7 +3195,7 @@ export default function PurchaseIndents() {
                           }}
                           onAddNew={(typedName) => {
                             setAddStoreItemTargetIdx(index);
-                            setAddStoreItemForm({ name: typedName || "", category: "Aggregate", uom: item.uom });
+                            setAddStoreItemForm({ ...emptyAddStoreItemForm(), name: typedName || "", uom: item.uom });
                             setAddStoreItemOpen(true);
                           }}
                           data-testid={`input-item-desc-${index}`}
@@ -5348,10 +5398,10 @@ export default function PurchaseIndents() {
                             <div>
                               <Label className="text-xs">Receiving tank *</Label>
                               <Select value={rd.tankNumber || ""} onValueChange={value => upd("tankNumber", value)}>
-                                <SelectTrigger data-testid={`select-bulk-receipt-tank-${item.id}`}><SelectValue placeholder="Select Tank 1 or Tank 2" /></SelectTrigger>
+                                <SelectTrigger data-testid={`select-bulk-receipt-tank-${item.id}`}><SelectValue placeholder={`Select ${materialTankLabel(packedMaterial?.name, 1, packedMaterial?.category)} or ${materialTankLabel(packedMaterial?.name, 2, packedMaterial?.category)}`} /></SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="1">Tank 1</SelectItem>
-                                  <SelectItem value="2">Tank 2</SelectItem>
+                                  <SelectItem value="1">{materialTankLabel(packedMaterial?.name, 1, packedMaterial?.category)}</SelectItem>
+                                  <SelectItem value="2">{materialTankLabel(packedMaterial?.name, 2, packedMaterial?.category)}</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
@@ -5367,8 +5417,8 @@ export default function PurchaseIndents() {
                         <div>
                           <Label className="text-xs">Receiving tank *</Label>
                           <Select value={rd.tankNumber || ""} onValueChange={value => upd("tankNumber", value)}>
-                            <SelectTrigger data-testid={`select-bulk-receipt-tank-${item.id}`}><SelectValue placeholder="Select Tank 1 or Tank 2" /></SelectTrigger>
-                            <SelectContent><SelectItem value="1">Tank 1</SelectItem><SelectItem value="2">Tank 2</SelectItem></SelectContent>
+                            <SelectTrigger data-testid={`select-bulk-receipt-tank-${item.id}`}><SelectValue placeholder={`Select ${materialTankLabel(packedMaterial?.name, 1, packedMaterial?.category)} or ${materialTankLabel(packedMaterial?.name, 2, packedMaterial?.category)}`} /></SelectTrigger>
+                            <SelectContent><SelectItem value="1">{materialTankLabel(packedMaterial?.name, 1, packedMaterial?.category)}</SelectItem><SelectItem value="2">{materialTankLabel(packedMaterial?.name, 2, packedMaterial?.category)}</SelectItem></SelectContent>
                           </Select>
                         </div>
                       )}
@@ -5738,7 +5788,7 @@ export default function PurchaseIndents() {
                                           e.preventDefault();
                                           setGrnOpenDropdownIdx(null);
                                           const prefill = line.itemSearch.trim() || line.description;
-                                          setAddStoreItemForm({ name: prefill, category: "Spares", uom: line.uom || "NOS" });
+                                          setAddStoreItemForm({ ...emptyAddStoreItemForm(), name: prefill, category: "Spares", uom: line.uom || "NOS" });
                                           setAddStoreItemTargetIdx(idx);
                                           setAddStoreItemFromGrn(true);
                                           setAddStoreItemOpen(true);
@@ -5873,16 +5923,19 @@ export default function PurchaseIndents() {
       </Dialog>
 
       <Dialog open={addStoreItemOpen} onOpenChange={open => { setAddStoreItemOpen(open); if (!open) setAddStoreItemTargetIdx(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col gap-0 p-0">
           <DialogHeader>
             <DialogTitle>Save as new material</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 pt-2">
+          <div className="flex-1 overflow-y-auto space-y-4 px-6 py-4">
             <div className="space-y-1.5">
-              <Label className="text-sm">MATERIAL NAME *</Label>
+              <Label className="text-sm">Material name *</Label>
               <Input
                 value={addStoreItemForm.name}
-                onChange={e => setAddStoreItemForm(f => ({ ...f, name: e.target.value }))}
+                onChange={e => setAddStoreItemForm(form => {
+                  const suggestedUom = materialMasterDefaultUom(materialMasterFieldGroup(form.category, e.target.value));
+                  return { ...form, name: e.target.value, uom: !form.uom && suggestedUom ? suggestedUom : form.uom };
+                })}
                 placeholder="e.g. STONE DUST"
                 className="uppercase"
                 data-testid="input-new-store-item-name"
@@ -5891,36 +5944,74 @@ export default function PurchaseIndents() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-sm">CATEGORY *</Label>
-                <Select value={addStoreItemForm.category} onValueChange={v => setAddStoreItemForm(f => ({ ...f, category: v }))}>
-                  <SelectTrigger className="text-sm" data-testid="select-new-store-item-category"><SelectValue /></SelectTrigger>
+                <Label className="text-sm">Category</Label>
+                <Select value={addStoreItemForm.category} onValueChange={handleAddStoreItemCategoryChange}>
+                  <SelectTrigger className="text-sm" data-testid="select-new-store-item-category"><SelectValue placeholder="Choose category" /></SelectTrigger>
                   <SelectContent>
-                    {["Aggregate", "Bitumen", "Utility", "LDO", "Spares", "Consumables", "Electricals", "Others"].map(c => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    {[
+                      ["Aggregate", "Aggregate / granular"],
+                      ["Bitumen", "Bitumen"],
+                      ["Emulsion", "Emulsion"],
+                      ["LDO", "LDO"],
+                      ["Diesel / HSD", "Diesel / HSD"],
+                      ["Utility", "Utility"],
+                      ["Spares", "Spares"],
+                      ["Electricals", "Electricals"],
+                      ["Consumables", "Consumables"],
+                      ["Other", "Other"],
+                    ].map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-sm">DEFAULT UOM *</Label>
+                <Label className="text-sm">Default UOM</Label>
                 <Select value={addStoreItemForm.uom} onValueChange={v => setAddStoreItemForm(f => ({ ...f, uom: v }))}>
-                  <SelectTrigger className="text-sm" data-testid="select-new-store-item-uom"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="text-sm" data-testid="select-new-store-item-uom"><SelectValue placeholder="Choose unit" /></SelectTrigger>
                   <SelectContent>
-                    {["NOS", "KG", "MT", "LITERS", "CUM", "CFT", "SQM", "RMT", "METERS", "SET", "PAIR", "BOX", "ROLL", "PACK"].map(u => (
+                    {["NOS", "KG", "MT", "Liters", "Cum", "CFT", "SQM", "RMT", "METERS", "SET", "PAIR", "BOX", "ROLL", "PACK"].map(u => (
                       <SelectItem key={u} value={u}>{u}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Procurement route</Label>
+              <Select value={addStoreItemForm.procurementRoute} onValueChange={v => setAddStoreItemForm(f => ({ ...f, procurementRoute: v }))}>
+                <SelectTrigger data-testid="select-new-store-item-route"><SelectValue placeholder="Choose route" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="stores">Stores / spares / tools / consumables</SelectItem>
+                  <SelectItem value="material">Bulk material</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Aliases</Label>
+              <Textarea
+                value={addStoreItemForm.aliasesText}
+                onChange={event => setAddStoreItemForm(form => ({ ...form, aliasesText: event.target.value }))}
+                placeholder="One approved name per line"
+                rows={2}
+                data-testid="textarea-new-store-item-aliases"
+              />
+            </div>
+            <MaterialCategoryProfileFields
+              category={addStoreItemForm.category}
+              name={addStoreItemForm.name}
+              values={addStoreItemForm}
+              onChange={updateAddStoreItemProfileField}
+              idPrefix="new-store-item-"
+            />
             <p className="text-[12px] text-muted-foreground">Material will be added to the plant materials catalogue and linked to this indent item.</p>
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="ghost" size="sm" onClick={() => setAddStoreItemOpen(false)}>Cancel</Button>
               <Button
                 type="button"
                 size="sm"
-                disabled={!addStoreItemForm.name.trim() || addStoreItemMutation.isPending}
-                onClick={() => addStoreItemMutation.mutate({ name: addStoreItemForm.name.trim(), category: addStoreItemForm.category, defaultUom: addStoreItemForm.uom })}
+                disabled={!addStoreItemForm.name.trim() || !addStoreItemForm.category || !addStoreItemForm.uom || !addStoreItemForm.procurementRoute || addStoreItemMutation.isPending}
+                onClick={() => addStoreItemMutation.mutate(addStoreItemForm)}
                 data-testid="button-save-new-store-item"
               >
                 {addStoreItemMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save as New Item"}

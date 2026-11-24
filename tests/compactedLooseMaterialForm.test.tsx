@@ -130,6 +130,8 @@ describe("compacted-and-loose Material Master forms", () => {
     fireEvent.click(screen.getByTestId("button-add-material"));
 
     fireEvent.change(screen.getByTestId("input-material-name"), { target: { value: "GSB" } });
+    fireEvent.click(screen.getByTestId("select-material-category"));
+    fireEvent.click(await screen.findByRole("option", { name: /Aggregate \/ granular/ }));
     fireEvent.click(screen.getByTestId("select-material-procurement-route"));
     fireEvent.click(await screen.findByRole("option", { name: /Bulk Material/ }));
     fireEvent.change(screen.getByTestId("input-rolled-density"), { target: { value: "2.2" } });

@@ -40,10 +40,13 @@ import { PERSONNEL_ROLES } from "@shared/schema";
 import { computeTankStock } from "@/lib/ldoStock";
 import { format } from "date-fns";
 import { formatEquipmentOptionLabel } from "@shared/equipmentLabel";
+import { materialAliasesJson, materialAliasesText, materialMasterDefaultUom, materialMasterFieldGroup, materialTankLabel } from "@shared/materialMasterFields";
 import { EquipmentMasterCreateDialog } from "@/components/EquipmentMasterCreateDialog";
 import { EquipmentVendorPicker, type EquipmentVendorChoice } from "@/components/EquipmentVendorPicker";
 import { EquipmentMasterRows } from "@/components/EquipmentMasterRows";
 import { equipmentHireTermsError, equipmentTypeChange, isGeneratorEquipmentName, shouldShowMonthlyHireTerms } from "@shared/equipmentMasterRules";
+import { MaterialCategoryProfileFields, type MaterialProfileFields } from "@/components/MaterialCategoryProfileFields";
+import { buildMaterialProfileSaveFields } from "@/lib/materialMasterForm";
 import {
   EQUIPMENT_IDENTIFICATION_QUERY_KEY,
   equipmentIdentificationSourceHref,
@@ -2832,7 +2835,8 @@ export function MaterialMaster() {
   const [editingMaterial, setEditingMaterial] = useState<PlantMaterial | null>(null);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
-  const [defaultUom, setDefaultUom] = useState("MT");
+  const [defaultUom, setDefaultUom] = useState("");
+  const [aliasesText, setAliasesText] = useState("");
   // 06S §1: no preselected route — the user must deliberately choose one.
   const [procurementRoute, setProcurementRoute] = useState("");
   const [bulkDensity, setBulkDensity] = useState("");
@@ -3025,7 +3029,8 @@ export function MaterialMaster() {
     setEditingMaterial(null);
     setName("");
     setCategory("");
-    setDefaultUom("MT");
+    setDefaultUom("");
+    setAliasesText("");
     setProcurementRoute("");
     setBulkDensity("");
     setVolumeUom("CFT");
@@ -3057,6 +3062,7 @@ export function MaterialMaster() {
     setName(material.name);
     setCategory(material.category || "");
     setDefaultUom(normalizeWeightUnit(material.defaultUom || "MT"));
+    setAliasesText(materialAliasesText(material.aliases));
     // Unconfigured stays visibly unselected — never masquerades as Stores.
     setProcurementRoute((material as any).procurementRoute || "");
     const savedBulkDensity = Object.prototype.hasOwnProperty.call(material, "savedBulkDensity")
@@ -3088,6 +3094,13 @@ export function MaterialMaster() {
     setAutoOpenedMaterialId(requestedEditMaterialId);
   }, [materials, requestedEditMaterialId, autoOpenedMaterialId]);
 
+  const handleMaterialCategoryChange = (nextCategory: string) => {
+    setCategory(nextCategory);
+    if (!editingMaterial) {
+      setDefaultUom(materialMasterDefaultUom(materialMasterFieldGroup(nextCategory, name)) ?? "");
+    }
+  };
+
   const openOpeningStockDialog = (material: PlantMaterial) => {
     setSelectedMaterialForStock(material);
     setOpeningStockDialogOpen(true);
@@ -3099,26 +3112,15 @@ export function MaterialMaster() {
       toast({ title: "Choose a procurement route", description: "Select whether this material goes through Stores or directly to Plant/Site receipt.", variant: "destructive" });
       return;
     }
-    const bd = parseFloat(bulkDensity);
-    const formProfile = compactedLooseProfileFromInputs({ rolledDensity, rollingPct, extraLoosePct, wastagePct });
-    const derivedLooseDensity = looseWeightPerCumFromProfile(formProfile);
-    const validManualDensity = !isNaN(bd) && bd > 0 ? bd : null;
     const data = { 
       name, 
       category, 
       defaultUom,
       procurementRoute,
-      // The calculated loose density is a live conversion value, not a write
-      // to the legacy bulk_density column.
-      bulkDensity: derivedLooseDensity == null ? validManualDensity : undefined,
-      conversionFromUom: derivedLooseDensity != null || validManualDensity != null ? volumeUom : undefined,
-      rolledDensity: formProfile.rolledDensity,
-      rollingPct: formProfile.rollingPct,
-      looseFactor: formProfile.looseFactor,
-      wastagePct: formProfile.wastagePct,
-      packedUnitName: packedUnitName || null,
-      packedUnitNetWeightKg: packedUnitNetWeightKg.trim() ? Number(packedUnitNetWeightKg) : null,
-      packedUnitVolumeLiters: packedUnitVolumeLiters.trim() ? Number(packedUnitVolumeLiters) : null,
+      aliases: editingMaterial && aliasesText === materialAliasesText(editingMaterial.aliases)
+        ? editingMaterial.aliases ?? null
+        : materialAliasesJson(aliasesText),
+      ...buildMaterialProfileSaveFields(materialProfileFieldValues),
     };
     if (editingMaterial) {
       updateMutation.mutate({ id: editingMaterial.id, data });
@@ -3149,10 +3151,33 @@ export function MaterialMaster() {
   };
 
   const getMaterialName = (id: number) => materials?.find(m => m.id === id)?.name || `Material #${id}`;
-  const materialProfile = compactedLooseProfileFromInputs({ rolledDensity, rollingPct, extraLoosePct, wastagePct });
-  const materialExample = calculateCompactedLooseQuantity(100, materialProfile);
-  const materialLooseDensity = looseWeightPerCumFromProfile(materialProfile);
-  const materialThickness = materialThicknessMm.trim() === "" ? null : Number(materialThicknessMm);
+  const materialFieldGroup = materialMasterFieldGroup(category, name);
+  const materialProfileFieldValues: MaterialProfileFields = {
+    volumeUom,
+    bulkDensity,
+    rolledDensity,
+    rollingPct,
+    extraLoosePct,
+    wastagePct,
+    materialThicknessMm,
+    packedUnitName,
+    packedUnitNetWeightKg,
+    packedUnitVolumeLiters,
+  };
+  const updateMaterialProfileField = (key: keyof MaterialProfileFields, value: string) => {
+    switch (key) {
+      case "volumeUom": setVolumeUom(value); break;
+      case "bulkDensity": setBulkDensity(value); break;
+      case "rolledDensity": setRolledDensity(value); break;
+      case "rollingPct": setRollingPct(value); break;
+      case "extraLoosePct": setExtraLoosePct(value); break;
+      case "wastagePct": setWastagePct(value); break;
+      case "materialThicknessMm": setMaterialThicknessMm(value); break;
+      case "packedUnitName": setPackedUnitName(value); break;
+      case "packedUnitNetWeightKg": setPackedUnitNetWeightKg(value); break;
+      case "packedUnitVolumeLiters": setPackedUnitVolumeLiters(value); break;
+    }
+  };
   const getPartyName = (id: number | null) => {
     if (id === null) return `${companyShortName} (Common)`;
     return parties?.find(p => p.id === id)?.name || `Party #${id}`;
@@ -3200,21 +3225,32 @@ export function MaterialMaster() {
                 <Input
                   id="material-name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (!editingMaterial && !defaultUom) {
+                      setDefaultUom(materialMasterDefaultUom(materialMasterFieldGroup(category, e.target.value)) ?? "");
+                    }
+                  }}
                   placeholder="e.g., 20MM AGGREGATE"
                   data-testid="input-material-name"
                 />
               </div>
               <div>
                 <Label htmlFor="material-category">Category</Label>
-                <Select value={category} onValueChange={setCategory}>
+                <Select value={category} onValueChange={handleMaterialCategoryChange}>
                   <SelectTrigger data-testid="select-material-category">
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Aggregate">Aggregate</SelectItem>
+                    <SelectItem value="Aggregate">Aggregate / granular</SelectItem>
                     <SelectItem value="Bitumen">Bitumen</SelectItem>
+                    <SelectItem value="Emulsion">Emulsion</SelectItem>
+                    <SelectItem value="LDO">LDO</SelectItem>
+                    <SelectItem value="Diesel / HSD">Diesel / HSD</SelectItem>
                     <SelectItem value="Utility">Utility</SelectItem>
+                    <SelectItem value="Spares">Spares</SelectItem>
+                    <SelectItem value="Electricals">Electricals</SelectItem>
+                    <SelectItem value="Consumables">Consumables</SelectItem>
                     <SelectItem value="Other">Other</SelectItem>
                   </SelectContent>
                 </Select>
@@ -3226,6 +3262,9 @@ export function MaterialMaster() {
                     <SelectValue placeholder="Select UOM" />
                   </SelectTrigger>
                   <SelectContent>
+                    {defaultUom && !["MT", "Cum", "Liters", "Kgs", "CFT", "Barrels", "Nos"].includes(defaultUom) && (
+                      <SelectItem value={defaultUom}>{defaultUom}</SelectItem>
+                    )}
                     <SelectItem value="MT">MT</SelectItem>
                     <SelectItem value="Cum">Cum</SelectItem>
                     <SelectItem value="Liters">Liters</SelectItem>
@@ -3251,150 +3290,27 @@ export function MaterialMaster() {
                   {(procurementRoute === "material" || procurementRoute === "bulk_plant") ? "Goes directly to Plant/Site Material Receipt after purchaser action." : "Goes through Stores handover → GRN after purchaser action."}
                 </p>
               </div>
-
-              {/* Bulk Density for volume→weight conversion */}
-              <div className="rounded-md border border-dashed border-border p-3 space-y-3 bg-muted/30">
-                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Volume → Weight Conversion (optional)</p>
-                <p className="text-sm text-muted-foreground">
-                  Fill this only if the material is sometimes received in volume units (CFT / Cum) but tracked in weight (MT / Ton).
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-sm">Volume UOM at Receipt</Label>
-                    <Select value={volumeUom} onValueChange={setVolumeUom}>
-                      <SelectTrigger data-testid="select-volume-uom" className="h-8 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="CFT">CFT (cubic feet)</SelectItem>
-                        <SelectItem value="Cum">CUM / m³</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                  <Label className="text-sm">Weight of 1 cum as delivered, MT</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0.1"
-                      max="5"
-                      value={materialLooseDensity != null ? materialLooseDensity.toFixed(2) : bulkDensity}
-                      onChange={e => setBulkDensity(e.target.value)}
-                      placeholder="e.g. 1.8"
-                      className="h-8 text-sm"
-                      readOnly={materialLooseDensity != null}
-                      data-testid="input-bulk-density"
-                    />
-                  </div>
-                </div>
-                {(materialLooseDensity ?? parseFloat(bulkDensity)) > 0 && (
-                  <div className="text-sm rounded bg-background border px-3 py-2 space-y-0.5">
-                    <p className="font-medium text-foreground">Derived conversion factor:</p>
-                    {volumeUom === "CFT" ? (
-                      <p className="text-muted-foreground">
-                        1 CFT = {((materialLooseDensity ?? parseFloat(bulkDensity)) / 35.3147).toFixed(3)} MT · 100 CFT = {(100 * (materialLooseDensity ?? parseFloat(bulkDensity)) / 35.3147).toFixed(2)} MT
-                      </p>
-                    ) : (
-                      <p className="text-muted-foreground">
-                        1 cum = {(materialLooseDensity ?? parseFloat(bulkDensity)).toFixed(2)} MT · 10 cum = {(10 * (materialLooseDensity ?? parseFloat(bulkDensity))).toFixed(2)} MT
-                      </p>
-                    )}
-                  </div>
-                )}
+              <div>
+                <Label htmlFor="material-aliases">Aliases</Label>
+                <Textarea
+                  id="material-aliases"
+                  value={aliasesText}
+                  onChange={event => setAliasesText(event.target.value)}
+                  placeholder="One approved name per line"
+                  rows={2}
+                  data-testid="textarea-material-aliases"
+                />
               </div>
 
-              <div className="rounded-md border border-dashed border-border p-3 space-y-3 bg-muted/30" data-testid="packed-unit-master-fields">
-                <div>
-                  <p className="text-sm font-semibold">Packed receipt unit (optional)</p>
-                  <p className="text-xs text-muted-foreground">For bitumen or emulsion received in barrels/drums. Enter either the standard net weight or volume per unit; receipt stock is converted once into this material’s stock unit.</p>
-                </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div>
-                    <Label htmlFor="packed-unit-name">Packed unit</Label>
-                    <Select value={packedUnitName || "none"} onValueChange={value => setPackedUnitName(value === "none" ? "" : value)}>
-                      <SelectTrigger id="packed-unit-name" data-testid="select-packed-unit"><SelectValue placeholder="Not configured" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Not configured</SelectItem>
-                        <SelectItem value="Barrel">Barrel</SelectItem>
-                        <SelectItem value="Drum">Drum</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="packed-unit-net-kg">Standard net weight per unit, kg</Label>
-                    <Input id="packed-unit-net-kg" type="number" min="0.001" step="0.1" value={packedUnitNetWeightKg}
-                      onChange={event => { setPackedUnitNetWeightKg(event.target.value); if (event.target.value) setPackedUnitVolumeLiters(""); }}
-                      placeholder="e.g. 156" data-testid="input-packed-unit-net-kg" />
-                  </div>
-                  <div>
-                    <Label htmlFor="packed-unit-volume-liters">Standard volume per unit, L</Label>
-                    <Input id="packed-unit-volume-liters" type="number" min="0.001" step="0.1" value={packedUnitVolumeLiters}
-                      onChange={event => { setPackedUnitVolumeLiters(event.target.value); if (event.target.value) setPackedUnitNetWeightKg(""); }}
-                      placeholder="e.g. 200" data-testid="input-packed-unit-volume-liters" />
-                  </div>
-                </div>
-                {packedUnitName && !packedUnitNetWeightKg && !packedUnitVolumeLiters && (
-                  <p className="text-xs text-amber-700" data-testid="packed-unit-profile-missing">Set the standard net weight or volume before recording a packed receipt.</p>
-                )}
-              </div>
-
-              <div className="rounded-md border border-teal-200 bg-teal-50/40 p-3 space-y-3" data-testid="compacted-loose-material-fields">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Compacted and loose</p>
-                      <p className="text-xs text-muted-foreground">When set, the calculated loose weight above is used for volume-to-weight conversions.</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label htmlFor="material-rolled-density">Compacted density (lab)</Label>
-                    <Input id="material-rolled-density" type="number" min="0" step="0.001" value={rolledDensity}
-                      onChange={e => setRolledDensity(e.target.value)} placeholder="MT per cum" data-testid="input-rolled-density" />
-                    <p className="text-xs text-muted-foreground mt-0.5">MT per cum</p>
-                  </div>
-                  <div>
-                    <Label htmlFor="material-rolling-pct">Field compaction</Label>
-                    <Input id="material-rolling-pct" type="number" min="0" step="0.1" value={rollingPct}
-                      onChange={e => setRollingPct(e.target.value)} placeholder="98" data-testid="input-rolling-pct" />
-                    <p className="text-xs text-muted-foreground mt-0.5">% of lab density to be achieved on site</p>
-                  </div>
-                  <div>
-                    <Label htmlFor="material-extra-loose">Extra loose</Label>
-                    <Input id="material-extra-loose" type="number" min="0" step="0.1" value={extraLoosePct}
-                      onChange={e => setExtraLoosePct(e.target.value)} placeholder="20" data-testid="input-extra-loose-pct" />
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {extraLoosePct.trim()
-                        ? `Factor ${looseFactorFromExtraLoosePercent(Number(extraLoosePct))?.toFixed(2) ?? "—"}`
-                        : "Enter %, e.g. 20 (factor 1.20)"}
-                    </p>
-                  </div>
-                  <div>
-                    <Label htmlFor="material-wastage-pct">Wastage</Label>
-                    <Input id="material-wastage-pct" type="number" min="0" step="0.1" value={wastagePct}
-                      onChange={e => setWastagePct(e.target.value)} data-testid="input-wastage-pct" />
-                    <p className="text-xs text-muted-foreground mt-0.5">%</p>
-                  </div>
-                </div>
-                <div className="rounded border bg-background px-3 py-2 text-xs" data-testid="compacted-loose-preview">
-                  {!materialExample ? (
-                    <p className="text-amber-700 font-medium">Values not set</p>
-                  ) : (
-                    <p className="font-medium">
-                      For 100 cum compacted: Weight {formatCompactedLooseValue(materialExample.compactedMt)} MT · Loose {formatCompactedLooseValue(materialExample.looseCum)} cum ({formatCompactedLooseValue(materialExample.looseCft, 0)} CFT) · With {formatCompactedLooseValue(materialProfile.wastagePct!)}% wastage: {formatCompactedLooseValue(materialExample.requiredMt)} MT · {formatCompactedLooseValue(materialExample.requiredLooseCum)} cum loose · 1 cum loose weighs {materialExample.looseWeightPerCum.toFixed(2)} MT — used to change truck CFT into MT
-                    </p>
-                  )}
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-teal-700" data-testid="material-thickness-check">
-                    <Label htmlFor="material-thickness-mm" className="text-xs">Compacted thickness</Label>
-                    <Input id="material-thickness-mm" type="number" min="0" step="1" value={materialThicknessMm}
-                      onChange={e => setMaterialThicknessMm(e.target.value)} className="h-7 w-24 text-xs" data-testid="input-material-thickness-mm" />
-                    <span>mm →</span>
-                    {materialThickness != null && Number.isFinite(materialThickness) && materialThickness > 0 && materialProfile.looseFactor != null
-                      ? <span>Lay loose {(materialThickness * materialProfile.looseFactor).toFixed(1)} mm to get {materialThickness} mm compacted</span>
-                      : <span>Enter a thickness and Extra loose value</span>}
-                  </div>
-                </div>
-              </div>
+              <MaterialCategoryProfileFields
+                category={category}
+                name={name}
+                values={materialProfileFieldValues}
+                onChange={updateMaterialProfileField}
+              />
 
               {/* ── Instruction 021: legacy UOM conversion profiles stay available under Advanced. ── */}
-              {editingMaterial && (
+              {editingMaterial && materialFieldGroup === "aggregate" && (
                 <>
                 <Button type="button" variant="link" size="sm" className="h-6 px-0 text-xs"
                   onClick={() => setShowAdvancedConversions(v => !v)} data-testid="button-advanced-uom-profiles">
@@ -3521,7 +3437,7 @@ export function MaterialMaster() {
                     )}
                     {(material as any).bulkDensity != null && (
                       <span className="text-[12px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                        {(material as any).bulkDensity} MT/m³ · {(material as any).conversionFromUom || "CFT"}→Ton
+                        {(material as any).bulkDensity} MT/m³ · {(material as any).conversionFromUom || "CFT"}→MT
                       </span>
                     )}
                   </div>
@@ -3557,7 +3473,7 @@ export function MaterialMaster() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm">{getMaterialName(os.materialId)}</p>
                     <p className="text-sm text-muted-foreground">
-                      {os.quantity} {os.uom} | {getPartyName(os.partyId)} | {os.date}{os.tankNumber ? ` | Tank ${os.tankNumber}` : ""}
+                      {os.quantity} {os.uom} | {getPartyName(os.partyId)} | {os.date}{os.tankNumber ? ` | ${materialTankLabel(getMaterialName(os.materialId), os.tankNumber, materials?.find(m => m.id === os.materialId)?.category)}` : ""}
                       {os.notes ? ` | ${os.notes}` : ""}
                     </p>
                   </div>
@@ -3640,7 +3556,7 @@ export function MaterialMaster() {
 
                   {(() => {
                     const mat = selectedMaterialForStock ?? (editingOpeningStock ? materials?.find(m => m.id === editingOpeningStock.materialId) : null);
-                    const needsTank = mat?.category === "Bitumen" || mat?.name?.toUpperCase().includes("LDO");
+                    const needsTank = mat ? /bitumen|emulsion|ldo|diesel|hsd/i.test(`${mat.category ?? ""} ${mat.name ?? ""}`) : false;
                     if (!needsTank) return null;
                     return (
                       <div>
@@ -3650,8 +3566,8 @@ export function MaterialMaster() {
                             <SelectValue placeholder="Select tank" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="1">Tank 1</SelectItem>
-                            <SelectItem value="2">Tank 2</SelectItem>
+                            <SelectItem value="1">{materialTankLabel(mat?.name, 1, mat?.category)}</SelectItem>
+                            <SelectItem value="2">{materialTankLabel(mat?.name, 2, mat?.category)}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>

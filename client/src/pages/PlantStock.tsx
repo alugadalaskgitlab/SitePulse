@@ -30,6 +30,7 @@ import { convertStockQuantity, stockDifferenceTolerance, stockUnitForMaterial } 
 import { displayName } from "@shared/displayName";
 import { openPrintableHtmlOrPreview } from "@/lib/installedApp";
 import { formatPackedUnitLabel } from "@shared/packedStock";
+import { materialTankLabel } from "@shared/materialMasterFields";
 
 type StockBalanceAsOf = {
   materialId: number;
@@ -450,18 +451,22 @@ export default function PlantStock() {
   });
 
   const getMaterialName = (id: number) => materials?.find((m) => m.id === id)?.name || `Material ${id}`;
+  const getMaterialTankLabel = (id: number, tankNumber: number) => {
+    const material = materials?.find(m => m.id === id);
+    return materialTankLabel(material?.name, tankNumber, material?.category);
+  };
   const getPartyName = (id: number | null, materialId: number) => stockOwnerLabel({
     partyId: id,
     materialName: materials?.find((m) => m.id === materialId)?.name,
     resolvedPartyName: id == null ? null : parties?.find((p) => p.id === id)?.name,
   });
 
-  // Detect if the currently selected material tracks per-tank stock (Bitumen or LDO).
+  // Detect if the currently selected material tracks per-tank stock.
   // When true: tank filter is visible and T1/T2 balances are shown in the Balance column.
   const isTankedMaterial = (() => {
     if (selectedMaterialId === "all") return false;
     const mat = materials?.find(m => String(m.id) === selectedMaterialId);
-    return mat ? /bitumen|ldo/i.test(mat.name) : false;
+    return mat ? /bitumen|emulsion|ldo|diesel|hsd/i.test(`${mat.category ?? ""} ${mat.name}`) : false;
   })();
 
   // Filter out old equipment_issue entries (legacy - no longer created) and calculate running balances
@@ -1138,7 +1143,7 @@ export default function PlantStock() {
       
       const isRowTanked = (matId: number) => {
         const mat = materials?.find(m => m.id === matId);
-        return mat ? /bitumen|ldo/i.test(mat.name) : false;
+        return mat ? /bitumen|emulsion|ldo|diesel|hsd/i.test(`${mat.category ?? ""} ${mat.name}`) : false;
       };
       const ledgerRows = ledgerForDisplay;
       const hasTankedRows = ledgerRows.filter(e => e.transactionType !== 'opening_balance').some(e => isRowTanked(e.materialId));
@@ -1151,7 +1156,7 @@ export default function PlantStock() {
           "Entry Time": entry.entryTime || "",
           Material: getMaterialName(entry.materialId),
           "Stock Owner": getPartyName(entry.partyId, entry.materialId),
-          Type: entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'tank_transfer' ? '→ Tank 1 (small vertical)' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'transfer_correction' ? 'Transfer correction' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType === 'ldo_dip_consumption' ? 'Actual Consumption' : entry.transactionType,
+          Type: entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'tank_transfer' ? `→ ${getMaterialTankLabel(entry.materialId, entry.tankNumber ?? 1)}` : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'transfer_correction' ? 'Transfer correction' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType === 'ldo_dip_consumption' ? 'Actual Consumption' : entry.transactionType,
           "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '')
             : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
@@ -1168,8 +1173,8 @@ export default function PlantStock() {
         };
         if (hasTankedRows) {
           const tanked = isRowTanked(entry.materialId);
-          row["T1 Balance"] = tanked && entry.t1BalanceAfter != null ? entry.t1BalanceAfter.toFixed(3) : "";
-          row["T2 Balance"] = tanked && entry.t2BalanceAfter != null ? entry.t2BalanceAfter.toFixed(3) : "";
+          row["Tank 1 balance"] = tanked && entry.t1BalanceAfter != null ? `${getMaterialTankLabel(entry.materialId, 1)}: ${entry.t1BalanceAfter.toFixed(3)}` : "";
+          row["Tank 2 balance"] = tanked && entry.t2BalanceAfter != null ? `${getMaterialTankLabel(entry.materialId, 2)}: ${entry.t2BalanceAfter.toFixed(3)}` : "";
         }
         return row;
       });
@@ -1181,8 +1186,8 @@ export default function PlantStock() {
       const packedPositionData = (packedStockQuery.data?.rows ?? []).map(row => ({
         Material: row.materialName,
         Party: row.partyName,
-        "Tank 1": `${row.tank1.toLocaleString()} ${row.stockUom}`,
-        "Tank 2": `${row.tank2.toLocaleString()} ${row.stockUom}`,
+        "Tank 1": `${getMaterialTankLabel(row.materialId, 1)}: ${row.tank1.toLocaleString()} ${row.stockUom}`,
+        "Tank 2": `${getMaterialTankLabel(row.materialId, 2)}: ${row.tank2.toLocaleString()} ${row.stockUom}`,
         "Packed count": `${row.packedCount.toLocaleString()} ${formatPackedUnitLabel(row.packedUnitName, row.packedCount)}`,
         "Packed stock": `${row.packed.toLocaleString()} ${row.stockUom}`,
         "Legacy / unassigned": `${row.unassigned.toLocaleString()} ${row.stockUom}`,
@@ -1265,11 +1270,11 @@ export default function PlantStock() {
         doc.text("Packed stock positions", 14, 15);
         autoTable(doc, {
           startY: 20,
-           head: [["Material", "Stock Owner", "Tank 1", "Tank 2", "Packed count", "Packed stock", "Legacy / unassigned", "Total"]],
+       head: [["Material", "Stock Owner", "Tank position 1", "Tank position 2", "Packed count", "Packed stock", "Legacy / unassigned", "Total"]],
           body: packedStockQuery.data!.rows.map(row => [
             displayName(row.materialName), displayName(row.partyName),
-             `${row.tank1.toLocaleString()} ${row.stockUom}`,
-             `${row.tank2.toLocaleString()} ${row.stockUom}`,
+            `${getMaterialTankLabel(row.materialId, 1)}: ${row.tank1.toLocaleString()} ${row.stockUom}`,
+            `${getMaterialTankLabel(row.materialId, 2)}: ${row.tank2.toLocaleString()} ${row.stockUom}`,
              `${row.packedCount.toLocaleString()} ${formatPackedUnitLabel(row.packedUnitName, row.packedCount)}`,
              `${row.packed.toLocaleString()} ${row.stockUom}`,
              `${row.unassigned.toLocaleString()} ${row.stockUom}`,
@@ -1290,7 +1295,7 @@ export default function PlantStock() {
           case 'receipt': return 'Receipt';
           case 'dispatch': return 'Dispatch';
           case 'issue': return 'Issue';
-          case 'tank_transfer': return '→ Tank 1 (small vertical)';
+          case 'tank_transfer': return 'Tank transfer';
           case 'opening': return 'Opening';
           case 'adjustment': return 'Adjustment';
           case 'return': return 'Return';
@@ -1308,7 +1313,7 @@ export default function PlantStock() {
       
       const isPdfRowTanked = (matId: number) => {
         const mat = materials?.find(m => m.id === matId);
-        return mat ? /bitumen|ldo/i.test(mat.name) : false;
+        return mat ? /bitumen|emulsion|ldo|diesel|hsd/i.test(`${mat.category ?? ""} ${mat.name}`) : false;
       };
       const pdfLedgerRows = [...ledgerForDisplay].reverse();
       const pdfHasTankedRows = pdfLedgerRows.filter(e => e.transactionType !== 'opening_balance').some(e => isPdfRowTanked(e.materialId));
@@ -1328,7 +1333,7 @@ export default function PlantStock() {
           entry.entryTime || "-",
           getMaterialName(entry.materialId),
           getPartyName(entry.partyId, entry.materialId),
-          entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : isRevision ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType),
+          entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : isRevision ? 'Dispatch Revision' : entry.transactionType === 'tank_transfer' ? `→ ${getMaterialTankLabel(entry.materialId, entry.tankNumber ?? 1)}` : getTransactionTypeLabel(entry.transactionType),
           entry.transactionType === 'opening_balance'
             ? (entry.notes || '-')
             : isRevision
@@ -1349,15 +1354,15 @@ export default function PlantStock() {
         ];
         if (pdfHasTankedRows) {
           const tanked = isPdfRowTanked(entry.materialId);
-          row.push(tanked && entry.t1BalanceAfter != null ? entry.t1BalanceAfter.toFixed(3) : "");
-          row.push(tanked && entry.t2BalanceAfter != null ? entry.t2BalanceAfter.toFixed(3) : "");
+          row.push(tanked && entry.t1BalanceAfter != null ? `${getMaterialTankLabel(entry.materialId, 1)}: ${entry.t1BalanceAfter.toFixed(3)}` : "");
+          row.push(tanked && entry.t2BalanceAfter != null ? `${getMaterialTankLabel(entry.materialId, 2)}: ${entry.t2BalanceAfter.toFixed(3)}` : "");
         }
         return row;
       });
 
       const pdfLedgerHead = ["Transaction Date", "Invoice Date", "Entry Date", "Entry Time", "Material", "Stock Owner", "Type", "Notes/Issued To", "In", "Out", "Balance", "UOM"];
       if (pdfHasTankedRows) {
-        pdfLedgerHead.push("T1 Balance", "T2 Balance");
+        pdfLedgerHead.push("Tank 1 balance", "Tank 2 balance");
       }
       
       autoTable(doc, {
@@ -1387,7 +1392,7 @@ export default function PlantStock() {
         case 'receipt': return 'Receipt';
         case 'dispatch': return 'Dispatch';
         case 'issue': return 'Issue';
-        case 'tank_transfer': return '→ Tank 1 (small vertical)';
+        case 'tank_transfer': return 'Tank transfer';
         case 'opening': return 'Opening';
         case 'adjustment': return 'Adjustment';
         case 'equipment_usage': return 'Equip. Usage';
@@ -1402,7 +1407,7 @@ export default function PlantStock() {
     
     const isPrintRowTanked = (matId: number) => {
       const mat = materials?.find(m => m.id === matId);
-      return mat ? /bitumen|ldo/i.test(mat.name) : false;
+      return mat ? /bitumen|emulsion|ldo|diesel|hsd/i.test(`${mat.category ?? ""} ${mat.name}`) : false;
     };
     const printLedgerRows = [...ledgerForDisplay].reverse();
     const printHasTankedRows = printLedgerRows
@@ -1478,16 +1483,16 @@ export default function PlantStock() {
           ${packedPositionRows.length ? `
           <div class="section-title">Packed stock positions</div>
           <table><thead><tr>
-            <th>Material</th><th>Stock owner</th><th class="text-right">Tank 1 MT</th><th class="text-right">Tank 2 MT</th>
-            <th class="text-right">Packed count</th><th class="text-right">Packed MT</th><th class="text-right">Total MT</th><th>Stock unit total</th>
+            <th>Material</th><th>Stock owner</th><th>Tank position 1</th><th>Tank position 2</th>
+            <th class="text-right">Packed count</th><th class="text-right">Packed stock</th><th class="text-right">Total stock</th><th>Stock unit total</th>
           </tr></thead><tbody>
           ${packedPositionRows.map(row => `<tr>
             <td>${escapeHtml(displayName(row.materialName))}</td><td>${escapeHtml(displayName(row.partyName))}</td>
-            <td class="text-right">${row.tank1Mt == null ? "—" : row.tank1Mt.toFixed(3)}</td>
-            <td class="text-right">${row.tank2Mt == null ? "—" : row.tank2Mt.toFixed(3)}</td>
+            <td class="text-right">${escapeHtml(getMaterialTankLabel(row.materialId, 1))}: ${row.stockUom.toLowerCase().startsWith("lit") ? `${row.tank1.toLocaleString()} L` : row.tank1Mt == null ? `${row.tank1.toLocaleString()} ${escapeHtml(row.stockUom)}` : `${row.tank1Mt.toFixed(3)} MT`}</td>
+            <td class="text-right">${escapeHtml(getMaterialTankLabel(row.materialId, 2))}: ${row.stockUom.toLowerCase().startsWith("lit") ? `${row.tank2.toLocaleString()} L` : row.tank2Mt == null ? `${row.tank2.toLocaleString()} ${escapeHtml(row.stockUom)}` : `${row.tank2Mt.toFixed(3)} MT`}</td>
             <td class="text-right">${row.packedCount.toFixed(2)}</td>
-            <td class="text-right">${row.packedMt == null ? "—" : row.packedMt.toFixed(3)}</td>
-            <td class="text-right">${row.totalMt == null ? "—" : row.totalMt.toFixed(3)}</td>
+            <td class="text-right">${row.stockUom.toLowerCase().startsWith("lit") ? `${(row.packedL ?? row.packed).toLocaleString()} L` : row.packedMt == null ? `${row.packed.toLocaleString()} ${escapeHtml(row.stockUom)}` : `${row.packedMt.toFixed(3)} MT`}</td>
+            <td class="text-right">${row.stockUom.toLowerCase().startsWith("lit") ? `${(row.totalL ?? row.total).toLocaleString()} L` : row.totalMt == null ? `${row.total.toLocaleString()} ${escapeHtml(row.stockUom)}` : `${row.totalMt.toFixed(3)} MT`}</td>
             <td>${row.total.toFixed(3)} ${escapeHtml(row.stockUom)}</td>
           </tr>`).join("")}
           </tbody></table>` : ""}
@@ -1505,7 +1510,7 @@ export default function PlantStock() {
                 <th class="text-right">Out</th>
                 <th class="text-right">Balance</th>
                 <th>UOM</th>
-                ${printHasTankedRows ? '<th class="text-right">T1 Balance</th><th class="text-right">T2 Balance</th>' : ''}
+                ${printHasTankedRows ? '<th class="text-right">Tank 1 balance</th><th class="text-right">Tank 2 balance</th>' : ''}
               </tr>
             </thead>
             <tbody>
@@ -1520,6 +1525,7 @@ export default function PlantStock() {
                   : '';
                 const typeLabel = isBF ? 'B/F Opening Bal.'
                   : isRevision ? 'Dispatch Revision'
+                  : entry.transactionType === 'tank_transfer' ? `→ ${getMaterialTankLabel(entry.materialId, entry.tankNumber ?? 1)}`
                   : getTransactionTypeLabel(entry.transactionType);
                 const notes = isBF
                   ? (entry.notes || '-')
@@ -1538,10 +1544,10 @@ export default function PlantStock() {
                   : entry.notes || '-';
                 const tanked = isPrintRowTanked(entry.materialId);
                 const t1Cell = printHasTankedRows
-                  ? `<td class="text-right">${tanked && entry.t1BalanceAfter != null ? entry.t1BalanceAfter.toFixed(3) : ''}</td>`
+                  ? `<td class="text-right">${tanked && entry.t1BalanceAfter != null ? `${escapeHtml(getMaterialTankLabel(entry.materialId, 1))}: ${entry.t1BalanceAfter.toFixed(3)}` : ''}</td>`
                   : '';
                 const t2Cell = printHasTankedRows
-                  ? `<td class="text-right">${tanked && entry.t2BalanceAfter != null ? entry.t2BalanceAfter.toFixed(3) : ''}</td>`
+                  ? `<td class="text-right">${tanked && entry.t2BalanceAfter != null ? `${escapeHtml(getMaterialTankLabel(entry.materialId, 2))}: ${entry.t2BalanceAfter.toFixed(3)}` : ''}</td>`
                   : '';
                 return `
                 <tr${isBF ? ' class="bf-row"' : ''}>
@@ -1705,15 +1711,15 @@ export default function PlantStock() {
               <table className="w-full text-sm">
                 <thead><tr className="border-b text-left">
                   <th className="py-2 pr-3">Material</th><th className="py-2 pr-3">Party</th>
-                  <th className="py-2 pr-3 text-right">Tank 1</th><th className="py-2 pr-3 text-right">Tank 2</th>
-                  <th className="py-2 pr-3 text-right">Packed</th><th className="py-2 pr-3 text-right">Legacy / unassigned</th><th className="py-2 text-right">Total</th>
+                  <th className="py-2 pr-3 text-right">Tank position 1</th><th className="py-2 pr-3 text-right">Tank position 2</th>
+                  <th className="py-2 pr-3 text-right">Packed (count + stock)</th><th className="py-2 pr-3 text-right">Legacy / unassigned</th><th className="py-2 text-right">Total</th>
                 </tr></thead>
                 <tbody>{packedPositionRows.map(row => (
                   <tr className="border-b last:border-0" key={`${row.materialId}:${row.partyId ?? "common"}`}>
                     <td className="py-2 pr-3 font-medium">{row.materialName}</td>
                     <td className="py-2 pr-3">{row.partyName}</td>
-                    <td className="py-2 pr-3 text-right">{row.stockUom.toLowerCase().startsWith("lit") ? `${row.tank1.toLocaleString()} L` : row.tank1Mt == null ? `${row.tank1.toLocaleString()} ${row.stockUom}` : `${row.tank1Mt.toFixed(3)} MT`}</td>
-                    <td className="py-2 pr-3 text-right">{row.stockUom.toLowerCase().startsWith("lit") ? `${row.tank2.toLocaleString()} L` : row.tank2Mt == null ? `${row.tank2.toLocaleString()} ${row.stockUom}` : `${row.tank2Mt.toFixed(3)} MT`}</td>
+                    <td className="py-2 pr-3 text-right"><span className="font-medium">{getMaterialTankLabel(row.materialId, 1)}:</span> {row.stockUom.toLowerCase().startsWith("lit") ? `${row.tank1.toLocaleString()} L` : row.tank1Mt == null ? `${row.tank1.toLocaleString()} ${row.stockUom}` : `${row.tank1Mt.toFixed(3)} MT`}</td>
+                    <td className="py-2 pr-3 text-right"><span className="font-medium">{getMaterialTankLabel(row.materialId, 2)}:</span> {row.stockUom.toLowerCase().startsWith("lit") ? `${row.tank2.toLocaleString()} L` : row.tank2Mt == null ? `${row.tank2.toLocaleString()} ${row.stockUom}` : `${row.tank2Mt.toFixed(3)} MT`}</td>
                     <td className="py-2 pr-3 text-right">
                       {row.packedCount.toLocaleString()} {row.packedUnitName || "packed units"} · {row.stockUom.toLowerCase().startsWith("lit") ? `${(row.packedL ?? row.packed).toLocaleString()} L` : row.packedMt == null ? `${row.packed.toLocaleString()} ${row.stockUom}` : `${row.packedMt.toFixed(3)} MT`}
                     </td>
@@ -1793,7 +1799,7 @@ export default function PlantStock() {
                   <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
                   <SelectItem value="ldo_consumption">LDO Consumption</SelectItem>
                   <SelectItem value="issue">Issue</SelectItem>
-                  <SelectItem value="tank_transfer">→ Tank 1 (small vertical)</SelectItem>
+                  <SelectItem value="tank_transfer">Tank transfer</SelectItem>
                   <SelectItem value="dispatch">Dispatch</SelectItem>
                   <SelectItem value="return">Return</SelectItem>
                   <SelectItem value="transfer">Transfer</SelectItem>
@@ -1834,8 +1840,8 @@ export default function PlantStock() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Tanks</SelectItem>
-                      <SelectItem value="1">Tank 1</SelectItem>
-                      <SelectItem value="2">Tank 2</SelectItem>
+                    <SelectItem value="1">{getMaterialTankLabel(Number(selectedMaterialId), 1)}</SelectItem>
+                    <SelectItem value="2">{getMaterialTankLabel(Number(selectedMaterialId), 2)}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2377,7 +2383,7 @@ export default function PlantStock() {
                                 : entry.transactionType === 'receipt' ? 'Receipt'
                                 : entry.transactionType === 'dispatch' ? 'Dispatch'
                                 : entry.transactionType === 'issue' ? 'Issue'
-                                : entry.transactionType === 'tank_transfer' ? '→ Tank 1 (small vertical)'
+                                : entry.transactionType === 'tank_transfer' ? `→ ${getMaterialTankLabel(entry.materialId, entry.tankNumber ?? 1)}`
                                 : entry.transactionType === 'opening' ? 'Opening'
                                 : entry.transactionType === 'adjustment' ? 'Adjustment'
                                 : entry.transactionType === 'return' ? 'Return'
@@ -2472,7 +2478,7 @@ export default function PlantStock() {
                             <div className="flex items-center justify-end gap-1.5">
                               {!isBF && isTankedMaterial && entry.tankNumber != null && displayOut > 0 && (
                                 <span className={`inline-flex items-center px-1.5 py-0.5 text-sm font-bold rounded border ${entry.tankNumber === 1 ? 'bg-white dark:bg-transparent border-current text-blue-600 dark:text-blue-400' : 'bg-white dark:bg-transparent border-current text-purple-600 dark:text-purple-400'}`}>
-                                  T{entry.tankNumber}
+                                  {getMaterialTankLabel(entry.materialId, entry.tankNumber)}
                                 </span>
                               )}
                               {isBF ? (displayBalance < 0 ? Math.abs(displayBalance).toFixed(3) : '-') : (displayOut > 0 ? displayOut.toFixed(3) : '-')}
@@ -2484,8 +2490,8 @@ export default function PlantStock() {
                             </span>
                             {!isBF && isTankedMaterial && ((entry.t1BalanceAfter ?? 0) !== 0 || (entry.t2BalanceAfter ?? 0) !== 0) && (
                               <div className="flex items-center justify-end gap-2 mt-0.5 text-sm font-normal">
-                                <span className="text-blue-600 dark:text-blue-400">T1: {(entry.t1BalanceAfter ?? 0).toFixed(3)} {balanceUom}</span>
-                                <span className="text-purple-600 dark:text-purple-400">T2: {(entry.t2BalanceAfter ?? 0).toFixed(3)} {balanceUom}</span>
+                                <span className="text-blue-600 dark:text-blue-400">{getMaterialTankLabel(entry.materialId, 1)}: {(entry.t1BalanceAfter ?? 0).toFixed(3)} {balanceUom}</span>
+                                <span className="text-purple-600 dark:text-purple-400">{getMaterialTankLabel(entry.materialId, 2)}: {(entry.t2BalanceAfter ?? 0).toFixed(3)} {balanceUom}</span>
                               </div>
                             )}
                             {displayBalance < -1e-9 && !isBF && !isTankedMaterial && (
@@ -3338,7 +3344,7 @@ export default function PlantStock() {
         <DialogContent data-testid="dialog-packed-stock-decant">
           <DialogHeader>
             <DialogTitle>Decant packed stock</DialogTitle>
-            <DialogDescription>Move packed bitumen, emulsion, or LDO into Tank 1 or Tank 2. This changes position only; total stock is unchanged.</DialogDescription>
+            <DialogDescription>Move packed bitumen, emulsion, or LDO into {materialTankLabel(decantMaterial?.name, 1, decantMaterial?.category)} or {materialTankLabel(decantMaterial?.name, 2, decantMaterial?.category)}. This changes position only; total stock is unchanged.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -3378,7 +3384,10 @@ export default function PlantStock() {
                 <Label>Receiving tank</Label>
                 <Select value={decantTankNumber} onValueChange={value => setDecantTankNumber(value as "1" | "2")}>
                   <SelectTrigger data-testid="select-decant-tank"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="1">Tank 1</SelectItem><SelectItem value="2">Tank 2</SelectItem></SelectContent>
+                   <SelectContent>
+                     <SelectItem value="1">{materialTankLabel(decantMaterial?.name, 1, decantMaterial?.category)}</SelectItem>
+                     <SelectItem value="2">{materialTankLabel(decantMaterial?.name, 2, decantMaterial?.category)}</SelectItem>
+                   </SelectContent>
                 </Select>
               </div>
             </div>

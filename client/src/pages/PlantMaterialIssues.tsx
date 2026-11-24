@@ -25,11 +25,7 @@ import { format } from "date-fns";
 import type { Party, PlantMaterial, MaterialIssue } from "@shared/schema";
 import { UOM_OPTIONS } from "@shared/schema";
 import { stockOwnerLabel } from "@shared/stockOwnerLabel";
-
-const LDO_TANK_LABELS: Record<string, string> = {
-  "1": "Tank 1 (small vertical)",
-  "2": "Tank 2 (big horizontal)",
-};
+import { materialTankLabel } from "@shared/materialMasterFields";
 
 export default function PlantMaterialIssues() {
   const { toast } = useToast();
@@ -85,6 +81,10 @@ export default function PlantMaterialIssues() {
   const issuedToAutoSet = useRef(false);
   const purposeAutoSet = useRef(false);
   const receivedByAutoSet = useRef(false);
+
+  const { data: materials } = useQuery<PlantMaterial[]>({
+    queryKey: ["/api/plant-module/materials"],
+  });
 
   const LDO_AUTO_PURPOSE = "TANK FILLING";
   const LDO_FALLBACK_RECEIVED_BY = "PLANT OPERATOR";
@@ -144,10 +144,11 @@ export default function PlantMaterialIssues() {
     setNotes(data.notes);
     const tank = data.ldoTankNumber || "";
     setLdoTankNumber(tank);
-    issuedToAutoSet.current = !!(tank && tank !== "none" && data.issuedTo === LDO_TANK_LABELS[tank]);
+    const restoredMaterial = materials?.find(m => String(m.id) === data.materialId);
+    issuedToAutoSet.current = !!(tank && tank !== "none" && data.issuedTo === materialTankLabel(restoredMaterial?.name, Number(tank), restoredMaterial?.category));
     purposeAutoSet.current = !!(tank && tank !== "none" && data.purpose === LDO_AUTO_PURPOSE);
     receivedByAutoSet.current = !!(tank && tank !== "none" && data.receivedBy === getLdoReceivedByDefault(tank));
-  }, [ldoDefaults]);
+  }, [ldoDefaults, materials]);
 
   const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<IssueFormData>({
     formKey: "plant-material-issue-new",
@@ -191,10 +192,6 @@ export default function PlantMaterialIssues() {
 
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
-  });
-
-  const { data: materials } = useQuery<PlantMaterial[]>({
-    queryKey: ["/api/plant-module/materials"],
   });
 
   const invalidateStockQueries = () => {
@@ -248,7 +245,8 @@ export default function PlantMaterialIssues() {
     setLdoTankNumber(value);
     if (value && value !== "none") {
       if (!issuedTo || issuedToAutoSet.current) {
-        setIssuedTo(LDO_TANK_LABELS[value] ?? "");
+        const material = materials?.find(m => String(m.id) === materialId);
+        setIssuedTo(materialTankLabel(material?.name, Number(value), material?.category));
         issuedToAutoSet.current = true;
       }
       if (!purpose || purposeAutoSet.current) {
@@ -308,7 +306,8 @@ export default function PlantMaterialIssues() {
     setNotes(issue.notes || "");
     const tank = issue.ldoTankNumber ? String(issue.ldoTankNumber) : "";
     setLdoTankNumber(tank);
-    issuedToAutoSet.current = !!(tank && (issue.issuedTo || "") === LDO_TANK_LABELS[tank]);
+    const issueMaterial = materials?.find(m => m.id === issue.materialId);
+    issuedToAutoSet.current = !!(tank && (issue.issuedTo || "") === materialTankLabel(issueMaterial?.name, Number(tank), issueMaterial?.category));
     purposeAutoSet.current = !!(tank && (issue.purpose || "") === LDO_AUTO_PURPOSE);
     receivedByAutoSet.current = !!(tank && (issue.receivedBy || "") === getLdoReceivedByDefault(tank));
     setDialogOpen(true);
@@ -319,11 +318,8 @@ export default function PlantMaterialIssues() {
     ? ["LDO", "DIESEL"].includes(selectedMaterial.name.toUpperCase().trim())
     : false;
 
-  const getLdoTankLabel = (tank: number | null | undefined) => {
-    if (tank === 1) return "Tank 1 (small vertical)";
-    if (tank === 2) return "Tank 2 (big horizontal)";
-    return null;
-  };
+  const getLdoTankLabel = (tank: number | null | undefined) =>
+    tank == null ? null : materialTankLabel(selectedMaterial?.name, tank, selectedMaterial?.category);
 
   const handleSubmit = () => {
     if (!materialId || !quantity || !issuedTo || !partyId) return;
@@ -620,8 +616,8 @@ export default function PlantMaterialIssues() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">None / Not applicable</SelectItem>
-                        <SelectItem value="1">Tank 1 (small vertical)</SelectItem>
-                        <SelectItem value="2">Tank 2 (big horizontal)</SelectItem>
+                        <SelectItem value="1">{materialTankLabel(selectedMaterial?.name, 1, selectedMaterial?.category)}</SelectItem>
+                        <SelectItem value="2">{materialTankLabel(selectedMaterial?.name, 2, selectedMaterial?.category)}</SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-sm text-muted-foreground mt-1">

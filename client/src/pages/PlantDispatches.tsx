@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterType, PlantSettings } from "@shared/schema";
 import { dispatchRefetchInterval } from "@shared/dispatchPolling";
 import { formatPackedUnitLabel } from "@shared/packedStock";
+import { materialTankLabel } from "@shared/materialMasterFields";
 
 function dispatchProPlainReason(value: string | null | undefined): string {
   if (!value) return "Required dispatch details are missing.";
@@ -1662,10 +1663,10 @@ export default function PlantDispatches() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="1">
-                        Tank 1{bitumenTankBalances ? ` — ${bitumenTankBalances.tank1.toFixed(2)} MT` : ""}
+                         {materialTankLabel("Bitumen", 1)}{bitumenTankBalances ? ` — ${bitumenTankBalances.tank1.toFixed(2)} MT` : ""}
                       </SelectItem>
                       <SelectItem value="2">
-                        Tank 2{bitumenTankBalances ? ` — ${bitumenTankBalances.tank2.toFixed(2)} MT` : ""}
+                         {materialTankLabel("Bitumen", 2)}{bitumenTankBalances ? ` — ${bitumenTankBalances.tank2.toFixed(2)} MT` : ""}
                       </SelectItem>
                     </SelectContent>
                   </Select>

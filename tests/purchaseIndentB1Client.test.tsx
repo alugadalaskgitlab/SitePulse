@@ -94,6 +94,12 @@ async function openNewMaterialDialogFromIndent(name: string) {
   fireEvent.mouseDown(await screen.findByTestId("option-add-new-store-item"));
   await screen.findByTestId("button-save-new-store-item");
 }
+async function finishNewMaterialBasics(category = "Electricals") {
+  fireEvent.click(screen.getByTestId("select-new-store-item-category"));
+  fireEvent.click(await screen.findByRole("option", { name: category }));
+  fireEvent.click(screen.getByTestId("select-new-store-item-route"));
+  fireEvent.click(await screen.findByRole("option", { name: /Stores \/ spares \/ tools \/ consumables/i }));
+}
 
 describe("PI-01 B1 existing item identities through the actual edit form", () => {
   it("shows the purchase next step on the indent card and detail", async () => {
@@ -176,11 +182,12 @@ describe("PI-01 B1 existing item identities through the actual edit form", () =>
 
   it("creates and links a material from the purchase-indent item form without sending isActive", async () => {
     await openNewMaterialDialogFromIndent("POWER CABLE 35 SQ MM");
+    await finishNewMaterialBasics();
     fireEvent.click(screen.getByTestId("button-save-new-store-item"));
 
     await waitFor(() => expect(calls.some(call => call.method === "POST" && call.path === "/api/plant-module/materials")).toBe(true));
     const createCall = calls.find(call => call.method === "POST" && call.path === "/api/plant-module/materials")!;
-    expect(createCall.body).toMatchObject({ name: "POWER CABLE 35 SQ MM", category: "Aggregate", defaultUom: "MT" });
+    expect(createCall.body).toMatchObject({ name: "POWER CABLE 35 SQ MM", category: "Electricals", defaultUom: "MT", procurementRoute: "stores" });
     expect(createCall.body).not.toHaveProperty("isActive");
 
     const updateBody = await submit();
@@ -197,11 +204,13 @@ describe("PI-01 B1 existing item identities through the actual edit form", () =>
     fireEvent.focus(search);
     fireEvent.mouseDown(await screen.findByTestId("button-grn-add-catalogue-0"));
     await screen.findByTestId("button-save-new-store-item");
+    fireEvent.click(screen.getByTestId("select-new-store-item-route"));
+    fireEvent.click(await screen.findByRole("option", { name: /Stores \/ spares \/ tools \/ consumables/i }));
     fireEvent.click(screen.getByTestId("button-save-new-store-item"));
 
     await waitFor(() => expect(calls.some(call => call.method === "POST" && call.path === "/api/plant-module/materials")).toBe(true));
     const createCall = calls.find(call => call.method === "POST" && call.path === "/api/plant-module/materials")!;
-    expect(createCall.body).toMatchObject({ name: "WMM", category: "Spares", defaultUom: "MT" });
+    expect(createCall.body).toMatchObject({ name: "WMM", category: "Spares", defaultUom: "MT", procurementRoute: "stores" });
     expect(createCall.body).not.toHaveProperty("isActive");
     expect(await screen.findByTestId("badge-linked-0")).toBeInTheDocument();
   });
@@ -213,6 +222,7 @@ describe("PI-01 B1 existing item identities through the actual edit form", () =>
       errors: { formErrors: [], fieldErrors: { defaultUom: ["Unit is required"] } },
     };
     await openNewMaterialDialogFromIndent("INVALID MATERIAL");
+    await finishNewMaterialBasics();
     fireEvent.click(screen.getByTestId("button-save-new-store-item"));
 
     await waitFor(() => expect(toastSpy).toHaveBeenCalled());
@@ -227,6 +237,7 @@ describe("PI-01 B1 existing item identities through the actual edit form", () =>
     materialCreateStatus = 409;
     materialCreateBody = { message: "Material name already exists" };
     await openNewMaterialDialogFromIndent("DUPLICATE MATERIAL");
+    await finishNewMaterialBasics();
     fireEvent.click(screen.getByTestId("button-save-new-store-item"));
 
     await waitFor(() => expect(toastSpy).toHaveBeenCalled());
