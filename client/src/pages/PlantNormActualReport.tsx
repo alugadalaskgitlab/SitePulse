@@ -37,6 +37,7 @@ export default function PlantNormActualReport() {
   useEffect(() => {
     if (!touchedPlant) setPlantName(defaultPlantName);
   }, [defaultPlantName, touchedPlant]);
+  const canView = sectionCan("plant_norm_vs_actual", "view");
   const canExport = sectionCan("plant_norm_vs_actual", "export");
   const query = useQuery<Report>({
     queryKey: ["/api/plant-module/norm-vs-actual", from, to, plantName],
@@ -46,7 +47,7 @@ export default function PlantNormActualReport() {
       if (!response.ok) throw new Error((await response.json().catch(() => ({}))).message || "Could not load the report.");
       return response.json();
     },
-    enabled: !!from && !!to && !!plantName,
+    enabled: canView && !!from && !!to && !!plantName,
   });
   const plantsQuery = useQuery<string[]>({
     queryKey: ["/api/plant-module/shift-logs/plants"],
@@ -54,6 +55,7 @@ export default function PlantNormActualReport() {
       const response = await fetch("/api/plant-module/shift-logs/plants", { credentials: "include" });
       return response.ok ? response.json() : [defaultPlantName];
     },
+    enabled: canView,
   });
   const exportHref = (format: "pdf" | "xlsx") => {
     const params = new URLSearchParams({ from, to, plant: plantName, format });
@@ -61,6 +63,8 @@ export default function PlantNormActualReport() {
   };
   const formatVariance = (saved: number | null, label: string, digits: number, unit: string) =>
     saved == null ? "Unavailable" : `${Math.abs(saved).toFixed(digits)} ${unit} ${label}`;
+
+  if (!canView) return null;
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 p-4" data-testid="plant-norm-actual-report">

@@ -20,10 +20,10 @@ function numberOrDash(value: number | null | undefined, digits: number) {
   return value == null || !Number.isFinite(value) ? "—" : value.toFixed(digits);
 }
 
-function savedOrExcess(norm: number, actual: number | null, digits: number) {
+function savedOrExcess(norm: number, actual: number | null, digits: number, unit: string) {
   if (actual == null) return "actual unavailable";
   const difference = norm - actual;
-  return `${Math.abs(difference).toFixed(digits)} ${difference >= 0 ? "saved" : "excess"}`;
+  return `${Math.abs(difference).toFixed(digits)} ${unit} ${difference >= 0 ? "saved" : "excess"}`;
 }
 
 export function PlantNormActualDaySummary({ date, plantName }: { date: string; plantName: string }) {
@@ -45,8 +45,8 @@ export function PlantNormActualDaySummary({ date, plantName }: { date: string; p
       <CardContent className="space-y-1 text-sm">
         {query.isError ? <p role="alert">Fuel comparison unavailable.</p> : query.data ? (
           <>
-            <p>Bitumen: book {numberOrDash(query.data.daily.bitumenNormMt, 3)} MT · dips {numberOrDash(query.data.daily.bitumenActualMt, 3)} MT · {savedOrExcess(query.data.daily.bitumenNormMt, query.data.daily.bitumenActualMt, 3)} MT</p>
-            <p>LDO: norm {numberOrDash(query.data.daily.ldoNormL, 1)} L · actual {numberOrDash(query.data.daily.ldoActualL, 1)} L · {savedOrExcess(query.data.daily.ldoNormL, query.data.daily.ldoActualL, 1)} L</p>
+            <p>Bitumen: book {numberOrDash(query.data.daily.bitumenNormMt, 3)} MT · dips {numberOrDash(query.data.daily.bitumenActualMt, 3)} MT · {savedOrExcess(query.data.daily.bitumenNormMt, query.data.daily.bitumenActualMt, 3, "MT")}</p>
+            <p>LDO: norm {numberOrDash(query.data.daily.ldoNormL, 1)} L · actual {numberOrDash(query.data.daily.ldoActualL, 1)} L · {savedOrExcess(query.data.daily.ldoNormL, query.data.daily.ldoActualL, 1, "L")}</p>
           </>
         ) : <p className="text-muted-foreground">Loading fuel comparison…</p>}
       </CardContent>

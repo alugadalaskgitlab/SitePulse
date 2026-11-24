@@ -4,6 +4,7 @@ export type PlantNormActualDay = {
   bitumenActualMt: number | null;
   ldoNormL: number;
   ldoActualL: number | null;
+  hasNorm?: boolean;
 };
 
 export type PartyOrderNorm = {
@@ -30,27 +31,29 @@ export function normVariance(norm: number, actual: number | null, digits = 3) {
 export function summarizePlantNormActual(days: PlantNormActualDay[]) {
   const bitumenNormMt = round(days.reduce((sum, day) => sum + day.bitumenNormMt, 0), 3);
   const ldoNormL = round(days.reduce((sum, day) => sum + day.ldoNormL, 0), 1);
+  const normDays = days.filter(day => day.hasNorm !== false);
   const bitumenMeasured = days.filter(day => day.bitumenActualMt != null && Number.isFinite(day.bitumenActualMt));
   const ldoMeasured = days.filter(day => day.ldoActualL != null && Number.isFinite(day.ldoActualL));
+  const bitumenNormMeasured = normDays.filter(day => day.bitumenActualMt != null && Number.isFinite(day.bitumenActualMt));
+  const ldoNormMeasured = normDays.filter(day => day.ldoActualL != null && Number.isFinite(day.ldoActualL));
   const bitumenActualMt = bitumenMeasured.length
     ? round(bitumenMeasured.reduce((sum, day) => sum + Number(day.bitumenActualMt), 0), 3)
     : null;
   const ldoActualL = ldoMeasured.length
     ? round(ldoMeasured.reduce((sum, day) => sum + Number(day.ldoActualL), 0), 1)
     : null;
-  const normDays = days.length;
-  const bitumenComplete = bitumenMeasured.length === normDays;
-  const ldoComplete = ldoMeasured.length === normDays;
+  const bitumenComplete = bitumenNormMeasured.length === normDays.length;
+  const ldoComplete = ldoNormMeasured.length === normDays.length;
   return {
     bitumenNormMt,
     bitumenActualMt,
     bitumenVariance: bitumenComplete ? normVariance(bitumenNormMt, bitumenActualMt) : { saved: null, label: "actual unavailable" as const },
-    bitumenMeasuredDays: bitumenMeasured.length,
+    bitumenMeasuredDays: bitumenNormMeasured.length,
     ldoNormL,
     ldoActualL,
     ldoVariance: ldoComplete ? normVariance(ldoNormL, ldoActualL, 1) : { saved: null, label: "actual unavailable" as const },
-    ldoMeasuredDays: ldoMeasured.length,
-    normDays,
+    ldoMeasuredDays: ldoNormMeasured.length,
+    normDays: normDays.length,
   };
 }
 
@@ -66,7 +69,7 @@ export function groupPartyOrderNorms(rows: PartyOrderNorm[]) {
       groups.set(key, { ...row });
     }
   }
-  return [...groups.values()]
+  return Array.from(groups.values())
     .map(row => ({ ...row, bitumenNormMt: round(row.bitumenNormMt, 3), ldoNormL: round(row.ldoNormL, 1) }))
     .sort((a, b) => a.partyName.localeCompare(b.partyName) ||
       String(a.orderNo ?? "").localeCompare(String(b.orderNo ?? "")) ||
@@ -78,7 +81,7 @@ export function enforceBitumenCorrectionParty(
   requestedPartyId: number,
   companyPartyId: number | null,
 ): number {
-  if (!/bitumen/i.test(materialName)) return requestedPartyId;
+  if (!/^bitumen$/i.test(materialName.trim())) return requestedPartyId;
   if (companyPartyId == null) throw new Error("Select the company party in Admin Settings before correcting bitumen stock.");
   if (requestedPartyId !== companyPartyId) {
     throw new Error("Bitumen dip corrections must be posted to the HLC company party.");

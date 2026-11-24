@@ -987,12 +987,15 @@ export default function PlantBitumenStock() {
         <Card className="border-blue-200 dark:border-blue-800">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-start gap-2">
                 <Scale className="w-5 h-5 text-blue-600" />
-                <CardTitle className="text-base font-semibold">Book vs Physical Stock Correction</CardTitle>
+                <div>
+                  <CardTitle className="text-base font-semibold">Book vs Physical Stock Correction</CardTitle>
+                  <p className="text-xs text-muted-foreground">The shared dip/book difference posts to HLC only; party balances stay dispatch-based.</p>
+                </div>
               </div>
               {!showCorrForm && (
-                <Button size="sm" variant="outline" onClick={() => {
+                <Button size="sm" variant="outline" disabled={!stockBalances} onClick={() => {
                   setCorrPartyId(String(ownCompanyPartyId));
                   const t1MT = (tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3);
                   const t2MT = (tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3);
@@ -1030,7 +1033,7 @@ export default function PlantBitumenStock() {
                 <div className="text-sm text-muted-foreground">T1: {(tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
                 <div className="text-sm text-muted-foreground">T2: {(tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
               </div>
-              <div className="bg-muted/50 rounded-lg p-3 col-span-2">
+              {canViewNormActual && <div className="bg-muted/50 rounded-lg p-3 col-span-2">
                 <div className="text-muted-foreground text-sm mb-1">Difference (Physical − Book)</div>
                 {(latestTank1 || latestTank2) && bitumenBookStockMT !== null ? (() => {
                   const physMT = combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000;
@@ -1045,7 +1048,7 @@ export default function PlantBitumenStock() {
                   );
                 })() : <div className="text-muted-foreground">—</div>}
                 <div className="text-sm text-muted-foreground mt-1">Any shared-tank difference is posted to HLC; dispatch-based party balances are left unchanged.</div>
-              </div>
+              </div>}
             </div>
 
             {showCorrForm && (
@@ -1058,9 +1061,9 @@ export default function PlantBitumenStock() {
                     <p className="rounded-md border bg-muted px-3 py-2 text-sm font-semibold" data-testid="text-bitumen-correction-party">
                       {ownCompanyPartyName || "HLC company party"}
                     </p>
-                    {corrPartyId && selectedPartyBalance !== null && (
+                    {corrPartyId && (
                       <p className="text-sm text-muted-foreground mt-1">
-                        HLC book stock: <span className={(toFiniteNumber(selectedPartyBalance) ?? 0) < 0 ? "text-red-500 font-medium" : "font-medium"}>{formatQty(selectedPartyBalance, 3)} MT</span>
+                        HLC book stock: <span className={(toFiniteNumber(selectedPartyBalance) ?? 0) < 0 ? "text-red-500 font-medium" : "font-medium"}>{formatQty(selectedPartyBalance ?? 0, 3)} MT</span>
                       </p>
                     )}
                   </div>
@@ -1104,7 +1107,7 @@ export default function PlantBitumenStock() {
                           : "—"} MT
                       </div>
                     </div>
-                    {corrPartyId && selectedPartyBalance !== null && (corrTank1MT || corrTank2MT) && (
+                    {corrPartyId && bitumenBookStockMT !== null && (corrTank1MT || corrTank2MT) && (
                       <div className={`rounded-lg p-2 text-center ${
                         bitumenBookStockMT !== null && ((parseFloat(corrTank1MT) || 0) + (parseFloat(corrTank2MT) || 0)) - bitumenBookStockMT > 0
                           ? "bg-green-50 dark:bg-green-900/20"
@@ -1118,7 +1121,7 @@ export default function PlantBitumenStock() {
                         }`}>
                           {(() => {
                             const total = (parseFloat(corrTank1MT) || 0) + (parseFloat(corrTank2MT) || 0);
-                            const adj = bitumenBookStockMT === null ? 0 : total - bitumenBookStockMT;
+                            const adj = total - bitumenBookStockMT;
                             return `${adj > 0 ? "+" : ""}${adj.toFixed(3)} MT`;
                           })()}
                         </div>
@@ -1135,7 +1138,7 @@ export default function PlantBitumenStock() {
                 <div className="flex gap-2">
                   <Button
                     size="sm"
-                    disabled={!ownCompanyPartyId || corrPartyId !== String(ownCompanyPartyId) || (!corrTank1MT && !corrTank2MT) || correctionMutation.isPending}
+                    disabled={!ownCompanyPartyId || bitumenBookStockMT === null || !stockBalances || corrPartyId !== String(ownCompanyPartyId) || (!corrTank1MT && !corrTank2MT) || correctionMutation.isPending}
                     onClick={() => {
                       if (!bitumenMaterialId || !corrPartyId) return;
                       const t1 = parseFloat(corrTank1MT) || 0;

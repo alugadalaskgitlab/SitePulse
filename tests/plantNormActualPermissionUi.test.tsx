@@ -34,7 +34,7 @@ describe("PLANT-06 confidential summary visibility", () => {
   it("shows the HLC daily book/dips and norm/actual only when permitted", () => {
     mocks.allowed = true;
     render(<PlantNormActualDaySummary date="2026-01-01" plantName="Test plant" />);
-    expect(screen.getByText("Bitumen: book 0.500 MT · dips 0.450 MT · 0.050 saved MT")).toBeInTheDocument();
-    expect(screen.getByText("LDO: norm 60.0 L · actual 55.0 L · 5.0 saved L")).toBeInTheDocument();
+    expect(screen.getByText("Bitumen: book 0.500 MT · dips 0.450 MT · 0.050 MT saved")).toBeInTheDocument();
+    expect(screen.getByText("LDO: norm 60.0 L · actual 55.0 L · 5.0 L saved")).toBeInTheDocument();
   });
 });

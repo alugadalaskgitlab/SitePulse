@@ -918,7 +918,7 @@ function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: str
         </Link>
         )}
         {sectionVisible("plant_norm_vs_actual") && (
-        <Link href={opLink("/plant/norm-vs-actual")}>
+        <Link href={appendRoleAndTab("/plant/norm-vs-actual")}>
           <Card className="hover-elevate cursor-pointer h-full border-slate-300" data-testid="tile-plant-norm-vs-actual">
             <CardContent className="p-6 flex items-center gap-4">
               <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">

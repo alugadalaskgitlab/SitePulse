@@ -30,6 +30,7 @@ import PDFDocument from 'pdfkit';
 import { projectBillHireReviews, hireReviewTable, MONTHLY_BILL_HEADERS } from "../shared/vendorBillLayout";
 import { enforceBitumenCorrectionParty } from "@shared/plantNormVsActual";
 import { buildPlantNormActualReport, validPlantNormActualRange } from "./plantNormActual";
+import { normVariance } from "@shared/plantNormVsActual";
 import { getBillFinancialTotals } from "../shared/vendorBillFinancialReport";
 import { buildSavedBillPresentationRows } from "../shared/vendorBillPresentation";
 import { getBaseSiteName } from "../shared/siteName";
@@ -10488,8 +10489,10 @@ export async function registerRoutes(
           Mix: row.mixName,
           "Bitumen norm (MT)": row.bitumenNormMt,
           "Bitumen actual (MT)": "Shared tank — see HLC total",
+          "Bitumen saved / excess (MT)": "Shared actual not allocated",
           "LDO norm (L)": row.ldoNormL,
           "LDO actual (L)": "Shared plant — see HLC total",
+          "LDO saved / excess (L)": "Shared actual not allocated",
         }));
         summaryRows.push({
           Party: "HLC plant total",
@@ -10497,18 +10500,22 @@ export async function registerRoutes(
           Mix: "",
           "Bitumen norm (MT)": report.totals.bitumenNormMt,
           "Bitumen actual (MT)": report.totals.bitumenActualMt ?? "Unavailable",
+          "Bitumen saved / excess (MT)": report.totals.bitumenVariance.saved == null
+            ? "Unavailable" : report.totals.bitumenVariance.saved,
           "LDO norm (L)": report.totals.ldoNormL,
           "LDO actual (L)": report.totals.ldoActualL ?? "Unavailable",
+          "LDO saved / excess (L)": report.totals.ldoVariance.saved == null
+            ? "Unavailable" : report.totals.ldoVariance.saved,
         });
         xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(summaryRows), "Party and order");
         xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(report.daily.map(day => ({
           Date: day.date,
           "Bitumen norm (MT)": day.bitumenNormMt,
           "Bitumen actual (MT)": day.bitumenActualMt ?? "",
-          "Bitumen saved / excess (MT)": day.bitumenActualMt == null ? "" : Number((day.bitumenNormMt - day.bitumenActualMt).toFixed(3)),
+          "Bitumen saved / excess (MT)": day.bitumenActualMt == null ? "" : normVariance(day.bitumenNormMt, day.bitumenActualMt).saved,
           "LDO norm (L)": day.ldoNormL,
           "LDO actual (L)": day.ldoActualL ?? "",
-          "LDO saved / excess (L)": day.ldoActualL == null ? "" : Number((day.ldoNormL - day.ldoActualL).toFixed(1)),
+          "LDO saved / excess (L)": day.ldoActualL == null ? "" : normVariance(day.ldoNormL, day.ldoActualL, 1).saved,
         }))), "Daily");
         const buffer = xlsx.write(workbook, { type: "buffer", bookType: "xlsx" });
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -10523,7 +10530,7 @@ export async function registerRoutes(
       doc.font("Helvetica-Bold").fontSize(16).text("Plant norm vs actual");
       doc.font("Helvetica").fontSize(10).text(`${plantName} · ${from} to ${to}`);
       doc.moveDown(0.6);
-      doc.font("Helvetica-Bold").text("Party / order / mix norms");
+      doc.font("Helvetica-Bold").text("Party / order / mix norms (shared actuals are not allocated)");
       doc.font("Helvetica").fontSize(8);
       doc.text("Party | Order | Mix | Bitumen norm MT | LDO norm L");
       doc.moveTo(34, doc.y + 2).lineTo(808, doc.y + 2).stroke();
@@ -10538,12 +10545,14 @@ export async function registerRoutes(
       doc.text(`LDO: norm ${report.totals.ldoNormL.toFixed(1)} L · actual ${report.totals.ldoActualL == null ? "unavailable" : `${report.totals.ldoActualL.toFixed(1)} L`} · ${report.totals.ldoVariance.saved == null ? "variance unavailable" : `${Math.abs(report.totals.ldoVariance.saved).toFixed(1)} L ${report.totals.ldoVariance.label}`} (${report.totals.ldoMeasuredDays}/${report.totals.normDays} norm days measured)`);
       doc.moveDown(0.6);
       doc.font("Helvetica-Bold").text("Daily actuals");
-      doc.font("Helvetica").fontSize(8).text("Date | Bitumen norm MT | dips MT | LDO norm L | actual L");
+      doc.font("Helvetica").fontSize(8).text("Date | Bitumen norm MT | dips MT | saved/excess MT | LDO norm L | actual L | saved/excess L");
       doc.moveTo(34, doc.y + 2).lineTo(808, doc.y + 2).stroke();
       doc.moveDown(0.35);
       for (const day of report.daily) {
         if (doc.y > 535) doc.addPage();
-        doc.text(`${day.date} | ${day.bitumenNormMt.toFixed(3)} | ${day.bitumenActualMt == null ? "—" : day.bitumenActualMt.toFixed(3)} | ${day.ldoNormL.toFixed(1)} | ${day.ldoActualL == null ? "—" : day.ldoActualL.toFixed(1)}`);
+        const bitumenVariance = normVariance(day.bitumenNormMt, day.bitumenActualMt);
+        const ldoVariance = normVariance(day.ldoNormL, day.ldoActualL, 1);
+        doc.text(`${day.date} | ${day.bitumenNormMt.toFixed(3)} | ${day.bitumenActualMt == null ? "—" : day.bitumenActualMt.toFixed(3)} | ${bitumenVariance.saved == null ? "—" : `${Math.abs(bitumenVariance.saved).toFixed(3)} ${bitumenVariance.label}`} | ${day.ldoNormL.toFixed(1)} | ${day.ldoActualL == null ? "—" : day.ldoActualL.toFixed(1)} | ${ldoVariance.saved == null ? "—" : `${Math.abs(ldoVariance.saved).toFixed(1)} ${ldoVariance.label}`}`);
       }
       doc.end();
     } catch (err: any) {

@@ -1891,7 +1891,7 @@ export default function PlantLdoFlowMeter() {
         </Card>
       )}
 
-      {varianceData.length > 0 && (
+      {canViewNormActual && varianceData.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between flex-wrap gap-2">

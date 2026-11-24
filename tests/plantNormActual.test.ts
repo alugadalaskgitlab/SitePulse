@@ -44,6 +44,11 @@ describe("PLANT-06 norm-vs-actual calculations and access", () => {
     expect(partial.bitumenActualMt).toBe(0.45);
     expect(partial.bitumenVariance.saved).toBeNull();
     expect(partial.ldoVariance.saved).toBeNull();
+    const idleUse = summarizePlantNormActual([{
+      ...day("2026-01-03"), bitumenNormMt: 0, ldoNormL: 0, hasNorm: false,
+    }]);
+    expect(idleUse.bitumenVariance).toEqual({ saved: -0.45, label: "excess" });
+    expect(idleUse.normDays).toBe(0);
   });
 
   it("groups party/order norms without assigning shared tank actuals", () => {
@@ -64,6 +69,8 @@ describe("PLANT-06 norm-vs-actual calculations and access", () => {
       getMixTemplates: async () => [{ id: 9, name: "BC", bitumenPercent: 5 }],
       getBitumenDipReadings: async () => [{ date: "2026-01-01" }],
       getLdoDipReadings: async () => [{ date: "2026-01-01" }],
+      getPlantShiftLogs: async () => [{ date: "2026-01-01", plantName: "Test plant" }],
+      getHeatingSessionsWithProductionDate: async () => [],
       getDailyPlantSummary: async () => ({
         reconciliation: { bitumen: { actualUsedMT: 0.45 } },
         ldo: { consumedTotalL: 55 },
@@ -90,6 +97,13 @@ describe("PLANT-06 norm-vs-actual calculations and access", () => {
     expect(canLegacySection({ ...user, isAdmin: false }, explicit, "plant_norm_vs_actual", "view", {
       rolesConfigured: true, legacyPermissions: explicit,
     })).toBe(true);
+    expect(canLegacySection(user, explicit, "plant_norm_vs_actual", "export", {
+      rolesConfigured: true, legacyPermissions: explicit,
+    })).toBe(false);
+    explicit.plant_norm_vs_actual.export = true;
+    expect(canLegacySection(user, explicit, "plant_norm_vs_actual", "export", {
+      rolesConfigured: true, legacyPermissions: explicit,
+    })).toBe(true);
   });
 
   it("requires the configured HLC party for bitumen corrections only", () => {
@@ -97,6 +111,7 @@ describe("PLANT-06 norm-vs-actual calculations and access", () => {
     expect(() => enforceBitumenCorrectionParty("Bitumen", 8, 22)).toThrow("must be posted to the HLC company party");
     expect(() => enforceBitumenCorrectionParty("Bitumen", 8, null)).toThrow("Select the company party");
     expect(enforceBitumenCorrectionParty("LDO", 8, 22)).toBe(8);
+    expect(enforceBitumenCorrectionParty("Bitumen Emulsion", 8, 22)).toBe(8);
   });
 
   it("posts the shared dip/book difference to HLC without rewriting other party books", () => {
@@ -111,5 +126,6 @@ describe("PLANT-06 norm-vs-actual calculations and access", () => {
     expect(validPlantNormActualRange("2026-01-01", "2026-12-31")).toBe(true);
     expect(validPlantNormActualRange("2026-01-02", "2026-01-01")).toBe(false);
     expect(validPlantNormActualRange("2025-01-01", "2026-01-03")).toBe(false);
+    expect(validPlantNormActualRange("2026-02-31", "2026-03-01")).toBe(false);
   });
 });
