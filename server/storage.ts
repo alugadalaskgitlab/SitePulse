@@ -10088,7 +10088,14 @@ export class DatabaseStorage implements IStorage {
       partyDetails: partyDetails ?? null,
       siteDetails: Array.from(siteDetailsByKey.values()).map(dispatch => ({
         siteName: dispatch.siteName!,
-        ...dispatch.siteWorkDetails,
+        workName: dispatch.siteWorkName,
+        clientDepartment: dispatch.siteClientDepartment,
+        division: dispatch.siteDivision,
+        mandal: dispatch.siteMandal,
+        district: dispatch.siteDistrict,
+        agreementEstimateRef: dispatch.siteAgreementEstimateRef,
+        estimateSorYear: dispatch.siteEstimateSorYear,
+        mtPerCumFactor: dispatch.siteMtPerCumFactor,
       })),
       entries: detail,
     };

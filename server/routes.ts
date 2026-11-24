@@ -1944,7 +1944,7 @@ export async function registerRoutes(
 
   app.post("/api/sites", async (req, res) => {
     try {
-      if (!assertCreateEither(req, res, "sites_plants_manage", "admin_settings", "master_parties")) return;
+      if (!assertCreateEither(req, res, "sites_plants_manage", "admin_settings")) return;
       const input = insertSiteSchema.parse(req.body);
       const site = await storage.createSite({
         ...input,
@@ -1970,7 +1970,7 @@ export async function registerRoutes(
 
   app.patch("/api/sites/:id", async (req, res) => {
     try {
-      if (!assertEditEither(req, res, "sites_plants_manage", "admin_settings", "master_parties")) return;
+      if (!assertEditEither(req, res, "sites_plants_manage", "admin_settings")) return;
       const id = parseInt(req.params.id);
       const before = (await storage.getSites()).find(row => row.id === id);
       if (!before) return res.status(404).json({ message: "Site not found" });
@@ -2206,8 +2206,8 @@ export async function registerRoutes(
       return false;
     }
     const allowed = write
-      ? assertEditEither(req, res, "sites_plants_manage", "master_parties", "admin_settings")
-      : assertViewEither(req, res, "sites_plants_manage", "master_parties", "admin_settings");
+      ? assertEditEither(req, res, "sites_plants_manage", "admin_settings")
+      : assertViewEither(req, res, "sites_plants_manage", "admin_settings");
     if (!allowed) return false;
     const siteExists = (await storage.getSites()).some(site => site.id === siteId);
     if (!siteExists) {

@@ -341,6 +341,7 @@ export default function PlantSupplyOrders() {
     onSuccess: async (result: any) => {
       setCopySiteDetailsOpen(false);
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/plant-module/supply-orders"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/plant-module/supply-orders", selectedId] }),
         queryClient.invalidateQueries({ queryKey: ["/api/plant-module/supply-orders/options"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/sites"] }),

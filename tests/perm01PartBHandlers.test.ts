@@ -37,6 +37,7 @@ vi.mock("../server/storage", () => {
   });
   methods.createSite = vi.fn(async input => ({ id: 7, ...input }));
   methods.updateSite = vi.fn(async (id, input) => ({ id, ...input }));
+  methods.getSites = vi.fn(async () => [{ id: 7, name: "Synthetic site", tallyCostCentreName: null }]);
   methods.seedSitesFromDprs = vi.fn(async () => 0);
   methods.createPlantReport = vi.fn(async input => ({ id: 7, ...input }));
   methods.updatePlantReport = vi.fn(async (id, input) => ({ id, ...input }));
