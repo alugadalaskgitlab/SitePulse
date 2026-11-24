@@ -9459,7 +9459,7 @@ export class DatabaseStorage implements IStorage {
     }>();
     for (const entry of entries) {
       const material = materialById.get(Number(entry.materialId));
-      if (!material || !(/bitumen|emulsion|ldo/i.test(`${material.category ?? ""} ${material.name}`))) continue;
+      if (!material || (!/bitumen|emulsion|ldo/i.test(`${material.category ?? ""} ${material.name}`) && !material.packedUnitName)) continue;
       const key = `${entry.materialId}:${entry.partyId ?? "common"}`;
       const stockUom = stockUnitForMaterial(material, entry.uom);
       const row = groups.get(key) ?? {
@@ -13311,6 +13311,41 @@ export class DatabaseStorage implements IStorage {
         // shows it correctly and it is NOT counted as theoretical consumption.
         // Actual LDO/Diesel consumption is tracked via shift log dip readings.
         {
+          // A store-to-tank issue can move ordinary loose stock, but packed
+          // barrels/drums must enter a tank only through the audited Decant flow.
+          const isTankFill = issue.ldoTankNumber != null && material &&
+            /^(ldo|diesel)$/i.test(material.name.trim());
+          if (isTankFill) {
+            const partyCondition = stockPartyId == null
+              ? sql`${stockLedger.partyId} IS NULL`
+              : eq(stockLedger.partyId, stockPartyId);
+            const packedRows = await tx.select({
+              quantityIn: stockLedger.quantityIn,
+              quantityOut: stockLedger.quantityOut,
+              uom: stockLedger.uom,
+            }).from(stockLedger).where(and(
+              eq(stockLedger.materialId, issue.materialId),
+              partyCondition,
+              eq(stockLedger.stockPosition, "packed"),
+            ));
+            const packedBalance = packedRows.reduce((sum, row) => {
+              const quantity = Number(row.quantityIn ?? 0) - Number(row.quantityOut ?? 0);
+              const converted = row.uom && row.uom !== stockUom
+                ? convertStockQuantity(quantity, row.uom, stockUom, Number(material.bulkDensity) || null)
+                : quantity;
+              return sum + converted;
+            }, 0);
+            const balanceCondition = stockPartyId == null
+              ? and(eq(stockBalances.materialId, issue.materialId), sql`${stockBalances.partyId} IS NULL`)
+              : and(eq(stockBalances.materialId, issue.materialId), eq(stockBalances.partyId, stockPartyId));
+            const [currentBalance] = await tx.select({ balance: stockBalances.balance })
+              .from(stockBalances).where(balanceCondition).limit(1);
+            const looseAvailable = Number(currentBalance?.balance ?? 0) - packedBalance;
+            if (stockQuantity > looseAvailable + 1e-6) {
+              throw new Error("Packed stock can enter a tank only through Decant.");
+            }
+          }
+
           const { newBalance } = await this._adjustStockBalance(
             tx,
             issue.materialId,
@@ -13321,8 +13356,6 @@ export class DatabaseStorage implements IStorage {
           );
           
           // LDO or Diesel issued directly into a boiler/dryer tank = store→tank transfer
-          const isTankFill = issue.ldoTankNumber != null && material &&
-            /^(ldo|diesel)$/i.test(material.name.trim());
           const ldoTankNote = issue.ldoTankNumber != null ? ` → LDO Tank ${issue.ldoTankNumber}` : '';
           const verb = isTankFill ? 'Transfer to' : 'Issue to';
           const conversionNote = stockQuantity !== issue.quantity

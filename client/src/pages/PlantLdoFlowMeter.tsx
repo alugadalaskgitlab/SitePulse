@@ -20,6 +20,7 @@ import { openPrintableHtmlOrPreview } from "@/lib/installedApp";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { normalizeWeightUnit } from "@shared/stockUnits";
+import { formatPackedUnitLabel } from "@shared/packedStock";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
 import { format, parseISO } from "date-fns";
 import type { LdoFlowReading, LdoDipReading, TruckDispatch, Party, MixTemplate } from "@shared/schema";
@@ -1220,7 +1221,7 @@ export default function PlantLdoFlowMeter() {
                     <td className="py-2 pr-3">{row.partyName}</td>
                     <td className="py-2 pr-3 text-right">{(row.tank1L ?? row.tank1).toLocaleString()} L</td>
                     <td className="py-2 pr-3 text-right">{(row.tank2L ?? row.tank2).toLocaleString()} L</td>
-                    <td className="py-2 pr-3 text-right">{row.packedCount.toLocaleString()} {row.packedUnitName || "units"} · {(row.packedL ?? row.packed).toLocaleString()} L</td>
+                    <td className="py-2 pr-3 text-right">{row.packedCount.toLocaleString()} {formatPackedUnitLabel(row.packedUnitName, row.packedCount)} · {(row.packedL ?? row.packed).toLocaleString()} L</td>
                     <td className="py-2 pr-3 text-right">{row.unassigned.toLocaleString()} L</td>
                     <td className="py-2 text-right font-semibold">{(row.totalL ?? row.total).toLocaleString()} L</td>
                   </tr>
@@ -1703,6 +1704,7 @@ export default function PlantLdoFlowMeter() {
                 <div className={`font-bold text-lg ${ldoBookStockL < 0 ? "text-red-600" : "text-foreground"}`}>
                   {ldoBookStockL.toFixed(0)} L
                 </div>
+                <div className="text-xs text-muted-foreground">Packed: {ldoPackedStockL.toFixed(0)} L</div>
                 <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
                   {ldoPartyBalances.map(b => (
                     <div key={b.id} className="flex justify-between gap-2">

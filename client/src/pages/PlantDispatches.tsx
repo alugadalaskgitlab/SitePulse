@@ -31,6 +31,7 @@ import { formatPersonName } from "@shared/personName";
 import { cn } from "@/lib/utils";
 import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterType, PlantSettings } from "@shared/schema";
 import { dispatchRefetchInterval } from "@shared/dispatchPolling";
+import { formatPackedUnitLabel } from "@shared/packedStock";
 
 function dispatchProPlainReason(value: string | null | undefined): string {
   if (!value) return "Required dispatch details are missing.";
@@ -1967,7 +1968,10 @@ export default function PlantDispatches() {
                               <p className="text-xs font-medium">{order.orderNo} · {order.workName || order.siteName}</p>
                               {(order.materials ?? []).map((material: any) => {
                                 const available = Number(material.stockAvailable) || 0;
-                                const spendable = Math.max(0, available);
+                                const dispatchAvailable = material.tankStockAvailable == null
+                                  ? available
+                                  : Number(material.tankStockAvailable) || 0;
+                                const spendable = Math.max(0, dispatchAvailable);
                                 const need = Number(material.need) || 0;
                                 const mixCapacityMt = need > 0 && remainingMixMt > 0
                                   ? Math.min(remainingMixMt, spendable / need * remainingMixMt)
@@ -1975,6 +1979,8 @@ export default function PlantDispatches() {
                                 return (
                                   <p key={material.materialId} className={`text-xs ${material.shortage > 0 ? "text-amber-700" : "text-muted-foreground"}`}>
                                     {material.scope === "party" ? "Party stock" : "HLC stock"} — {material.materialName}: {available.toFixed(2)} {material.uom} available
+                                    {Number(material.packedStockCount) > 0 && ` (incl. ${Number(material.packedStockCount).toLocaleString()} ${formatPackedUnitLabel(material.packedUnitName, Number(material.packedStockCount))})`}
+                                    {material.tankStockAvailable != null && ` · ${dispatchAvailable.toFixed(2)} ${material.uom} in tanks`}
                                     {mixCapacityMt != null ? ` · approx. ${mixCapacityMt.toFixed(0)} MT mix` : ""}
                                     {material.shortage > 0 ? ` · ${Number(material.shortage).toFixed(2)} ${material.uom} short` : ""}
                                   </p>

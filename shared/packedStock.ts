@@ -47,3 +47,9 @@ export function packedReceiptStockQuantity(input: {
   }
   throw new Error("Set the packed-unit net weight or volume in Material Master before recording this receipt.");
 }
+
+export function formatPackedUnitLabel(unitName: string | null | undefined, count: number): string {
+  const unit = (unitName || "packed unit").trim().toLocaleLowerCase();
+  if (count === 1) return unit.endsWith("s") ? unit.slice(0, -1) : unit;
+  return unit.endsWith("s") ? unit : `${unit}s`;
+}

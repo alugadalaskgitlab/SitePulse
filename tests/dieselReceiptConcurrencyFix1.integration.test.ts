@@ -57,7 +57,10 @@ describePostgres("FIX 1 linked diesel receipt concurrency", () => {
         is_active integer DEFAULT 1,
         created_at timestamp DEFAULT now(),
         procurement_route text,
-        aliases text
+        aliases text,
+        packed_unit_name text,
+        packed_unit_net_weight_kg real,
+        packed_unit_volume_liters real
       );
       CREATE TABLE "${schemaName}".material_receipts (
         id serial PRIMARY KEY,
@@ -68,6 +71,10 @@ describePostgres("FIX 1 linked diesel receipt concurrency", () => {
         material_id integer NOT NULL,
         quantity real NOT NULL,
         uom text NOT NULL,
+        packed_count real,
+        packed_unit_name text,
+        packed_stock_quantity real,
+        actual_net_weight_kg real,
         supplier text,
         transporter text,
         vehicle_number text,
@@ -119,6 +126,9 @@ describePostgres("FIX 1 linked diesel receipt concurrency", () => {
         uom text,
         notes text,
         tank_number integer,
+        stock_position text,
+        packed_count_in real,
+        packed_count_out real,
         created_at timestamp DEFAULT now()
       );
     `);
@@ -163,6 +173,7 @@ describePostgres("FIX 1 linked diesel receipt concurrency", () => {
       uom: "Liters",
       isPlantCommon: 1,
       plantName: "Main Plant",
+      tankNumber: 1,
       linkedDieselRequirementId: 1,
       receiptNo,
     };

@@ -3,7 +3,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { is } from "drizzle-orm";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
-import { packedReceiptStockQuantity, tankPositionBalance } from "../shared/packedStock";
+import { formatPackedUnitLabel, packedReceiptStockQuantity, tankPositionBalance } from "../shared/packedStock";
 import { isMeaningfulStockDifference, isMeaningfullyNegativeStock, stockDifferenceTolerance } from "../shared/stockUnits";
 import { dispatchRefetchInterval } from "../shared/dispatchPolling";
 import * as schema from "../shared/schema";
@@ -60,6 +60,11 @@ describe("STOCK-02 packed stock conversions", () => {
       count: 1,
       stockUom: "MT",
     })).toThrow("Set the packed-unit net weight or volume in Material Master");
+  });
+
+  it("shows plural packed units in supply availability labels", () => {
+    expect(formatPackedUnitLabel("Barrel", 10)).toBe("barrels");
+    expect(formatPackedUnitLabel("Barrels", 1)).toBe("barrel");
   });
 
   it("counts only the selected tank for dispatch, never packed barrels", () => {
@@ -187,7 +192,7 @@ it("decants LDO barrels into a dated tank receipt counted by PLANT-04", async ()
     FROM ldo_flow_readings WHERE reading_type='receipt'
   `)).rows as any[];
   expect(flow).toMatchObject({
-    date: "2026-11-24",
+    date: new Date("2026-11-24T00:00:00.000Z"),
     time: "09:15",
     tank_number: 1,
     reading_type: "receipt",
@@ -218,6 +223,73 @@ it("requires a tank for bulk LDO receipts", async () => {
     partyId: 7,
     isPlantCommon: 0,
   } as any)).rejects.toThrow("Bulk fuel receipts must be assigned to Tank 1 or Tank 2.");
+});
+
+it("keeps packed LDO separate when the physical tank correction is posted", async () => {
+  await pg.exec(`
+    INSERT INTO parties (id, name) VALUES (7, 'Synthetic party');
+    INSERT INTO plant_materials (id, name, category, default_uom, bulk_density, packed_unit_name)
+      VALUES (14, 'LDO', 'LDO', 'Liters', 0.84, 'Barrel');
+    INSERT INTO stock_balances (id, party_id, material_id, balance, uom)
+      VALUES (3, 7, 14, 2000, 'Liters');
+    INSERT INTO stock_ledger
+      (id, date, party_id, material_id, transaction_type, quantity_in, quantity_out, balance_after, uom, stock_position, tank_number, packed_count_in)
+      VALUES
+        (201, '2026-11-24', 7, 14, 'receipt', 500, 0, 500, 'Liters', 'tank_1', 1, 0),
+        (202, '2026-11-24', 7, 14, 'receipt', 700, 0, 1200, 'Liters', 'tank_2', 2, 0),
+        (203, '2026-11-24', 7, 14, 'receipt', 800, 0, 2000, 'Liters', 'packed', NULL, 4);
+  `);
+  const result = await storage.postStockCorrection({
+    materialId: 14,
+    partyId: 7,
+    physicalQty: 2.3,
+    tank1L: 600,
+    tank2L: 900,
+    uom: "Liters",
+    date: "2026-11-24",
+    notes: "Synthetic correction",
+    correctedBy: "Synthetic Owner",
+  });
+  expect(result).toMatchObject({ previousBalance: 2000, newBalance: 2300, adjustment: 300, uom: "Liters" });
+  const [balance] = (await pg.query("SELECT balance FROM stock_balances WHERE material_id=14 AND party_id=7")).rows as any[];
+  expect(Number(balance.balance)).toBe(2300);
+  const position = (await storage.getPackedStockPositionSummary())[0];
+  expect(position).toMatchObject({ tank1: 600, tank2: 900, packed: 800, packedCount: 4, total: 2300 });
+});
+
+it("requires non-packed LDO stock for a store-to-tank issue", async () => {
+  await pg.exec(`
+    INSERT INTO parties (id, name) VALUES (8, 'Synthetic issue party');
+    INSERT INTO plant_materials (id, name, category, default_uom, packed_unit_name, packed_unit_volume_liters)
+      VALUES (15, 'LDO', 'LDO', 'Liters', 'Barrel', 200);
+    INSERT INTO stock_balances (id, party_id, material_id, balance, uom)
+      VALUES (4, 8, 15, 800, 'Liters');
+    INSERT INTO stock_ledger
+      (id, date, party_id, material_id, transaction_type, quantity_in, quantity_out, balance_after, uom, stock_position, packed_count_in)
+      VALUES (301, '2026-11-24', 8, 15, 'receipt', 800, 0, 800, 'Liters', 'packed', 4);
+  `);
+  const issue = {
+    date: "2026-11-24",
+    partyId: 8,
+    isPlantCommon: 0,
+    materialId: 15,
+    quantity: 1200,
+    uom: "Liters",
+    issuedTo: "Boiler",
+    ldoTankNumber: 1,
+  };
+  await expect(storage.createMaterialIssue(issue as any)).rejects.toThrow(
+    "Packed stock can enter a tank only through Decant.",
+  );
+  await pg.exec(`
+    INSERT INTO stock_ledger
+      (id, date, party_id, material_id, transaction_type, quantity_in, quantity_out, balance_after, uom)
+      VALUES (302, '2026-11-24', 8, 15, 'receipt', 1200, 0, 2000, 'Liters');
+    UPDATE stock_balances SET balance=2000 WHERE material_id=15 AND party_id=8;
+  `);
+  await storage.createMaterialIssue(issue as any);
+  const positions = await storage.getPackedStockPositionSummary();
+  expect(positions[0]).toMatchObject({ tank1: 1200, packed: 800, packedCount: 4, total: 2000 });
 });
 
 it("saves packed count and lets actual total net weight override the standard barrel weight", async () => {

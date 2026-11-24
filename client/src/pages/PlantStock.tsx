@@ -29,6 +29,7 @@ import { contextKeyForReturnPath, resolveInternalReturnTo } from "@/lib/procurem
 import { convertStockQuantity, stockDifferenceTolerance, stockUnitForMaterial } from "@shared/stockUnits";
 import { displayName } from "@shared/displayName";
 import { openPrintableHtmlOrPreview } from "@/lib/installedApp";
+import { formatPackedUnitLabel } from "@shared/packedStock";
 
 type StockBalanceAsOf = {
   materialId: number;
@@ -1180,12 +1181,12 @@ export default function PlantStock() {
       const packedPositionData = (packedStockQuery.data?.rows ?? []).map(row => ({
         Material: row.materialName,
         Party: row.partyName,
-        "Tank 1 (MT)": row.tank1Mt,
-        "Tank 2 (MT)": row.tank2Mt,
-        "Packed count": row.packedCount,
-        "Packed (MT)": row.packedMt,
-        "Total (MT)": row.totalMt,
-        "Stock unit total": `${row.total.toFixed(3)} ${row.stockUom}`,
+        "Tank 1": `${row.tank1.toLocaleString()} ${row.stockUom}`,
+        "Tank 2": `${row.tank2.toLocaleString()} ${row.stockUom}`,
+        "Packed count": `${row.packedCount.toLocaleString()} ${formatPackedUnitLabel(row.packedUnitName, row.packedCount)}`,
+        "Packed stock": `${row.packed.toLocaleString()} ${row.stockUom}`,
+        "Legacy / unassigned": `${row.unassigned.toLocaleString()} ${row.stockUom}`,
+        Total: `${row.total.toLocaleString()} ${row.stockUom}`,
       }));
       if (packedPositionData.length) {
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(packedPositionData), "Packed Positions");
@@ -1264,14 +1265,15 @@ export default function PlantStock() {
         doc.text("Packed stock positions", 14, 15);
         autoTable(doc, {
           startY: 20,
-          head: [["Material", "Stock Owner", "Tank 1 MT", "Tank 2 MT", "Packed count", "Packed MT", "Total MT", "Stock unit total"]],
+           head: [["Material", "Stock Owner", "Tank 1", "Tank 2", "Packed count", "Packed stock", "Legacy / unassigned", "Total"]],
           body: packedStockQuery.data!.rows.map(row => [
             displayName(row.materialName), displayName(row.partyName),
-            row.tank1Mt == null ? "—" : row.tank1Mt.toFixed(3),
-            row.tank2Mt == null ? "—" : row.tank2Mt.toFixed(3),
-            row.packedCount.toFixed(2), row.packedMt == null ? "—" : row.packedMt.toFixed(3),
-            row.totalMt == null ? "—" : row.totalMt.toFixed(3),
-            `${row.total.toFixed(3)} ${row.stockUom}`,
+             `${row.tank1.toLocaleString()} ${row.stockUom}`,
+             `${row.tank2.toLocaleString()} ${row.stockUom}`,
+             `${row.packedCount.toLocaleString()} ${formatPackedUnitLabel(row.packedUnitName, row.packedCount)}`,
+             `${row.packed.toLocaleString()} ${row.stockUom}`,
+             `${row.unassigned.toLocaleString()} ${row.stockUom}`,
+             `${row.total.toLocaleString()} ${row.stockUom}`,
           ]),
           styles: { fontSize: 8 },
           margin: { left: 14, right: 14 },

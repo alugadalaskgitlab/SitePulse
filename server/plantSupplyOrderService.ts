@@ -969,6 +969,7 @@ export async function getPlantSupplyOrder(orderId: number) {
     : [];
   const { storage } = await import("./storage");
   const balanceRows = await storage.getStockBalances();
+  const packedPositions = await storage.getPackedStockPositionSummary();
   const recentDispatches = await db.select({
     date: truckDispatches.date,
     mixTemplateId: truckDispatches.mixTemplateId,
@@ -1050,6 +1051,7 @@ export async function getPlantSupplyOrder(orderId: number) {
   const scopeByMaterial = new Map(scopeRows.map(row => [row.materialId, row.scope]));
   const materialById = new Map(materialRows.map(row => [row.id, row]));
   const stockByKey = new Map(balanceRows.map(row => [`${row.partyId ?? "common"}:${row.materialId}`, row]));
+  const packedByKey = new Map(packedPositions.map(row => [`${row.partyId ?? "common"}:${row.materialId}`, row]));
   const dailyMix = dailyMixTonnes(lineInputs, recentDispatches.map(row => ({
     date: row.date,
     mixTemplateId: row.mixTemplateId,
@@ -1245,6 +1247,13 @@ export async function getPlantSupplyOrder(orderId: number) {
     };
     const partyAvailable = toNeedUnit(stockByKey.get(`${order.partyId}:${need.materialId}`));
     const hlcAvailable = toNeedUnit(stockByKey.get(`${hlcPartyId ?? "common"}:${need.materialId}`));
+    const position = packedByKey.get(`${stockPartyId ?? "common"}:${need.materialId}`);
+    const packedStockAvailable = position
+      ? toNeedUnit({ balance: position.packed, uom: position.stockUom } as typeof balanceRows[number])
+      : 0;
+    const tankStockAvailable = position && /bitumen|emulsion|ldo|diesel|hsd/i.test(`${material?.category ?? ""} ${material?.name ?? ""}`)
+      ? toNeedUnit({ balance: position.tank1 + position.tank2, uom: position.stockUom } as typeof balanceRows[number])
+      : null;
     const needQty = need.quantity;
     const dailyNeed = dailyNeedById.get(need.materialId) ?? 0;
     const availability = materialAvailabilityForScope(
@@ -1258,6 +1267,10 @@ export async function getPlantSupplyOrder(orderId: number) {
       uom: need.uom,
       stockAvailable: availability.stockAvailable,
       stockUom: need.uom,
+      packedStockCount: position?.packedCount ?? 0,
+      packedUnitName: position?.packedUnitName ?? null,
+      packedStockAvailable,
+      tankStockAvailable,
       shortage: availability.shortage,
       dailyNeed,
       daysLeft: availability.daysLeft,

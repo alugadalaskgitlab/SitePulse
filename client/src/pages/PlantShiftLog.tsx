@@ -40,6 +40,7 @@ type ManpowerRow = {
 type IdleRow = { startTime: string; endTime?: string | null; reason: string; remarks?: string | null };
 
 import { ReportExportGate } from "@/components/ReportExportGate";
+import { formatPackedUnitLabel } from "@shared/packedStock";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 
@@ -1549,7 +1550,7 @@ export default function PlantShiftLog() {
             {dailyOrderSummaries.map((order: any) => {
               const shortNames = (order.materials ?? [])
                 .filter((material: any) => material.shortage > 0 || (material.daysLeft != null && material.daysLeft < 2))
-                .map((material: any) => material.materialName).join(", ");
+                .map((material: any) => `${material.materialName}${Number(material.packedStockCount) > 0 ? ` incl. ${Number(material.packedStockCount).toLocaleString()} ${formatPackedUnitLabel(material.packedUnitName, Number(material.packedStockCount))}` : ""}`).join(", ");
               return (
                 <a key={order.id} href={`/plant/supply-orders?orderId=${order.id}`} className="block rounded border p-2 text-sm hover:bg-muted/40" data-testid={`shift-log-order-${order.id}`}>
                   <span className="font-semibold">{order.partyName} · {order.orderNo}</span>

@@ -7,6 +7,7 @@ import {
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
+import { formatPackedUnitLabel } from "@shared/packedStock";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -214,6 +215,8 @@ export default function HmpHub() {
                           <span>{material.materialName}</span>
                           <span className={material.shortage > 0 ? "font-medium text-rose-700" : "text-amber-700"}>
                             {material.shortage > 0 ? `${material.shortage.toFixed(2)} ${material.uom} short` : `${material.daysLeft.toFixed(1)} days left`}
+                            {` · stock ${Number(material.stockAvailable ?? 0).toFixed(2)} ${material.uom}`}
+                            {Number(material.packedStockCount) > 0 && ` (incl. ${Number(material.packedStockCount).toLocaleString()} in ${formatPackedUnitLabel(material.packedUnitName, Number(material.packedStockCount))})`}
                           </span>
                         </li>
                       ))}

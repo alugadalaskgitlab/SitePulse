@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { formatSupplyOrderVersionTime } from "@shared/plantSupplyOrderVersions";
+import { formatPackedUnitLabel } from "@shared/packedStock";
 
 type OrderMixDraft = {
   mixName: string;
@@ -707,7 +708,10 @@ export default function PlantSupplyOrders() {
                                 </Select>
                               </div>
                               <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
-                                <span>Stock available: {material.stockAvailable.toFixed(3)} {material.stockUom}</span>
+                                <span>
+                                  Stock available: {material.stockAvailable.toFixed(3)} {material.stockUom}
+                                  {material.packedStockCount > 0 && ` (incl. ${Number(material.packedStockCount).toLocaleString()} in ${formatPackedUnitLabel(material.packedUnitName, Number(material.packedStockCount))})`}
+                                </span>
                                 {material.shortage > 0 && material.scope === "hlc" && (
                                   <span className="text-amber-700">
                                     Short: {material.shortage.toFixed(3)} {material.uom} ·{" "}
