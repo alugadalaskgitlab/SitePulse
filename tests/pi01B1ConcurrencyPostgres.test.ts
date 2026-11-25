@@ -37,7 +37,7 @@ beforeAll(async () => {
   pool = new pg.Pool({ host: join(root, "socket"), port: 58439, database: "postgres", user: "pi01_test", max: 8 });
   for (const table of [schema.purchaseIndents, schema.purchaseIndentItems, schema.purchaseOrders,
     schema.purchaseIndentItemHistory, schema.piItemTransactions, schema.storeGrnItems,
-    schema.pendingPlantReceipts, schema.serviceCompletions, schema.siteMaterialTrips]) {
+    schema.pendingPlantReceipts, schema.serviceCompletions, schema.siteMaterialTrips, schema.plantMaterials]) {
     const config = getTableConfig(table);
     await pool.query(`CREATE TABLE "${config.name}" (${config.columns.map(column =>
       `"${column.name}" ${column.getSQLType()}${column.primary ? " PRIMARY KEY" : ""}`).join(",")})`);

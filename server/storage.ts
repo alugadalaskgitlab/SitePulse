@@ -2749,7 +2749,7 @@ async function lockBoqItemForRecipeWrite(tx: any, boqItemId: number, manualEdit:
   }
 }
 
-function effectivePiStatusFromReceipts(status: string, items: any[]): string {
+export function effectivePiStatusFromReceipts(status: string, items: any[]): string {
   if (status === "closed_with_balance") return status;
   const eligible = items.filter(item =>
     Number(item.approvedQty ?? item.qty) > 0 &&
@@ -14868,7 +14868,7 @@ export class DatabaseStorage implements IStorage {
       .from(purchaseIndents).where(eq(purchaseIndents.id, piItem.indentId)).limit(1);
     if (parentIndent?.status === "closed_with_balance") return;
 
-    const purchasedQty = piItem.totalPurchasedQty ?? piItem.orderedQty ?? piItem.approvedQty ?? piItem.qty ?? 0;
+    const purchasedQty = piItem.orderedQty ?? piItem.approvedQty ?? piItem.qty ?? piItem.totalPurchasedQty ?? 0;
     if (purchasedQty <= 0) return;
 
     const newStatus = totalDelivered >= purchasedQty ? "PURCHASED"
@@ -14945,7 +14945,21 @@ export class DatabaseStorage implements IStorage {
     const [site] = await executor.select({ id: sites.id, name: sites.name })
       .from(sites).where(eq(sites.id, destination.receivingSiteId)).limit(1);
     if (!site) throw new Error("Receiving site not found");
-    const materialName = row.catalogName ?? row.description;
+    let materialName = row.catalogName ?? row.description;
+    let bulkDensity = row.catalogDensity == null ? null : Number(row.catalogDensity);
+    if (row.materialId == null && materialName) {
+      const matches = await executor.select({
+        name: plantMaterials.name,
+        bulkDensity: plantMaterials.bulkDensity,
+      }).from(plantMaterials).where(and(
+        sql`regexp_replace(upper(trim(${plantMaterials.name})), '[[:space:]]+', ' ', 'g') = ${normalizeDeliveryMaterialName(materialName)}`,
+        eq(plantMaterials.isActive, 1),
+      ));
+      if (matches.length === 1) {
+        materialName = matches[0].name;
+        bulkDensity = matches[0].bulkDensity == null ? null : Number(matches[0].bulkDensity);
+      }
+    }
     const routeItem = {
       procurementRoute: row.procurementRoute,
       catalogProcurementRoute: row.catalogRoute,
@@ -14963,7 +14977,7 @@ export class DatabaseStorage implements IStorage {
       siteName: site.name,
       piDate: String(row.indentDate ?? ""),
       materialName,
-      bulkDensity: row.catalogDensity == null ? null : Number(row.catalogDensity),
+      bulkDensity,
       destination,
     };
   }
@@ -14988,13 +15002,19 @@ export class DatabaseStorage implements IStorage {
       eq(siteMaterialTrips.indentItemId, itemId),
     )).orderBy(desc(siteMaterialTrips.date), desc(siteMaterialTrips.id));
     const countTrip = (trip: SiteMaterialTrip) => {
-      const countedQty = convertDeliveryQuantity(Number(trip.quantity), trip.uom, context.uom, context.bulkDensity);
+      const evidence = reconcileDeliveryEvidence([{
+        kind: "trip",
+        id: trip.id,
+        date: String(trip.date),
+        quantity: Number(trip.quantity),
+        uom: trip.uom,
+        reference: trip.receiptNumber ?? trip.challanNumber ?? null,
+        status: "active",
+      }], context.uom, context.bulkDensity, context.materialName).deliveryEvidence[0];
       return {
         ...trip,
-        countedQty,
-        countedWarning: countedQty == null
-          ? `Not counted — set bulk density for ${context.materialName} in Material master`
-          : null,
+        countedQty: evidence.countedQty,
+        countedWarning: evidence.countedWarning,
       };
     };
     const linked = linkedRaw.map(countTrip);
@@ -17424,15 +17444,15 @@ export class DatabaseStorage implements IStorage {
     // Expose the catalog route independently so a mistagged saved Stores route
     // remains visible for explicit review while bulk actions remain guarded.
     let materialRouteMap = new Map<number, string | null>();
-    const allPlantMaterials = await db.select({
+    const allPlantMaterialsForDelivery = await db.select({
       id: plantMaterials.id,
       name: plantMaterials.name,
       bulkDensity: plantMaterials.bulkDensity,
       procurementRoute: plantMaterials.procurementRoute,
     }).from(plantMaterials);
-    const materialById = new Map(allPlantMaterials.map(row => [row.id, row]));
-    const materialsByName = new Map<string, typeof allPlantMaterials>();
-    for (const material of allPlantMaterials) {
+    const materialById = new Map(allPlantMaterialsForDelivery.map(row => [row.id, row]));
+    const materialsByName = new Map<string, typeof allPlantMaterialsForDelivery>();
+    for (const material of allPlantMaterialsForDelivery) {
       materialRouteMap.set(material.id, material.procurementRoute ?? null);
       const key = normalizeDeliveryMaterialName(material.name);
       const matches = materialsByName.get(key) ?? [];
@@ -17574,17 +17594,52 @@ export class DatabaseStorage implements IStorage {
       const items = await tx.select().from(purchaseIndentItems)
         .where(eq(purchaseIndentItems.indentId, indentId))
         .orderBy(asc(purchaseIndentItems.id));
-      const snapshotItems = items.flatMap(item => {
+      const materialIds = Array.from(new Set(items.map(item => item.materialId).filter((id): id is number => id != null)));
+      const catalogRows = materialIds.length
+        ? await tx.select({
+            id: plantMaterials.id,
+            name: plantMaterials.name,
+            bulkDensity: plantMaterials.bulkDensity,
+            procurementRoute: plantMaterials.procurementRoute,
+          }).from(plantMaterials).where(inArray(plantMaterials.id, materialIds))
+        : [];
+      const catalogById = new Map(catalogRows.map(row => [row.id, row]));
+      const snapshotItems = (await Promise.all(items.map(async item => {
+        let catalog = item.materialId == null ? undefined : catalogById.get(item.materialId);
+        if (!catalog && item.materialId == null) {
+          const matches = await tx.select({
+            id: plantMaterials.id,
+            name: plantMaterials.name,
+            bulkDensity: plantMaterials.bulkDensity,
+            procurementRoute: plantMaterials.procurementRoute,
+          }).from(plantMaterials).where(and(
+            sql`regexp_replace(upper(trim(${plantMaterials.name})), '[[:space:]]+', ' ', 'g') = ${normalizeDeliveryMaterialName(item.description)}`,
+            eq(plantMaterials.isActive, 1),
+          ));
+          if (matches.length === 1) catalog = matches[0];
+        }
+        const bulkItem = isBulkPiDeliveryItem({
+          procurementRoute: item.procurementRoute,
+          catalogProcurementRoute: catalog?.procurementRoute,
+        });
         const orderedQty = Number(item.orderedQty ?? item.approvedQty ?? item.qty ?? 0);
-        const deliveredQty = Math.max(
-          Number(item.deliveredQty ?? 0),
-          Number(item.totalAcceptedQty ?? 0),
-        );
+        let deliveredQty = Number(item.totalAcceptedQty ?? 0);
+        if (bulkItem) {
+          const evidence = await this._getPiDeliveryEvidence(tx, item.id);
+          deliveredQty = reconcileDeliveryEvidence(
+            evidence,
+            item.uom,
+            catalog?.bulkDensity,
+            catalog?.name ?? item.description,
+          ).deliveredQty;
+        }
         const balanceQty = Math.max(0, orderedQty - deliveredQty);
-        return orderedQty > 0 && balanceQty > 0
+        const itemStatus = String(item.purchaseStatus ?? "").toUpperCase();
+        return orderedQty > 0 && balanceQty > 0 &&
+          !["REJECTED", "CANCELLED", "NOT_PURCHASED"].includes(itemStatus)
           ? [{ itemId: item.id, description: item.description, orderedQty, deliveredQty, balanceQty, uom: item.uom }]
           : [];
-      });
+      }))).flat();
       if (!snapshotItems.length) throw new Error("No outstanding balance remains to close");
       const snapshot = { priorStatus: header.status, items: snapshotItems };
       const [updated] = await tx.update(purchaseIndents).set({
@@ -19354,7 +19409,7 @@ export class DatabaseStorage implements IStorage {
         return Number(receiptProgress.get(item.id)?.grnReceivedQty ?? 0) >= Number(item.approvedQty ?? item.qty);
       }
       if ((header?.piType === "material" || ["material", "bulk_plant"].includes(item.procurementRoute ?? "")) && !["NOT_PURCHASED", "CANCELLED"].includes(item.purchaseStatus ?? "")) {
-        return item.deliveredQty >= (item.qtyPurchased || item.orderedQty || item.qty);
+        return Number(item.deliveredQty ?? 0) >= Number(item.orderedQty ?? item.approvedQty ?? item.qty ?? 0);
       }
       const s = (item.purchaseStatus ?? "").toUpperCase();
       // ORDERED is never terminal — awaiting delivery

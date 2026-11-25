@@ -27,6 +27,18 @@ export function deliveryProgress(item: DeliveryQuantityItem & { uom: string; req
   return `Pending — ${counts}`;
 }
 
+function deliveryWarning(message: string) {
+  const suffix = " in Material master";
+  const index = message.lastIndexOf(suffix);
+  return index < 0
+    ? message
+    : <>
+        {message.slice(0, index)}
+        {" "}
+        <a className="underline" href="/plant/dashboard#material-master">Material master</a>
+      </>;
+}
+
 export function DestinationFields({ value, siteId, sites, onChange, id }: {
   value: string; siteId: string; sites: { id: number; name: string }[];
   onChange: (location: string, siteId: string) => void; id: string;
@@ -45,11 +57,12 @@ export function DestinationFields({ value, siteId, sites, onChange, id }: {
   </div>;
 }
 
-export function PurchaseIndentDeliveryPanel({ item, requiredBy, sites, canEdit, onSave, indentId, indentNo, piDate, closedBalance }: {
+export function PurchaseIndentDeliveryPanel({ item, requiredBy, sites, canEdit, canLinkTrips = false, onSave, indentId, indentNo, piDate, closedBalance }: {
   item: any; requiredBy?: string | null; sites: { id: number; name: string }[];
   indentId?: number; indentNo?: string;
   piDate?: string | null;
   closedBalance?: { orderedQty: number; deliveredQty: number; balanceQty: number; uom: string } | null;
+  canLinkTrips?: boolean;
   canEdit: boolean; onSave: (itemId: number, location: string, siteId: number | null) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -61,7 +74,13 @@ export function PurchaseIndentDeliveryPanel({ item, requiredBy, sites, canEdit, 
   const [fromDate, setFromDate] = useState((piDate ?? "").slice(0, 10));
   const [selectedTripIds, setSelectedTripIds] = useState<number[]>([]);
   const evidence: DeliveryEvidence[] | undefined = item.deliveryEvidence;
-  const { remainingQty } = deliveryQuantities(item);
+  const progressItem = {
+    ...item,
+    qtyPurchased: null,
+    totalPurchasedQty: null,
+    orderedQty: item.orderedQty ?? item.approvedQty ?? item.qty,
+  };
+  const { remainingQty } = deliveryQuantities(progressItem);
   const ordered = ["ordered", "partial", "purchased", "pending_plant_receipt"].includes((item.purchaseStatus || "").toLowerCase()) || Number(item.qtyPurchased) > 0 || Number(item.totalPurchasedQty) > 0;
   const destination = item.receivingLocation === "site" ? `Site — ${sites.find(s => s.id === item.receivingSiteId)?.name || item.receivingSiteId}` : ({ hmp_plant: "HMP Plant", rmc_plant: "RMC Plant" } as Record<string, string>)[item.receivingLocation];
   const tripsUrl = indentId && `/api/purchase-indents/${indentId}/items/${item.id}/site-trips?fromDate=${encodeURIComponent(fromDate)}`;
@@ -101,13 +120,13 @@ export function PurchaseIndentDeliveryPanel({ item, requiredBy, sites, canEdit, 
     },
   });
   const piTripData = tripsQuery.data;
-  const canMutateLinks = canEdit && piTripData?.canLink === true;
+  const canMutateLinks = canLinkTrips && piTripData?.canLink === true;
   return <section className="rounded-lg border p-3 space-y-2" data-testid={`delivery-panel-${item.id}`}>
     <h3 className="font-semibold">{item.description}</h3>
     <p className="text-sm font-medium" data-testid={`delivery-progress-${item.id}`}>
       {closedBalance
         ? `Closed with balance — ${Number(closedBalance.deliveredQty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} of ${Number(closedBalance.orderedQty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} ${closedBalance.uom} delivered`
-        : deliveryProgress(item, requiredBy)}
+        : deliveryProgress(progressItem, requiredBy)}
     </p>
     <p className="text-sm">Destination: {destination || "Not confirmed — confirm before recording delivery"}</p>
     {ordered && destination && indentId && canEdit && <a className="inline-block text-sm underline text-teal-700" data-testid={`delivery-path-${item.id}`}
@@ -131,16 +150,16 @@ export function PurchaseIndentDeliveryPanel({ item, requiredBy, sites, canEdit, 
     </div>}
     <h4 className="text-sm font-semibold">Linked plant receipts & site trips</h4>
     {!evidence ? <p className="text-sm text-muted-foreground">Delivery records unavailable. Reload the indent to retry.</p> : evidence.length === 0 ? <p className="text-sm text-muted-foreground">No linked receipts or trips yet.</p> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left"><th>Path / reference</th><th>Date</th><th>Recorded quantity</th><th>Counted ({item.uom})</th><th>Status</th></tr></thead><tbody>
-      {evidence.map(e => <tr key={`${e.kind}-${e.id}`} className="border-t"><td className="py-2">{e.kind === "receipt" ? "Plant receipt" : "Site trip"} #{e.id}{e.reference ? ` · ${e.reference}` : ""}</td><td>{e.date?.slice(0, 10) || "—"}</td><td>{e.quantity} {e.uom}</td><td>{e.countedQty ?? e.countedWarning ?? "Excluded"}</td><td>{e.status}</td></tr>)}
+       {evidence.map(e => <tr key={`${e.kind}-${e.id}`} className="border-t"><td className="py-2">{e.kind === "receipt" ? "Plant receipt" : "Site trip"} #{e.id}{e.reference ? ` · ${e.reference}` : ""}</td><td>{e.date?.slice(0, 10) || "—"}</td><td>{e.quantity} {e.uom}</td><td>{e.countedQty ?? (e.countedWarning ? deliveryWarning(e.countedWarning) : "Excluded")}</td><td>{e.status}</td></tr>)}
     </tbody></table></div>}
-    {(item.deliveryWarnings || []).map((w: string) => <p key={w} role="alert" className="text-sm text-amber-700">{w}</p>)}
+    {(item.deliveryWarnings || []).map((w: string) => <p key={w} role="alert" className="text-sm text-amber-700">{deliveryWarning(w)}</p>)}
     {item.receivingLocation === "site" && indentId && ordered && (
       <div className="space-y-2 border-t pt-2" data-testid={`site-trip-linker-${item.id}`}>
         <Button size="sm" variant="outline" type="button" onClick={() => {
           setFromDate((current) => current || (piDate ?? "").slice(0, 10));
           setLinkOpen(value => !value);
         }}>
-          {linkOpen ? "Hide site trips" : canEdit ? "Link existing site trips" : "View site trips"}
+          {linkOpen ? "Hide site trips" : canLinkTrips ? "Link existing site trips" : "View site trips"}
         </Button>
         {linkOpen && <div className="space-y-2 rounded-md bg-muted/30 p-2">
           <label className="block text-sm font-medium">From date
@@ -156,7 +175,7 @@ export function PurchaseIndentDeliveryPanel({ item, requiredBy, sites, canEdit, 
                 <p className="text-sm font-semibold">Linked trips</p>
                 {piTripData.linked.map((trip: any) => <div key={trip.id} className="flex items-start justify-between gap-2 border rounded p-2 text-sm">
                   <span className="min-w-0">{trip.date} · {trip.receiptNumber || `Trip #${trip.id}`} · {trip.vehicleNumber || "Vehicle not recorded"} · {trip.supplier || "Transporter not recorded"} · {trip.quantity} {trip.uom}
-                    {trip.countedQty == null ? <span className="block text-amber-700">{trip.countedWarning}</span> : <span className="block text-muted-foreground">Counted: {Number(trip.countedQty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {item.uom}</span>}
+                    {trip.countedQty == null ? <span className="block text-amber-700">{deliveryWarning(trip.countedWarning)}</span> : <span className="block text-muted-foreground">Counted: {Number(trip.countedQty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {item.uom}</span>}
                   </span>
                   {canMutateLinks && <Button size="sm" variant="ghost" type="button" disabled={unlinkTripMutation.isPending} onClick={() => unlinkTripMutation.mutate(trip.id)}>Unlink</Button>}
                 </div>)}
@@ -167,7 +186,7 @@ export function PurchaseIndentDeliveryPanel({ item, requiredBy, sites, canEdit, 
                   {piTripData.candidates.map((trip: any) => <label key={trip.id} className="flex items-start gap-2 border-b p-2 text-sm last:border-b-0">
                     {canMutateLinks && <input type="checkbox" aria-label={`Select trip ${trip.id}`} checked={selectedTripIds.includes(trip.id)} onChange={event => setSelectedTripIds(current => event.target.checked ? [...current, trip.id] : current.filter(id => id !== trip.id))} className="mt-1" />}
                     <span className="min-w-0 flex-1">{trip.receiptNumber || `Trip #${trip.id}`} · {trip.date} · {trip.vehicleNumber || "Vehicle not recorded"} · {trip.supplier || "Transporter not recorded"} · {trip.quantity} {trip.uom}
-                      {trip.countedQty == null ? <span className="block text-amber-700">{trip.countedWarning}</span> : <span className="block text-muted-foreground">Counted: {Number(trip.countedQty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {item.uom}</span>}
+                      {trip.countedQty == null ? <span className="block text-amber-700">{deliveryWarning(trip.countedWarning)}</span> : <span className="block text-muted-foreground">Counted: {Number(trip.countedQty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {item.uom}</span>}
                     </span>
                   </label>)}
                 </div>}
@@ -176,7 +195,7 @@ export function PurchaseIndentDeliveryPanel({ item, requiredBy, sites, canEdit, 
               </Button>}
               {!canMutateLinks && <p className="text-xs text-muted-foreground">Read-only — this account cannot change PI delivery links.</p>}
               {(linkTripsMutation.isError || unlinkTripMutation.isError) && <p role="alert" className="text-sm text-red-700">{((linkTripsMutation.error || unlinkTripMutation.error) as Error).message}</p>}
-              {piTripData?.deliveryWarnings?.map?.((warning: string) => <p key={warning} role="alert" className="text-sm text-amber-700">{warning}</p>)}
+              {piTripData?.deliveryWarnings?.map?.((warning: string) => <p key={warning} role="alert" className="text-sm text-amber-700">{deliveryWarning(warning)}</p>)}
             </>}
         </div>}
       </div>

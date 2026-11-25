@@ -3,6 +3,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import * as schema from "../shared/schema";
+import { effectivePiStatusFromReceipts } from "../server/storage";
 
 const holder = vi.hoisted(() => ({ db: null as any }));
 vi.mock("../server/db", () => ({ get db() { return holder.db; }, pool: {} }));
@@ -82,6 +83,7 @@ describe("PI-LINK-01 trip linking and close-with-balance", () => {
       .toEqual({ indent_id: 1, indent_item_id: 1 });
     expect((await pg.query<any>("SELECT delivered_qty,purchase_status FROM purchase_indent_items WHERE id=1")).rows[0])
       .toMatchObject({ delivered_qty: expect.any(Number), purchase_status: "PARTIAL" });
+    expect((await pg.query<any>("SELECT status FROM purchase_indents WHERE id=1")).rows[0].status).toBe("partially_received");
     expect((await pg.query<any>("SELECT transaction_type FROM pi_item_transactions ORDER BY id")).rows)
       .toEqual([{ transaction_type: "pi_delivery_trip" }]);
     expect((await pg.query<any>("SELECT action,user_id FROM audit_logs ORDER BY id")).rows)
@@ -101,6 +103,7 @@ describe("PI-LINK-01 trip linking and close-with-balance", () => {
       .toEqual({ indent_id: null, indent_item_id: null });
     expect((await pg.query<any>("SELECT delivered_qty,purchase_status FROM purchase_indent_items WHERE id=1")).rows[0])
       .toEqual({ delivered_qty: 0, purchase_status: "ORDERED" });
+    expect((await pg.query<any>("SELECT status FROM purchase_indents WHERE id=1")).rows[0].status).toBe("ordered");
     expect((await pg.query<any>("SELECT action FROM audit_logs ORDER BY id")).rows)
       .toEqual([{ action: "site_trip_link" }, { action: "site_trip_unlink" }]);
   });
@@ -120,8 +123,26 @@ describe("PI-LINK-01 trip linking and close-with-balance", () => {
     expect(await storage.getUnlinkedPiCandidatesForSiteTrip("Site A", "WMM")).toEqual([]);
   });
 
+  it("derives partial and fully delivered states from counted bulk deliveries", () => {
+    const item = {
+      qty: 10,
+      approvedQty: 10,
+      orderedQty: 10,
+      procurementRoute: "material",
+      purchaseStatus: "PARTIAL",
+      deliveredQty: 6.5,
+    };
+    expect(effectivePiStatusFromReceipts("ordered", [item])).toBe("partially_received");
+    expect(effectivePiStatusFromReceipts("ordered", [{ ...item, deliveredQty: 10, purchaseStatus: "PURCHASED" }]))
+      .toBe("completed");
+    expect(effectivePiStatusFromReceipts("closed_with_balance", [{ ...item, deliveredQty: 10 }]))
+      .toBe("closed_with_balance");
+  });
+
   it("stores a reason and quantity snapshot when closing, and restores the prior status on reopen", async () => {
-    await pg.exec("UPDATE purchase_indent_items SET delivered_qty=6.5 WHERE id=1");
+    await pg.exec(`UPDATE purchase_indent_items SET delivered_qty=6.5 WHERE id=1;
+      INSERT INTO site_material_trips(id,date,site,material,quantity,uom,receipt_number,indent_id,indent_item_id,is_cancelled,is_deleted)
+        VALUES(20,'2026-02-02','Site A','WMM',6.5,'MT','CH-20',1,1,false,false)`);
     const getDetail = vi.spyOn(storage, "getPurchaseIndent").mockResolvedValue(undefined);
     const close = await storage.closePurchaseIndentWithBalance(1, "Supplier cannot deliver the remainder", {
       userId: 7, userName: "Owner Test",

@@ -172,6 +172,8 @@ describe("ORDERS-02 order detail and editing UI", () => {
   it("shows current Party and Site master details and hides copying when Site details exist", async () => {
     render(<PlantSupplyOrders />);
     await waitFor(() => expect(screen.getByTestId("order-party-master-details")).toBeInTheDocument());
+    expect(screen.getByText("Work name")).toBeInTheDocument();
+    expect(screen.queryByText("WORK NAME:")).not.toBeInTheDocument();
     expect(screen.getAllByText("Current master road").length).toBeGreaterThan(0);
     expect(screen.getByTestId("order-party-master-details").textContent).toContain("Fixture contact");
     expect(screen.getByTestId("order-party-master-details").textContent).toContain("PAN no.: ABCDE1234F");

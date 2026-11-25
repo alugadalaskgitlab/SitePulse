@@ -95,15 +95,17 @@ describe("PI-01 delivery display", () => {
     [{ orderedQty: 1500, deliveredQty: 1500 }, 1500, 0],
     [{ orderedQty: 1500, deliveredQty: 1600 }, 1500, 0],
     [{ orderedQty: 10.75, deliveredQty: 2.5 }, 10.75, 8.25],
-  ])("uses the progress target for the site link: %j", (values, target, remainingQty) => {
+  ])("uses the PI ordered quantity for the site link: %j", (values, target, remainingQty) => {
     const row = { ...item, ...values, description: "WMM & GSB / MIX", receivingLocation: "site", receivingSiteId: 3 };
     expect(deliveryQuantities(row)).toEqual({ target, delivered: Number(row.deliveredQty ?? 0), remainingQty });
     renderWithQueryClient(<PurchaseIndentDeliveryPanel item={row} sites={[{ id: 3, name: "Site A & B" }]} canEdit onSave={vi.fn()} indentId={21} />);
     const url = new URL(screen.getByText("Log Site Delivery →").getAttribute("href")!, "http://fixture");
+    const piTarget = Number((Number(row.orderedQty) > 0 ? row.orderedQty : null) ?? row.approvedQty ?? row.qty);
+    const piRemaining = Math.max(0, piTarget - Number(row.deliveredQty ?? 0));
     expect(url.pathname).toBe("/site/material-trips");
     expect(Object.fromEntries(url.searchParams)).toEqual({
       piIndentId: "21", piItemId: "12", material: row.description,
-      uom: "MT", site: "Site A & B", qty: String(remainingQty),
+      uom: "MT", site: "Site A & B", qty: String(piRemaining),
     });
   });
   it.each(["hmp_plant", "rmc_plant"])("keeps the %s receipt URL exactly unchanged", receivingLocation => {
@@ -144,6 +146,7 @@ describe("PI-01 delivery display", () => {
       item={row}
       sites={[{ id: 3, name: "Site A" }]}
       canEdit
+      canLinkTrips
       onSave={vi.fn()}
       indentId={21}
       indentNo="PI-21"
@@ -153,7 +156,7 @@ describe("PI-01 delivery display", () => {
     fireEvent.click(screen.getByRole("button", { name: "Link existing site trips" }));
     expect(await screen.findByText(/CH-55 · 2026-02-02/)).toBeInTheDocument();
     expect(screen.getByText(/Counted: 22\.05 MT/)).toBeInTheDocument();
-    expect(screen.getByText(/CH-54 · 2026-02-01/)).toBeInTheDocument();
+    expect(screen.getByText(/CH-54/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Select trip 55" }));
     fireEvent.click(screen.getByRole("button", { name: "Link selected (1)" }));

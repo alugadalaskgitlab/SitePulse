@@ -666,6 +666,7 @@ export default function PurchaseIndents() {
   const { rmcEnabled } = useFeatureFlags();
   const canCreate = featureCan("purchase_indent", "add");
   const canEdit = featureCan("purchase_indent", "edit");
+  const canRecordSiteDelivery = featureCan("site_materials", "create");
   const canViewStores = featureCan("issues_stock", "view");
   const canCreateStores = featureCan("issues_stock", "add");
   const isApprover = featureCan("purchase_indent", "approve");
@@ -2728,6 +2729,7 @@ export default function PurchaseIndents() {
               const savedBalance = (selectedIndent as any).closedBalanceSnapshot?.items?.find((row: any) => row.itemId === item.id);
               return <PurchaseIndentDeliveryPanel key={`${selectedIndent.id}-${item.id}`} item={item} indentId={selectedIndent.id} indentNo={selectedIndent.indentNo}
               piDate={(selectedIndent as any).date} closedBalance={savedBalance ?? null} sites={allSites} canEdit={canEdit}
+              canLinkTrips={canRecordSiteDelivery}
               onSave={async (itemId, receivingLocation, receivingSiteId) => {
                 await apiRequest("PATCH", `/api/purchase-indents/${selectedIndent.id}/items/${itemId}/destination`, { receivingLocation, receivingSiteId });
                 await queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });

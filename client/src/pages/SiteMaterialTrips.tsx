@@ -387,7 +387,12 @@ export default function SiteMaterialTrips() {
         slipSendWindowOpen: trip.slipSendWindowOpen,
         slipSendTrackingEnabled: trip.slipSendTrackingEnabled,
       });
-      toast({ title: "Trip Logged", description: "Material trip has been recorded successfully." });
+      toast({
+        title: "Trip Logged",
+        description: trip?.linkedPiIndentNo
+          ? `Material trip recorded and linked to PI ${trip.linkedPiIndentNo}.`
+          : "Material trip has been recorded successfully.",
+      });
       enteredByTouchedRef.current = false;
       if (isPILinked) {
         // In PI-linked mode reset material/qty but keep site + PI context for next truckload

@@ -13,7 +13,8 @@ beforeAll(async () => {
   pg = new PGlite();
   for (const table of [schema.purchaseIndents, schema.purchaseIndentItems, schema.purchaseOrders,
     schema.purchaseIndentItemHistory, schema.piItemTransactions, schema.storeGrnItems,
-    schema.pendingPlantReceipts, schema.serviceCompletions, schema.siteMaterialTrips, schema.materialReceipts]) {
+    schema.pendingPlantReceipts, schema.serviceCompletions, schema.siteMaterialTrips, schema.materialReceipts,
+    schema.plantMaterials]) {
     const config = getTableConfig(table);
     await pg.exec(`CREATE TABLE "${config.name}" (${config.columns.map(c =>
       `"${c.name}" ${c.getSQLType()}${c.primary ? " PRIMARY KEY" : ""}`).join(",")})`);

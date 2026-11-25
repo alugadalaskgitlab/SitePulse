@@ -8,6 +8,7 @@ import type { Express, Request, Response } from "express";
 import type { Server } from "http";
 import { updatePurchaseIndentRequestSchema } from "@shared/schema";
 import { storage, StockShortageError, EquipmentIncomingConflictError, InsufficientPlantStockError, InvalidDieselPhysicalStockError, InvalidStockTransferQuantityError, InvalidDieselSourceError, DieselReceiptExceedsRemainingError, InvalidLinkedDieselRequirementError, CutFillInsufficientAvailabilityError, CutFillValidationError, AttachmentReferenceError, InitialScopeCorrectionBlockedError, ScopeChangedDuringPlanningError, DprProjectMismatchError, PushSubscriptionOwnershipError, PurchaseIndentRouteCorrectionConflictError, assertValidDieselPhysicalStock, isRecipeManualOverrideError } from "./storage";
+import { autoLinkNewSiteTripToPi } from "./piSiteTripAutoLink";
 import { buildEquipmentComparison, buildDailyDieselEquipmentReport } from "./dieselComparisonEquipment";
 import { remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, classifyBoqItem, getSectorMultiplier, previewBoqProjectNormRelinks, suggestUnlinkedBoqItemsForReview } from "./snlAutoMapper";
 import { getMorthUnitConversion } from "./snlMorthRelinkMatcher";
@@ -1798,85 +1799,24 @@ export async function registerRoutes(
         hireLink = { ...tripHireConfirmationSchema.parse(req.body.hireEquipmentLink), actor: req.authUser! };
       }
       let trip = await storage.createSiteMaterialTrip(input, hireLink, masterSelection);
-      let piLinkOptions: any[] = [];
-      // If the caller did not choose a PI explicitly, associate only an
-      // unambiguous BOQ match first, then an unambiguous open item for the
-      // same site/material. Ambiguity never blocks saving the trip.
-      if (trip.indentItemId == null) {
-        try {
-          let candidates: any[] = [];
-          if (input.boqProjectId != null && input.boqItemId != null) {
-            const boqMatch = await storage.getApplicablePiForBoqItem(input.boqProjectId, input.boqItemId);
-            if (boqMatch && !("ambiguous" in boqMatch)) {
-              candidates = [{
-                indentId: boqMatch.indentId,
-                indentItemId: boqMatch.indentItemId,
-                indentNo: boqMatch.indentNo,
-                description: input.material,
-                orderedQty: boqMatch.orderedQty,
-                deliveredQty: boqMatch.receivedQty,
-                balanceQty: boqMatch.balanceQty,
-                uom: input.uom,
-              }];
-            }
-          }
-          if (!candidates.length) {
-            candidates = await storage.getUnlinkedPiCandidatesForSiteTrip(trip.site, trip.material);
-          }
-          if (candidates.length === 1) {
-            try {
-              await storage.linkSiteMaterialTripsToPiItem({
-                indentId: candidates[0].indentId,
-                itemId: candidates[0].indentItemId,
-                tripIds: [trip.id],
-                actor: {
-                  userId: req.authUser!.id,
-                  userName: currentUserName(req),
-                  userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : null,
-                },
-                action: "auto",
-              });
-              trip = (await storage.getSiteMaterialTripById(trip.id)) ?? trip;
-            } catch (linkError) {
-              // A BOQ match can fail its destination validation; then make
-              // one safe site/material fallback attempt. The trip itself is
-              // already saved and is never rolled back by a link failure.
-              console.warn("Automatic PI trip link was not applied:", (linkError as Error).message);
-              if (input.boqProjectId != null && input.boqItemId != null) {
-                const fallback = await storage.getUnlinkedPiCandidatesForSiteTrip(trip.site, trip.material);
-                if (fallback.length === 1 && fallback[0].indentItemId !== candidates[0].indentItemId) {
-                  try {
-                    await storage.linkSiteMaterialTripsToPiItem({
-                      indentId: fallback[0].indentId,
-                      itemId: fallback[0].indentItemId,
-                      tripIds: [trip.id],
-                      actor: {
-                        userId: req.authUser!.id,
-                        userName: currentUserName(req),
-                        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : null,
-                      },
-                      action: "auto",
-                    });
-                    trip = (await storage.getSiteMaterialTripById(trip.id)) ?? trip;
-                  } catch (fallbackError) {
-                    console.warn("Site/material PI fallback was not applied:", (fallbackError as Error).message);
-                  }
-                } else if (fallback.length > 1) piLinkOptions = fallback;
-              }
-            }
-          } else if (candidates.length > 1) {
-            piLinkOptions = candidates;
-          }
-        } catch (lookupError) {
-          console.warn("Automatic PI trip match was unavailable:", (lookupError as Error).message);
-        }
-      }
+      const piAutoLink = await autoLinkNewSiteTripToPi({
+        storage,
+        trip,
+        input,
+        actor: {
+          userId: req.authUser!.id,
+          userName: currentUserName(req),
+          userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : null,
+        },
+      });
+      trip = piAutoLink.trip;
       sendPushToSection("site_materials", "Site Material Trip Added", `${input.material || 'Material'} - ${input.site || ''}`, "/site-reports").catch(() => {});
       res.status(201).json({
         ...trip,
         enteredByUserName: req.authUser!.fullName ?? null,
         latestEditAt: null,
-        piLinkOptions,
+        piLinkOptions: piAutoLink.piLinkOptions,
+        linkedPiIndentNo: piAutoLink.linkedPiIndentNo,
       });
     } catch (err) {
       console.error("Error creating site material trip:", err);
@@ -12343,7 +12283,7 @@ export async function registerRoutes(
         receivingSiteId: item.receivingSiteId,
       }])) return;
       const panel = await storage.getPiSiteTripLinkPanel(indentId, itemId, String(req.query.fromDate ?? ""));
-      res.json({ ...panel, canLink: requestFeatureAllowed(req, "purchase_indent", "edit") });
+       res.json({ ...panel, canLink: requestFeatureAllowed(req, "site_materials", "create") });
     } catch (err) {
       res.status(400).json({ message: (err as Error).message });
     }
@@ -12351,7 +12291,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/:id/items/:itemId/site-trips/link", async (req, res) => {
     try {
-      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
+       if (!assertCreate(req, res, "site_materials")) return;
       const indentId = Number(req.params.id), itemId = Number(req.params.itemId);
       const body = z.object({ tripIds: z.array(z.number().int().positive()).min(1).max(200) }).strict().parse(req.body);
       const indent = await storage.getPurchaseIndent(indentId);
@@ -12379,7 +12319,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/:id/items/:itemId/site-trips/:tripId/unlink", async (req, res) => {
     try {
-      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
+       if (!assertCreate(req, res, "site_materials")) return;
       const indentId = Number(req.params.id), itemId = Number(req.params.itemId), tripId = Number(req.params.tripId);
       const indent = await storage.getPurchaseIndent(indentId);
       const item = indent?.items.find(row => row.id === itemId);
