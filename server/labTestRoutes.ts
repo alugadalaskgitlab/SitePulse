@@ -8,12 +8,12 @@ import {
   progressEntries, sites, userSiteAccess, users,
 } from "@shared/schema";
 import { assertCreate, assertEdit, assertView } from "./auth-routes";
-import { calculateSoilLabTest, labTestDisplayName, soilQualityDefaultsForWork, type LabCalculationContext, type SoilLabTestType } from "@shared/labTests";
+import { calculateSoilLabTest, labTestDisplayName, parseSprayRateFromBoqText, soilQualityDefaultsForWork, type LabCalculationContext, type SoilLabTestType } from "@shared/labTests";
 import { getUnitConversionFactor } from "@shared/planningEngine";
 
 const testTypes = [
   "field_density_sand", "field_density_core_cutter", "moisture_content",
-  "proctor_light", "proctor_modified", "cbr", "atterberg",
+  "proctor_light", "proctor_modified", "cbr", "atterberg", "tray_spray_rate",
 ] as const;
 const TEST_CODES: Record<SoilLabTestType, string> = {
   field_density_sand: "FDD",
@@ -23,6 +23,7 @@ const TEST_CODES: Record<SoilLabTestType, string> = {
   proctor_modified: "MP",
   cbr: "CBR",
   atterberg: "ATL",
+  tray_spray_rate: "TR",
 };
 const calibrationKindForTest: Partial<Record<SoilLabTestType, string>> = {
   field_density_sand: "sand_pouring_cylinder",
@@ -204,12 +205,16 @@ async function contextForTest(input: any): Promise<LabCalculationContext> {
       .where(and(eq(boqItemQualitySpecs.boqItemId, itemId), eq(boqItemQualitySpecs.testType, testType)))
       .limit(1);
     const itemSpecs = specs[0];
+    const [item] = await db.select({ description: boqItems.description, itemName: boqItems.itemName })
+      .from(boqItems).where(eq(boqItems.id, itemId)).limit(1);
+    if (testType === "tray_spray_rate") {
+      context.sprayRateTargetKgSqm = parseSprayRateFromBoqText(`${item?.itemName ?? ""} ${item?.description ?? ""}`);
+      context.sprayRateToleranceKgSqm = itemSpecs?.targetTolerance ?? 0.05;
+    }
     if (itemSpecs) {
       context.minValue = itemSpecs.minValue;
       context.maxValue = itemSpecs.maxValue;
     } else {
-      const [item] = await db.select({ description: boqItems.description, itemName: boqItems.itemName })
-        .from(boqItems).where(eq(boqItems.id, itemId)).limit(1);
       const defaults = soilQualityDefaultsForWork(`${item?.itemName ?? ""} ${item?.description ?? ""}`);
       const compatible = defaults.find(spec => spec.testType === testType);
       if (compatible) {
@@ -255,7 +260,11 @@ function validateInput(input: any) {
       fileSize: z.number().int().nonnegative().nullable().optional(),
     }).nullable().optional(),
   });
-  return bodySchema.safeParse(input);
+  const parsed = bodySchema.safeParse(input);
+  if (parsed.success && parsed.data.testType === "tray_spray_rate") {
+    parsed.data.sampleSourceKind = "site";
+  }
+  return parsed;
 }
 
 function testNameForType(testType: string) {
@@ -460,11 +469,13 @@ export function registerLabTestRoutes(app: Express) {
         siteName: sites.name,
         itemName: boqItems.itemName,
         itemDescription: boqItems.description,
+        materialName: plantMaterials.name,
         engineerName: personnel.name,
       }).from(labTests)
         .innerJoin(boqProjects, eq(labTests.boqProjectId, boqProjects.id))
         .innerJoin(sites, eq(labTests.siteId, sites.id))
         .leftJoin(boqItems, eq(labTests.boqItemId, boqItems.id))
+        .leftJoin(plantMaterials, eq(labTests.materialId, plantMaterials.id))
         .leftJoin(personnel, eq(labTests.siteEngineerPersonnelId, personnel.id))
         .where(and(...conditions))
         .orderBy(desc(labTests.dateSampled), desc(labTests.id))
@@ -485,6 +496,7 @@ export function registerLabTestRoutes(app: Express) {
         projectName: row.projectName,
         siteName: row.siteName,
         itemLabel: row.itemName || row.itemDescription || "",
+        materialName: row.materialName ?? null,
         engineerName: row.engineerName,
         siteEngineerName: peopleById.get(Number(row.test.siteEngineerPersonnelId)) ?? null,
         sampledByName: peopleById.get(Number(row.test.sampledByPersonnelId)) ?? null,
@@ -974,6 +986,7 @@ export function registerLabTestRoutes(app: Express) {
         testType: String(row.testType),
         minValue: row.minValue == null || row.minValue === "" ? null : Number(row.minValue),
         maxValue: row.maxValue == null || row.maxValue === "" ? null : Number(row.maxValue),
+        targetTolerance: row.targetTolerance == null || row.targetTolerance === "" ? null : Number(row.targetTolerance),
         frequencyQty: Number(row.frequencyQty),
         frequencyUnit: String(row.frequencyUnit),
         note: row.note ? String(row.note) : null,
@@ -985,6 +998,7 @@ export function registerLabTestRoutes(app: Express) {
         || !Number.isFinite(spec.frequencyQty) || spec.frequencyQty <= 0
         || (spec.minValue != null && !Number.isFinite(spec.minValue))
         || (spec.maxValue != null && !Number.isFinite(spec.maxValue))
+        || (spec.targetTolerance != null && (!Number.isFinite(spec.targetTolerance) || spec.targetTolerance < 0))
         || (spec.minValue != null && spec.maxValue != null && spec.minValue > spec.maxValue),
       )) return res.status(422).json({ error: "quality_spec_invalid" });
       const oldSpecs = await db.select().from(boqItemQualitySpecs).where(eq(boqItemQualitySpecs.boqItemId, itemId));

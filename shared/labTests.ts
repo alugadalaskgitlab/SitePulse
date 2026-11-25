@@ -5,7 +5,8 @@ export type SoilLabTestType =
   | "proctor_light"
   | "proctor_modified"
   | "cbr"
-  | "atterberg";
+  | "atterberg"
+  | "tray_spray_rate";
 
 /**
  * User-facing names are shared by the entry form, register, frequency review,
@@ -74,6 +75,8 @@ export function labTestContextVisibility(testType: string) {
     benchmark: soilOnly,
     calibration: soilOnly,
     material: testType !== "layer_thickness",
+    sharedChainage: soilOnly,
+    sharedSide: soilOnly,
   };
 }
 
@@ -89,6 +92,8 @@ export interface LabCalculationContext {
   sandBulkDensityGcc?: number | null;
   sandInConeG?: number | null;
   ringConstantKgPerDivision?: number | null;
+  sprayRateTargetKgSqm?: number | null;
+  sprayRateToleranceKgSqm?: number | null;
   speedyCorrection?: Array<{ indicated: number; corrected: number }> | null;
 }
 
@@ -375,6 +380,93 @@ function calculateAtterberg(readings: any, context: LabCalculationContext): LabC
   };
 }
 
+export function parseSprayRateFromBoqText(text: string): number | null {
+  const match = String(text ?? "").match(/(?:@\s*)?(\d+(?:\.\d+)?)\s*kg\s*(?:\/|per)\s*(?:sqm|sq\.?\s*m|m2|m²|square\s*(?:metre|meter)s?)/i);
+  const rate = match ? Number(match[1]) : NaN;
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
+function calculateTraySprayRate(readings: any, context: LabCalculationContext): LabCalculation {
+  const errors: string[] = [];
+  const inputTrays = Array.isArray(readings?.trays) ? readings.trays : [];
+  if (!inputTrays.length) errors.push("Add at least one tray reading.");
+  const trays = inputTrays.map((tray: any, index: number) => {
+    const lengthMm = numberOrNull(tray?.lengthMm);
+    const widthMm = numberOrNull(tray?.widthMm);
+    const enteredArea = numberOrNull(tray?.areaSqm);
+    const dimensionsArea = lengthMm != null && widthMm != null && lengthMm > 0 && widthMm > 0
+      ? lengthMm * widthMm / 1_000_000
+      : null;
+    const areaSqm = tray?.measurementMode === "area"
+      ? enteredArea != null && enteredArea > 0 ? enteredArea : null
+      : tray?.measurementMode === "dimensions"
+        ? dimensionsArea
+        : enteredArea != null && enteredArea > 0 ? enteredArea : dimensionsArea;
+    const emptyWeightG = numberOrNull(tray?.emptyWeightG);
+    const afterSprayingWeightG = numberOrNull(tray?.afterSprayingWeightG);
+    let rateKgSqm: number | null = null;
+    if (areaSqm == null) errors.push(`Tray ${index + 1}: enter its area or both dimensions.`);
+    else if (emptyWeightG == null || afterSprayingWeightG == null) errors.push(`Tray ${index + 1}: enter both tray weights.`);
+    else if (afterSprayingWeightG < emptyWeightG) errors.push(`Tray ${index + 1}: after-spraying weight cannot be below the empty tray weight.`);
+    else rateKgSqm = (afterSprayingWeightG - emptyWeightG) / 1000 / areaSqm;
+    return {
+      chainage: String(tray?.chainage ?? ""),
+      side: tray?.side ?? null,
+      lengthMm,
+      widthMm,
+      areaSqm: areaSqm == null ? null : round(areaSqm, 6),
+      emptyWeightG,
+      afterSprayingWeightG,
+      rateKgSqm: rateKgSqm == null ? null : round(rateKgSqm, 4),
+    };
+  });
+  const validRates = trays.map((tray: any) => tray.rateKgSqm).filter((value: number | null): value is number => value != null);
+  const averageRateKgSqm = validRates.length
+    ? round(validRates.reduce((sum: number, value: number) => sum + value, 0) / validRates.length, 4)
+    : null;
+  const targetRateKgSqm = numberOrNull(context.sprayRateTargetKgSqm);
+  const toleranceKgSqm = numberOrNull(context.sprayRateToleranceKgSqm) ?? 0.05;
+  const minRateKgSqm = context.minValue != null
+    ? context.minValue
+    : targetRateKgSqm == null ? null : round(targetRateKgSqm - toleranceKgSqm, 4);
+  const maxRateKgSqm = context.maxValue != null
+    ? context.maxValue
+    : targetRateKgSqm == null ? null : round(targetRateKgSqm + toleranceKgSqm, 4);
+  if (minRateKgSqm == null && maxRateKgSqm == null) {
+    errors.push("Set a spray-rate range in Setup or include a rate in the BOQ item.");
+  }
+  const verdict = averageRateKgSqm == null
+    ? "na"
+    : minRateKgSqm == null && maxRateKgSqm == null
+      ? "na"
+      : verdictForThreshold(averageRateKgSqm, minRateKgSqm, maxRateKgSqm);
+  const compareTo = targetRateKgSqm ?? (averageRateKgSqm != null && minRateKgSqm != null && averageRateKgSqm < minRateKgSqm
+    ? minRateKgSqm
+    : averageRateKgSqm != null && maxRateKgSqm != null && averageRateKgSqm > maxRateKgSqm
+      ? maxRateKgSqm
+      : null);
+  const rawDifference = averageRateKgSqm == null || compareTo == null ? null : averageRateKgSqm - compareTo;
+  const differenceKgSqm = rawDifference == null ? null : round(rawDifference, 4);
+  return {
+    results: {
+      coat: readings?.coat ?? null,
+      appliedBy: readings?.appliedBy ?? null,
+      trays,
+      averageRateKgSqm,
+      targetRateKgSqm,
+      toleranceKgSqm,
+      minRateKgSqm,
+      maxRateKgSqm,
+      differenceKgSqm,
+      differenceText: differenceKgSqm == null ? null
+        : differenceKgSqm === 0 ? "At target"
+          : `${Math.abs(differenceKgSqm)} kg/sqm ${differenceKgSqm > 0 ? "more" : "less"}`,
+    },
+    verdict,
+    errors,
+  };
+}
+
 export function calculateSoilLabTest(
   testType: SoilLabTestType,
   readings: unknown,
@@ -395,6 +487,7 @@ export function calculateSoilLabTest(
   }
   if (testType === "proctor_light" || testType === "proctor_modified") return calculateProctor(input, context);
   if (testType === "cbr") return calculateCbr(input, context);
+  if (testType === "tray_spray_rate") return calculateTraySprayRate(input, context);
   return calculateAtterberg(input, context);
 }
 

@@ -274,6 +274,36 @@ describe("soil test draft, submit and correction routes", () => {
     expect(attachmentsAfterDelete).toHaveLength(0);
   });
 
+  it("saves tray spray-rate results with the existing site sample-source value", async () => {
+    await testState.db.insert(schema.boqItemQualitySpecs).values({
+      boqItemId: itemId,
+      testType: "tray_spray_rate",
+      minValue: 0.55,
+      maxValue: 0.65,
+      targetTolerance: 0.05,
+      frequencyQty: 1,
+      frequencyUnit: "as_required",
+    });
+    const response = await request(app).post("/api/lab-tests").send({
+      ...baseInput("tray_spray_rate", {
+        coat: "Prime",
+        appliedBy: "SYNTHETIC TACK SPRAYER",
+        trays: [
+          { measurementMode: "dimensions", chainage: "2+600", side: "LHS", lengthMm: 500, widthMm: 200, emptyWeightG: 100, afterSprayingWeightG: 160 },
+          { measurementMode: "area", chainage: "2+700", side: "RHS", areaSqm: 0.1, emptyWeightG: 120, afterSprayingWeightG: 175 },
+        ],
+      }),
+      sampleSourceKind: "quarry",
+      status: "submitted",
+    }).expect(201);
+    expect(response.body.testType).toBe("tray_spray_rate");
+    expect(response.body.sampleSourceKind).toBe("site");
+    expect(response.body.results.averageRateKgSqm).toBe(0.575);
+    expect(response.body.results.minRateKgSqm).toBe(0.55);
+    expect(response.body.results.maxRateKgSqm).toBe(0.65);
+    expect(response.body.verdict).toBe("pass");
+  });
+
   it("returns only submitted tests for the DPR read-only block", async () => {
     const [submittedDpr] = await testState.db.insert(schema.dprs).values({
       date: "2026-11-20", site: "SYNTHETIC TEST SITE", engineer: "SYNTHETIC ENGINEER",

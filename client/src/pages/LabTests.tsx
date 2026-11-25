@@ -23,7 +23,7 @@ import { useUpload } from "@/hooks/use-upload";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   calculateSoilLabTest, filterLabBoqItems, labBoqItemLabel, labItemLayerChoices,
-  labTestContextVisibility, labTestDisplayName, soilQualityDefaultsForWork,
+  labTestContextVisibility, labTestDisplayName, parseSprayRateFromBoqText, soilQualityDefaultsForWork,
   type LabCalculationContext, type SoilLabTestType,
 } from "@shared/labTests";
 
@@ -35,6 +35,7 @@ const TEST_TYPES: Array<{ value: SoilLabTestType; label: string }> = [
   { value: "proctor_modified", label: labTestDisplayName("proctor_modified") },
   { value: "cbr", label: labTestDisplayName("cbr") },
   { value: "atterberg", label: labTestDisplayName("atterberg") },
+  { value: "tray_spray_rate", label: labTestDisplayName("tray_spray_rate") },
 ];
 const PLACES = [
   ["on_site", "On site (field test)"],
@@ -112,6 +113,7 @@ function initialReadings(testType: SoilLabTestType) {
   if (testType === "proctor_light" || testType === "proctor_modified") return { trials: [{}, {}, {}] };
   if (testType === "cbr") return { dialReadings: {} };
   if (testType === "atterberg") return { liquidLimitTrials: [{}, {}, {}], plasticLimitTrials: [{}, {}] };
+  if (testType === "tray_spray_rate") return { coat: "Prime", trays: [{}], appliedBy: "" };
   return {};
 }
 
@@ -310,6 +312,10 @@ export default function LabTests() {
     sandBulkDensityGcc: Number(activeCalibration?.values?.sandBulkDensityGcc) || null,
     sandInConeG: Number(activeCalibration?.values?.sandInConeG) || null,
     ringConstantKgPerDivision: Number(activeCalibration?.values?.ringConstantKgPerDivision ?? activeCalibration?.values?.ringConstant) || null,
+    sprayRateTargetKgSqm: form.testType === "tray_spray_rate"
+      ? parseSprayRateFromBoqText(`${selectedItem?.itemName ?? ""} ${selectedItem?.description ?? ""}`)
+      : null,
+    sprayRateToleranceKgSqm: activeSpec?.targetTolerance == null ? 0.05 : Number(activeSpec.targetTolerance),
     speedyCorrection: activeCalibration?.values?.correctionPairs ?? null,
   };
   const calculation = useMemo(() => calculateSoilLabTest(form.testType, form.readings, calculationContext), [form.testType, form.readings, calculationContext.mddGcc, calculationContext.omcPercent, calculationContext.minValue, calculationContext.maxValue, calculationContext.requiredPercent, calculationContext.sandBulkDensityGcc, calculationContext.sandInConeG, calculationContext.ringConstantKgPerDivision, calculationContext.speedyCorrection]);
@@ -321,6 +327,7 @@ export default function LabTests() {
         ...form,
         siteId: Number(form.siteId),
         boqProjectId: Number(form.boqProjectId),
+        sampleSourceKind: form.testType === "tray_spray_rate" || form.testType === "layer_thickness" ? "site" : form.sampleSourceKind,
         boqItemId: form.boqItemId ? Number(form.boqItemId) : null,
         materialId: form.materialId ? Number(form.materialId) : null,
         siteEngineerPersonnelId: form.siteEngineerPersonnelId ? Number(form.siteEngineerPersonnelId) : null,
@@ -507,9 +514,13 @@ export default function LabTests() {
                       <FieldSelect label="Layer" value={layerPickerValue} options={layerChoices.map((value: string) => [value, value] as [string, string])} onChange={value => setFormField("layer", value === "Other" ? (customLayer ? form.layer : "") : value || null)} optional />
                       {layerPickerValue === "Other" && <FieldInput label="Other layer" value={customLayer ? String(form.layer) : ""} onChange={value => setFormField("layer", value)} />}
                       <FieldSelect label="Layer number" value={form.layerNo ? String(form.layerNo) : ""} options={Array.from({ length: itemLayerCount }, (_, index) => [String(index + 1), `Layer ${index + 1}`] as [string, string])} onChange={value => setFormField("layerNo", value ? Number(value) : null)} optional />
-                      <FieldInput label="From chainage (km)" value={form.chainageFrom} onChange={value => setFormField("chainageFrom", value)} placeholder="2+600" />
-                      <FieldInput label="To chainage (km)" value={form.chainageTo} onChange={value => setFormField("chainageTo", value)} placeholder="2+700" />
-                      <FieldSelect label="Side" value={form.side} options={[["Centre", "Centre"], ["LHS", "LHS"], ["RHS", "RHS"], ["Both", "Both"]]} onChange={value => setFormField("side", value)} optional />
+                      {visibleContext.sharedChainage && <FieldInput label="From chainage (km)" value={form.chainageFrom} onChange={value => setFormField("chainageFrom", value)} placeholder="2+600" />}
+                      {visibleContext.sharedChainage && <FieldInput label="To chainage (km)" value={form.chainageTo} onChange={value => setFormField("chainageTo", value)} placeholder="2+700" />}
+                      {visibleContext.sharedSide && <FieldSelect label="Side" value={form.side} options={[["Centre", "Centre"], ["LHS", "LHS"], ["RHS", "RHS"], ["Both", "Both"]]} onChange={value => setFormField("side", value)} optional />}
+                      {form.testType === "tray_spray_rate" && <>
+                        <FieldSelect label="Coat" value={form.readings.coat ?? "Prime"} options={[["Prime", "Prime"], ["Tack", "Tack"]]} onChange={value => setReading("coat", value)} />
+                        <FieldInput label="Applied by (equipment or person)" value={form.readings.appliedBy ?? ""} onChange={value => setReading("appliedBy", value)} />
+                      </>}
                       {visibleContext.sampleSource && <FieldSelect label="Sample source" value={form.sampleSourceKind} options={SOURCE_KINDS} onChange={value => setFormField("sampleSourceKind", value)} />}
                       {visibleContext.sourceName && <FieldInput label="Source name" value={form.sampleSourceName} onChange={value => setFormField("sampleSourceName", value)} placeholder="Borrow area / quarry / stockpile" />}
                       {visibleContext.material && <FieldSelect label="Material" value={form.materialId ? String(form.materialId) : ""} options={materials.map((item: any) => [String(item.id), displayCaps(item.name)])} onChange={value => setFormField("materialId", value ? Number(value) : null)} optional />}
@@ -527,6 +538,14 @@ export default function LabTests() {
                         {visibleContext.calibration && form.testType.startsWith("field_density") && <span>Sand: {calculationContext.sandBulkDensityGcc ?? "—"} g/cc · cone {calculationContext.sandInConeG ?? "—"} g <small>({contextLabel})</small></span>}
                         {visibleContext.calibration && form.testType === "cbr" && <span>Proving ring: {calculationContext.ringConstantKgPerDivision ?? "—"} kg/div <small>({contextLabel})</small></span>}
                       </div>
+                    </div>}
+                    {form.testType === "tray_spray_rate" && <div className="rounded border p-3 text-sm">
+                      <p className="font-semibold">Spray-rate requirement</p>
+                      {activeSpec && (activeSpec.minValue != null || activeSpec.maxValue != null)
+                        ? <p>From Setup: {activeSpec.minValue ?? "—"} to {activeSpec.maxValue ?? "—"} kg/sqm</p>
+                        : calculationContext.sprayRateTargetKgSqm != null
+                          ? <p>From BOQ item: {Number(calculationContext.sprayRateTargetKgSqm).toFixed(2)} kg/sqm · tolerance ±{calculationContext.sprayRateToleranceKgSqm ?? 0.05} kg/sqm</p>
+                          : <p>Set a spray-rate range in Setup or include a rate in the BOQ item.</p>}
                     </div>}
 
                     <TestReadings
@@ -590,7 +609,7 @@ export default function LabTests() {
                             <span className="font-semibold">{test.testNo} · {labelForTest(test.testType)}</span>
                             {verdictBadge(test.verdict)}
                           </div>
-                          <div className="mt-1 text-sm text-muted-foreground">{test.dateSampled} · {test.itemLabel || displayCaps(test.sampleSourceName) || "No BOQ item"} · {test.layer || "Layer not set"}{test.layerNo != null ? ` · Layer ${test.layerNo}` : ""} · {chainageText(test.chainageFrom)}</div>
+                            <div className="mt-1 text-sm text-muted-foreground">{test.dateSampled} · {displayCaps(test.itemLabel || (labTestContextVisibility(test.testType).sampleSource ? test.sampleSourceName : "")) || "No BOQ item"} · {test.layer || "Layer not set"}{test.layerNo != null ? ` · Layer ${test.layerNo}` : ""}{labTestContextVisibility(test.testType).sharedChainage ? ` · ${chainageText(test.chainageFrom)}` : ""}</div>
                            <div className="text-xs text-muted-foreground">Site engineer: {displayCaps(test.siteEngineerName) || "—"} · Sampled by: {displayCaps(test.sampledByName) || "—"} · Tested by: {displayCaps(test.testedByName) || "—"}</div>
                           {test.verdict === "fail" && <p className="mt-1 text-sm font-semibold">Failed test — retest required</p>}
                           {retest && <p className="mt-1 text-sm font-semibold">Retested → {retest.verdict === "pass" ? "Pass" : retest.verdict === "fail" ? "Fail" : "Not assessed"}</p>}
@@ -621,7 +640,7 @@ export default function LabTests() {
           <TabsContent value="frequency" className="space-y-4">
             <Card><CardHeader><CardTitle className="text-base">Frequency check</CardTitle></CardHeader><CardContent>
               <div className="space-y-2 sm:hidden">{(frequencyQuery.data ?? []).map((row: any, index: number) => <div key={`${row.boqItemId}-${row.testType}-${index}`} className="rounded border p-3 text-sm">
-                <p className="font-semibold">{row.itemName}</p><p>{labelForTest(row.testType)}</p>
+                <p className="font-semibold">{displayCaps(row.itemName)}</p><p>{labelForTest(row.testType)}</p>
                 <dl className="mt-2 grid grid-cols-2 gap-2">
                   <div><dt className="text-xs text-muted-foreground">Quantity laid</dt><dd>{row.quantityLaid} {row.frequencyUnit}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Required</dt><dd>{row.testsRequired}</dd></div>
@@ -630,7 +649,7 @@ export default function LabTests() {
                 </dl>
               </div>)}</div>
               <div className="hidden overflow-x-auto sm:block"><table className="min-w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">BOQ item</th><th className="p-2">Test</th><th className="p-2">Quantity laid</th><th className="p-2">Required</th><th className="p-2">Done / passed</th><th className="p-2">Shortfall</th></tr></thead>
-                <tbody>{(frequencyQuery.data ?? []).map((row: any, index: number) => <tr key={`${row.boqItemId}-${row.testType}-${index}`} className="border-b"><td className="p-2">{row.itemName}</td><td className="p-2">{labelForTest(row.testType)}</td><td className="p-2">{row.quantityLaid} {row.frequencyUnit}</td><td className="p-2">{row.testsRequired}</td><td className="p-2">{row.testsDone} / {row.testsPassed}</td><td className="p-2 font-semibold">{row.shortfall}</td></tr>)}</tbody>
+                <tbody>{(frequencyQuery.data ?? []).map((row: any, index: number) => <tr key={`${row.boqItemId}-${row.testType}-${index}`} className="border-b"><td className="p-2">{displayCaps(row.itemName)}</td><td className="p-2">{labelForTest(row.testType)}</td><td className="p-2">{row.quantityLaid} {row.frequencyUnit}</td><td className="p-2">{row.testsRequired}</td><td className="p-2">{row.testsDone} / {row.testsPassed}</td><td className="p-2 font-semibold">{row.shortfall}</td></tr>)}</tbody>
               </table></div>
               {frequencyQuery.data?.length === 0 && <p className="text-sm text-muted-foreground">No quality specifications are configured for this project.</p>}
             </CardContent></Card>
@@ -715,13 +734,15 @@ export default function LabTests() {
                     const defaults = !saved.length && item ? soilQualityDefaultsForWork(`${item.itemName ?? ""} ${item.description ?? ""}`) : [];
                     setSpecRows((saved.length ? saved : defaults).map((row: any) => ({
                       ...row, testType: row.testType, minValue: row.minValue, maxValue: row.maxValue,
+                      targetTolerance: row.targetTolerance == null && row.testType === "tray_spray_rate" ? 0.05 : row.targetTolerance,
                       frequencyQty: row.frequencyQty, frequencyUnit: row.frequencyUnit, note: row.note,
                     })));
                   }} optional />
-                  {specRows.map((row, index) => <div key={`${row.testType}-${index}`} className="grid grid-cols-2 gap-2 rounded border p-3 sm:grid-cols-5">
+                  {specRows.map((row, index) => <div key={`${row.testType}-${index}`} className={`grid grid-cols-2 gap-2 rounded border p-3 ${row.testType === "tray_spray_rate" ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
                     <span className="col-span-2 self-center text-sm font-medium sm:col-span-1">{labelForTest(row.testType)}</span>
-                    <FieldInput label="Minimum" type="number" value={numberInput(row.minValue)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, minValue: value === "" ? null : Number(value) } : entry))} />
-                    <FieldInput label="Maximum" type="number" value={numberInput(row.maxValue)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, maxValue: value === "" ? null : Number(value) } : entry))} />
+                    <FieldInput label={row.testType === "tray_spray_rate" ? "Minimum rate (kg/sqm)" : "Minimum"} type="number" value={numberInput(row.minValue)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, minValue: value === "" ? null : Number(value) } : entry))} />
+                    <FieldInput label={row.testType === "tray_spray_rate" ? "Maximum rate (kg/sqm)" : "Maximum"} type="number" value={numberInput(row.maxValue)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, maxValue: value === "" ? null : Number(value) } : entry))} />
+                    {row.testType === "tray_spray_rate" && <FieldInput label="Tolerance ± (kg/sqm)" type="number" value={numberInput(row.targetTolerance ?? 0.05)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, targetTolerance: value === "" ? null : Number(value) } : entry))} />}
                     <FieldInput label="Frequency quantity" type="number" value={numberInput(row.frequencyQty)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, frequencyQty: value === "" ? "" : Number(value) } : entry))} />
                     <FieldSelect label="Frequency unit" value={row.frequencyUnit} options={[["sqm", "sqm"], ["cum", "cum"], ["MT", "MT"], ["per_layer", "per layer"], ["as_required", "As required"]]} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, frequencyUnit: value } : entry))} />
                   </div>)}
@@ -729,7 +750,7 @@ export default function LabTests() {
                     <FieldSelect label="Add test requirement" value="" options={TEST_TYPES.filter(row => !specRows.some(spec => spec.testType === row.value)).map(row => [row.value, row.label] as [string, string])} onChange={value => {
                       const item = projectItems.find((candidate: any) => Number(candidate.id) === Number(specItemId));
                       const fallback = soilQualityDefaultsForWork(`${item?.itemName ?? ""} ${item?.description ?? ""}`).find(row => row.testType === value);
-                      setSpecRows(rows => [...rows, fallback ? { ...fallback } : { testType: value, minValue: null, maxValue: null, frequencyQty: 1, frequencyUnit: "as_required", note: "" }]);
+                      setSpecRows(rows => [...rows, fallback ? { ...fallback } : { testType: value, minValue: null, maxValue: null, targetTolerance: value === "tray_spray_rate" ? 0.05 : null, frequencyQty: 1, frequencyUnit: "as_required", note: "" }]);
                     }} optional />
                     <Button onClick={() => void saveSpecs(specItemId, specRows)}><Save className="mr-2 h-4 w-4" />Save specifications</Button>
                   </div>}
@@ -965,6 +986,38 @@ function TestReadings({ testType, readings, results, activeCalibration, onReadin
   const updatePlastic = (index: number, key: string, value: string) => onArrayRow("plasticLimitTrials", index, key, value === "" ? "" : Number.isFinite(Number(value)) ? Number(value) : value);
   const addRow = (key: string, current: any[], initial: any = {}) => onReading(key, [...current, initial]);
 
+  if (testType === "tray_spray_rate") {
+    const trays = Array.isArray(readings.trays) && readings.trays.length ? readings.trays : [{}];
+    const updateTray = (index: number, key: string, value: string) =>
+      onArrayRow("trays", index, key, value === "" ? "" : Number.isFinite(Number(value)) ? Number(value) : value);
+    return <div className="space-y-4">
+      <h3 className="font-semibold">Tray readings</h3>
+      {trays.map((tray: any, index: number) => {
+        const result = results?.trays?.[index] ?? {};
+        return <div key={index} className="space-y-3 rounded-lg border p-3">
+          <div className="flex items-center justify-between"><h4 className="font-semibold">Tray {index + 1}</h4>{trays.length > 1 && <Button type="button" size="sm" variant="ghost" onClick={() => onReading("trays", trays.filter((_: any, row: number) => row !== index))}>Remove</Button>}</div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <FieldInput label={`Tray ${index + 1} chainage (km)`} value={tray.chainage ?? ""} onChange={value => updateTray(index, "chainage", value)} placeholder="2+600" />
+            <FieldSelect label={`Tray ${index + 1} side`} value={tray.side ?? ""} options={[["Centre", "Centre"], ["LHS", "LHS"], ["RHS", "RHS"]]} onChange={value => updateTray(index, "side", value)} />
+            <FieldSelect label={`Tray ${index + 1} measurement`} value={tray.measurementMode ?? "dimensions"} options={[["dimensions", "Length × width"], ["area", "Area"]]} onChange={value => updateTray(index, "measurementMode", value)} />
+            {tray.measurementMode === "area" ? <FieldInput label={`Tray ${index + 1} area (sqm)`} type="number" value={tray.areaSqm ?? ""} onChange={value => updateTray(index, "areaSqm", value)} /> : <>
+              <FieldInput label={`Tray ${index + 1} length (mm)`} type="number" value={tray.lengthMm ?? ""} onChange={value => updateTray(index, "lengthMm", value)} />
+              <FieldInput label={`Tray ${index + 1} width (mm)`} type="number" value={tray.widthMm ?? ""} onChange={value => updateTray(index, "widthMm", value)} />
+            </>}
+            <FieldInput label={`Tray ${index + 1} empty weight (g)`} type="number" value={tray.emptyWeightG ?? ""} onChange={value => updateTray(index, "emptyWeightG", value)} />
+            <FieldInput label={`Tray ${index + 1} after spraying (g)`} type="number" value={tray.afterSprayingWeightG ?? ""} onChange={value => updateTray(index, "afterSprayingWeightG", value)} />
+            <ResultCell label="Tray rate" value={result.rateKgSqm} unit="kg/sqm" />
+          </div>
+        </div>;
+      })}
+      <Button type="button" variant="outline" onClick={() => addRow("trays", trays, {})}>Add tray</Button>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <ResultCell label="Average rate" value={results?.averageRateKgSqm} unit="kg/sqm" />
+        <ResultCell label="Difference from target" value={results?.differenceText} />
+      </div>
+    </div>;
+  }
+
   if (testType === "field_density_sand" || testType === "field_density_core_cutter") {
     return (
       <div className="space-y-4">
@@ -1093,10 +1146,11 @@ function TestReadings({ testType, readings, results, activeCalibration, onReadin
 
 function firstResult(test: any) {
   const result: any = test?.results ?? {};
-  return result.pits?.[0]?.compactionPercent ?? result.reportedCbrPercent ?? result.plasticityIndexPercent ?? "—";
+  if (result.averageRateKgSqm != null) return `${result.averageRateKgSqm} kg/sqm`;
+  return result.pits?.[0]?.compactionPercent ?? result.reportedCbrPercent ?? result.plasticityIndexPercent ?? result.averageRateKgSqm ?? "—";
 }
 
-function TestResultsTable({ testType, readings = {}, results = {} }: { testType: SoilLabTestType; readings?: any; results?: any }) {
+function TestResultsTable({ testType, readings = {}, results = {}, materialName }: { testType: SoilLabTestType; readings?: any; results?: any; materialName?: string | null }) {
   const compactRows = (headers: string[], rows: unknown[][]) => <div className="overflow-x-auto rounded border">
     <table className="min-w-full border-collapse text-sm">
       <thead><tr>{headers.map(header => <th key={header} className="border-b border-black p-2 text-left">{header}</th>)}</tr></thead>
@@ -1105,6 +1159,24 @@ function TestResultsTable({ testType, readings = {}, results = {} }: { testType:
       </tr>)}</tbody>
     </table>
   </div>;
+  if (testType === "tray_spray_rate") {
+    const trays = Array.isArray(readings.trays) ? readings.trays : [];
+    const calculated = Array.isArray(results.trays) ? results.trays : [];
+    return <div className="space-y-3">
+      <p>Coat: {readings.coat ?? "—"} · Material: {displayCaps(materialName) || "—"} · Applied by: {readings.appliedBy || "—"}</p>
+      {compactRows(["Tray", "Chainage", "Side", "Tray size / area", "Empty tray (g)", "After spraying (g)", "Rate (kg/sqm)"],
+        calculated.map((tray: any, index: number) => [
+          index + 1, tray.chainage, tray.side,
+          tray.lengthMm != null && tray.widthMm != null ? `${tray.lengthMm} × ${tray.widthMm} mm` : `${tray.areaSqm ?? "—"} sqm`,
+          trays[index]?.emptyWeightG, trays[index]?.afterSprayingWeightG, tray.rateKgSqm,
+        ]))}
+      <div className="grid grid-cols-2 gap-3">
+        <ResultCell label="Average rate" value={results.averageRateKgSqm} unit="kg/sqm" />
+        <ResultCell label="Allowed range" value={results.minRateKgSqm == null && results.maxRateKgSqm == null ? null : `${results.minRateKgSqm ?? "—"} to ${results.maxRateKgSqm ?? "—"}`} unit="kg/sqm" />
+      </div>
+      {results.differenceText && <p>{results.differenceText}</p>}
+    </div>;
+  }
   if (testType === "field_density_sand" || testType === "field_density_core_cutter") {
     const inputs = Array.isArray(readings.pits) ? readings.pits : [];
     const pits = Array.isArray(results.pits) ? results.pits : [];
@@ -1212,10 +1284,10 @@ function TestDetailDialog({ test, isOwner, canEdit, onClose, onEdit, onRetest, o
   });
   return <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-2 sm:items-center" role="dialog" aria-modal="true">
     <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-4 shadow-xl">
-      <div className="flex items-start justify-between gap-2"><div><h2 className="text-lg font-bold">{test.testNo} · {labelForTest(test.testType)}</h2><p className="text-sm text-muted-foreground">{test.projectName} · {test.dateSampled} · {test.itemLabel || test.sampleSourceName}</p></div><Button variant="ghost" onClick={onClose} aria-label="Close">×</Button></div>
+      <div className="flex items-start justify-between gap-2"><div><h2 className="text-lg font-bold">{test.testNo} · {labelForTest(test.testType)}</h2><p className="text-sm text-muted-foreground">{test.projectName} · {test.dateSampled} · {displayCaps(test.itemLabel || (labTestContextVisibility(test.testType).sampleSource ? test.sampleSourceName : ""))}</p></div><Button variant="ghost" onClick={onClose} aria-label="Close">×</Button></div>
       <div className="my-3 flex items-center gap-2">{verdictBadge(test.verdict)}<Badge variant="outline">{test.status}</Badge>{test.retestOfTestId && <span className="text-sm">Retest of #{test.retestOfTestId}</span>}</div>
       <p className="mb-3 text-sm">Site engineer: {displayCaps(test.siteEngineerName) || "—"} · Sampled by: {displayCaps(test.sampledByName) || "—"} · Tested by: {displayCaps(test.testedByName) || "—"}</p>
-      <TestResultsTable testType={test.testType} readings={test.readings} results={test.results} />
+      <TestResultsTable testType={test.testType} readings={test.readings} results={test.results} materialName={test.materialName} />
       {test.attachments?.map((file: any) => <InstalledDocumentLink key={file.id} href={file.objectPath} fileName={file.fileName} className="mt-2 block text-sm underline">{file.fileName}</InstalledDocumentLink>)}
       <details className="mt-3 rounded border p-3">
         <summary className="cursor-pointer font-semibold">Test history</summary>
@@ -1278,14 +1350,17 @@ function LabTestPrint({ test, project, companyName, onClose }: { test: any; proj
       <div className="my-4 grid grid-cols-2 gap-x-8 gap-y-2 border-b border-black pb-3 text-sm sm:grid-cols-4">
         <PrintFact label="Site" value={test.siteName} /><PrintFact label="Date sampled" value={test.dateSampled} />
         <PrintFact label="Date tested" value={test.dateTested} /><PrintFact label="Place" value={test.place} />
-        <PrintFact label="BOQ item" value={test.itemLabel} /><PrintFact label="Layer" value={test.layer} /><PrintFact label="Layer number" value={test.layerNo} />
-        <PrintFact label="Chainage" value={`${chainageText(test.chainageFrom)} to ${chainageText(test.chainageTo)}`} /><PrintFact label="Side" value={test.side} />
-        <PrintFact label="Sample source" value={test.sampleSourceName} /><PrintFact label="Sample no." value={test.sampleNo} />
+        <PrintFact label="BOQ item" value={displayCaps(test.itemLabel)} /><PrintFact label="Layer" value={test.layer} /><PrintFact label="Layer number" value={test.layerNo} />
+        {labTestContextVisibility(test.testType).sharedChainage && <PrintFact label="Chainage" value={`${chainageText(test.chainageFrom)} to ${chainageText(test.chainageTo)}`} />}
+        {labTestContextVisibility(test.testType).sharedSide && <PrintFact label="Side" value={test.side} />}
+        {labTestContextVisibility(test.testType).sampleSource && <PrintFact label="Sample source" value={test.sampleSourceName} />}
+        {test.testType === "tray_spray_rate" && <PrintFact label="Material" value={displayCaps(test.materialName)} />}
+        <PrintFact label="Sample no." value={test.sampleNo} />
         <PrintFact label="Site engineer" value={displayCaps(test.siteEngineerName)} /><PrintFact label="Sampled by" value={displayCaps(test.sampledByName)} /><PrintFact label="Tested by" value={displayCaps(test.testedByName)} />
       </div>
       <h3 className="font-bold">Calculated results</h3>
       <div className="my-2 border border-black p-3 text-sm print:text-xs">
-        <TestResultsTable testType={test.testType} readings={test.readings} results={test.results} />
+        <TestResultsTable testType={test.testType} readings={test.readings} results={test.results} materialName={test.materialName} />
       </div>
       <div className="my-3 flex items-center gap-3"><strong>Verdict</strong><span className="border border-black px-2 py-1 font-extrabold">{String(test.verdict ?? "na").toUpperCase()}</span></div>
       <p className="min-h-12 border-b border-black text-sm"><strong>Remarks: </strong>{test.remarks ?? ""}</p>
@@ -1304,6 +1379,7 @@ function standardForType(testType: SoilLabTestType) {
     proctor_modified: "IS 2720 Part 8",
     cbr: "IS 2720 Part 16",
     atterberg: "IS 2720 Part 5",
+    tray_spray_rate: "Project / BOQ specification",
   } as Record<SoilLabTestType, string>)[testType];
 }
 

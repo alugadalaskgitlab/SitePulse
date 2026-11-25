@@ -11,3 +11,14 @@
 - Focused tests: 19 passed across `tests/labTests.test.ts` and `tests/labTestRoutes.integration.test.ts`.
 - `npm run build`: passed.
 - Full suite: not run yet; scheduled once after Part 3.
+
+## Part 2 — Tray spray-rate test
+
+- Added the tray test for prime or tack coats. Each tray records chainage, side, dimensions or area, and empty/after-spraying weights. The form shows each rate and the average; details and print show the same calculations in a monochrome table.
+- The form also records coat, material-master selection, and optional equipment/person applied-by text. Soil-only sample-source, source-name, benchmark, calibration, and shared chainage/side fields are hidden. The server stores the existing `sample_source_kind` value `site` for this test type.
+- Spray-rate limits use the BOQ item's Setup minimum/maximum when present. Otherwise the app reads a rate such as `0.60 kg/sqm` from the BOQ name/description and applies the Setup tolerance, defaulting to ±0.05 kg/sqm. The average is marked Pass/Fail and the difference is shown in kg/sqm.
+- Added one nullable `boq_item_quality_specs.target_tolerance` column. Migration `0072_lab_test_target_tolerance.sql` was applied to the two development databases only: `sitelog_dev` and `heliumdb`. Both were confirmed to contain the column. No existing rows were changed.
+- After restart, read-only startup readiness reported `ready: true`; no startup schema error.
+- Focused tests: 21 passed across `tests/labTests.test.ts` and `tests/labTestRoutes.integration.test.ts`, including two-tray average, parsed BOQ rates, tolerance pass/fail, and server storage as `site`.
+- `npm run build`: passed.
+- Full suite: not run yet; scheduled once after Part 3. No production access or publish.

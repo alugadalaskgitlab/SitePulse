@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateSoilLabTest, filterLabBoqItems, labBoqItemLabel, labItemLayerChoices,
-  labTestContextVisibility, labTestDisplayName, soilQualityDefaultsForWork,
+  labTestContextVisibility, labTestDisplayName, parseSprayRateFromBoqText, soilQualityDefaultsForWork,
 } from "@shared/labTests";
 import { applyRoleTemplate, emptyMatrix, ROLE_TEMPLATES } from "@shared/permissions";
 import { canLegacySection } from "@shared/featureAccess";
@@ -206,13 +206,43 @@ describe("soil laboratory calculations", () => {
   it("hides soil-only context fields on spray-rate and thickness forms", () => {
     expect(labTestContextVisibility("field_density_sand")).toEqual({
       sampleSource: true, sourceName: true, benchmark: true, calibration: true, material: true,
+      sharedChainage: true, sharedSide: true,
     });
     expect(labTestContextVisibility("tray_spray_rate")).toEqual({
       sampleSource: false, sourceName: false, benchmark: false, calibration: false, material: true,
+      sharedChainage: false, sharedSide: false,
     });
     expect(labTestContextVisibility("layer_thickness")).toEqual({
       sampleSource: false, sourceName: false, benchmark: false, calibration: false, material: false,
+      sharedChainage: false, sharedSide: false,
     });
+  });
+
+  it("calculates average tray spray rate, applies the BOQ target tolerance, and parses BOQ rates", () => {
+    expect(parseSprayRateFromBoqText("Prime coat @ 0.60 kg/sqm")).toBe(0.6);
+    expect(parseSprayRateFromBoqText("Tack coat rate 0.2 kg per sqm")).toBe(0.2);
+    expect(parseSprayRateFromBoqText("No rate stated")).toBeNull();
+
+    const result = calculateSoilLabTest("tray_spray_rate", {
+      coat: "Prime",
+      trays: [
+        { measurementMode: "dimensions", chainage: "2+600", side: "LHS", lengthMm: 500, widthMm: 200, emptyWeightG: 100, afterSprayingWeightG: 160 },
+        { measurementMode: "area", chainage: "2+700", side: "RHS", areaSqm: 0.1, emptyWeightG: 120, afterSprayingWeightG: 175 },
+      ],
+    }, { sprayRateTargetKgSqm: 0.6, sprayRateToleranceKgSqm: 0.05 });
+    expect((result.results.trays as any[]).map(row => row.rateKgSqm)).toEqual([0.6, 0.55]);
+    expect(result.results.averageRateKgSqm).toBe(0.575);
+    expect(result.results.minRateKgSqm).toBe(0.55);
+    expect(result.results.maxRateKgSqm).toBe(0.65);
+    expect(result.results.differenceText).toBe("0.025 kg/sqm less");
+    expect(result.verdict).toBe("pass");
+    expect(result.errors).toEqual([]);
+
+    const fail = calculateSoilLabTest("tray_spray_rate", {
+      trays: [{ measurementMode: "area", areaSqm: 0.1, emptyWeightG: 100, afterSprayingWeightG: 166 }],
+    }, { sprayRateTargetKgSqm: 0.6, sprayRateToleranceKgSqm: 0.05 });
+    expect(fail.results.averageRateKgSqm).toBe(0.66);
+    expect(fail.verdict).toBe("fail");
   });
 
   it("keeps Tests off for every saved role template by default", () => {
