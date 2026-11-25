@@ -11,6 +11,7 @@ import {
   toBookChainage,
   toOursChainage,
   detectTbmHeading, normalizeTbmImport, repeatedTbmNames,
+  consultantLayoutLayers,
   type DesignLevelRow,
   type ReadingRow,
 } from "../shared/levelSheets";
@@ -21,6 +22,22 @@ const design: DesignLevelRow[] = [
 ];
 
 describe("LEVELS-01 chainage and design utilities", () => {
+  it("imports consultant layer groups and single RL columns without helper columns", () => {
+    const matrix = [
+      ["", "", "", "Sub Grade Top", "", "", "Diff", "BC Top", "", ""],
+      ["Chainage", "OGL", "FRL", -7, 0, 7, "Diff", -3.5, 0, 3.5],
+      [750, 535, 537, 536.072, 536.247, 536.072, 0.1, 536.9, 537, 536.9],
+      [760, 535.1, 537.1, 536.172, 536.347, 536.172, 0.1, 537, 537.1, 537],
+    ];
+    const result = consultantLayoutLayers(matrix, "consultant", 250);
+    expect(result.map(layer => layer.layerName)).toEqual(["OGL", "FRL", "Subgrade top", "BC top"]);
+    expect(result[0].rows[0]).toMatchObject({ chainageOursKm: 0.5, centreLevel: 535, crossfallLeftPct: 0, topWidthLeftM: 0 });
+    expect(result[2].rows[0].crossfallLeftPct).toBeCloseTo(2.5, 8);
+    expect(result[2].rows[0].crossfallRightPct).toBeCloseTo(2.5, 8);
+    expect(result[2].rows[0]).toMatchObject({ centreLevel: 536.247, topWidthLeftM: 7, topWidthRightM: 7, source: "EXCEL" });
+    expect(result[3].rows[0]).toMatchObject({ topWidthLeftM: 3.5, topWidthRightM: 3.5 });
+    expect(consultantLayoutLayers([["Chainage", "Centre", "Left"], [750, 100, 3]], "ours", 0)).toEqual([]);
+  });
   it("detects TBM headers under title rows, converts slash chainages and flags repeated names", () => {
     const preview = detectTbmHeading([["Survey list"], ["TBMS", "Chainage", "RLs", "Easting"], ["TBM3", "0/750", 100, 200], ["TBM3", "1/010", 101, 201]]);
     const rows = normalizeTbmImport(preview.rows, preview.mapping, "consultant", 250);

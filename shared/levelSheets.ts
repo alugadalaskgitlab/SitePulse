@@ -140,6 +140,72 @@ export function repeatedTbmNames(names: string[]) {
   return names.map((name, index) => !name.trim() || keys.indexOf(keys[index]) !== keys.lastIndexOf(keys[index]));
 }
 
+export type ConsultantLayerImport = { key: string; layerName: string; offsets: number[]; rows: DesignLevelRow[] };
+
+export function consultantLayoutLayers(matrix: unknown[][], system: BookChainageSystem, offsetM: number): ConsultantLayerImport[] {
+  const heading = matrix.findIndex(row => row.some(value => /chainage/i.test(String(value ?? ""))));
+  if (heading < 1) return [];
+  const labels = matrix[heading];
+  const groups = matrix[heading - 1];
+  const chainageColumn = labels.findIndex(value => /chainage/i.test(String(value ?? "")));
+  const layers: Array<{ key: string; layerName: string; columns: Array<{ index: number; offset: number }> }> = [];
+  const standardName = (value: string) => {
+    const key = value.trim().replace(/\s+/g, " ");
+    if (/^sub\s*grade\s*top$/i.test(key)) return "Subgrade top";
+    if (/^(gsb|wmm|bc)\s*top$/i.test(key)) return `${key.split(/\s/)[0].toUpperCase()} top`;
+    return /^(ogl|frl)$/i.test(key) ? key.toUpperCase() : key;
+  };
+  let current: typeof layers[number] | null = null;
+  for (let index = 0; index < Math.max(groups.length, labels.length); index++) {
+    if (index === chainageColumn) { current = null; continue; }
+    const label = String(labels[index] ?? "").trim();
+    const group = String(groups[index] ?? "").trim();
+    if (/diff/i.test(label) || /diff/i.test(group)) { current = null; continue; }
+    if (/^(OGL|FRL)$/i.test(label)) {
+      layers.push({ key: String(index), layerName: standardName(label), columns: [{ index, offset: 0 }] });
+      current = null;
+    } else {
+      if (group) {
+        current = { key: String(index), layerName: standardName(group), columns: [] };
+        layers.push(current);
+      }
+      const offset = finite(label.replace(/−/g, "-"));
+      if (label !== "" && offset != null && current) current.columns.push({ index, offset });
+      else if (!label) current = null;
+    }
+  }
+  const valid = layers.filter(layer => layer.columns.some(column => column.offset === 0));
+  if (!valid.some(layer => layer.columns.length > 1)) return []; // Not this layout; retain the simple importer.
+  return valid.map(layer => {
+    const offsets = layer.columns.map(column => column.offset).sort((a, b) => a - b);
+    const centre = layer.columns.find(column => column.offset === 0)!;
+    const left = layer.columns.find(column => column.offset === offsets[0]);
+    const right = layer.columns.find(column => column.offset === offsets.at(-1));
+    const rows: DesignLevelRow[] = [];
+    for (let index = heading + 1; index < matrix.length; index++) {
+      const raw = matrix[index];
+      const chainage = raw[chainageColumn];
+      if (chainage == null || chainage === "" || !raw.some((value, i) => layer.columns.some(column => column.index === i) && value !== "" && value != null)) continue;
+      // Bare figures in consultant-layout files are metres. Slash/plus are km/metres.
+      const text = String(chainage).trim();
+      const parsed = /[+/]/.test(text) ? parseChainage(text) : finite(chainage) == null ? null : Number(chainage) / 1000;
+      const centreLevel = finite(raw[centre.index]);
+      const leftLevel = left ? finite(raw[left.index]) : centreLevel;
+      const rightLevel = right ? finite(raw[right.index]) : centreLevel;
+      if (parsed == null || centreLevel == null || leftLevel == null || rightLevel == null) throw new Error(`Row ${index + 1}, ${layer.layerName}: check chainage and levels.`);
+      const topWidthLeftM = Math.max(0, -(offsets[0] ?? 0));
+      const topWidthRightM = Math.max(0, offsets.at(-1) ?? 0);
+      rows.push({
+        chainageOursKm: toOursChainage(parsed, system, offsetM), centreLevel,
+        crossfallLeftPct: topWidthLeftM ? (centreLevel - leftLevel) / topWidthLeftM * 100 : 0,
+        crossfallRightPct: topWidthRightM ? (centreLevel - rightLevel) / topWidthRightM * 100 : 0,
+        topWidthLeftM, topWidthRightM, source: "EXCEL",
+      });
+    }
+    return { key: layer.key, layerName: layer.layerName, offsets, rows };
+  });
+}
+
 export function toOursChainage(
   bookKm: number,
   system: BookChainageSystem,

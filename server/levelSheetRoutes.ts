@@ -13,6 +13,7 @@ import {
   LEVEL_SHEET_FALLBACK_LAYERS,
   normalizeDesignImportRows,
   normalizeTbmImport, repeatedTbmNames,
+  consultantLayoutLayers,
   type BookChainageSystem,
   type DesignLevelRow,
   type ReadingMode,
@@ -519,6 +520,60 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
         await audit(tx, req, id, "design_row_delete", current, null);
       });
       res.json({ ok: true, id });
+    } catch (error) { return errorResponse(res, error); }
+  });
+
+  app.post("/api/level-sheets/design/import-layers", async (req: any, res) => {
+    if (!assertCreate(req, res, SECTION)) return;
+    try {
+      const siteId = positiveId(req.body?.siteId, "site") as number;
+      await assertSiteAllowed(req, siteId);
+      if (!Array.isArray(req.body.matrix) || req.body.matrix.length > 5002 || req.body.matrix.some((row: any) => !Array.isArray(row) || row.length > 200)) fail("Choose an Excel sheet with up to 5,000 data rows and 200 columns.");
+      const [settings] = await database.select().from(levelSheetSiteSettings).where(eq(levelSheetSiteSettings.siteId, siteId));
+      const detected = consultantLayoutLayers(req.body.matrix, settings?.bookChainageSystem ?? "ours", Number(settings?.consultantOffsetM ?? 0));
+      const picks = req.body.layers;
+      if (!Array.isArray(picks) || !picks.length || picks.length > 100) fail("Tick at least one layer.");
+      const chosen = picks.map((pick: any) => {
+        const found = detected.find(layer => layer.key === String(pick.key));
+        const layerName = String(pick.layerName ?? "").trim();
+        if (!found || !layerName || layerName.length > 120 || !found.rows.length) fail("Choose a layer with rows and a valid name.");
+        const rows = found.rows.map(row => validateDesignRow(row, "EXCEL"));
+        if (new Set(rows.map(row => row.chainageOursKm)).size !== rows.length) fail(`Duplicate chainages in ${layerName}.`);
+        return { layerName, rows };
+      });
+      if (new Set(chosen.map(row => row.layerName.toLowerCase())).size !== chosen.length) fail("Each selected layer needs a unique name.");
+      const replace = req.body.replace === true;
+      if (replace && !assertEdit(req, res, SECTION)) return;
+      if (!replace) {
+        for (const layer of chosen) {
+          const old = await database.select().from(levelSheetDesignRows).where(and(eq(levelSheetDesignRows.siteId, siteId), eq(levelSheetDesignRows.layerName, layer.layerName)));
+          if (old.some((candidate: any) => candidate.source !== "TYPED" && layer.rows.some(row => Math.abs(row.chainageOursKm - Number(candidate.chainageOursKm)) < 1e-9))
+              && !assertEdit(req, res, SECTION)) return;
+        }
+      }
+      const result = await database.transaction(async (tx: any) => {
+        let imported = 0;
+        let skipped = 0;
+        for (const layer of chosen) {
+          const oldRows = await tx.select().from(levelSheetDesignRows).where(and(eq(levelSheetDesignRows.siteId, siteId), eq(levelSheetDesignRows.layerName, layer.layerName)));
+          if (replace) for (const old of oldRows) {
+            await tx.delete(levelSheetDesignRows).where(eq(levelSheetDesignRows.id, old.id));
+            await audit(tx, req, old.id, "design_import_replace_delete", old, null);
+          }
+          for (const row of layer.rows) {
+            const old = replace ? null : oldRows.find((old: any) => Math.abs(Number(old.chainageOursKm) - row.chainageOursKm) < 1e-9);
+            if (old?.source === "TYPED") { skipped++; continue; }
+            const [saved] = old
+              ? await tx.update(levelSheetDesignRows).set({ ...row, updatedByUserId: req.authUser.id, updatedAt: new Date() }).where(eq(levelSheetDesignRows.id, old.id)).returning()
+              : await tx.insert(levelSheetDesignRows).values({ ...row, siteId, layerName: layer.layerName, createdByUserId: req.authUser.id, updatedByUserId: req.authUser.id }).returning();
+            if (!saved) fail("A design row could not be saved.", 409);
+            await audit(tx, req, saved.id, old ? "design_import_update" : "design_import_add", old ?? null, saved);
+            imported++;
+          }
+        }
+        return { imported, skipped };
+      });
+      res.json(result);
     } catch (error) { return errorResponse(res, error); }
   });
 

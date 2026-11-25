@@ -142,6 +142,29 @@ beforeEach(async () => {
 });
 
 describe("LEVELS-01 level-sheet routes", () => {
+  it("imports ticked consultant layers atomically and preserves typed rows unless replace is chosen", async () => {
+    const payload = {
+      siteId, matrix: [
+        ["", "", "WMM Top", "", ""],
+        ["Chainage", "OGL", -7, 0, 7],
+        [750, 535, 536.072, 536.247, 536.072],
+        [760, 535.1, 536.172, 536.347, 536.172],
+      ], layers: [{ key: "1", layerName: "OGL" }, { key: "2", layerName: "WMM top" }],
+    };
+    await request(app).post("/api/level-sheets/design/rows").send({
+      siteId, layerName: "OGL", chainageOursKm: 0.75, centreLevel: 500,
+      crossfallLeftPct: 0, crossfallRightPct: 0, topWidthLeftM: 0, topWidthRightM: 0,
+    }).expect(201);
+    const first = await request(app).post("/api/level-sheets/design/import-layers").send(payload).expect(200);
+    expect(first.body).toEqual({ imported: 3, skipped: 1 });
+    const ogl = await request(app).get(`/api/level-sheets/design?siteId=${siteId}&layerName=OGL`).expect(200);
+    expect(ogl.body.rows[0].centreLevel).toBe(500);
+    const replaced = await request(app).post("/api/level-sheets/design/import-layers").send({ ...payload, replace: true }).expect(200);
+    expect(replaced.body).toEqual({ imported: 4, skipped: 0 });
+    const wmm = await request(app).get(`/api/level-sheets/design?siteId=${siteId}&layerName=WMM%20top`).expect(200);
+    expect(wmm.body.rows[0].topWidthLeftM).toBe(7);
+    expect(wmm.body.rows[0].crossfallLeftPct).toBeCloseTo(2.5, 5);
+  });
   it("creates, imports, edits and deactivates site TBMs with audits and blocks duplicate names and other sites", async () => {
     const created = await request(app).post("/api/level-sheets/tbms").send({ siteId, name: "TBM1", chainageOursKm: 0.75, rl: 100 }).expect(201);
     await request(app).post("/api/level-sheets/tbms/import").send({

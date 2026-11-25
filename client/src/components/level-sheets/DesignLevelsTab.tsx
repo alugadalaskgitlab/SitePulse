@@ -10,6 +10,8 @@ import {
   formatChainagePair,
   formatChainage,
   normalizeDesignImportRows,
+  consultantLayoutLayers,
+  type ConsultantLayerImport,
   parseChainage,
   toOursChainage,
   toBookChainage,
@@ -82,6 +84,8 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
   const [mapping, setMapping] = useState<Mapping>(EMPTY_MAPPING);
   const [replaceImport, setReplaceImport] = useState(false);
   const [importMessage, setImportMessage] = useState("");
+  const [matrix, setMatrix] = useState<unknown[][]>([]);
+  const [multiLayers, setMultiLayers] = useState<Array<ConsultantLayerImport & { selected: boolean }>>([]);
 
   const designQuery = useQuery({
     queryKey: ["/api/level-sheets/design", siteId, layerName],
@@ -154,6 +158,13 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
   });
   const importMutation = useMutation({
     mutationFn: async () => {
+      if (multiLayers.length) {
+        const response = await apiRequest("POST", "/api/level-sheets/design/import-layers", {
+          siteId, matrix, layers: multiLayers.filter(layer => layer.selected).map(layer => ({ key: layer.key, layerName: layer.layerName })), replace: replaceImport,
+        });
+        const result = await response.json();
+        return { imported: Array(result.imported).fill(null), skipped: Array(result.skipped).fill(null) };
+      }
       const normalized = normalizeDesignImportRows(
         importRows, mapping, settings.bookChainageSystem, Number(settings.consultantOffsetM),
       );
@@ -167,6 +178,7 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
       setImportMessage(`${result.imported.length} rows imported${result.skipped.length ? ` · ${result.skipped.length} typed rows kept` : ""}.`);
       setImportOpen(false);
       await refreshRows();
+      await queryClient.invalidateQueries({ queryKey: ["/api/level-sheets/bootstrap", siteId] });
       toast({ title: "Excel design levels imported", description: `${result.imported.length} rows saved.` });
     },
     onError: error => toast({ title: "Could not import design levels", description: error.message, variant: "destructive" }),
@@ -198,6 +210,14 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
     try {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rawMatrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
+      const layers = consultantLayoutLayers(rawMatrix, settings.bookChainageSystem, Number(settings.consultantOffsetM));
+      setMatrix(rawMatrix);
+      setMultiLayers(layers.map(layer => ({ ...layer, selected: true })));
+      if (layers.length) {
+        setImportName(file.name); setImportRows([]); setReplaceImport(false); setImportMessage(""); setImportOpen(true);
+        return;
+      }
       const imported = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" })
         .filter(row => Object.values(row).some(value => String(value ?? "").trim() !== ""));
       if (!imported.length) throw new Error("The selected sheet has no data rows.");
@@ -315,7 +335,17 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
             <div><h3 className="font-semibold">Import consultant Excel</h3><p className="text-sm text-muted-foreground">{importName} · {importRows.length} rows</p></div>
             <Button variant="outline" onClick={() => setImportOpen(false)}>Close</Button>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {!!multiLayers.length && <div className="space-y-2">
+            {multiLayers.map((layer, index) => <div className="grid items-center gap-2 rounded border p-2 sm:grid-cols-[auto_1fr_1fr]" key={layer.key}>
+              <input aria-label={`Import ${layer.layerName}`} type="checkbox" checked={layer.selected} onChange={event => setMultiLayers(current => current.map((row, i) => i === index ? { ...row, selected: event.target.checked } : row))} />
+              <Input aria-label={`Layer name ${index + 1}`} value={layer.layerName} onChange={event => setMultiLayers(current => current.map((row, i) => i === index ? { ...row, layerName: event.target.value } : row))} />
+              <span>Offsets {layer.offsets.join(", ")} m · {layer.rows.length} rows</span>
+              <div className="sm:col-span-3">{layer.rows.slice(0, 3).map(row => <p className="text-xs" key={row.chainageOursKm}>
+                {formatChainagePair(row.chainageOursKm, settings.bookChainageSystem, Number(settings.consultantOffsetM))} · {row.centreLevel.toFixed(3)} · left {row.crossfallLeftPct.toFixed(2)}% / {row.topWidthLeftM.toFixed(2)} m · right {row.crossfallRightPct.toFixed(2)}% / {row.topWidthRightM.toFixed(2)} m
+              </p>)}</div>
+            </div>)}
+          </div>}
+          {!multiLayers.length && <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {MAPPING_FIELDS.map(([key, label]) => <label key={key} className="space-y-1 text-sm">
               <span>{label}</span>
               <select className="h-10 w-full rounded-md border bg-background px-3" value={mapping[key]} onChange={event => changeMapping(key, event.target.value)}>
@@ -323,10 +353,10 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
                 {importHeaders.map(header => <option key={header} value={header}>{header}</option>)}
               </select>
             </label>)}
-          </div>
+          </div>}
           {canEdit && <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={replaceImport} onChange={event => setReplaceImport(event.target.checked)} />
-            Replace existing design rows for this layer
+            Replace existing rows for these layers
           </label>}
           <p className="text-xs text-muted-foreground">Without Replace, typed rows stay as saved; matching Excel rows update and matching typed rows are kept.</p>
           {preview.length > 0 && <div className="overflow-x-auto rounded border">
@@ -340,8 +370,8 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
           </div>}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setImportOpen(false)}>Cancel</Button>
-            <Button onClick={() => importMutation.mutate()} disabled={!canCreate || importMutation.isPending || !importRows.length || !preview.length || Object.values(mapping).some(value => !value) || (replaceImport && !canEdit)}>
-              Import {importRows.length} rows
+            <Button onClick={() => importMutation.mutate()} disabled={!canCreate || importMutation.isPending || (multiLayers.length ? !multiLayers.some(layer => layer.selected) || multiLayers.some(layer => layer.selected && (!layer.layerName.trim() || !layer.rows.length)) : !importRows.length || !preview.length || Object.values(mapping).some(value => !value)) || (replaceImport && !canEdit)}>
+              Import {multiLayers.length ? multiLayers.filter(layer => layer.selected).reduce((sum, layer) => sum + layer.rows.length, 0) : importRows.length} rows
             </Button>
           </div>
         </div>
