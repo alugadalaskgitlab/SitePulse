@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { calculateSoilLabTest, soilQualityDefaultsForWork } from "@shared/labTests";
+import {
+  calculateSoilLabTest, filterLabBoqItems, labBoqItemLabel, labItemLayerChoices,
+  labTestContextVisibility, labTestDisplayName, soilQualityDefaultsForWork,
+} from "@shared/labTests";
 import { applyRoleTemplate, emptyMatrix, ROLE_TEMPLATES } from "@shared/permissions";
 import { canLegacySection } from "@shared/featureAccess";
 
@@ -166,6 +169,50 @@ describe("soil laboratory calculations", () => {
     expect(soilQualityDefaultsForWork("Subgrade").map(row => row.testType)).toContain("cbr");
     expect(soilQualityDefaultsForWork("GSB").map(row => row.minValue)).toEqual([98]);
     expect(soilQualityDefaultsForWork("WMM").map(row => row.frequencyQty)).toEqual([1000]);
+  });
+
+  it("uses the paired site and engineering names for every test type", () => {
+    expect(labTestDisplayName("field_density_sand")).toBe("FDD — sand replacement · Field dry density (sand replacement)");
+    expect(labTestDisplayName("field_density_core_cutter")).toBe("FDD — core cutter · Field dry density (core cutter)");
+    expect(labTestDisplayName("moisture_content")).toBe("Moisture — oven / speedy · Moisture content");
+    expect(labTestDisplayName("proctor_light")).toBe("Proctor — light (MDD/OMC) · Light compaction test");
+    expect(labTestDisplayName("proctor_modified")).toBe("Proctor — heavy (MDD/OMC) · Modified compaction test");
+    expect(labTestDisplayName("cbr")).toBe("CBR · California bearing ratio");
+    expect(labTestDisplayName("atterberg")).toBe("LL / PL / PI · Atterberg limits");
+    expect(labTestDisplayName("tray_spray_rate")).toBe("Tray test — prime / tack · Spray rate of bituminous coat");
+    expect(labTestDisplayName("layer_thickness")).toBe("Thickness check · Layer thickness");
+  });
+
+  it("lists and searches every BOQ item using its number and uppercase short name", () => {
+    const items = [
+      { id: 11, itemCode: "5.1", itemName: "Granular sub-base", description: "Long GSB description" },
+      { id: 12, itemCode: "5.2", itemName: "", description: "Wet mix macadam " + "X".repeat(80) },
+    ];
+    expect(filterLabBoqItems(items, "")).toHaveLength(items.length);
+    expect(filterLabBoqItems(items, "macadam").map(row => row.id)).toEqual([12]);
+    expect(labBoqItemLabel(items[0])).toBe("5.1 · GRANULAR SUB-BASE");
+    expect(labBoqItemLabel(items[1])).toBe(`5.2 · ${(items[1].description).slice(0, 60).trim().toUpperCase()}`);
+  });
+
+  it("uses layers configured on the selected BOQ item, adds Other, and retains the fallback", () => {
+    expect(labItemLayerChoices({ layerConfig: { dprLayers: ["GSB layer 1", { name: "WMM layer 2" }] } }))
+      .toEqual(["GSB layer 1", "WMM layer 2", "Other"]);
+    expect(labItemLayerChoices({ layerConfig: null })).toEqual([
+      "OGL / initial", "Embankment layer 1", "Embankment layer 2", "Embankment layer 3",
+      "Subgrade layer 1", "Subgrade layer 2", "GSB", "WMM", "BC", "Other",
+    ]);
+  });
+
+  it("hides soil-only context fields on spray-rate and thickness forms", () => {
+    expect(labTestContextVisibility("field_density_sand")).toEqual({
+      sampleSource: true, sourceName: true, benchmark: true, calibration: true, material: true,
+    });
+    expect(labTestContextVisibility("tray_spray_rate")).toEqual({
+      sampleSource: false, sourceName: false, benchmark: false, calibration: false, material: true,
+    });
+    expect(labTestContextVisibility("layer_thickness")).toEqual({
+      sampleSource: false, sourceName: false, benchmark: false, calibration: false, material: false,
+    });
   });
 
   it("keeps Tests off for every saved role template by default", () => {

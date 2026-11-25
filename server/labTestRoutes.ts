@@ -8,7 +8,7 @@ import {
   progressEntries, sites, userSiteAccess, users,
 } from "@shared/schema";
 import { assertCreate, assertEdit, assertView } from "./auth-routes";
-import { calculateSoilLabTest, soilQualityDefaultsForWork, type LabCalculationContext, type SoilLabTestType } from "@shared/labTests";
+import { calculateSoilLabTest, labTestDisplayName, soilQualityDefaultsForWork, type LabCalculationContext, type SoilLabTestType } from "@shared/labTests";
 import { getUnitConversionFactor } from "@shared/planningEngine";
 
 const testTypes = [
@@ -259,15 +259,7 @@ function validateInput(input: any) {
 }
 
 function testNameForType(testType: string) {
-  return ({
-    field_density_sand: "Field density (sand replacement)",
-    field_density_core_cutter: "Field density (core cutter)",
-    moisture_content: "Moisture content (oven / speedy)",
-    proctor_light: "Light Proctor",
-    proctor_modified: "Modified Proctor",
-    cbr: "CBR",
-    atterberg: "Atterberg limits",
-  } as Record<string, string>)[testType] ?? testType;
+  return labTestDisplayName(testType);
 }
 
 async function nextNumbers(tx: any, project: any, testType: SoilLabTestType, itemId: number | null) {
@@ -392,7 +384,7 @@ export function registerLabTestRoutes(app: Express) {
       if (Number.isInteger(projectId) && projectId > 0) {
         const project = await projectAllowed(req, res, projectId);
         if (!project) return;
-        items = await db.select({ id: boqItems.id, itemCode: boqItems.itemCode, itemName: boqItems.itemName, description: boqItems.description, unit: boqItems.unit, layerConfig: boqItems.layerConfig })
+        items = await db.select({ id: boqItems.id, itemCode: boqItems.itemCode, itemName: boqItems.itemName, description: boqItems.description, unit: boqItems.unit, sortOrder: boqItems.sortOrder, layerConfig: boqItems.layerConfig })
           .from(boqItems).where(eq(boqItems.boqProjectId, projectId)).orderBy(asc(boqItems.sortOrder), asc(boqItems.id));
       }
       const [account] = req.authUser?.id != null

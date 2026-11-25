@@ -14,21 +14,27 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { useToast } from "@/hooks/use-toast";
 import { useUpload } from "@/hooks/use-upload";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { calculateSoilLabTest, soilQualityDefaultsForWork, type LabCalculationContext, type SoilLabTestType } from "@shared/labTests";
+import {
+  calculateSoilLabTest, filterLabBoqItems, labBoqItemLabel, labItemLayerChoices,
+  labTestContextVisibility, labTestDisplayName, soilQualityDefaultsForWork,
+  type LabCalculationContext, type SoilLabTestType,
+} from "@shared/labTests";
 
 const TEST_TYPES: Array<{ value: SoilLabTestType; label: string }> = [
-  { value: "field_density_sand", label: "Field density — sand replacement" },
-  { value: "field_density_core_cutter", label: "Field density — core cutter" },
-  { value: "moisture_content", label: "Moisture content — oven / speedy" },
-  { value: "proctor_light", label: "Light Proctor" },
-  { value: "proctor_modified", label: "Modified Proctor" },
-  { value: "cbr", label: "CBR" },
-  { value: "atterberg", label: "Atterberg limits" },
+  { value: "field_density_sand", label: labTestDisplayName("field_density_sand") },
+  { value: "field_density_core_cutter", label: labTestDisplayName("field_density_core_cutter") },
+  { value: "moisture_content", label: labTestDisplayName("moisture_content") },
+  { value: "proctor_light", label: labTestDisplayName("proctor_light") },
+  { value: "proctor_modified", label: labTestDisplayName("proctor_modified") },
+  { value: "cbr", label: labTestDisplayName("cbr") },
+  { value: "atterberg", label: labTestDisplayName("atterberg") },
 ];
 const PLACES = [
   ["on_site", "On site (field test)"],
@@ -45,11 +51,6 @@ const SOURCE_KINDS = [
   ["other", "Other"],
 ] as const;
 const PENETRATIONS = [0, 0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10, 12.5];
-const FALLBACK_LAYERS = [
-  "OGL / initial", "Embankment layer 1", "Embankment layer 2", "Embankment layer 3",
-  "Subgrade layer 1", "Subgrade layer 2", "GSB", "WMM", "BC",
-];
-
 function today() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -265,17 +266,16 @@ export default function LabTests() {
   });
 
   const selectedItem = projectItems.find((item: any) => Number(item.id) === Number(form.boqItemId));
-  const configuredLayers = selectedItem?.layerConfig?.dprLayers ?? selectedItem?.layerConfig?.layers;
+  const layerChoices = labItemLayerChoices(selectedItem);
   const itemLayerCount = Math.max(1, Number(
     Array.isArray(selectedItem?.layerConfig?.layers)
       ? selectedItem.layerConfig.layers.length
       : selectedItem?.layerConfig?.layerCount ?? 1,
   ));
-  const layerChoices = Array.isArray(configuredLayers) && configuredLayers.length
-    ? configuredLayers.map((entry: any, index: number) => typeof entry === "string" ? entry
-      : typeof entry === "object" ? String(entry.name ?? entry.label ?? `Layer ${index + 1}`)
-        : `Layer ${index + 1}`)
-    : FALLBACK_LAYERS;
+  const layerPresets = layerChoices.filter(value => value !== "Other");
+  const customLayer = !!form.layer && !layerPresets.includes(String(form.layer));
+  const layerPickerValue = customLayer ? "Other" : String(form.layer ?? "");
+  const visibleContext = labTestContextVisibility(String(form.testType));
   const activeBenchmark = useMemo(() => {
     const rows = (setup?.benchmarks ?? []).filter((row: any) =>
       row.isActive && (row.materialId == null || Number(row.materialId) === Number(form.materialId))
@@ -502,30 +502,32 @@ export default function LabTests() {
                       <FieldSelect label="Place" value={form.place} options={PLACES} onChange={value => setFormField("place", value)} />
                       <FieldInput label="Date sampled" type="date" value={form.dateSampled} onChange={value => setFormField("dateSampled", value)} />
                       <FieldInput label="Date tested" type="date" value={form.dateTested} onChange={value => setFormField("dateTested", value)} />
-                      <FieldSelect label="BOQ item" value={form.boqItemId ? String(form.boqItemId) : ""} options={projectItems.map((item: any) => [String(item.id), `${item.itemCode ? `${item.itemCode} · ` : ""}${item.itemName || item.description}`])} onChange={value => setFormField("boqItemId", value ? Number(value) : null)} optional />
-                      <FieldSelect label="Layer" value={form.layer ?? ""} options={layerChoices.map((value: string) => [value, value] as [string, string])} onChange={value => setFormField("layer", value || null)} optional />
+                      <BoqItemPicker label="BOQ item" items={projectItems} value={form.boqItemId ? String(form.boqItemId) : ""} onChange={value => setForm((current: any) => ({ ...current, boqItemId: value ? Number(value) : null, layer: "", layerNo: null }))} optional />
+                      {selectedItem?.description && <p className="sm:col-span-3 -mt-2 text-xs text-muted-foreground">{displayCaps(selectedItem.description)}</p>}
+                      <FieldSelect label="Layer" value={layerPickerValue} options={layerChoices.map((value: string) => [value, value] as [string, string])} onChange={value => setFormField("layer", value === "Other" ? (customLayer ? form.layer : "") : value || null)} optional />
+                      {layerPickerValue === "Other" && <FieldInput label="Other layer" value={customLayer ? String(form.layer) : ""} onChange={value => setFormField("layer", value)} />}
                       <FieldSelect label="Layer number" value={form.layerNo ? String(form.layerNo) : ""} options={Array.from({ length: itemLayerCount }, (_, index) => [String(index + 1), `Layer ${index + 1}`] as [string, string])} onChange={value => setFormField("layerNo", value ? Number(value) : null)} optional />
                       <FieldInput label="From chainage (km)" value={form.chainageFrom} onChange={value => setFormField("chainageFrom", value)} placeholder="2+600" />
                       <FieldInput label="To chainage (km)" value={form.chainageTo} onChange={value => setFormField("chainageTo", value)} placeholder="2+700" />
                       <FieldSelect label="Side" value={form.side} options={[["Centre", "Centre"], ["LHS", "LHS"], ["RHS", "RHS"], ["Both", "Both"]]} onChange={value => setFormField("side", value)} optional />
-                      <FieldSelect label="Sample source" value={form.sampleSourceKind} options={SOURCE_KINDS} onChange={value => setFormField("sampleSourceKind", value)} />
-                      <FieldInput label="Source name" value={form.sampleSourceName} onChange={value => setFormField("sampleSourceName", value)} placeholder="Borrow area / quarry / stockpile" />
-                      <FieldSelect label="Material" value={form.materialId ? String(form.materialId) : ""} options={materials.map((item: any) => [String(item.id), displayCaps(item.name)])} onChange={value => setFormField("materialId", value ? Number(value) : null)} optional />
+                      {visibleContext.sampleSource && <FieldSelect label="Sample source" value={form.sampleSourceKind} options={SOURCE_KINDS} onChange={value => setFormField("sampleSourceKind", value)} />}
+                      {visibleContext.sourceName && <FieldInput label="Source name" value={form.sampleSourceName} onChange={value => setFormField("sampleSourceName", value)} placeholder="Borrow area / quarry / stockpile" />}
+                      {visibleContext.material && <FieldSelect label="Material" value={form.materialId ? String(form.materialId) : ""} options={materials.map((item: any) => [String(item.id), displayCaps(item.name)])} onChange={value => setFormField("materialId", value ? Number(value) : null)} optional />}
                       <FieldSelect label="Site engineer" value={form.siteEngineerPersonnelId ? String(form.siteEngineerPersonnelId) : ""} options={personnelOptionsFor(form.siteEngineerPersonnelId)} onChange={value => setFormField("siteEngineerPersonnelId", value ? Number(value) : null)} optional />
                       <FieldSelect label="Sampled by" value={form.sampledByPersonnelId ? String(form.sampledByPersonnelId) : ""} options={personnelOptionsFor(form.sampledByPersonnelId)} onChange={value => setFormField("sampledByPersonnelId", value ? Number(value) : null)} optional />
                       <FieldSelect label="Tested by" value={form.testedByPersonnelId ? String(form.testedByPersonnelId) : ""} options={personnelOptionsFor(form.testedByPersonnelId)} onChange={value => setFormField("testedByPersonnelId", value ? Number(value) : null)} optional />
                     </div>
 
-                    <div className="rounded border bg-slate-50 p-3 text-sm">
+                    {visibleContext.benchmark && <div className="rounded border bg-slate-50 p-3 text-sm">
                       <p className="font-semibold">Benchmarks and requirement</p>
                       <div className="mt-2 grid gap-1 sm:grid-cols-3">
                         <span>MDD: {calculationContext.mddGcc ?? "—"} g/cc <small>({benchmarkLabel})</small></span>
                         <span>OMC: {calculationContext.omcPercent ?? "—"}% <small>({benchmarkLabel})</small></span>
                         <span>Required: {activeSpec?.minValue ?? activeSpec?.maxValue ?? "—"} <small>({specLabel})</small></span>
-                        {form.testType.startsWith("field_density") && <span>Sand: {calculationContext.sandBulkDensityGcc ?? "—"} g/cc · cone {calculationContext.sandInConeG ?? "—"} g <small>({contextLabel})</small></span>}
-                        {form.testType === "cbr" && <span>Proving ring: {calculationContext.ringConstantKgPerDivision ?? "—"} kg/div <small>({contextLabel})</small></span>}
+                        {visibleContext.calibration && form.testType.startsWith("field_density") && <span>Sand: {calculationContext.sandBulkDensityGcc ?? "—"} g/cc · cone {calculationContext.sandInConeG ?? "—"} g <small>({contextLabel})</small></span>}
+                        {visibleContext.calibration && form.testType === "cbr" && <span>Proving ring: {calculationContext.ringConstantKgPerDivision ?? "—"} kg/div <small>({contextLabel})</small></span>}
                       </div>
-                    </div>
+                    </div>}
 
                     <TestReadings
                       testType={form.testType}
@@ -575,7 +577,7 @@ export default function LabTests() {
                   <FieldInput label="From" type="date" value={filter.dateFrom} onChange={value => setFilter(current => ({ ...current, dateFrom: value }))} />
                   <FieldInput label="To" type="date" value={filter.dateTo} onChange={value => setFilter(current => ({ ...current, dateTo: value }))} />
                   <FieldSelect label="Result" value={filter.verdict} options={[["pass", "Pass"], ["fail", "Fail"], ["na", "Not assessed"]]} onChange={value => setFilter(current => ({ ...current, verdict: value }))} optional />
-                  <FieldSelect label="BOQ item" value={filter.boqItemId} options={projectItems.map((item: any) => [String(item.id), item.itemName || item.description])} onChange={value => setFilter(current => ({ ...current, boqItemId: value }))} optional />
+                  <BoqItemPicker label="BOQ item" items={projectItems} value={filter.boqItemId} onChange={value => setFilter(current => ({ ...current, boqItemId: value }))} optional />
                   <FieldSelect label="Layer" value={filter.layerNo} options={[["1", "Layer 1"], ["2", "Layer 2"], ["3", "Layer 3"], ["4", "Layer 4"]]} onChange={value => setFilter(current => ({ ...current, layerNo: value }))} optional />
                 </div>
                 {testsLoading ? <p>Loading tests…</p> : tests.length === 0 ? <p className="text-sm text-muted-foreground">No tests match these filters.</p> : (
@@ -605,7 +607,7 @@ export default function LabTests() {
             <Card>
               <CardHeader><CardTitle className="text-base">Layer register</CardTitle></CardHeader>
               <CardContent className="space-y-3">
-                <FieldSelect label="BOQ item" value={form.boqItemId ? String(form.boqItemId) : ""} options={projectItems.map((item: any) => [String(item.id), item.itemName || item.description])} onChange={value => setFormField("boqItemId", value ? Number(value) : null)} optional />
+                <BoqItemPicker label="BOQ item" items={projectItems} value={form.boqItemId ? String(form.boqItemId) : ""} onChange={value => setFormField("boqItemId", value ? Number(value) : null)} optional />
                 <div className="grid grid-cols-2 gap-2"><FieldInput label="From chainage" value={registerStretch.from} onChange={value => setRegisterStretch(row => ({ ...row, from: value }))} placeholder="0+000" /><FieldInput label="To chainage" value={registerStretch.to} onChange={value => setRegisterStretch(row => ({ ...row, to: value }))} placeholder="1+000" /></div>
                 <div className="overflow-x-auto rounded border">
                   <table className="min-w-full text-sm"><thead><tr className="border-b bg-slate-50"><th className="p-2 text-left">100 m stretch</th>{[1, 2, 3, 4].map(layer => <th key={layer} className="p-2">Layer {layer}</th>)}</tr></thead>
@@ -705,7 +707,7 @@ export default function LabTests() {
                   {!setup?.benchmarks?.length && <p className="text-sm text-muted-foreground">No material benchmarks saved.</p>}
                 </CardContent></Card>
                 <Card><CardHeader><CardTitle className="text-base">Quality specifications</CardTitle></CardHeader><CardContent className="space-y-3">
-                  <FieldSelect label="BOQ item" value={specItemId ? String(specItemId) : ""} options={projectItems.map((item: any) => [String(item.id), item.itemName || item.description])} onChange={value => {
+                  <BoqItemPicker label="BOQ item" items={projectItems} value={specItemId ? String(specItemId) : ""} onChange={value => {
                     const id = value ? Number(value) : null;
                     setSpecItemId(id);
                     const item = projectItems.find((candidate: any) => Number(candidate.id) === id);
@@ -866,8 +868,55 @@ function FieldSelect({ label, value, options, onChange, optional = false }: {
   );
 }
 
+function BoqItemPicker({ label, items, value, onChange, optional = false }: {
+  label: string;
+  items: any[];
+  value: string;
+  onChange: (value: string) => void;
+  optional?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const matchingItems = filterLabBoqItems(items, search);
+  const selected = items.find(item => String(item.id) === value);
+  return (
+    <div className="space-y-1">
+      <Label>{label}</Label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button type="button" variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between bg-white font-normal">
+            <span className="truncate">{selected ? labBoqItemLabel(selected) : `Choose ${label.toLowerCase()}`}</span>
+            <span aria-hidden="true">⌄</span>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-[min(92vw,32rem)] p-0">
+          <Command shouldFilter={false}>
+            <CommandInput placeholder="Search BOQ items" value={search} onValueChange={setSearch} />
+            <CommandList>
+              <CommandEmpty>No BOQ items found.</CommandEmpty>
+              <CommandGroup>
+                {optional && <CommandItem value="__none" onSelect={() => { onChange(""); setOpen(false); setSearch(""); }}>None</CommandItem>}
+                {matchingItems.map(item => (
+                  <CommandItem key={item.id} value={String(item.id)} onSelect={() => {
+                    onChange(String(item.id));
+                    setOpen(false);
+                    setSearch("");
+                  }}>
+                    {labBoqItemLabel(item)}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+            <p className="border-t px-3 py-2 text-xs text-muted-foreground">Showing {matchingItems.length} of {items.length} BOQ items</p>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 function labelForTest(type: string) {
-  return TEST_TYPES.find(test => test.value === type)?.label ?? type;
+  return labTestDisplayName(type);
 }
 
 function ResultCell({ label, value, unit }: { label: string; value: unknown; unit?: string }) {

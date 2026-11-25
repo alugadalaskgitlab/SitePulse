@@ -7,6 +7,76 @@ export type SoilLabTestType =
   | "cbr"
   | "atterberg";
 
+/**
+ * User-facing names are shared by the entry form, register, frequency review,
+ * test details, and print output. The two new type names are registered here
+ * before their calculation flows are enabled in Parts 2 and 3.
+ */
+export const LAB_TEST_DISPLAY_NAMES: Record<string, string> = {
+  field_density_sand: "FDD — sand replacement · Field dry density (sand replacement)",
+  field_density_core_cutter: "FDD — core cutter · Field dry density (core cutter)",
+  moisture_content: "Moisture — oven / speedy · Moisture content",
+  proctor_light: "Proctor — light (MDD/OMC) · Light compaction test",
+  proctor_modified: "Proctor — heavy (MDD/OMC) · Modified compaction test",
+  cbr: "CBR · California bearing ratio",
+  atterberg: "LL / PL / PI · Atterberg limits",
+  tray_spray_rate: "Tray test — prime / tack · Spray rate of bituminous coat",
+  layer_thickness: "Thickness check · Layer thickness",
+};
+
+export function labTestDisplayName(testType: string): string {
+  return LAB_TEST_DISPLAY_NAMES[testType] ?? testType;
+}
+
+export type LabBoqItemOption = {
+  id: number | string;
+  itemCode?: string | null;
+  sortOrder?: number | null;
+  itemName?: string | null;
+  description?: string | null;
+};
+
+export function labBoqItemLabel(item: LabBoqItemOption): string {
+  const number = item.itemCode || (item.sortOrder ?? item.id);
+  const shortName = String(item.itemName || item.description || "").slice(0, 60).trim();
+  return `${number} · ${shortName}`.toLocaleUpperCase();
+}
+
+export function filterLabBoqItems<T extends LabBoqItemOption>(items: T[], search: string): T[] {
+  const query = String(search ?? "").trim().toLocaleLowerCase();
+  if (!query) return items;
+  return items.filter(item =>
+    `${item.itemCode ?? ""} ${item.sortOrder ?? ""} ${item.itemName ?? ""} ${item.description ?? ""}`
+      .toLocaleLowerCase().includes(query),
+  );
+}
+
+export function labItemLayerChoices(item: { layerConfig?: any } | null | undefined): string[] {
+  const config = item?.layerConfig && typeof item.layerConfig === "object" ? item.layerConfig : {};
+  const configured = config.dprLayers ?? config.layers;
+  const names = Array.isArray(configured) ? configured.map((entry: any, index: number) =>
+    typeof entry === "string" ? entry
+      : entry && typeof entry === "object" ? String(entry.name ?? entry.label ?? entry.layerName ?? `Layer ${index + 1}`)
+        : `Layer ${index + 1}`,
+  ).filter((name: string) => name.trim()) : [];
+  const source = names.length ? names : [
+    "OGL / initial", "Embankment layer 1", "Embankment layer 2", "Embankment layer 3",
+    "Subgrade layer 1", "Subgrade layer 2", "GSB", "WMM", "BC",
+  ];
+  return [...source, "Other"];
+}
+
+export function labTestContextVisibility(testType: string) {
+  const soilOnly = testType !== "tray_spray_rate" && testType !== "layer_thickness";
+  return {
+    sampleSource: soilOnly,
+    sourceName: soilOnly,
+    benchmark: soilOnly,
+    calibration: soilOnly,
+    material: testType !== "layer_thickness",
+  };
+}
+
 export type LabVerdict = "pass" | "fail" | "na";
 
 export interface LabCalculationContext {
