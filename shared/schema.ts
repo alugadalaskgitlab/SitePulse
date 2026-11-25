@@ -303,6 +303,24 @@ export const levelSheetSiteSettings = pgTable("level_sheet_site_settings", {
   systemCheck: check("level_sheet_site_settings_system_check", sql`${table.bookChainageSystem} IN ('ours', 'consultant')`),
 }));
 
+export const levelSheetTbms = pgTable("level_sheet_tbms", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  chainageOursKm: real("chainage_ours_km").notNull(),
+  rl: real("rl").notNull(),
+  easting: real("easting"),
+  northing: real("northing"),
+  description: text("description"),
+  active: boolean("active").notNull().default(true),
+  createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  updatedByUserId: integer("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => ({
+  siteNameUq: uniqueIndex("level_sheet_tbms_site_name_uq").on(table.siteId, sql`lower(trim(${table.name}))`),
+}));
+
 export const levelSheetDesignRows = pgTable("level_sheet_design_rows", {
   id: serial("id").primaryKey(),
   siteId: integer("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
@@ -341,6 +359,8 @@ export const levelSheets = pgTable("level_sheets", {
   tbmRl: real("tbm_rl"),
   initialBackSight: real("initial_back_sight"),
   closingForeSight: real("closing_fore_sight"),
+  closingTbmName: text("closing_tbm_name"),
+  closingTbmRl: real("closing_tbm_rl"),
   readings: jsonb("readings").$type<unknown[]>().notNull().default([]),
   checkedByType: text("checked_by_type", { enum: ["not_checked", "department", "consultant"] }).notNull().default("not_checked"),
   checkedByName: text("checked_by_name"),

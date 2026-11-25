@@ -42,6 +42,7 @@ export type LevelSheetCalcInput = {
   tbmRl?: number | null;
   backsight?: number | null;
   closingForesight?: number | null;
+  closingTbmRl?: number | null;
   toleranceAboveMm: number;
   toleranceBelowMm: number;
 };
@@ -80,7 +81,7 @@ export function parseChainage(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   const text = String(value ?? "").trim().replace(/,/g, ".");
   if (!text) return null;
-  const plus = text.match(/^(-?\d+)\s*\+\s*(\d+(?:\.\d+)?)$/);
+  const plus = text.match(/^(-?\d+)\s*[+/]\s*(\d+(?:\.\d+)?)$/);
   const parsed = plus ? Number(plus[1]) + Number(plus[2]) / 1000 : Number(text);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -96,6 +97,47 @@ export function formatChainage(value: number): string {
     metres = 0;
   }
   return `${sign}${km}+${String(metres).padStart(3, "0")}`;
+}
+
+export const TBM_IMPORT_FIELDS = ["name", "chainage", "rl", "easting", "northing", "description"] as const;
+export type TbmImportMapping = Record<typeof TBM_IMPORT_FIELDS[number], number>;
+
+export function detectTbmHeading(matrix: unknown[][]) {
+  const norm = (value: unknown) => String(value ?? "").trim().toLowerCase().replace(/[^a-z]/g, "");
+  const headingIndex = matrix.findIndex(row => {
+    const labels = row.map(norm);
+    return labels.some(label => label.includes("chainage"))
+      && labels.some(label => /^rls?$/.test(label))
+      && labels.some(label => /tbm/.test(label));
+  });
+  if (headingIndex < 0) throw new Error("Could not find a heading row with Chainage, RL and TBM.");
+  const headers = matrix[headingIndex].map(value => String(value ?? "").trim());
+  const patterns = [/tbm/i, /chainage/i, /^rls?$/i, /east/i, /north/i, /remark|description/i];
+  const mapping = Object.fromEntries(TBM_IMPORT_FIELDS.map((key, index) =>
+    [key, headers.findIndex(header => patterns[index].test(header))],
+  )) as TbmImportMapping;
+  return { headers, mapping, rows: matrix.slice(headingIndex + 1).filter(row => row.some(value => String(value ?? "").trim())) };
+}
+
+export function normalizeTbmImport(
+  rows: unknown[][], mapping: TbmImportMapping, system: BookChainageSystem, offsetM: number,
+) {
+  return rows.map((row, index) => {
+    const name = String(row[mapping.name] ?? "").trim();
+    const bookKm = parseChainage(row[mapping.chainage]);
+    const rl = finite(row[mapping.rl]);
+    if (!name || bookKm == null || rl == null) throw new Error(`Row ${index + 1}: name, chainage and RL are required.`);
+    return {
+      name, chainageOursKm: toOursChainage(bookKm, system, offsetM), rl,
+      easting: finite(row[mapping.easting]), northing: finite(row[mapping.northing]),
+      description: String(row[mapping.description] ?? "").trim(),
+    };
+  });
+}
+
+export function repeatedTbmNames(names: string[]) {
+  const keys = names.map(name => name.trim().toLocaleLowerCase("en"));
+  return names.map((name, index) => !name.trim() || keys.indexOf(keys[index]) !== keys.lastIndexOf(keys[index]));
 }
 
 export function toOursChainage(
@@ -296,9 +338,9 @@ export function calculateLevelSheet(input: LevelSheetCalcInput): LevelSheetCalcu
   const points = sections.flatMap(section => section.points);
   return {
     sections,
-    closingErrorMm: lastHi == null || finite(input.closingForesight) == null || finite(input.tbmRl) == null
+    closingErrorMm: lastHi == null || finite(input.closingForesight) == null || finite(input.closingTbmRl ?? input.tbmRl) == null
       ? null
-      : (lastHi - Number(input.closingForesight) - Number(input.tbmRl)) * 1000,
+      : (lastHi - Number(input.closingForesight) - Number(input.closingTbmRl ?? input.tbmRl)) * 1000,
     cutVolumeCum,
     fillVolumeCum,
     volumeSegments,

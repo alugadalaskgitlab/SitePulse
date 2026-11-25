@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   auditLogs, boqItems, boqProjects, levelSheetDesignRows, levelSheetSiteSettings,
-  levelSheets, levelSheetStaff, personnel, sites,
+  levelSheets, levelSheetStaff, levelSheetTbms, personnel, sites,
 } from "@shared/schema";
 import { boqItemDisplayText } from "@shared/boqItemName";
 import { assertApprove, assertCreate, assertEdit, assertView, currentUserName } from "./auth-routes";
@@ -12,6 +12,7 @@ import {
   deriveDesignRowsFromFrl,
   LEVEL_SHEET_FALLBACK_LAYERS,
   normalizeDesignImportRows,
+  normalizeTbmImport, repeatedTbmNames,
   type BookChainageSystem,
   type DesignLevelRow,
   type ReadingMode,
@@ -252,9 +253,94 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
       tbmRl: numberValue(input.tbmRl, "TBM level", { nullable: true, min: -1000, max: 10000 }),
       initialBackSight: numberValue(input.initialBackSight, "Back sight", { nullable: true, min: 0, max: 10000 }),
       closingForeSight: numberValue(input.closingForeSight, "Closing fore sight", { nullable: true, min: 0, max: 10000 }),
+      closingTbmName: String(input.closingTbmName ?? current?.closingTbmName ?? "").trim().slice(0, 120) || null,
+      closingTbmRl: numberValue(input.closingTbmRl === undefined ? current?.closingTbmRl : input.closingTbmRl, "Closing TBM RL", { nullable: true, min: -1000, max: 10000 }),
       readings, status, personnelIds, attachment,
     };
   }
+
+  function validateTbm(input: any) {
+    const name = String(input?.name ?? "").trim();
+    if (!name || name.length > 120) fail("Enter a TBM name (120 characters or fewer).");
+    return {
+      name,
+      chainageOursKm: numberValue(input.chainageOursKm, "Chainage", { min: -1000, max: 10000 }) as number,
+      rl: numberValue(input.rl, "RL", { min: -1000, max: 10000 }) as number,
+      easting: numberValue(input.easting, "Easting", { nullable: true }),
+      northing: numberValue(input.northing, "Northing", { nullable: true }),
+      description: String(input.description ?? "").trim().slice(0, 2000) || null,
+      active: input.active !== false,
+    };
+  }
+
+  app.get("/api/level-sheets/tbms", async (req: any, res) => {
+    if (!assertView(req, res, SECTION)) return;
+    try {
+      const siteId = positiveId(req.query.siteId, "site") as number;
+      await assertSiteAllowed(req, siteId);
+      res.json(await database.select().from(levelSheetTbms).where(eq(levelSheetTbms.siteId, siteId)).orderBy(asc(levelSheetTbms.chainageOursKm)));
+    } catch (error) { return errorResponse(res, error); }
+  });
+
+  app.post("/api/level-sheets/tbms", async (req: any, res) => {
+    if (!assertCreate(req, res, SECTION)) return;
+    try {
+      const siteId = positiveId(req.body?.siteId, "site") as number;
+      await assertSiteAllowed(req, siteId);
+      const values = validateTbm(req.body);
+      const saved = await database.transaction(async (tx: any) => {
+        const [row] = await tx.insert(levelSheetTbms).values({ ...values, siteId, createdByUserId: req.authUser.id, updatedByUserId: req.authUser.id }).returning();
+        await audit(tx, req, row.id, "tbm_create", null, row);
+        return row;
+      });
+      res.status(201).json(saved);
+    } catch (error: any) {
+      if (String(error?.code ?? error?.cause?.code) === "23505") return res.status(409).json({ message: "A TBM with this name already exists at this site." });
+      return errorResponse(res, error);
+    }
+  });
+
+  app.post("/api/level-sheets/tbms/import", async (req: any, res) => {
+    if (!assertCreate(req, res, SECTION)) return;
+    try {
+      const siteId = positiveId(req.body?.siteId, "site") as number;
+      await assertSiteAllowed(req, siteId);
+      if (!Array.isArray(req.body.rows) || !req.body.rows.length || req.body.rows.length > 5000) fail("Choose 1 to 5,000 TBM rows.");
+      const [settings] = await database.select().from(levelSheetSiteSettings).where(eq(levelSheetSiteSettings.siteId, siteId));
+      const normalized = normalizeTbmImport(req.body.rows, req.body.mapping, settings?.bookChainageSystem ?? "ours", Number(settings?.consultantOffsetM ?? 0));
+      const edits = req.body.names;
+      const values = normalized.map((row, index) => validateTbm({ ...row, name: Array.isArray(edits) ? edits[index] : row.name }));
+      const existing = await database.select({ name: levelSheetTbms.name }).from(levelSheetTbms).where(eq(levelSheetTbms.siteId, siteId));
+      if (repeatedTbmNames([...existing.map((row: any) => row.name), ...values.map(row => row.name)]).some(Boolean)) fail("Repeated name — rename before import.", 422);
+      const saved = await database.transaction(async (tx: any) => {
+        const result = [];
+        for (const value of values) {
+          const [row] = await tx.insert(levelSheetTbms).values({ ...value, siteId, createdByUserId: req.authUser.id, updatedByUserId: req.authUser.id }).returning();
+          await audit(tx, req, row.id, "tbm_import", null, row);
+          result.push(row);
+        }
+        return result;
+      });
+      res.status(201).json(saved);
+    } catch (error) { return errorResponse(res, error); }
+  });
+
+  app.patch("/api/level-sheets/tbms/:id", async (req: any, res) => {
+    if (!assertEdit(req, res, SECTION)) return;
+    try {
+      const id = positiveId(req.params.id, "TBM") as number;
+      const [current] = await database.select().from(levelSheetTbms).where(eq(levelSheetTbms.id, id));
+      if (!current) fail("TBM not found.", 404);
+      await assertSiteAllowed(req, Number(current.siteId));
+      const values = validateTbm({ ...current, ...req.body });
+      const saved = await database.transaction(async (tx: any) => {
+        const [row] = await tx.update(levelSheetTbms).set({ ...values, updatedByUserId: req.authUser.id, updatedAt: new Date() }).where(eq(levelSheetTbms.id, id)).returning();
+        await audit(tx, req, id, "tbm_edit", current, row);
+        return row;
+      });
+      res.json(saved);
+    } catch (error) { return errorResponse(res, error); }
+  });
 
   app.get("/api/level-sheets/bootstrap", async (req: any, res) => {
     if (!assertView(req, res, SECTION)) return;
@@ -553,6 +639,7 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
           allowedClosingErrorMm: payload.allowedClosingErrorMm, readingMode: payload.readingMode,
           tbmName: payload.tbmName, tbmRl: payload.tbmRl, initialBackSight: payload.initialBackSight,
           closingForeSight: payload.closingForeSight, readings: payload.readings,
+          closingTbmName: payload.closingTbmName, closingTbmRl: payload.closingTbmRl,
           status: payload.status, ...payload.attachment,
           createdByUserId: req.authUser.id, updatedByUserId: req.authUser.id,
         }).returning();
@@ -602,6 +689,7 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
           allowedClosingErrorMm: payload.allowedClosingErrorMm, readingMode: payload.readingMode,
           tbmName: payload.tbmName, tbmRl: payload.tbmRl, initialBackSight: payload.initialBackSight,
           closingForeSight: payload.closingForeSight, readings: payload.readings, status: payload.status,
+          closingTbmName: payload.closingTbmName, closingTbmRl: payload.closingTbmRl,
           ...payload.attachment, updatedByUserId: req.authUser.id, updatedAt: new Date(),
         }).where(eq(levelSheets.id, id)).returning();
         if (!row) fail("Level sheet was not updated.", 409);

@@ -45,6 +45,8 @@ type FormState = {
   tbmRl: string;
   initialBackSight: string;
   closingForeSight: string;
+  closingTbmName: string;
+  closingTbmRl: string;
   readings: SheetReadingRow[];
   personnelIds: number[];
   status: "draft" | "saved";
@@ -69,6 +71,7 @@ function blankForm(siteId: number, projectId: number | null, layerName: string):
     layerName: layerName || "Original ground", sheetDate: localDate(), instrument: "",
     toleranceAboveMm: "10", toleranceBelowMm: "10", allowedClosingErrorMm: "10",
     readingMode: "rl", tbmName: "", tbmRl: "", initialBackSight: "", closingForeSight: "",
+    closingTbmName: "", closingTbmRl: "",
     readings: rows, personnelIds: [], status: "draft",
   };
 }
@@ -167,6 +170,8 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
       tbmRl: sheet.tbmRl == null ? "" : String(sheet.tbmRl),
       initialBackSight: sheet.initialBackSight == null ? "" : String(sheet.initialBackSight),
       closingForeSight: sheet.closingForeSight == null ? "" : String(sheet.closingForeSight),
+      closingTbmName: String(sheet.closingTbmName ?? ""),
+      closingTbmRl: sheet.closingTbmRl == null ? "" : String(sheet.closingTbmRl),
       readings: hydrateRows(sheet.readings).rows,
       personnelIds: (sheet.personnelIds ?? sheet.staff?.map((person: any) => person.id) ?? []).map(Number),
       status: sheet.status === "saved" ? "saved" : "draft",
@@ -199,6 +204,10 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
     enabled: siteId > 0 && !!form.layerName,
   });
   const designRows = designQuery.data?.rows ?? [];
+  const tbmsQuery = useQuery({
+    queryKey: ["/api/level-sheets/tbms", siteId],
+    queryFn: () => getJson(`/api/level-sheets/tbms?siteId=${siteId}`),
+  });
   const calc = useMemo(() => calculateLevelSheet({
     designRows,
     readings: form.readings,
@@ -206,9 +215,10 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
     tbmRl: numberOrNull(form.tbmRl),
     backsight: numberOrNull(form.initialBackSight),
     closingForesight: numberOrNull(form.closingForeSight),
+    closingTbmRl: numberOrNull(form.closingTbmRl),
     toleranceAboveMm: Number(form.toleranceAboveMm || 0),
     toleranceBelowMm: Number(form.toleranceBelowMm || 0),
-  }), [designRows, form.readings, form.readingMode, form.tbmRl, form.initialBackSight, form.closingForeSight, form.toleranceAboveMm, form.toleranceBelowMm]);
+  }), [designRows, form.readings, form.readingMode, form.tbmRl, form.initialBackSight, form.closingForeSight, form.closingTbmRl, form.toleranceAboveMm, form.toleranceBelowMm]);
   const settingsMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("PUT", "/api/level-sheets/site-settings", { siteId, ...settings });
@@ -266,6 +276,7 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
       tbmRl: numericField(form.tbmRl),
       initialBackSight: numericField(form.initialBackSight),
       closingForeSight: numericField(form.closingForeSight),
+      closingTbmRl: numericField(form.closingTbmRl),
       readings,
       status,
     });
@@ -369,13 +380,15 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
               onModeChange={mode => setField("readingMode", mode)}
               designRows={designRows}
               settings={settings}
-              header={{ tbmName: form.tbmName, tbmRl: form.tbmRl, initialBackSight: form.initialBackSight, closingForeSight: form.closingForeSight }}
+              header={{ tbmName: form.tbmName, tbmRl: form.tbmRl, initialBackSight: form.initialBackSight, closingForeSight: form.closingForeSight, closingTbmName: form.closingTbmName, closingTbmRl: form.closingTbmRl }}
+              tbms={Array.isArray(tbmsQuery.data) ? tbmsQuery.data : []}
               onHeaderChange={header => setForm(current => ({ ...current, ...header }))}
               toleranceAboveMm={Number(form.toleranceAboveMm || 0)}
               toleranceBelowMm={Number(form.toleranceBelowMm || 0)}
               allowedClosingErrorMm={Number(form.allowedClosingErrorMm || 0)}
               readOnly={!sheetCanSave}
             />
+            {tbmsQuery.isError && <p role="alert">Could not load TBMs.</p>}
           </CardContent></Card>
         </TabsContent>
         <TabsContent value="results">

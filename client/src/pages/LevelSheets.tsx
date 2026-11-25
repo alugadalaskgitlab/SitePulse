@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { LevelSheetEditor } from "@/components/level-sheets/LevelSheetEditor";
+import { TbmsTab } from "@/components/level-sheets/TbmsTab";
 
 type Bootstrap = {
   sites: Array<{ id: number; name: string }>;
@@ -50,6 +51,7 @@ export default function LevelSheets() {
   const [siteId, setSiteId] = useState<number | null>(null);
   const [sheetId, setSheetId] = useState<number | null>(null);
   const [newSheet, setNewSheet] = useState(false);
+  const [siteTab, setSiteTab] = useState("sheets");
 
   const bootstrapQuery = useQuery<Bootstrap>({
     queryKey: ["/api/level-sheets/bootstrap", siteId],
@@ -134,6 +136,11 @@ export default function LevelSheets() {
         {bootstrapQuery.isLoading && <p className="text-sm text-muted-foreground">Loading sites…</p>}
         {bootstrapQuery.isError && <p role="alert" className="rounded border border-destructive/40 p-3 text-sm text-destructive">{(bootstrapQuery.error as Error).message}</p>}
         {!bootstrapQuery.isLoading && bootstrap?.sites.length === 0 && <p className="rounded border border-dashed p-4 text-sm">No accessible active sites.</p>}
+        {siteId && !newSheet && sheetId == null && <div className="flex gap-2">
+          <Button variant={siteTab === "sheets" ? "default" : "outline"} onClick={() => setSiteTab("sheets")}>Level sheets</Button>
+          <Button variant={siteTab === "tbms" ? "default" : "outline"} onClick={() => setSiteTab("tbms")}>TBMs</Button>
+        </div>}
+        {siteId && bootstrap && !newSheet && sheetId == null && siteTab === "tbms" && <TbmsTab key={siteId} siteId={siteId} settings={bootstrap.settings} canCreate={canCreate} canEdit={canEdit} />}
 
         {(newSheet || sheetId != null) && bootstrap && selectedSite && (
           <LevelSheetEditor
@@ -152,7 +159,7 @@ export default function LevelSheets() {
           />
         )}
 
-        {!newSheet && sheetId == null && (
+        {!newSheet && sheetId == null && siteTab === "sheets" && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">

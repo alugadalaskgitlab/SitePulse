@@ -88,6 +88,7 @@ beforeAll(async () => {
   );
   for (const table of tables) await createFixtureTable(table, dialect);
   await pg.exec(readFileSync(new URL("../migrations/0071_level_sheets.sql", import.meta.url), "utf8"));
+  await pg.exec(readFileSync(new URL("../migrations/0074_level_sheet_tbms.sql", import.meta.url), "utf8"));
   state.db = drizzle(pg, { schema });
   state.storage = { getUserPermittedSiteIds: async () => state.permittedSiteIds };
 
@@ -129,6 +130,7 @@ beforeAll(async () => {
 afterAll(async () => { await pg?.close(); });
 
 beforeEach(async () => {
+  await state.db.delete(schema.levelSheetTbms);
   await state.db.delete(schema.levelSheetStaff);
   await state.db.delete(schema.levelSheets);
   await state.db.delete(schema.levelSheetDesignRows);
@@ -140,6 +142,25 @@ beforeEach(async () => {
 });
 
 describe("LEVELS-01 level-sheet routes", () => {
+  it("creates, imports, edits and deactivates site TBMs with audits and blocks duplicate names and other sites", async () => {
+    const created = await request(app).post("/api/level-sheets/tbms").send({ siteId, name: "TBM1", chainageOursKm: 0.75, rl: 100 }).expect(201);
+    await request(app).post("/api/level-sheets/tbms/import").send({
+      siteId, rows: [["TBM3", "0/750", 101], ["TBM3", "1/010", 102]],
+      mapping: { name: 0, chainage: 1, rl: 2, easting: -1, northing: -1, description: -1 },
+    }).expect(422);
+    await request(app).post("/api/level-sheets/tbms/import").send({
+      siteId, rows: [["TBM3", "0/750", 101], ["TBM3", "1/010", 102]], names: ["TBM3", "TBM4"],
+      mapping: { name: 0, chainage: 1, rl: 2, easting: -1, northing: -1, description: -1 },
+    }).expect(201);
+    await request(app).patch(`/api/level-sheets/tbms/${created.body.id}`).send({ active: false }).expect(200);
+    const listed = await request(app).get(`/api/level-sheets/tbms?siteId=${siteId}`).expect(200);
+    expect(listed.body).toHaveLength(3);
+    expect(listed.body.find((row: any) => row.id === created.body.id).active).toBe(false);
+    expect((await state.db.select().from(schema.auditLogs)).map((row: any) => row.action)).toContain("tbm_edit");
+    await request(app).get(`/api/level-sheets/tbms?siteId=${otherSiteId}`).expect(403);
+    const saved = await request(app).post("/api/level-sheets").send(sheetPayload({ closingTbmName: "TBM4", closingTbmRl: 102 })).expect(201);
+    expect(saved.body.closingTbmRl).toBe(102);
+  });
   it("keeps level sheets disabled in default permission matrices", () => {
     expect(Object.values(fullMatrix().level_sheets).some(Boolean)).toBe(false);
   });

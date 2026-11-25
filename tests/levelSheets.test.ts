@@ -10,6 +10,7 @@ import {
   parseChainage,
   toBookChainage,
   toOursChainage,
+  detectTbmHeading, normalizeTbmImport, repeatedTbmNames,
   type DesignLevelRow,
   type ReadingRow,
 } from "../shared/levelSheets";
@@ -20,6 +21,18 @@ const design: DesignLevelRow[] = [
 ];
 
 describe("LEVELS-01 chainage and design utilities", () => {
+  it("detects TBM headers under title rows, converts slash chainages and flags repeated names", () => {
+    const preview = detectTbmHeading([["Survey list"], ["TBMS", "Chainage", "RLs", "Easting"], ["TBM3", "0/750", 100, 200], ["TBM3", "1/010", 101, 201]]);
+    const rows = normalizeTbmImport(preview.rows, preview.mapping, "consultant", 250);
+    expect(rows.map(row => row.chainageOursKm)).toEqual([0.5, 0.76]);
+    expect(repeatedTbmNames(rows.map(row => row.name))).toEqual([true, true]);
+    expect(repeatedTbmNames(["TBM3", "TBM4"])).toEqual([false, false]);
+  });
+  it("closes on a different TBM and retains the starting TBM fallback", () => {
+    const input = { designRows: [], readings: [{ chainageOursKm: 0, points: [] }], mode: "staff" as const, tbmRl: 100, backsight: 2, closingForesight: 1, toleranceAboveMm: 10, toleranceBelowMm: 10 };
+    expect(calculateLevelSheet({ ...input, closingTbmRl: 101 }).closingErrorMm).toBe(0);
+    expect(calculateLevelSheet(input).closingErrorMm).toBe(1000);
+  });
   it("parses and formats chainage and converts consultant offsets in both directions", () => {
     expect(parseChainage("2+600")).toBe(2.6);
     expect(formatChainage(2.6)).toBe("2+600");

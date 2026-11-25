@@ -136,4 +136,17 @@ describe("Level sheets screen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enter staff readings" }));
     await waitFor(() => expect((screen.getByRole("textbox", { name: "Reading 1 CL 0" }) as HTMLInputElement).value).toBe("0"));
   });
+  it("places +L and +R inside CL and shifts only before the selected chainage", async () => {
+    renderEditor();
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "2. Readings" }), { button: 0 });
+    const left = await screen.findByRole("button", { name: "Add point left of centre" });
+    expect(left.closest("th")?.textContent).toBe("+LCL+R");
+    expect(screen.queryByRole("button", { name: "Shift instrument", exact: true })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Enter staff readings" }));
+    const shift = screen.getByRole("button", { name: "Shift instrument before selected chainage" }) as HTMLButtonElement;
+    expect(shift.disabled).toBe(true);
+    fireEvent.click(screen.getByRole("textbox", { name: "Reading chainage 1" }));
+    fireEvent.click(shift);
+    expect(screen.getByRole("textbox", { name: "Change-point foresight 1" })).toBeTruthy();
+  });
 });
