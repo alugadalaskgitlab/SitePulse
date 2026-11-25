@@ -625,10 +625,33 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
       await assertSiteAllowed(req, Number(current.siteId));
       const checkedByType = req.body?.checkedByType;
       if (!["not_checked", "department", "consultant"].includes(checkedByType)) fail("Choose who checked the level sheet.");
-      const checkedByName = String(req.body?.checkedByName ?? "").trim().slice(0, 160) || null;
-      const checkedByDesignation = String(req.body?.checkedByDesignation ?? "").trim().slice(0, 160) || null;
-      const checkedDate = req.body?.checkedDate ? validateDate(req.body.checkedDate, "check date") : null;
-      const checkedPoints = Array.isArray(req.body?.checkedPoints) ? req.body.checkedPoints.slice(0, MAX_READINGS * MAX_POINTS_PER_ROW) : [];
+      const unchecked = checkedByType === "not_checked";
+      const checkedByName = unchecked ? null : String(req.body?.checkedByName ?? "").trim().slice(0, 160) || null;
+      if (!unchecked && !checkedByName) fail("Enter the checker name.");
+      const checkedByDesignation = unchecked ? null : String(req.body?.checkedByDesignation ?? "").trim().slice(0, 160) || null;
+      const checkedDate = unchecked ? null : validateDate(req.body?.checkedDate, "check date");
+      const rawCheckedPoints = unchecked ? [] : req.body?.checkedPoints;
+      if (!Array.isArray(rawCheckedPoints) || rawCheckedPoints.length > MAX_READINGS * MAX_POINTS_PER_ROW) {
+        fail("Check points must be a valid list.");
+      }
+      const validPoints = new Set<string>();
+      for (const reading of current.readings ?? []) {
+        for (const point of reading.points ?? []) {
+          if (point.columnKey) validPoints.add(`${Number(reading.chainageOursKm)}|${String(point.columnKey)}`);
+        }
+      }
+      const seenPoints = new Set<string>();
+      const checkedPoints = rawCheckedPoints.map((point: any) => {
+        const chainageOursKm = numberValue(point?.chainageOursKm, "Check point chainage", { min: -100, max: 1000 });
+        const columnKey = String(point?.columnKey ?? "").trim().slice(0, 100);
+        const identity = `${chainageOursKm}|${columnKey}`;
+        if (!columnKey || !validPoints.has(identity)) fail("A checked point does not match this sheet's readings.");
+        if (seenPoints.has(identity)) fail("A checked point was listed more than once.");
+        seenPoints.add(identity);
+        if (typeof point?.checked !== "boolean") fail("Each check point must say whether it was checked.");
+        const checkedRl = numberValue(point?.checkedRl, "Checked RL", { nullable: true, min: -10000, max: 10000 });
+        return { chainageOursKm, columnKey, checked: point.checked, checkedRl };
+      });
       const attachment = Object.hasOwn(req.body, "attachment") ? safeAttachment(req.body.attachment) : {
         fileName: current.fileName, objectPath: current.objectPath, mimeType: current.mimeType, fileSize: current.fileSize,
       };

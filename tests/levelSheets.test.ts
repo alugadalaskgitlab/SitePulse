@@ -25,7 +25,7 @@ describe("LEVELS-01 chainage and design utilities", () => {
     expect(formatChainage(2.6)).toBe("2+600");
     expect(toOursChainage(3.35, "consultant", 750)).toBe(2.6);
     expect(toBookChainage(2.6, "consultant", 750)).toBe(3.35);
-    expect(formatChainagePair(2.6, "consultant", 750)).toBe("Ours 2+600 · Consultant 3+350");
+    expect(formatChainagePair(2.6, "consultant", 750)).toBe("ours 2+600 · consultant 3+350");
     expect(parseChainage("not a chainage")).toBeNull();
   });
 
@@ -44,6 +44,14 @@ describe("LEVELS-01 chainage and design utilities", () => {
       crossfallRight: "Right crossfall", topWidthLeft: "Left width", topWidthRight: "Right width",
     }, "consultant", 750);
     expect(rows[0]).toMatchObject({ chainageOursKm: 2.6, centreLevel: 100.1, source: "EXCEL" });
+    const typed = normalizeDesignImportRows([{
+      "Chainage from book": "3+350", "Design RL": "100,1", "Left crossfall": "2",
+      "Right crossfall": "2", "Left width": "3", "Right width": "3",
+    }], {
+      chainage: "Chainage from book", centreLevel: "Design RL", crossfallLeft: "Left crossfall",
+      crossfallRight: "Right crossfall", topWidthLeft: "Left width", topWidthRight: "Right width",
+    }, "consultant", 750);
+    expect(interpolateDesignAt(rows, 2.6)).toEqual(interpolateDesignAt(typed, 2.6));
   });
 
   it("derives a layer from FRL minus depth while keeping cross-fall and widths", () => {
@@ -74,6 +82,43 @@ describe("LEVELS-01 chainage and design utilities", () => {
     expect(result.closingErrorMm).toBeCloseTo(0, 6);
   });
 
+  it("applies HI changes at the selected chainage and computes RL and closing error", () => {
+    const readings: ReadingRow[] = [
+      { chainageOursKm: 2.6, points: [{ columnKey: "cl", side: "CL", distanceM: 0, value: 3 }] },
+      { chainageOursKm: 2.61, shift: { foresight: 4, backsight: 1.5 }, points: [{ columnKey: "cl", side: "CL", distanceM: 0, value: 1 }] },
+      { chainageOursKm: 2.62, points: [{ columnKey: "cl", side: "CL", distanceM: 0, value: 0.5 }] },
+    ];
+    const result = calculateLevelSheet({
+      designRows: [], readings, mode: "staff", tbmRl: 100, backsight: 2,
+      closingForesight: 0.5, toleranceAboveMm: 20, toleranceBelowMm: 25,
+    });
+    expect(result.sections.map(section => section.hi)).toEqual([102, 99.5, 99.5]);
+    expect(result.sections[1].shiftCpRl).toBe(98);
+    expect(result.sections.map(section => section.points[0].rl)).toEqual([99, 98.5, 99]);
+    expect(result.closingErrorMm).toBeCloseTo(-1000, 6);
+    const incomplete = calculateLevelSheet({
+      designRows: [], readings: [
+        readings[0], { ...readings[1], shift: { foresight: 4, backsight: null } }, readings[2],
+      ], mode: "staff", tbmRl: 100, backsight: 2, toleranceAboveMm: 20, toleranceBelowMm: 25,
+    });
+    expect(incomplete.sections[1].hi).toBeNull();
+    expect(incomplete.sections[2].points[0].rl).toBeNull();
+  });
+
+  it("uses the specified cross-fall design at offsets", () => {
+    const row = {
+      chainageOursKm: 2.6, centreLevel: 532.703, crossfallLeftPct: 2.5,
+      crossfallRightPct: 2.5, topWidthLeftM: 5, topWidthRightM: 5, source: "TYPED" as const,
+    };
+    const result = calculateLevelSheet({
+      designRows: [row],
+      readings: [{ chainageOursKm: 2.6, points: [{ columnKey: "l5", side: "L", distanceM: 5, value: 532.578 }] }],
+      mode: "rl", toleranceAboveMm: 10, toleranceBelowMm: 10,
+    });
+    expect(result.sections[0].points[0].designLevel).toBeCloseTo(532.578, 6);
+    expect(result.sections[0].points[0].differenceMm).toBeCloseTo(0, 6);
+  });
+
   it("converts between staff readings and RLs without changing equivalent heights", () => {
     const readings: ReadingRow[] = [{
       chainageOursKm: 1.25,
@@ -86,18 +131,18 @@ describe("LEVELS-01 chainage and design utilities", () => {
     expect(() => convertReadingValues(readings, "staff", "rl", {})).toThrow(/TBM level and back sight/);
   });
 
-  it("calculates trapezoidal cross-sections and volumes and flags points outside the design width", () => {
+  it("calculates the specified cut/fill areas and volumes and flags outside-width points", () => {
     const flatDesign: DesignLevelRow[] = [0, 0.01].map(chainageOursKm => ({
       chainageOursKm, centreLevel: 100, crossfallLeftPct: 0, crossfallRightPct: 0,
-      topWidthLeftM: 2, topWidthRightM: 2, source: "TYPED",
+      topWidthLeftM: 5, topWidthRightM: 5, source: "TYPED",
     }));
     const readings: ReadingRow[] = [0, 0.01].map(chainageOursKm => ({
       chainageOursKm,
       points: [
-        { columnKey: "far-left", side: "L", distanceM: 4, value: 100.1 },
-        { columnKey: "left", side: "L", distanceM: 2, value: 100.1 },
+        { columnKey: "far-left", side: "L", distanceM: 6, value: 100.1 },
+        { columnKey: "left", side: "L", distanceM: 5, value: 100.1 },
         { columnKey: "centre", side: "CL", distanceM: 0, value: 100.1 },
-        { columnKey: "right", side: "R", distanceM: 2, value: 100.1 },
+        { columnKey: "right", side: "R", distanceM: 5, value: 100.1 },
       ],
     }));
     const result = calculateLevelSheet({
@@ -106,8 +151,21 @@ describe("LEVELS-01 chainage and design utilities", () => {
     expect(result.sections[0].points[0].comparison).toBe("outside width");
     expect(result.sections[0].points[1].differenceMm).toBeCloseTo(100, 6);
     expect(result.sections[0].points[1].comparison).toBe("High");
-    expect(result.sections[0].cutAreaSqm).toBeCloseTo(0.4, 6);
-    expect(result.cutVolumeCum).toBeCloseTo(4, 6);
+    expect(result.sections[0].cutAreaSqm).toBeCloseTo(1, 6);
+    expect(result.sections[0].fillAreaSqm).toBe(0);
+    expect(result.cutVolumeCum).toBeCloseTo(10, 6);
     expect(result.volumeSegments).toBe(1);
+
+    const zeroCross = calculateLevelSheet({
+      designRows: [flatDesign[0]],
+      readings: [{ chainageOursKm: 0, points: [
+        { columnKey: "left", side: "L", distanceM: 5, value: 99.9 },
+        { columnKey: "centre", side: "CL", distanceM: 0, value: 100 },
+        { columnKey: "right", side: "R", distanceM: 5, value: 100.1 },
+      ] }],
+      mode: "rl", toleranceAboveMm: 20, toleranceBelowMm: 25,
+    });
+    expect(zeroCross.sections[0].cutAreaSqm).toBeCloseTo(0.25, 6);
+    expect(zeroCross.sections[0].fillAreaSqm).toBeCloseTo(0.25, 6);
   });
 });

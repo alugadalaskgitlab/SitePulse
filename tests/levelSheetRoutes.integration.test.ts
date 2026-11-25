@@ -209,16 +209,32 @@ describe("LEVELS-01 level-sheet routes", () => {
     expect(edited.body.objectPath).toBe("/objects/level-fixtures/levels.pdf");
     expect(edited.body.staff.map((person: any) => person.id)).toEqual(expect.arrayContaining([activeStaffId, inactiveStaffId]));
 
+    const checked = await request(app).patch(`/api/level-sheets/${id}/check`).send({
+      checkedByType: "department",
+      checkedByName: "Department Engineer",
+      checkedByDesignation: "Assistant Engineer",
+      checkedDate: "2026-11-10",
+      checkedPoints: [{ chainageOursKm: 2.61, columnKey: "cl", checked: true, checkedRl: 101.25 }],
+    }).expect(200);
+    expect(checked.body).toMatchObject({
+      checkedByType: "department",
+      checkedByName: "Department Engineer",
+      checkedByDesignation: "Assistant Engineer",
+      checkedDate: "2026-11-10",
+      checkedPoints: [{ chainageOursKm: 2.61, columnKey: "cl", checked: true, checkedRl: 101.25 }],
+    });
+
     const rejected = await request(app).post("/api/level-sheets").send(sheetPayload({ personnelIds: [inactiveStaffId] })).expect(422);
     expect(rejected.body.message).toMatch(/Only active Personnel/);
     const audit = await state.db.select().from(schema.auditLogs).where(eq(schema.auditLogs.module, "level_sheet"));
-    expect(audit.map((row: any) => row.action)).toEqual(["create", "edit"]);
+    expect(audit.map((row: any) => row.action)).toEqual(["create", "edit", "check_and_sign"]);
   });
 
   it("blocks missing permission and site access and rejects a BOQ item from a different site", async () => {
     state.user = { id: 2, fullName: "LIMITED USER", isOwner: false, isAdmin: false, businessRole: "Engineer" };
     state.permissions = grants({ view: false, create: false, edit: false });
     await request(app).get("/api/level-sheets/bootstrap").expect(403);
+    await request(app).patch("/api/level-sheets/1/check").send({ checkedByType: "department" }).expect(403);
 
     state.permissions = grants({ view: true });
     state.permittedSiteIds = [];

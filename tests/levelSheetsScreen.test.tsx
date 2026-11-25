@@ -9,6 +9,7 @@ vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: fixture.toast })
 vi.mock("@/lib/queryClient", () => ({ apiRequest: vi.fn() }));
 
 import { LevelSheetEditor } from "@/components/level-sheets/LevelSheetEditor";
+import { apiRequest } from "@/lib/queryClient";
 
 const bootstrap = {
   sites: [{ id: 1, name: "ALLADURG PWD ROAD TO PAMPAD" }],
@@ -21,12 +22,12 @@ const bootstrap = {
   settings: { bookChainageSystem: "ours" as const, consultantOffsetM: 0 },
 };
 
-function renderEditor() {
+function renderEditor({ sheetId = null, sheet = null }: { sheetId?: number | null; sheet?: any } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}>
     <LevelSheetEditor
-      siteId={1} bootstrap={bootstrap} sheetId={null} sheet={null}
-      loadingSheet={false} sheetError={null} canCreate canEdit
+      siteId={1} bootstrap={bootstrap} sheetId={sheetId} sheet={sheet}
+      loadingSheet={false} sheetError={null} canCreate canEdit canApprove
       onBack={vi.fn()} onSave={vi.fn()} saving={false}
     />
   </QueryClientProvider>);
@@ -34,6 +35,7 @@ function renderEditor() {
 
 beforeEach(() => {
   fixture.toast.mockReset();
+  vi.mocked(apiRequest).mockReset();
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/design?")) {
@@ -69,10 +71,58 @@ describe("Level sheets screen", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Reading 1 CL 0" }), { target: { value: "100,1" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Reading 1 R 2.5" }), { target: { value: "100,2" } });
 
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "3. Results & quantities" }), { button: 0 });
-    await screen.findByText("Results and quantities");
-    expect(screen.getByText("Ours 0+000 · Consultant 0+000")).toBeTruthy();
-    expect(screen.getByText("Cut:")).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "3. Result & quantities" }), { button: 0 });
+    await screen.findByText("Result & quantities");
+    expect(screen.getByText("ours 0+000 · consultant 0+000")).toBeTruthy();
+    expect(screen.getByText("Points within", { exact: true })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "ours 0+000 · consultant 0+000" }));
+    expect(screen.getByText(/Cross-section · top width/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Print preview" }));
+    expect(await screen.findByText("Level sheet print preview")).toBeTruthy();
+    expect(screen.getAllByText("Cut (sqm)").length).toBe(2);
+    expect([...document.querySelectorAll("style")].some(style => style.textContent?.includes("background: transparent"))).toBe(true);
+  });
+
+  it("shows the non-required check/sign tab and labels current levels as not checked", async () => {
+    renderEditor();
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "4. Check & sign" }), { button: 0 });
+    expect(await screen.findByText("Staff levels — not checked yet")).toBeTruthy();
+    expect(screen.getByText("Taken by")).toBeTruthy();
+    expect(screen.getByText("Save the level sheet before recording check details.")).toBeTruthy();
+  });
+
+  it("saves checker details and a checked point, then shows the chainage status", async () => {
+    const sheet = {
+      id: 11, siteId: 1, boqProjectId: 2, boqItemId: 3, layerName: "GSB", sheetDate: "2026-11-01",
+      instrument: "Auto level", toleranceAboveMm: 10, toleranceBelowMm: 10, allowedClosingErrorMm: 10,
+      readingMode: "rl", tbmName: "TBM 1", tbmRl: 100, initialBackSight: null, closingForeSight: null,
+      readings: [{ chainageOursKm: 0, shift: null, points: [{ columnKey: "cl", side: "CL", distanceM: 0, value: 100, remark: null }] }],
+      personnelIds: [4], staff: [
+        { id: 4, name: "FIXTURE SURVEYOR", role: "Surveyor", isActive: 1 },
+        { id: 5, name: "OLD SURVEYOR", role: "Surveyor", isActive: 0 },
+      ],
+      status: "saved", checkedByType: "not_checked", checkedPoints: [],
+      fileName: null, objectPath: null, mimeType: null, fileSize: null,
+    };
+    vi.mocked(apiRequest).mockImplementation(async (_method: any, _url: any, payload: any) =>
+      new Response(JSON.stringify({ ...sheet, checkedByType: payload.checkedByType, checkedByName: payload.checkedByName,
+        checkedByDesignation: payload.checkedByDesignation, checkedDate: payload.checkedDate, checkedPoints: payload.checkedPoints }),
+      { status: 200, headers: { "Content-Type": "application/json" } }) as any);
+    renderEditor({ sheetId: 11, sheet });
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "4. Check & sign" }), { button: 0 });
+    expect(await screen.findByText("OLD SURVEYOR · inactive")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Checked by"), { target: { value: "department" } });
+    fireEvent.change(screen.getByLabelText("Checker name"), { target: { value: "Department Engineer" } });
+    fireEvent.change(screen.getByLabelText("Designation"), { target: { value: "Assistant Engineer" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "CL" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Checked RL CL 0" }), { target: { value: "100.002" } });
+    expect(screen.getByText("+2 mm")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save check & sign" }));
+    expect(await screen.findByText("Checked by department (DEPARTMENT ENGINEER) at 1 of 1 chainages")).toBeTruthy();
+    expect(apiRequest).toHaveBeenCalledWith("PATCH", "/api/level-sheets/11/check", expect.objectContaining({
+      checkedByType: "department", checkedByName: "Department Engineer",
+      checkedPoints: [{ chainageOursKm: 0, columnKey: "cl", checked: true, checkedRl: 100.002 }],
+    }));
   });
 
   it("requires TBM and back sight before converting filled RLs to staff readings", async () => {

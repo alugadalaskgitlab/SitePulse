@@ -46,6 +46,7 @@ export default function LevelSheets() {
   const queryClient = useQueryClient();
   const canCreate = sectionCan("level_sheets", "create");
   const canEdit = sectionCan("level_sheets", "edit");
+  const canApprove = sectionCan("level_sheets", "approve");
   const [siteId, setSiteId] = useState<number | null>(null);
   const [sheetId, setSheetId] = useState<number | null>(null);
   const [newSheet, setNewSheet] = useState(false);
@@ -144,6 +145,7 @@ export default function LevelSheets() {
             sheetError={sheetId != null && detailQuery.error ? (detailQuery.error as Error).message : null}
             canCreate={canCreate}
             canEdit={canEdit}
+            canApprove={canApprove}
             onBack={closeEditor}
             onSave={payload => saveMutation.mutate(payload)}
             saving={saveMutation.isPending}
@@ -181,7 +183,7 @@ export default function LevelSheets() {
                           <td className="p-2">{uppercase(row.layerName)}</td>
                           <td className="p-2">{row.status === "saved" ? "Saved" : "Draft"}</td>
                           <td className="p-2">{row.staff?.length ? row.staff.map((person: any) => uppercase(person.name)).join(", ") : "—"}</td>
-                          <td className="p-2">{row.checkedByType === "not_checked" ? "Not checked yet" : `${row.checkedByType} · ${uppercase(row.checkedByName)}`}</td>
+                          <td className="p-2">{row.checkedByType === "not_checked" ? "Not checked yet" : `${uppercase(row.checkedByType)} · ${uppercase(row.checkedByName)}`}</td>
                           <td className="p-2"><Button variant="outline" size="sm" onClick={() => { setSheetId(Number(row.id)); setNewSheet(false); }}>Open</Button></td>
                         </tr>
                       ))}

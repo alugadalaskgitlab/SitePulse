@@ -120,7 +120,7 @@ export function formatChainagePair(
   consultantOffsetM: number,
 ): string {
   const consultantKm = toBookChainage(oursKm, "consultant", consultantOffsetM);
-  return `Ours ${formatChainage(oursKm)} · Consultant ${formatChainage(consultantKm)}`;
+  return `ours ${formatChainage(oursKm)} · consultant ${formatChainage(consultantKm)}`;
 }
 
 function finite(value: unknown): number | null {
@@ -169,12 +169,15 @@ function hiBySection(readings: ReadingRow[], input: Pick<LevelSheetCalcInput, "t
   let hi = start == null || bs == null ? null : start + bs;
   return sorted.map(row => {
     let cpRl: number | null = null;
-    if (row.shift && hi != null) {
+    if (row.shift) {
       const fs = finite(row.shift.foresight);
       const newBs = finite(row.shift.backsight);
-      if (fs != null && newBs != null) {
+      if (fs != null && newBs != null && hi != null) {
         cpRl = hi - fs;
         hi = cpRl + newBs;
+      } else {
+        // A partial change-point entry must not silently keep using the old HI.
+        hi = null;
       }
     }
     return { row, hi, cpRl };

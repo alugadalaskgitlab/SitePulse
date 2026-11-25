@@ -8,11 +8,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { boqItemDisplayText } from "@shared/boqItemName";
+import { CheckAndSignTab, type CheckPointDraft } from "./CheckAndSignTab";
 import { DesignLevelsTab } from "@/components/level-sheets/DesignLevelsTab";
+import { LevelSheetPrintPreview } from "./LevelSheetPrintPreview";
 import { ReadingsTab, hydrateRows, type SheetReadingRow } from "@/components/level-sheets/ReadingsTab";
+import { ResultsTab } from "./ResultsTab";
 import {
   calculateLevelSheet,
-  formatChainage,
   formatChainagePair,
   type BookChainageSystem,
   type ReadingMode,
@@ -47,6 +49,14 @@ type FormState = {
   personnelIds: number[];
   status: "draft" | "saved";
 };
+type CheckFormState = {
+  checkedByType: "not_checked" | "department" | "consultant";
+  checkedByName: string;
+  checkedByDesignation: string;
+  checkedDate: string;
+  checkedPoints: CheckPointDraft[];
+  attachment: { fileName: string | null; objectPath: string | null; mimeType: string | null; fileSize: number | null };
+};
 
 function localDate() {
   const now = new Date();
@@ -60,6 +70,30 @@ function blankForm(siteId: number, projectId: number | null, layerName: string):
     toleranceAboveMm: "10", toleranceBelowMm: "10", allowedClosingErrorMm: "10",
     readingMode: "rl", tbmName: "", tbmRl: "", initialBackSight: "", closingForeSight: "",
     readings: rows, personnelIds: [], status: "draft",
+  };
+}
+function blankCheckForm(): CheckFormState {
+  return {
+    checkedByType: "not_checked", checkedByName: "", checkedByDesignation: "", checkedDate: "",
+    checkedPoints: [], attachment: { fileName: null, objectPath: null, mimeType: null, fileSize: null },
+  };
+}
+function checkFormFromSheet(sheet: any): CheckFormState {
+  return {
+    checkedByType: ["not_checked", "department", "consultant"].includes(sheet?.checkedByType) ? sheet.checkedByType : "not_checked",
+    checkedByName: String(sheet?.checkedByName ?? ""),
+    checkedByDesignation: String(sheet?.checkedByDesignation ?? ""),
+    checkedDate: String(sheet?.checkedDate ?? ""),
+    checkedPoints: Array.isArray(sheet?.checkedPoints) ? sheet.checkedPoints.map((point: any) => ({
+      chainageOursKm: Number(point.chainageOursKm),
+      columnKey: String(point.columnKey ?? ""),
+      checked: point.checked === true,
+      checkedRl: point.checkedRl == null ? "" : String(point.checkedRl),
+    })) : [],
+    attachment: {
+      fileName: sheet?.fileName ?? null, objectPath: sheet?.objectPath ?? null,
+      mimeType: sheet?.mimeType ?? null, fileSize: sheet?.fileSize == null ? null : Number(sheet.fileSize),
+    },
   };
 }
 function numberOrNull(value: string) {
@@ -79,7 +113,7 @@ function displayItem(item: any) {
   return `${item.itemCode ? `${item.itemCode} · ` : ""}${label}`.toLocaleUpperCase("en");
 }
 
-export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingSheet, sheetError, canCreate, canEdit, onBack, onSave, saving }: {
+export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingSheet, sheetError, canCreate, canEdit, canApprove, onBack, onSave, saving }: {
   siteId: number;
   bootstrap: Bootstrap;
   sheetId: number | null;
@@ -88,6 +122,7 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
   sheetError: string | null;
   canCreate: boolean;
   canEdit: boolean;
+  canApprove: boolean;
   onBack: () => void;
   onSave: (payload: any) => void;
   saving: boolean;
@@ -96,6 +131,7 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("design");
   const [form, setForm] = useState<FormState>(() => blankForm(siteId, bootstrap.boqProjectId, bootstrap.layerOptions[0] ?? "Original ground"));
+  const [checkForm, setCheckForm] = useState<CheckFormState>(() => blankCheckForm());
   const [settings, setSettings] = useState<Bootstrap["settings"]>(bootstrap.settings);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const resetKey = sheetId;
@@ -110,10 +146,12 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
   useEffect(() => {
     if (sheetId == null) {
       setForm(blankForm(siteId, bootstrap.boqProjectId, bootstrap.layerOptions[0] ?? "Original ground"));
+      setCheckForm(blankCheckForm());
       setActiveTab("design");
       return;
     }
     if (!sheet || Number(sheet.id) !== sheetId) return;
+    setCheckForm(checkFormFromSheet(sheet));
     setForm({
       siteId: Number(sheet.siteId),
       boqProjectId: sheet.boqProjectId == null ? "" : String(sheet.boqProjectId),
@@ -171,17 +209,6 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
     toleranceAboveMm: Number(form.toleranceAboveMm || 0),
     toleranceBelowMm: Number(form.toleranceBelowMm || 0),
   }), [designRows, form.readings, form.readingMode, form.tbmRl, form.initialBackSight, form.closingForeSight, form.toleranceAboveMm, form.toleranceBelowMm]);
-  const volumeByChainage = useMemo(() => new Map(calc.sections.slice(0, -1).map((section, index) => {
-    const next = calc.sections[index + 1];
-    const lengthM = Math.abs(next.chainageOursKm - section.chainageOursKm) * 1000;
-    if (lengthM <= 0 || section.cutAreaSqm == null || next.cutAreaSqm == null
-        || section.fillAreaSqm == null || next.fillAreaSqm == null) return [section.chainageOursKm, null] as const;
-    return [section.chainageOursKm, {
-      cut: (section.cutAreaSqm + next.cutAreaSqm) / 2 * lengthM,
-      fill: (section.fillAreaSqm + next.fillAreaSqm) / 2 * lengthM,
-    }] as const;
-  })), [calc.sections]);
-
   const settingsMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("PUT", "/api/level-sheets/site-settings", { siteId, ...settings });
@@ -195,17 +222,33 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
     },
     onError: error => toast({ title: "Could not save chainage settings", description: error.message, variant: "destructive" }),
   });
+  const checkMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      if (!sheetId) throw new Error("Save the level sheet before recording its check.");
+      const response = await apiRequest("PATCH", `/api/level-sheets/${sheetId}/check`, payload);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.message ?? "Check details could not be saved.");
+      return body;
+    },
+    onSuccess: async saved => {
+      setCheckForm(checkFormFromSheet(saved));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/level-sheets", siteId] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/level-sheets", Number(saved.id)] }),
+      ]);
+      toast({ title: "Check details saved" });
+    },
+    onError: error => toast({ title: "Could not save check details", description: error.message, variant: "destructive" }),
+  });
 
   const selectedSite = bootstrap.sites.find(site => Number(site.id) === siteId);
   const projectOptions = bootstrap.projects.filter(project => Number(project.siteId) === siteId);
   const sheetCanSave = sheetId == null ? canCreate : canEdit;
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm(current => ({ ...current, [key]: value }));
-  const toggleStaff = (personId: number) => setForm(current => ({
-    ...current,
-    personnelIds: current.personnelIds.includes(personId)
-      ? current.personnelIds.filter(id => id !== personId)
-      : [...current.personnelIds, personId],
-  }));
+  const setCheckedByType = (value: CheckFormState["checkedByType"]) => setCheckForm(current => value === "not_checked"
+    ? { ...current, checkedByType: value, checkedByName: "", checkedByDesignation: "", checkedDate: "", checkedPoints: [] }
+    : { ...current, checkedByType: value, checkedDate: current.checkedDate || localDate() });
+  const staffNames = staff.filter(person => form.personnelIds.includes(Number(person.id))).map(person => person.name);
   const save = (status: "draft" | "saved") => {
     const numericField = (value: string) => numberOrNull(value);
     const readings = form.readings.map(row => ({
@@ -239,6 +282,15 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
           <div><h2 className="text-xl font-semibold">{sheetId ? "Level sheet" : "New level sheet"}</h2><p className="text-sm text-muted-foreground">{selectedSite?.name?.toLocaleUpperCase("en")}</p></div>
         </div>
         <div className="flex gap-2">
+          <LevelSheetPrintPreview
+            siteName={selectedSite?.name ?? ""}
+            itemLabel={items.find((item: any) => Number(item.id) === Number(form.boqItemId)) ? displayItem(items.find((item: any) => Number(item.id) === Number(form.boqItemId))) : String(sheet?.itemLabel ?? "")}
+            layerName={form.layerName} sheetDate={form.sheetDate} instrument={form.instrument}
+            tbmName={form.tbmName} tbmRl={form.tbmRl} closingErrorMm={calc.closingErrorMm}
+            readings={form.readings} calculation={calc} settings={settings} staffNames={staffNames}
+            checkedByType={checkForm.checkedByType} checkedByName={checkForm.checkedByName}
+            checkedByDesignation={checkForm.checkedByDesignation} checkedDate={checkForm.checkedDate}
+          />
           {sheetCanSave && <Button variant="outline" onClick={() => save("draft")} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save draft</Button>}
           {sheetCanSave && <Button onClick={() => save("saved")} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save levels</Button>}
         </div>
@@ -266,17 +318,6 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
           <label className="space-y-1 text-sm"><span>Tolerance above (mm)</span><Input inputMode="decimal" value={form.toleranceAboveMm} onChange={event => setField("toleranceAboveMm", event.target.value)} disabled={!sheetCanSave} /></label>
           <label className="space-y-1 text-sm"><span>Tolerance below (mm)</span><Input inputMode="decimal" value={form.toleranceBelowMm} onChange={event => setField("toleranceBelowMm", event.target.value)} disabled={!sheetCanSave} /></label>
           <label className="space-y-1 text-sm"><span>Allowed closing error (mm)</span><Input inputMode="decimal" value={form.allowedClosingErrorMm} onChange={event => setField("allowedClosingErrorMm", event.target.value)} disabled={!sheetCanSave} /></label>
-          <div className="space-y-1 text-sm sm:col-span-2 lg:col-span-4">
-            <span className="font-medium">Who did it (site staff)</span>
-            {staff.length === 0 ? <p className="text-xs text-muted-foreground">No active personnel are available at this site.</p> : (
-              <div className="flex flex-wrap gap-2">
-                {staff.map(person => <label key={person.id} className={`flex items-center gap-2 rounded border px-2 py-1 ${Number(person.isActive) !== 1 ? "opacity-70" : ""}`}>
-                  <input type="checkbox" checked={form.personnelIds.includes(Number(person.id))} onChange={() => toggleStaff(Number(person.id))} disabled={!sheetCanSave} />
-                  <span>{String(person.name).toLocaleUpperCase("en")}{Number(person.isActive) !== 1 ? " · inactive" : ""}</span>
-                </label>)}
-              </div>
-            )}
-          </div>
         </CardContent>
       </Card>
 
@@ -307,10 +348,11 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid h-auto w-full grid-cols-3">
+        <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="design" className="whitespace-normal py-2">1. Design levels</TabsTrigger>
           <TabsTrigger value="readings" className="whitespace-normal py-2">2. Readings</TabsTrigger>
-          <TabsTrigger value="results" className="whitespace-normal py-2">3. Results &amp; quantities</TabsTrigger>
+          <TabsTrigger value="results" className="whitespace-normal py-2">3. Result &amp; quantities</TabsTrigger>
+          <TabsTrigger value="check" className="whitespace-normal py-2">4. Check &amp; sign</TabsTrigger>
         </TabsList>
         <TabsContent value="design">
           <Card><CardContent className="p-4">
@@ -337,40 +379,30 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
           </CardContent></Card>
         </TabsContent>
         <TabsContent value="results">
-          <Card><CardHeader><CardTitle>Results and quantities</CardTitle></CardHeader><CardContent className="space-y-4">
-            {calc.sections.length === 0 ? <p className="text-sm text-muted-foreground">Enter readings to calculate levels and quantities.</p> : (
-              <>
-                <div className="flex flex-wrap gap-4 text-sm">
-                  <p>Closing error: <strong>{calc.closingErrorMm == null ? "—" : `${Math.round(calc.closingErrorMm)} mm`}</strong></p>
-                  <p>Volume: <strong>{calc.volumeSegments ? `${(calc.cutVolumeCum + calc.fillVolumeCum).toFixed(3)} m³` : "—"}</strong></p>
-                  <p>Cut: <strong>{calc.volumeSegments ? `${calc.cutVolumeCum.toFixed(3)} m³` : "—"}</strong></p>
-                  <p>Fill: <strong>{calc.volumeSegments ? `${calc.fillVolumeCum.toFixed(3)} m³` : "—"}</strong></p>
-                </div>
-                <div className="overflow-x-auto rounded border">
-                  <table className="min-w-[720px] w-full text-sm">
-                    <thead><tr className="border-b bg-muted/30 text-left text-xs">
-                      <th className="p-2">Chainage (ours · consultant)</th><th className="p-2">Cut area (m²)</th><th className="p-2">Fill area (m²)</th>
-                      <th className="p-2">Cut volume (m³)</th><th className="p-2">Fill volume (m³)</th><th className="p-2">Result</th>
-                    </tr></thead>
-                    <tbody>{calc.sections.map(section => {
-                      const volume = volumeByChainage.get(section.chainageOursKm);
-                      return <tr key={section.chainageOursKm} className="border-b">
-                      <td className="p-2">{formatChainagePair(section.chainageOursKm, settings.bookChainageSystem, Number(settings.consultantOffsetM))}</td>
-                      <td className="p-2">{section.cutAreaSqm == null ? "—" : section.cutAreaSqm.toFixed(3)}</td>
-                      <td className="p-2">{section.fillAreaSqm == null ? "—" : section.fillAreaSqm.toFixed(3)}</td>
-                      <td className="p-2">{volume == null ? "—" : volume.cut.toFixed(3)}</td>
-                      <td className="p-2">{volume == null ? "—" : volume.fill.toFixed(3)}</td>
-                      <td className="p-2 font-semibold">{section.status ?? "—"}</td>
-                    </tr>;
-                    })}</tbody>
-                  </table>
-                </div>
-                {calc.uncalculatedSections.length > 0 && <p className="text-sm text-muted-foreground">
-                  Sections without two neighbouring valid cross-sections: {calc.uncalculatedSections.map(value => formatChainage(value)).join(", ")}
-                </p>}
-              </>
-            )}
+          <Card><CardHeader><CardTitle className="text-base">Result &amp; quantities</CardTitle></CardHeader><CardContent className="space-y-4">
+            <p className="text-sm">Closing error: {calc.closingErrorMm == null ? "—" : `${Math.round(calc.closingErrorMm)} mm`}</p>
+            <ResultsTab readings={form.readings} calculation={calc} designRows={designRows} settings={settings} readingMode={form.readingMode} />
             {designQuery.isError && <p role="alert" className="text-sm text-destructive">Could not load design levels: {(designQuery.error as Error).message}</p>}
+          </CardContent></Card>
+        </TabsContent>
+        <TabsContent value="check">
+          <Card><CardHeader><CardTitle className="text-base">Check &amp; sign</CardTitle></CardHeader><CardContent className="p-4">
+            <CheckAndSignTab
+              sheetId={sheetId} canEdit={sheetCanSave} canApprove={canApprove} staff={staff}
+              personnelIds={form.personnelIds} onPersonnelIdsChange={ids => setField("personnelIds", ids)}
+              readings={form.readings} sections={calc.sections} settings={settings}
+              checkedByType={checkForm.checkedByType} checkedByName={checkForm.checkedByName}
+              checkedByDesignation={checkForm.checkedByDesignation} checkedDate={checkForm.checkedDate}
+              checkedPoints={checkForm.checkedPoints}
+              onCheckedByTypeChange={setCheckedByType}
+              onCheckedByNameChange={value => setCheckForm(current => ({ ...current, checkedByName: value }))}
+              onCheckedByDesignationChange={value => setCheckForm(current => ({ ...current, checkedByDesignation: value }))}
+              onCheckedDateChange={value => setCheckForm(current => ({ ...current, checkedDate: value }))}
+              onCheckedPointsChange={rows => setCheckForm(current => ({ ...current, checkedPoints: rows }))}
+              attachment={checkForm.attachment}
+              onSaveCheck={payload => checkMutation.mutateAsync(payload)}
+              saving={checkMutation.isPending}
+            />
           </CardContent></Card>
         </TabsContent>
       </Tabs>
