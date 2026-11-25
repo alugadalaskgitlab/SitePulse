@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { LevelSheetEditor } from "@/components/level-sheets/LevelSheetEditor";
 import { TbmsTab } from "@/components/level-sheets/TbmsTab";
+import { BetweenSheetsTab } from "@/components/level-sheets/BetweenSheetsTab";
 
 type Bootstrap = {
   sites: Array<{ id: number; name: string }>;
@@ -139,7 +140,9 @@ export default function LevelSheets() {
         {siteId && !newSheet && sheetId == null && <div className="flex gap-2">
           <Button variant={siteTab === "sheets" ? "default" : "outline"} onClick={() => setSiteTab("sheets")}>Level sheets</Button>
           <Button variant={siteTab === "tbms" ? "default" : "outline"} onClick={() => setSiteTab("tbms")}>TBMs</Button>
+          <Button variant={siteTab === "quantities" ? "default" : "outline"} onClick={() => setSiteTab("quantities")}>Quantities between sheets</Button>
         </div>}
+        {siteId && bootstrap && !newSheet && sheetId == null && siteTab === "quantities" && <BetweenSheetsTab key={siteId} siteId={siteId} siteName={selectedSite?.name ?? ""} sheets={listQuery.data ?? []} projects={bootstrap.projects.filter(project => Number(project.siteId) === siteId)} settings={bootstrap.settings} />}
         {siteId && bootstrap && !newSheet && sheetId == null && siteTab === "tbms" && <TbmsTab key={siteId} siteId={siteId} settings={bootstrap.settings} canCreate={canCreate} canEdit={canEdit} />}
 
         {(newSheet || sheetId != null) && bootstrap && selectedSite && (

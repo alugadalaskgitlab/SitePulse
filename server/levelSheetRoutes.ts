@@ -14,6 +14,7 @@ import {
   normalizeDesignImportRows,
   normalizeTbmImport, repeatedTbmNames,
   consultantLayoutLayers,
+  quantitiesBetweenSheets, storedLevelSheetInput, levelSheetBasisLabel,
   type BookChainageSystem,
   type DesignLevelRow,
   type ReadingMode,
@@ -221,6 +222,8 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
     const readingMode = input.readingMode as ReadingMode;
     const readings = validateReadings(input.readings);
     const status = input.status ?? "draft";
+    const basis = input.basis === undefined ? current?.basis ?? null : input.basis;
+    if (basis != null && !["own", "consultant", "assumed"].includes(basis)) fail("Choose a valid basis.");
     if (!["draft", "saved"].includes(status)) fail("Choose Save draft or Save levels.");
     const staffIdsRaw = input.personnelIds ?? current?.personnelIds ?? [];
     if (!Array.isArray(staffIdsRaw) || staffIdsRaw.length > 50) fail("Choose up to 50 staff members.");
@@ -244,7 +247,7 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
           mimeType: current?.mimeType ?? null, fileSize: current?.fileSize ?? null,
         };
     return {
-      siteId, boqProjectId, boqItemId, layerName, sheetDate,
+      siteId, boqProjectId, boqItemId, layerName, sheetDate, basis,
       instrument: String(input.instrument ?? "").trim().slice(0, 200) || null,
       toleranceAboveMm: numberValue(input.toleranceAboveMm, "Tolerance above", { min: 0, max: 10000 }) as number,
       toleranceBelowMm: numberValue(input.toleranceBelowMm, "Tolerance below", { min: 0, max: 10000 }) as number,
@@ -340,6 +343,31 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
         return row;
       });
       res.json(saved);
+    } catch (error) { return errorResponse(res, error); }
+  });
+
+  app.get("/api/level-sheets/quantities", async (req: any, res) => {
+    if (!assertView(req, res, SECTION)) return;
+    try {
+      const lowerId = positiveId(req.query.lowerId, "lower sheet") as number;
+      const upperId = positiveId(req.query.upperId, "upper sheet") as number;
+      if (lowerId === upperId) fail("Choose two different level sheets.");
+      const rows = await database.select().from(levelSheets).where(inArray(levelSheets.id, [lowerId, upperId]));
+      const lower = rows.find((row: any) => Number(row.id) === lowerId);
+      const upper = rows.find((row: any) => Number(row.id) === upperId);
+      if (!lower || !upper) fail("Level sheet not found.", 404);
+      await assertSiteAllowed(req, Number(lower.siteId));
+      await assertSiteAllowed(req, Number(upper.siteId));
+      if (Number(lower.siteId) !== Number(upper.siteId)) fail("Both sheets must be from the same site.");
+      if (lower.status !== "saved" || upper.status !== "saved") fail("Choose saved sheets.");
+      const fromKm = numberValue(req.query.fromKm, "From chainage", { nullable: true });
+      const toKm = numberValue(req.query.toKm, "To chainage", { nullable: true });
+      if (fromKm != null && toKm != null && fromKm > toKm) fail("From chainage must not exceed To chainage.");
+      const summary = (row: any) => ({ id: row.id, layerName: row.layerName, sheetDate: row.sheetDate, basis: levelSheetBasisLabel(row) });
+      res.json({
+        ...quantitiesBetweenSheets(storedLevelSheetInput(lower), storedLevelSheetInput(upper), fromKm, toKm),
+        lower: summary(lower), upper: summary(upper),
+      });
     } catch (error) { return errorResponse(res, error); }
   });
 
@@ -690,6 +718,7 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
         const [row] = await tx.insert(levelSheets).values({
           siteId: payload.siteId, boqProjectId: payload.boqProjectId, boqItemId: payload.boqItemId,
           layerName: payload.layerName, sheetDate: payload.sheetDate, instrument: payload.instrument,
+          basis: payload.basis,
           toleranceAboveMm: payload.toleranceAboveMm, toleranceBelowMm: payload.toleranceBelowMm,
           allowedClosingErrorMm: payload.allowedClosingErrorMm, readingMode: payload.readingMode,
           tbmName: payload.tbmName, tbmRl: payload.tbmRl, initialBackSight: payload.initialBackSight,
@@ -740,6 +769,7 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
         const [row] = await tx.update(levelSheets).set({
           siteId: payload.siteId, boqProjectId: payload.boqProjectId, boqItemId: payload.boqItemId,
           layerName: payload.layerName, sheetDate: payload.sheetDate, instrument: payload.instrument,
+          basis: payload.basis,
           toleranceAboveMm: payload.toleranceAboveMm, toleranceBelowMm: payload.toleranceBelowMm,
           allowedClosingErrorMm: payload.allowedClosingErrorMm, readingMode: payload.readingMode,
           tbmName: payload.tbmName, tbmRl: payload.tbmRl, initialBackSight: payload.initialBackSight,

@@ -77,6 +77,71 @@ export type LevelSheetCalculation = {
   comparedPoints: number;
 };
 
+export function levelSheetBasisLabel(sheet: { basis?: string | null; checkedByType?: string | null }) {
+  if (sheet.checkedByType === "department" || sheet.checkedByType === "consultant") return "Joint (checked by department/consultant)";
+  return sheet.basis === "consultant" ? "Consultant" : sheet.basis === "assumed" ? "Assumed or agreed" : "Own levels";
+}
+
+export function storedLevelSheetInput(sheet: any): LevelSheetCalcInput {
+  return {
+    designRows: [], readings: sheet.readings ?? [], mode: sheet.readingMode ?? "rl",
+    tbmRl: sheet.tbmRl, backsight: sheet.initialBackSight, closingForesight: sheet.closingForeSight,
+    closingTbmRl: sheet.closingTbmRl, toleranceAboveMm: sheet.toleranceAboveMm ?? 0, toleranceBelowMm: sheet.toleranceBelowMm ?? 0,
+  };
+}
+
+/** Read-only areas of upper minus lower, clipped to each section's shared width. */
+export function quantitiesBetweenSheets(lower: LevelSheetCalcInput, upper: LevelSheetCalcInput, fromKm?: number | null, toKm?: number | null) {
+  const lowerSections = calculateLevelSheet(lower).sections;
+  const upperSections = calculateLevelSheet(upper).sections;
+  const key = (km: number) => Math.round(km * 1e6);
+  const withinRange = (km: number) => (fromKm == null || km >= fromKm - 1e-9) && (toKm == null || km <= toKm + 1e-9);
+  const bottomByKey = new Map(lowerSections.filter(row => withinRange(row.chainageOursKm)).map(row => [key(row.chainageOursKm), row]));
+  const topByKey = new Map(upperSections.filter(row => withinRange(row.chainageOursKm)).map(row => [key(row.chainageOursKm), row]));
+  const allKeys = [...new Set([...bottomByKey.keys(), ...topByKey.keys()])].sort((a, b) => a - b);
+  const skipped = allKeys.filter(value => !bottomByKey.has(value) || !topByKey.has(value)).map(value => (bottomByKey.get(value) ?? topByKey.get(value))!.chainageOursKm);
+  const crossSection = (section: CalculatedSection) => section.points
+    .filter(point => finite(point.rl) != null && finite(point.distanceM) != null)
+    .map(point => ({ x: point.side === "L" ? -Number(point.distanceM) : point.side === "CL" ? 0 : Number(point.distanceM), rl: Number(point.rl) }))
+    .sort((a, b) => a.x - b.x);
+  const interpolate = (points: Array<{ x: number; rl: number }>, x: number) => {
+    const exact = points.find(point => Math.abs(point.x - x) < 1e-9);
+    if (exact) return exact.rl;
+    const left = points.filter(point => point.x < x).at(-1)!;
+    const right = points.find(point => point.x > x)!;
+    return left.rl + (right.rl - left.rl) * (x - left.x) / (right.x - left.x);
+  };
+  const rows = allKeys.filter(value => bottomByKey.has(value) && topByKey.has(value)).map(value => {
+    const bottom = bottomByKey.get(value)!;
+    const top = topByKey.get(value)!;
+    const b = crossSection(bottom);
+    const t = crossSection(top);
+    const start = Math.max(b[0]?.x ?? Infinity, t[0]?.x ?? Infinity);
+    const end = Math.min(b.at(-1)?.x ?? -Infinity, t.at(-1)?.x ?? -Infinity);
+    if (b.length < 2 || t.length < 2 || end <= start) return {
+      chainageOursKm: bottom.chainageOursKm, widthUsedM: 0, fillSqm: null, cutSqm: null, reason: "No common measured width",
+    };
+    const offsets = [...new Set([start, end, ...b.map(point => point.x), ...t.map(point => point.x)])].filter(x => x >= start && x <= end).sort((a, b) => a - b);
+    // signedAreas calls negative differences fill; supply lower - upper.
+    const areas = signedAreas(offsets.map(x => ({ x, difference: interpolate(b, x) - interpolate(t, x) })));
+    return { chainageOursKm: bottom.chainageOursKm, widthUsedM: end - start, fillSqm: areas.fill, cutSqm: areas.cut, reason: null };
+  });
+  let fillCum = 0;
+  let cutCum = 0;
+  let segments = 0;
+  const gaps: Array<{ fromKm: number; toKm: number; distanceM: number }> = [];
+  for (let index = 1; index < rows.length; index++) {
+    const a = rows[index - 1], b = rows[index];
+    const distanceM = (b.chainageOursKm - a.chainageOursKm) * 1000;
+    if (distanceM > 50 + 1e-6) gaps.push({ fromKm: a.chainageOursKm, toKm: b.chainageOursKm, distanceM });
+    if (a.fillSqm == null || b.fillSqm == null || a.cutSqm == null || b.cutSqm == null) continue;
+    fillCum += (a.fillSqm + b.fillSqm) / 2 * distanceM;
+    cutCum += (a.cutSqm + b.cutSqm) / 2 * distanceM;
+    segments++;
+  }
+  return { rows, skipped, gaps, fillCum, cutCum, segments };
+}
+
 export function parseChainage(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   const text = String(value ?? "").trim().replace(/,/g, ".");

@@ -14,7 +14,7 @@ const pointName = (point: { side: string; distanceM: number | null }) =>
 
 export function LevelSheetPrintPreview({ siteName, itemLabel, layerName, sheetDate, instrument, tbmName, tbmRl,
   closingErrorMm, readings, calculation, settings, staffNames, checkedByType, checkedByName, checkedByDesignation,
-  checkedDate,
+  checkedDate, basisLabel = "Own levels", closingTbmName, closingTbmRl,
 }: {
   siteName: string;
   itemLabel: string;
@@ -32,6 +32,9 @@ export function LevelSheetPrintPreview({ siteName, itemLabel, layerName, sheetDa
   checkedByName: string;
   checkedByDesignation: string;
   checkedDate: string;
+  basisLabel?: string;
+  closingTbmName?: string;
+  closingTbmRl?: string;
 }) {
   const [open, setOpen] = useState(false);
   const pointColumns = readings[0]?.points ?? [];
@@ -69,6 +72,8 @@ export function LevelSheetPrintPreview({ siteName, itemLabel, layerName, sheetDa
             <p>Date: {sheetDate}</p><p>Instrument: {instrument || "—"}</p>
             <p>TBM: {tbmName || "—"}</p><p>Known TBM RL: {tbmRl || "—"}</p>
             <p>Closing error: {closingErrorMm == null ? "—" : `${Math.round(closingErrorMm)} mm`}</p>
+            <p>Basis: {basisLabel}</p>
+            {closingTbmName && <p>Closing TBM: {upper(closingTbmName)} · RL {closingTbmRl ? Number(closingTbmRl).toFixed(3) : "—"}</p>}
           </div>
           <table className="w-full border-collapse text-xs">
             <thead><tr>

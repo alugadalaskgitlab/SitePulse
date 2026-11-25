@@ -12,6 +12,7 @@ import {
   toOursChainage,
   detectTbmHeading, normalizeTbmImport, repeatedTbmNames,
   consultantLayoutLayers,
+  quantitiesBetweenSheets, levelSheetBasisLabel,
   type DesignLevelRow,
   type ReadingRow,
 } from "../shared/levelSheets";
@@ -22,6 +23,49 @@ const design: DesignLevelRow[] = [
 ];
 
 describe("LEVELS-01 chainage and design utilities", () => {
+  const flatSheet = (rl: number, width = 5, chainages = [0, 0.01]) => ({
+    designRows: [], mode: "rl" as const, toleranceAboveMm: 10, toleranceBelowMm: 10,
+    readings: chainages.map(chainageOursKm => ({ chainageOursKm, points: [
+      { side: "L" as const, distanceM: width, value: rl },
+      { side: "CL" as const, distanceM: 0, value: rl },
+      { side: "R" as const, distanceM: width, value: rl },
+    ] })),
+  });
+  it("integrates a 300 mm fill over 10 m width and 10 m length exactly without rounding the calculation", () => {
+    const result = quantitiesBetweenSheets(flatSheet(100), flatSheet(100.3));
+    expect(result.rows[0].fillSqm).toBeCloseTo(3, 9);
+    expect(result.fillCum).toBeCloseTo(30, 8);
+    expect(result.cutCum).toBe(0);
+    expect(result.rows[0].widthUsedM).toBe(10);
+  });
+  it("splits crossing profiles into separate fill and cut and clips to the common width", () => {
+    const bottom = flatSheet(100);
+    const top = flatSheet(100);
+    top.readings.forEach(row => { row.points[0].value = 99.7; row.points[2].value = 100.3; });
+    const crossing = quantitiesBetweenSheets(bottom, top);
+    expect(crossing.rows[0].fillSqm).toBeCloseTo(0.75);
+    expect(crossing.rows[0].cutSqm).toBeCloseTo(0.75);
+    expect(crossing.fillCum).toBeCloseTo(7.5);
+    expect(crossing.cutCum).toBeCloseTo(7.5);
+    const narrower = quantitiesBetweenSheets(bottom, flatSheet(100.3, 3));
+    expect(narrower.rows[0].widthUsedM).toBe(6);
+    expect(narrower.fillCum).toBeCloseTo(18);
+  });
+  it("skips chainages in only one sheet, flags gaps and never bridges an unmeasurable section", () => {
+    const bottom = flatSheet(100, 5, [0, 0.01, 0.02, 0.1]);
+    const top = flatSheet(100.3, 5, [0, 0.02, 0.1]);
+    const result = quantitiesBetweenSheets(bottom, top);
+    expect(result.skipped).toEqual([0.01]);
+    expect(result.gaps[0].distanceM).toBeCloseTo(80);
+    top.readings[1].points = [];
+    expect(quantitiesBetweenSheets(bottom, top).segments).toBe(0);
+    expect(quantitiesBetweenSheets(bottom, flatSheet(100.3), 0.005, 0.02).rows).toHaveLength(1);
+  });
+  it("uses Own levels on legacy sheets and derives Joint from the check", () => {
+    expect(levelSheetBasisLabel({})).toBe("Own levels");
+    expect(levelSheetBasisLabel({ basis: "assumed" })).toBe("Assumed or agreed");
+    expect(levelSheetBasisLabel({ basis: "consultant", checkedByType: "department" })).toBe("Joint (checked by department/consultant)");
+  });
   it("imports consultant layer groups and single RL columns without helper columns", () => {
     const matrix = [
       ["", "", "", "Sub Grade Top", "", "", "Diff", "BC Top", "", ""],

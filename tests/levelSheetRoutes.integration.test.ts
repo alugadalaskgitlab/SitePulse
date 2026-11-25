@@ -89,6 +89,7 @@ beforeAll(async () => {
   for (const table of tables) await createFixtureTable(table, dialect);
   await pg.exec(readFileSync(new URL("../migrations/0071_level_sheets.sql", import.meta.url), "utf8"));
   await pg.exec(readFileSync(new URL("../migrations/0074_level_sheet_tbms.sql", import.meta.url), "utf8"));
+  await pg.exec(readFileSync(new URL("../migrations/0075_level_sheet_basis.sql", import.meta.url), "utf8"));
   state.db = drizzle(pg, { schema });
   state.storage = { getUserPermittedSiteIds: async () => state.permittedSiteIds };
 
@@ -142,6 +143,23 @@ beforeEach(async () => {
 });
 
 describe("LEVELS-01 level-sheet routes", () => {
+  it("compares saved sheets read-only, reports basis, enforces site access and changes no sheets", async () => {
+    const readings = (value: number) => [0, 0.01].map(chainageOursKm => ({ chainageOursKm, points: [
+      { side: "L", distanceM: 5, value }, { side: "R", distanceM: 5, value },
+    ] }));
+    const bottom = await request(app).post("/api/level-sheets").send(sheetPayload({ layerName: "OGL", readings: readings(100), status: "saved" })).expect(201);
+    const top = await request(app).post("/api/level-sheets").send(sheetPayload({ layerName: "WMM", readings: readings(100.3), status: "saved", basis: "assumed" })).expect(201);
+    const before = await state.db.select().from(schema.levelSheets);
+    const auditBefore = await state.db.select().from(schema.auditLogs);
+    const result = await request(app).get(`/api/level-sheets/quantities?lowerId=${bottom.body.id}&upperId=${top.body.id}`).expect(200);
+    expect(result.body.fillCum).toBeCloseTo(30, 2);
+    expect(result.body.lower.basis).toBe("Own levels");
+    expect(result.body.upper.basis).toBe("Assumed or agreed");
+    expect(await state.db.select().from(schema.levelSheets)).toEqual(before);
+    expect(await state.db.select().from(schema.auditLogs)).toEqual(auditBefore);
+    state.permittedSiteIds = [otherSiteId];
+    await request(app).get(`/api/level-sheets/quantities?lowerId=${bottom.body.id}&upperId=${top.body.id}`).expect(403);
+  });
   it("imports ticked consultant layers atomically and preserves typed rows unless replace is chosen", async () => {
     const payload = {
       siteId, matrix: [

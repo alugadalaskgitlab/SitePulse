@@ -361,6 +361,7 @@ export const levelSheets = pgTable("level_sheets", {
   closingForeSight: real("closing_fore_sight"),
   closingTbmName: text("closing_tbm_name"),
   closingTbmRl: real("closing_tbm_rl"),
+  basis: text("basis", { enum: ["own", "consultant", "assumed"] }),
   readings: jsonb("readings").$type<unknown[]>().notNull().default([]),
   checkedByType: text("checked_by_type", { enum: ["not_checked", "department", "consultant"] }).notNull().default("not_checked"),
   checkedByName: text("checked_by_name"),

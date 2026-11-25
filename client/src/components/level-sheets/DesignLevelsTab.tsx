@@ -177,7 +177,7 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
     onSuccess: async result => {
       setImportMessage(`${result.imported.length} rows imported${result.skipped.length ? ` · ${result.skipped.length} typed rows kept` : ""}.`);
       setImportOpen(false);
-      await refreshRows();
+      await queryClient.invalidateQueries({ queryKey: ["/api/level-sheets/design", siteId] });
       await queryClient.invalidateQueries({ queryKey: ["/api/level-sheets/bootstrap", siteId] });
       toast({ title: "Excel design levels imported", description: `${result.imported.length} rows saved.` });
     },

@@ -15,6 +15,7 @@ import { ReadingsTab, hydrateRows, type SheetReadingRow } from "@/components/lev
 import { ResultsTab } from "./ResultsTab";
 import {
   calculateLevelSheet,
+  levelSheetBasisLabel,
   formatChainagePair,
   type BookChainageSystem,
   type ReadingMode,
@@ -47,6 +48,7 @@ type FormState = {
   closingForeSight: string;
   closingTbmName: string;
   closingTbmRl: string;
+  basis: string;
   readings: SheetReadingRow[];
   personnelIds: number[];
   status: "draft" | "saved";
@@ -72,6 +74,7 @@ function blankForm(siteId: number, projectId: number | null, layerName: string):
     toleranceAboveMm: "10", toleranceBelowMm: "10", allowedClosingErrorMm: "10",
     readingMode: "rl", tbmName: "", tbmRl: "", initialBackSight: "", closingForeSight: "",
     closingTbmName: "", closingTbmRl: "",
+    basis: "own",
     readings: rows, personnelIds: [], status: "draft",
   };
 }
@@ -172,6 +175,7 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
       closingForeSight: sheet.closingForeSight == null ? "" : String(sheet.closingForeSight),
       closingTbmName: String(sheet.closingTbmName ?? ""),
       closingTbmRl: sheet.closingTbmRl == null ? "" : String(sheet.closingTbmRl),
+      basis: sheet.basis ?? "own",
       readings: hydrateRows(sheet.readings).rows,
       personnelIds: (sheet.personnelIds ?? sheet.staff?.map((person: any) => person.id) ?? []).map(Number),
       status: sheet.status === "saved" ? "saved" : "draft",
@@ -301,6 +305,8 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
             readings={form.readings} calculation={calc} settings={settings} staffNames={staffNames}
             checkedByType={checkForm.checkedByType} checkedByName={checkForm.checkedByName}
             checkedByDesignation={checkForm.checkedByDesignation} checkedDate={checkForm.checkedDate}
+            basisLabel={levelSheetBasisLabel({ basis: form.basis, checkedByType: checkForm.checkedByType })}
+            closingTbmName={form.closingTbmName} closingTbmRl={form.closingTbmRl}
           />
           {sheetCanSave && <Button variant="outline" onClick={() => save("draft")} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save draft</Button>}
           {sheetCanSave && <Button onClick={() => save("saved")} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save levels</Button>}
@@ -326,6 +332,13 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
           </label>
           <label className="space-y-1 text-sm"><span>Date</span><Input type="date" value={form.sheetDate} onChange={event => setField("sheetDate", event.target.value)} disabled={!sheetCanSave} /></label>
           <label className="space-y-1 text-sm"><span>Instrument</span><Input value={form.instrument} onChange={event => setField("instrument", event.target.value)} disabled={!sheetCanSave} /></label>
+          <label className="space-y-1 text-sm"><span>Basis</span>
+            {checkForm.checkedByType !== "not_checked"
+              ? <p>{levelSheetBasisLabel({ checkedByType: checkForm.checkedByType })}</p>
+              : <select className="h-10 w-full rounded border bg-background px-3" value={form.basis} disabled={!sheetCanSave} onChange={event => setField("basis", event.target.value)}>
+                <option value="own">Own levels</option><option value="consultant">Consultant</option><option value="assumed">Assumed or agreed</option>
+              </select>}
+          </label>
           <label className="space-y-1 text-sm"><span>Tolerance above (mm)</span><Input inputMode="decimal" value={form.toleranceAboveMm} onChange={event => setField("toleranceAboveMm", event.target.value)} disabled={!sheetCanSave} /></label>
           <label className="space-y-1 text-sm"><span>Tolerance below (mm)</span><Input inputMode="decimal" value={form.toleranceBelowMm} onChange={event => setField("toleranceBelowMm", event.target.value)} disabled={!sheetCanSave} /></label>
           <label className="space-y-1 text-sm"><span>Allowed closing error (mm)</span><Input inputMode="decimal" value={form.allowedClosingErrorMm} onChange={event => setField("allowedClosingErrorMm", event.target.value)} disabled={!sheetCanSave} /></label>
