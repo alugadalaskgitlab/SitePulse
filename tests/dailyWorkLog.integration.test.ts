@@ -89,7 +89,6 @@ beforeAll(async () => {
     schema.dprSiteActivityStaff, schema.auditLogs,
   ]) await createFixtureTable(table, dialect);
   await pg.exec(readFileSync(new URL("../migrations/0069_daily_work_log_and_visits.sql", import.meta.url), "utf8"));
-  await pg.exec(readFileSync(new URL("../migrations/0071_unlinked_office_visits.sql", import.meta.url), "utf8"));
   state.db = drizzle(pg, { schema });
   state.storage = {
     getUserPermittedSiteIds: async () => state.permittedSiteIds,
@@ -274,7 +273,12 @@ describe("DAY-01 daily work log and visits", () => {
     expect(saved.some((row: any) => row.details === "Must not save.")).toBe(false);
   }, 30_000);
 
-  it("lets an unlinked team-view user open Team view and record an attributed visit", async () => {
+  it("lets an unlinked team-view user see all visits without recording or editing them", async () => {
+    const [visit] = await state.db.insert(schema.officeVisits).values({
+      recordedByPersonnelId: personnelA, recordedByUserId: 3, visitDate: today,
+      place: "Head office", visitorName: "DEPARTMENT VISITOR", purpose: "Meeting",
+      pointsDiscussed: "Reviewed the level sheet fixture.",
+    }).returning();
     state.user = { id: 3, fullName: "UNLINKED USER", isOwner: false, isAdmin: false, personnelId: null };
     state.permissions = grants({ view_reports: true });
     const context = await request(app).get("/api/daily-work-log/context").expect(200);
@@ -282,29 +286,19 @@ describe("DAY-01 daily work log and visits", () => {
 
     const team = await request(app).get(`/api/daily-work-log?date=${today}&view=team`).expect(200);
     expect(team.body.workEntries).toEqual([]);
-    expect(team.body.unlinkedVisits).toEqual([]);
-
-    const created = await request(app).post("/api/daily-work-log/unlinked-visits").send({
+    expect(team.body.visits).toMatchObject([{ id: visit.id, visitorName: "DEPARTMENT VISITOR" }]);
+    await request(app).get(`/api/daily-work-log?date=${today}`).expect(409);
+    await request(app).post("/api/daily-work-log/visits").send({
+      visitDate: today, place: "Head office", visitorName: "UNAUTHORIZED VISITOR",
+      purpose: "Meeting", pointsDiscussed: "Must not save.",
+    }).expect(409);
+    await request(app).patch(`/api/daily-work-log/visits/${visit.id}`).send({
       visitDate: today, place: "Head office", visitorName: "DEPARTMENT VISITOR",
-      purpose: "Meeting", pointsDiscussed: "Reviewed the level sheet fixture.",
-    }).expect(201);
-    expect(created.body).toMatchObject({
-      recordedByUserId: 3, recordedByPersonnelId: null, unlinked: true, personName: "UNLINKED USER",
-    });
-
-    const personal = await request(app).get(`/api/daily-work-log?date=${today}`).expect(200);
-    expect(personal.body.visits).toMatchObject([{ visitorName: "DEPARTMENT VISITOR", unlinked: true }]);
-    const teamAfter = await request(app).get(`/api/daily-work-log?date=${today}&view=team`).expect(200);
-    expect(teamAfter.body.unlinkedVisits).toMatchObject([{
-      recordedByUserId: 3, personName: "UNLINKED USER", visitorName: "DEPARTMENT VISITOR",
-    }]);
-
-    await request(app).patch(`/api/daily-work-log/unlinked-visits/${created.body.id}`).send({
-      visitDate: today, place: "Head office", visitorName: "DEPARTMENT VISITOR",
-      purpose: "Inspection", pointsDiscussed: "Updated the fixture notes.",
-    }).expect(200);
-    await request(app).delete(`/api/daily-work-log/unlinked-visits/${created.body.id}`).expect(200);
-    expect((await state.db.select().from(schema.unlinkedOfficeVisits)).length).toBe(0);
+      purpose: "Inspection", pointsDiscussed: "Must not change.",
+    }).expect(403);
+    await request(app).delete(`/api/daily-work-log/visits/${visit.id}`).expect(403);
+    expect((await state.db.select().from(schema.officeVisits))
+      .find((row: any) => row.id === visit.id)?.pointsDiscussed).toBe("Reviewed the level sheet fixture.");
   }, 30_000);
 
   it("lets an Owner correct and remove an older entry without changing the linked person", async () => {

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fixture = vi.hoisted(() => ({
   teamAllowed: true,
   context: {
-    linked: true, personName: "ALPHA ENGINEER", teamViewAllowed: true,
+    linked: true, personName: "ALPHA ENGINEER" as string | null, teamViewAllowed: true,
     sites: [{ id: 4, name: "ALLADURG PWD ROAD TO PAMPAD" }],
   },
   personal: { date: "2026-11-25", view: "personal", workEntries: [], visits: [], dprActivities: [], totalDurationMinutes: 0 },
@@ -17,7 +17,12 @@ const fixture = vi.hoisted(() => ({
       workDate: "2026-11-25", place: "Plant office", workType: "Other",
       siteId: null, siteName: null, durationMinutes: 120, details: "Checked the plant stock ledger.",
     }],
-    visits: [],
+    visits: [{
+      id: 92, recordedByPersonnelId: 14, personName: "BETA ENGINEER", recordedByUserId: 1,
+      visitDate: "2026-11-25", place: "Head office", visitorName: "DEPARTMENT VISITOR",
+      visitorDesignation: "Engineer", organisation: "Test department", purpose: "Meeting",
+      pointsDiscussed: "Reviewed the level sheet fixture.", attachment: null,
+    }],
     dprActivities: [{
       id: 91, dprId: 418, date: "2026-11-25", site: "ALLADURG PWD ROAD TO PAMPAD",
       personnelId: 14, personName: "BETA ENGINEER", type: "test", title: "Field density",
@@ -99,7 +104,7 @@ describe("Daily work log screen", () => {
     expect(Array.from(place.options).some(option => option.textContent === "Site office")).toBe(false);
   });
 
-  it("opens an unlinked team user directly in Team view and lets them record visits", async () => {
+  it("opens an unlinked team user directly in Team view and shows all visits read-only", async () => {
     fixture.context.linked = false;
     fixture.context.personName = null;
     fixture.context.teamViewAllowed = true;
@@ -107,18 +112,13 @@ describe("Daily work log screen", () => {
     await screen.findByText("Daily work log");
 
     expect(screen.queryByRole("button", { name: "My day" })).toBeNull();
-    expect(screen.queryByRole("alert", { name: "" })).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("button", { name: "Team view" }).getAttribute("aria-current")).toBe("page");
-    fireEvent.click(screen.getByRole("button", { name: "Visits & inspections" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add visit" }));
-    fireEvent.change(screen.getByLabelText("Visitor"), { target: { value: "Department visitor" } });
-    fireEvent.change(screen.getByLabelText("Instructions given / points discussed"), { target: { value: "Reviewed the levels." } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(fixture.apiRequest).toHaveBeenCalledWith(
-      "POST", "/api/daily-work-log/unlinked-visits", expect.objectContaining({
-        visitorName: "Department visitor", pointsDiscussed: "Reviewed the levels.",
-      }),
-    ));
+    expect(await screen.findByText("DEPARTMENT VISITOR · Meeting")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Visits & inspections" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add visit" })).toBeNull();
+    expect(screen.queryByText("Edit")).toBeNull();
+    expect(screen.queryByText("Delete")).toBeNull();
   });
 
   it("shows the unlinked warning only when team view is not allowed", async () => {

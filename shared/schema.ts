@@ -290,33 +290,6 @@ export const officeVisits = pgTable("office_visits", {
   fileSizeCheck: check("office_visits_attachment_size", sql`${table.fileSize} IS NULL OR ${table.fileSize} BETWEEN 0 AND 15728640`),
 }));
 
-// Visits recorded by a login that has permission to view the team log but
-// is not linked to a Personnel row. Keep this separate so existing visit
-// attribution and its non-null Personnel relationship remain unchanged.
-export const unlinkedOfficeVisits = pgTable("unlinked_office_visits", {
-  id: serial("id").primaryKey(),
-  recordedByUserId: integer("recorded_by_user_id").notNull().references(() => users.id),
-  visitDate: date("visit_date").notNull(),
-  place: text("place", { enum: ["HLC plant", "Head office"] }).notNull(),
-  visitorName: text("visitor_name").notNull(),
-  visitorDesignation: text("visitor_designation"),
-  organisation: text("organisation"),
-  purpose: text("purpose", { enum: ["Inspection", "Meeting", "Audit", "Other"] }).notNull(),
-  pointsDiscussed: text("points_discussed").notNull(),
-  fileName: text("file_name"),
-  objectPath: text("object_path"),
-  mimeType: text("mime_type"),
-  fileSize: integer("file_size"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, table => ({
-  dateRecorderIdx: index("unlinked_office_visits_date_user_idx").on(table.visitDate, table.recordedByUserId),
-  userDateIdx: index("unlinked_office_visits_user_date_idx").on(table.recordedByUserId, table.visitDate),
-  placeCheck: check("unlinked_office_visits_place_check", sql`${table.place} IN ('HLC plant', 'Head office')`),
-  purposeCheck: check("unlinked_office_visits_purpose_check", sql`${table.purpose} IN ('Inspection', 'Meeting', 'Audit', 'Other')`),
-  fileSizeCheck: check("unlinked_office_visits_attachment_size", sql`${table.fileSize} IS NULL OR ${table.fileSize} BETWEEN 0 AND 15728640`),
-}));
-
 // Soil laboratory / field quality testing. Calculated result JSON is written
 // by the server only; readings remain the user's captured source values.
 export const labTests = pgTable("lab_tests", {

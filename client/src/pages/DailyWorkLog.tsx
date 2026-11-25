@@ -13,11 +13,10 @@ type WorkEntry = {
   siteName: string | null; durationMinutes: number | null; details: string;
 };
 type Visit = {
-  id: number; recordedByPersonnelId: number | null; personName: string; recordedByUserId: number;
+  id: number; recordedByPersonnelId: number; personName: string; recordedByUserId: number;
   visitDate: string; place: string; visitorName: string; visitorDesignation: string | null;
   organisation: string | null; purpose: string; pointsDiscussed: string;
   attachment: { fileName: string; objectPath: string; mimeType: string | null; fileSize: number | null } | null;
-  unlinked?: boolean;
 };
 type DprActivity = {
   id: number; dprId: number; date: string; site: string; personnelId: number; personName: string;
@@ -25,7 +24,7 @@ type DprActivity = {
 };
 type DayData = {
   date: string; view: "personal" | "team"; workEntries: WorkEntry[];
-  visits: Visit[]; unlinkedVisits?: Visit[]; dprActivities: DprActivity[]; totalDurationMinutes: number;
+  visits: Visit[]; dprActivities: DprActivity[]; totalDurationMinutes: number;
 };
 type ContextData = {
   linked: boolean; personName?: string | null; teamViewAllowed: boolean;
@@ -97,7 +96,6 @@ export default function DailyWorkLog() {
   const [placeFilter, setPlaceFilter] = useState("");
   const [workId, setWorkId] = useState<number | null>(null);
   const [visitId, setVisitId] = useState<number | null>(null);
-  const [visitSource, setVisitSource] = useState<"linked" | "unlinked">("linked");
   const [error, setError] = useState("");
   const [viewingAttachment, setViewingAttachment] = useState<any>(null);
   const [visitFile, setVisitFile] = useState<File | null>(null);
@@ -118,7 +116,7 @@ export default function DailyWorkLog() {
   const canDelete = sectionCan("daily_work_log", "delete");
   const isOwner = !!user?.isOwner;
   const teamAllowed = !!context?.teamViewAllowed;
-  const teamView = tab === "team";
+  const teamView = tab === "team" || (!!context && !context.linked && context.teamViewAllowed);
   useEffect(() => {
     if (context && !context.linked && context.teamViewAllowed) {
       setTab(current => current === "day" ? "team" : current);
@@ -137,7 +135,6 @@ export default function DailyWorkLog() {
   const data = dayQuery.data;
   const workEntries = data?.workEntries ?? [];
   const visits = data?.visits ?? [];
-  const unlinkedTeamVisits = data?.unlinkedVisits ?? [];
   const dprActivities = data?.dprActivities ?? [];
   const people = useMemo(() => {
     const byId = new Map<number, string>();
@@ -181,7 +178,6 @@ export default function DailyWorkLog() {
   };
   const clearVisit = () => {
     setVisitId(null);
-    setVisitSource(context?.linked ? "linked" : "unlinked");
     setVisitFile(null);
     setError("");
     setVisitDraft({
@@ -219,10 +215,8 @@ export default function DailyWorkLog() {
         };
       }
       const editing = visitId != null && visitId > 0;
-      const useUnlinkedRoute = visitSource === "unlinked" || (!context?.linked && !editing);
-      const visitEndpoint = useUnlinkedRoute ? "unlinked-visits" : "visits";
       const response = await apiRequest(editing ? "PATCH" : "POST",
-        editing ? `/api/daily-work-log/${visitEndpoint}/${visitId}` : `/api/daily-work-log/${visitEndpoint}`,
+        editing ? `/api/daily-work-log/visits/${visitId}` : "/api/daily-work-log/visits",
         { ...visitDraft, attachment });
       return readResponse(response);
     },
@@ -230,7 +224,7 @@ export default function DailyWorkLog() {
     onError: (cause: any) => setError(cause?.message ?? "The visit could not be saved."),
   });
   const removeMutation = useMutation({
-    mutationFn: async ({ kind, id }: { kind: "entries" | "visits" | "unlinked-visits"; id: number }) =>
+    mutationFn: async ({ kind, id }: { kind: "entries" | "visits"; id: number }) =>
       readResponse(await apiRequest("DELETE", `/api/daily-work-log/${kind}/${id}`)),
     onSuccess: refreshDay,
     onError: (cause: any) => setError(cause?.message ?? "The record could not be removed."),
@@ -266,7 +260,6 @@ export default function DailyWorkLog() {
   }
   function beginVisitEdit(row: Visit) {
     setVisitId(row.id);
-    setVisitSource(row.unlinked ? "unlinked" : "linked");
     setVisitFile(null);
     setError("");
     setVisitDraft({
@@ -307,9 +300,11 @@ export default function DailyWorkLog() {
         <p className="text-sm text-muted-foreground">{context.personName?.toLocaleUpperCase("en")}</p>
       </header>
       <nav className="flex flex-wrap gap-2 border-b pb-2" aria-label="Daily work log views">
-        {context.linked && <button type="button" onClick={() => setTab("day")} aria-current={tab === "day" ? "page" : undefined} className={`rounded-md px-3 py-2 text-sm ${tab === "day" ? "bg-primary text-primary-foreground" : "border"}`}>My day</button>}
-        <button type="button" onClick={() => setTab("visits")} aria-current={tab === "visits" ? "page" : undefined} className={`rounded-md px-3 py-2 text-sm ${tab === "visits" ? "bg-primary text-primary-foreground" : "border"}`}>Visits &amp; inspections</button>
-        {teamAllowed && <button type="button" onClick={() => setTab("team")} aria-current={tab === "team" ? "page" : undefined} className={`rounded-md px-3 py-2 text-sm ${tab === "team" ? "bg-primary text-primary-foreground" : "border"}`}>Team view</button>}
+        {context.linked && <>
+          <button type="button" onClick={() => setTab("day")} aria-current={tab === "day" ? "page" : undefined} className={`rounded-md px-3 py-2 text-sm ${tab === "day" ? "bg-primary text-primary-foreground" : "border"}`}>My day</button>
+          <button type="button" onClick={() => setTab("visits")} aria-current={tab === "visits" ? "page" : undefined} className={`rounded-md px-3 py-2 text-sm ${tab === "visits" ? "bg-primary text-primary-foreground" : "border"}`}>Visits &amp; inspections</button>
+        </>}
+        {teamAllowed && <button type="button" onClick={() => setTab("team")} aria-current={teamView ? "page" : undefined} className={`rounded-md px-3 py-2 text-sm ${teamView ? "bg-primary text-primary-foreground" : "border"}`}>Team view</button>}
       </nav>
 
       {teamView && teamAllowed && (
@@ -406,8 +401,8 @@ export default function DailyWorkLog() {
       {tab === "visits" && !teamView && <>
         <div className="flex items-center justify-between gap-3">
           <div><h2 className="font-semibold">Visits &amp; inspections</h2><p className="text-sm text-muted-foreground">Site visits are recorded in the DPR.</p></div>
-          {canCreate && !readOnlyDate && !visitId && <button type="button" onClick={() => {
-            setVisitDraft(draft => ({ ...draft, visitDate: date })); setVisitSource(context.linked ? "linked" : "unlinked"); setVisitId(-1);
+          {context.linked && canCreate && !readOnlyDate && !visitId && <button type="button" onClick={() => {
+            setVisitDraft(draft => ({ ...draft, visitDate: date })); setVisitId(-1);
           }} className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground"><Plus className="h-4 w-4" />Add visit</button>}
         </div>
         {visitId !== null && <form onSubmit={submitVisit} className="grid gap-3 rounded-lg border p-4 sm:grid-cols-2" aria-label="Visit form">
@@ -458,14 +453,14 @@ export default function DailyWorkLog() {
             </div>
             {canEdit && canChangeVisit(row) && !readOnlyDate && <div className="flex shrink-0 gap-1">
               <button type="button" aria-label="Edit visit" onClick={() => beginVisitEdit(row)} className="rounded border p-2"><Pencil className="h-4 w-4" /></button>
-              {canDelete && <button type="button" aria-label="Delete visit" onClick={() => removeMutation.mutate({ kind: row.unlinked ? "unlinked-visits" : "visits", id: row.id })} className="rounded border p-2 text-destructive"><Trash2 className="h-4 w-4" /></button>}
+              {canDelete && <button type="button" aria-label="Delete visit" onClick={() => removeMutation.mutate({ kind: "visits", id: row.id })} className="rounded border p-2 text-destructive"><Trash2 className="h-4 w-4" /></button>}
             </div>}
           </div>
         </article>)}
       </>}
 
       {teamView && teamAllowed && <>
-        {teamGroups.length === 0 && unlinkedTeamVisits.length === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No team entries or DPR activities for this date.</p>}
+        {teamGroups.length === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No team entries or DPR activities for this date.</p>}
         {teamGroups.map(person => <article key={person.id} className="space-y-4 rounded-lg border bg-background p-3" aria-label={`${person.name.toLocaleUpperCase("en")} day`}>
           <header className="flex items-center justify-between gap-3">
             <h2 className="font-semibold">{person.name.toLocaleUpperCase("en")}</h2>
@@ -506,30 +501,13 @@ export default function DailyWorkLog() {
                 id: row.id, fileName: row.attachment!.fileName, objectPath: row.attachment!.objectPath,
                 mimeType: row.attachment!.mimeType ?? undefined, fileSize: row.attachment!.fileSize ?? undefined,
               })} className="mt-2 text-sm underline">{row.attachment.fileName}</button>}
-              {canChangeVisit(row) && !readOnlyDate && <div className="mt-2 flex gap-3">
+              {context.linked && canChangeVisit(row) && !readOnlyDate && <div className="mt-2 flex gap-3">
                 {canEdit && <button type="button" onClick={() => { setTab("visits"); beginVisitEdit(row); }} className="text-sm underline">Edit</button>}
                 {canDelete && <button type="button" onClick={() => removeMutation.mutate({ kind: "visits", id: row.id })} className="text-sm text-destructive underline">Delete</button>}
               </div>}
             </div>)}
           </section>
         </article>)}
-        {unlinkedTeamVisits.length > 0 && <section className="space-y-3" aria-label="Visits recorded by unlinked logins">
-          <h2 className="font-semibold">Visits recorded by unlinked logins</h2>
-          {unlinkedTeamVisits.map(row => <article key={row.id} className="rounded-lg border bg-background p-3">
-            <p className="text-xs font-semibold uppercase">{row.personName} · {row.place}</p>
-            <p className="font-medium">{row.visitorName.toLocaleUpperCase("en")} · {row.purpose}</p>
-            <p className="text-sm text-muted-foreground">{[row.visitorDesignation, row.organisation].filter(Boolean).join(" · ")}</p>
-            <p className="mt-2 whitespace-pre-wrap text-sm">{row.pointsDiscussed}</p>
-            {row.attachment && <button type="button" onClick={() => setViewingAttachment({
-              id: row.id, fileName: row.attachment!.fileName, objectPath: row.attachment!.objectPath,
-              mimeType: row.attachment!.mimeType ?? undefined, fileSize: row.attachment!.fileSize ?? undefined,
-            })} className="mt-2 text-sm underline">{row.attachment.fileName}</button>}
-            {canChangeVisit(row) && !readOnlyDate && <div className="mt-2 flex gap-3">
-              {canEdit && <button type="button" onClick={() => { setTab("visits"); beginVisitEdit(row); }} className="text-sm underline">Edit</button>}
-              {canDelete && <button type="button" onClick={() => removeMutation.mutate({ kind: "unlinked-visits", id: row.id })} className="text-sm text-destructive underline">Delete</button>}
-            </div>}
-          </article>)}
-        </section>}
       </>}
 
       {viewingAttachment && <AttachmentViewer attachment={viewingAttachment} onClose={() => setViewingAttachment(null)} />}
