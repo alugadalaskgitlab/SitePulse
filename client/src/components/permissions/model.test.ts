@@ -27,8 +27,9 @@ describe("display inventory completeness and safe provenance", () => {
     expect(inventory.systems).toHaveLength(297);
     expect(inventory.apiCalls).toHaveLength(2010);
     expect(inventory.cells).toHaveLength(SECTION_KEYS.length * ACTIONS.length);
-    expect(SECTION_KEYS).toHaveLength(100);
+    expect(SECTION_KEYS).toHaveLength(101);
     expect(SECTION_KEYS).toContain("dpr_layer_assignment");
+    expect(SECTION_KEYS).toContain("daily_work_log");
     expect(SECTION_KEYS).toContain("lab_tests");
     expect(SECTION_KEYS).toContain("plant_supply_orders");
     expect(SECTION_KEYS).toContain("plant_supply_alert_settings");

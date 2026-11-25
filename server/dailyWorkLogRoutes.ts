@@ -354,9 +354,15 @@ export function registerDailyWorkLogRoutes(
     try {
       const values = validateWorkBody(req.body);
       await assertAllowedSite(req, values.siteId);
+      const [existing] = await database.select().from(dailyWorkEntries).where(eq(dailyWorkEntries.id, id)).limit(1);
+      if (!existing) return res.status(404).json({ message: "Work entry not found." });
+      await assertAllowedSite(req, existing.siteId);
       const updated = await database.transaction(async tx => {
         const [old] = await tx.select().from(dailyWorkEntries).where(eq(dailyWorkEntries.id, id)).limit(1);
         if (!old) throw Object.assign(new Error("Work entry not found."), { status: 404 });
+        if (old.siteId !== existing.siteId) {
+          throw Object.assign(new Error("Work entry changed while you were editing it. Reload and try again."), { status: 409 });
+        }
         const owns = old.createdByUserId === user.id;
         if (!user.isOwner && (!owns || !mayCreateDate(old.workDate) || !mayCreateDate(values.workDate))) {
           throw Object.assign(new Error("You can edit your own entries for today or yesterday only."), { status: 403 });
@@ -379,10 +385,17 @@ export function registerDailyWorkLogRoutes(
     if (!assertDelete(req, res, SECTION)) return;
     const user = req.authUser!;
     const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid work entry." });
     try {
+      const [existing] = await database.select().from(dailyWorkEntries).where(eq(dailyWorkEntries.id, id)).limit(1);
+      if (!existing) return res.status(404).json({ message: "Work entry not found." });
+      await assertAllowedSite(req, existing.siteId);
       const deleted = await database.transaction(async tx => {
         const [old] = await tx.select().from(dailyWorkEntries).where(eq(dailyWorkEntries.id, id)).limit(1);
         if (!old) throw Object.assign(new Error("Work entry not found."), { status: 404 });
+        if (old.siteId !== existing.siteId) {
+          throw Object.assign(new Error("Work entry changed while you were editing it. Reload and try again."), { status: 409 });
+        }
         if (!user.isOwner && (old.createdByUserId !== user.id || !mayCreateDate(old.workDate))) {
           throw Object.assign(new Error("You can delete your own entries for today or yesterday only."), { status: 403 });
         }
@@ -424,6 +437,7 @@ export function registerDailyWorkLogRoutes(
     if (!assertEdit(req, res, SECTION)) return;
     const user = req.authUser!;
     const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid visit." });
     try {
       const values = validateVisitBody(req.body);
       const row = await database.transaction(async tx => {
@@ -450,6 +464,7 @@ export function registerDailyWorkLogRoutes(
     if (!assertDelete(req, res, SECTION)) return;
     const user = req.authUser!;
     const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid visit." });
     try {
       await database.transaction(async tx => {
         const [old] = await tx.select().from(officeVisits).where(eq(officeVisits.id, id)).limit(1);

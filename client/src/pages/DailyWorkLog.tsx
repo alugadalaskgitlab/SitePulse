@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ArrowLeft, FileText, Plus, Trash2, Pencil, X, Upload } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Pencil, X, Upload } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useUpload } from "@/hooks/use-upload";
 import { apiRequest } from "@/lib/queryClient";
@@ -61,6 +61,15 @@ function parseDuration(value: string) {
   if (!value.trim()) return null;
   const match = value.trim().match(/^(\d{1,2}):([0-5]\d)$/);
   return match ? Number(match[1]) * 60 + Number(match[2]) : NaN;
+}
+function visitFileMimeType(file: File) {
+  if (file.type) return file.type.toLowerCase();
+  const extension = file.name.toLowerCase().split(".").pop();
+  const inferred: Record<string, string> = {
+    pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg",
+    png: "image/png", webp: "image/webp", gif: "image/gif", heic: "image/heic",
+  };
+  return inferred[extension ?? ""] ?? "";
 }
 async function readResponse(response: Response) {
   const payload = await response.json().catch(() => ({}));
@@ -138,6 +147,20 @@ export default function DailyWorkLog() {
     ...visits.map(row => row.place),
     ...dprActivities.map(row => row.place),
   ])).sort(), [workEntries, visits, dprActivities]);
+  const teamGroups = useMemo(() => people.map(([id, name]) => {
+    const numericId = Number(id);
+    const personWork = workEntries.filter(row => row.personnelId === numericId);
+    const personVisits = visits.filter(row => row.recordedByPersonnelId === numericId);
+    const personDprActivities = dprActivities.filter(row => row.personnelId === numericId);
+    return {
+      id: numericId,
+      name,
+      workEntries: personWork,
+      visits: personVisits,
+      dprActivities: personDprActivities,
+      totalDurationMinutes: personWork.reduce((total, row) => total + (row.durationMinutes ?? 0), 0),
+    };
+  }), [people, workEntries, visits, dprActivities]);
   const canChangeWork = (row: WorkEntry) =>
     isOwner || (row.createdByUserId === user?.id && todayOrYesterday(row.workDate));
   const canChangeVisit = (row: Visit) =>
@@ -182,7 +205,7 @@ export default function DailyWorkLog() {
         if (!uploaded) throw new Error("The attachment could not be uploaded.");
         attachment = {
           fileName: visitFile.name, objectPath: uploaded.objectPath,
-          mimeType: visitFile.type || (visitFile.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg"),
+          mimeType: visitFileMimeType(visitFile),
           fileSize: visitFile.size,
         };
       }
@@ -210,7 +233,7 @@ export default function DailyWorkLog() {
   async function submitVisit(event: FormEvent) {
     event.preventDefault();
     setError("");
-    if (visitFile && (!visitFile.type.startsWith("image/") && visitFile.type !== "application/pdf")) {
+    if (visitFile && (!visitFileMimeType(visitFile).startsWith("image/") && visitFileMimeType(visitFile) !== "application/pdf")) {
       setError("Choose an image or PDF.");
       return;
     }
@@ -430,50 +453,54 @@ export default function DailyWorkLog() {
       </>}
 
       {teamView && teamAllowed && <>
-        <section className="rounded-lg border bg-background p-3" aria-label="Team hours">
-          <p className="text-sm text-muted-foreground">Hours recorded</p>
-          <p className="text-xl font-semibold">{Math.floor((data?.totalDurationMinutes ?? 0) / 60)}:{String((data?.totalDurationMinutes ?? 0) % 60).padStart(2, "0")}</p>
-        </section>
-        <section className="space-y-3">
-          <h2 className="font-semibold">Work entries</h2>
-          {workEntries.length === 0 && <p className="text-sm text-muted-foreground">No team work entries for this date.</p>}
-          {workEntries.map(row => <article key={row.id} className="rounded-lg border p-3">
-            <p className="text-xs font-semibold uppercase">{row.personName}</p>
-            <p className="font-medium">{row.workType}</p>
-            <p className="text-sm text-muted-foreground">{row.place.toLocaleUpperCase("en")}{row.siteName ? ` · ${row.siteName.toLocaleUpperCase("en")}` : ""}{row.durationMinutes ? ` · ${formatMinutes(row.durationMinutes)}` : ""}</p>
-            <p className="mt-2 whitespace-pre-wrap text-sm">{row.details}</p>
-            {canChangeWork(row) && !readOnlyDate && <div className="mt-2 flex gap-3">
-              {canEdit && <button type="button" onClick={() => { setTab("day"); beginWorkEdit(row); }} className="text-sm underline">Edit</button>}
-              {canDelete && <button type="button" onClick={() => removeMutation.mutate({ kind: "entries", id: row.id })} className="text-sm text-destructive underline">Delete</button>}
-            </div>}
-          </article>)}
-        </section>
-        <section className="space-y-3">
-          <h2 className="font-semibold">DPR Site activities</h2>
-          {dprActivities.map(row => <article key={`${row.dprId}-${row.id}`} className="rounded-lg border p-3">
-            <p className="text-xs font-semibold uppercase">{row.personName} · {row.site}</p>
-            <p className="font-medium">{row.title}</p>
-            {row.details && <p className="text-sm text-muted-foreground">{row.details}</p>}
-            {row.resultPass != null && <p className="text-sm font-bold">{row.resultPass ? "Pass" : "Fail"}</p>}
-            {sectionVisible("site_dprs") && <Link href={row.href} className="mt-2 inline-block text-sm underline">Open DPR</Link>}
-          </article>)}
-        </section>
-        <section className="space-y-3">
-          <h2 className="font-semibold">Visits recorded</h2>
-          {visits.map(row => <article key={row.id} className="rounded-lg border p-3">
-            <p className="text-xs font-semibold uppercase">{row.personName} · {row.place}</p>
-            <p className="font-medium">{row.visitorName.toLocaleUpperCase("en")} · {row.purpose}</p>
-            <p className="whitespace-pre-wrap text-sm">{row.pointsDiscussed}</p>
-            {row.attachment && <button type="button" onClick={() => setViewingAttachment({
-              id: row.id, fileName: row.attachment!.fileName, objectPath: row.attachment!.objectPath,
-              mimeType: row.attachment!.mimeType ?? undefined, fileSize: row.attachment!.fileSize ?? undefined,
-            })} className="mt-2 text-sm underline">{row.attachment.fileName}</button>}
-            {canChangeVisit(row) && !readOnlyDate && <div className="mt-2 flex gap-3">
-              {canEdit && <button type="button" onClick={() => { setTab("visits"); beginVisitEdit(row); }} className="text-sm underline">Edit</button>}
-              {canDelete && <button type="button" onClick={() => removeMutation.mutate({ kind: "visits", id: row.id })} className="text-sm text-destructive underline">Delete</button>}
-            </div>}
-          </article>)}
-        </section>
+        {teamGroups.length === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No team entries or DPR activities for this date.</p>}
+        {teamGroups.map(person => <article key={person.id} className="space-y-4 rounded-lg border bg-background p-3" aria-label={`${person.name.toLocaleUpperCase("en")} day`}>
+          <header className="flex items-center justify-between gap-3">
+            <h2 className="font-semibold">{person.name.toLocaleUpperCase("en")}</h2>
+            <p className="text-sm text-muted-foreground">Hours recorded: <strong className="text-foreground">{formatMinutes(person.totalDurationMinutes) || "0:00"}</strong></p>
+          </header>
+          <section className="space-y-2" aria-label="Work entries">
+            <h3 className="text-sm font-semibold">Work entries</h3>
+            {person.workEntries.length === 0 && <p className="text-sm text-muted-foreground">No work entries.</p>}
+            {person.workEntries.map(row => <div key={row.id} className="rounded-md border p-3">
+              <p className="font-medium">{row.workType}</p>
+              <p className="text-sm text-muted-foreground">{row.place.toLocaleUpperCase("en")}{row.siteName ? ` · ${row.siteName.toLocaleUpperCase("en")}` : ""}{row.durationMinutes ? ` · ${formatMinutes(row.durationMinutes)}` : ""}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm">{row.details}</p>
+              {canChangeWork(row) && !readOnlyDate && <div className="mt-2 flex gap-3">
+                {canEdit && <button type="button" onClick={() => { setTab("day"); beginWorkEdit(row); }} className="text-sm underline">Edit</button>}
+                {canDelete && <button type="button" onClick={() => removeMutation.mutate({ kind: "entries", id: row.id })} className="text-sm text-destructive underline">Delete</button>}
+              </div>}
+            </div>)}
+          </section>
+          <section className="space-y-2" aria-label="DPR Site activities">
+            <h3 className="text-sm font-semibold">DPR Site activities</h3>
+            {person.dprActivities.length === 0 && <p className="text-sm text-muted-foreground">No linked DPR Site activities.</p>}
+            {person.dprActivities.map(row => <div key={`${row.dprId}-${row.id}`} className="rounded-md border p-3">
+              <p className="text-xs font-medium text-muted-foreground">{row.type} · {row.site.toLocaleUpperCase("en")}</p>
+              <p className="font-medium">{row.title}</p>
+              {row.details && <p className="mt-1 text-sm text-muted-foreground">{row.details}</p>}
+              {row.resultPass != null && <p className="mt-1 text-sm font-bold">{row.resultPass ? "Pass" : "Fail"}</p>}
+              {sectionVisible("site_dprs") && <Link href={row.href} className="mt-2 inline-block text-sm underline">Open DPR</Link>}
+            </div>)}
+          </section>
+          <section className="space-y-2" aria-label="Visits recorded">
+            <h3 className="text-sm font-semibold">Visits recorded</h3>
+            {person.visits.length === 0 && <p className="text-sm text-muted-foreground">No visits recorded.</p>}
+            {person.visits.map(row => <div key={row.id} className="rounded-md border p-3">
+              <p className="text-sm text-muted-foreground">{row.place.toLocaleUpperCase("en")}</p>
+              <p className="font-medium">{row.visitorName.toLocaleUpperCase("en")} · {row.purpose}</p>
+              <p className="whitespace-pre-wrap text-sm">{row.pointsDiscussed}</p>
+              {row.attachment && <button type="button" onClick={() => setViewingAttachment({
+                id: row.id, fileName: row.attachment!.fileName, objectPath: row.attachment!.objectPath,
+                mimeType: row.attachment!.mimeType ?? undefined, fileSize: row.attachment!.fileSize ?? undefined,
+              })} className="mt-2 text-sm underline">{row.attachment.fileName}</button>}
+              {canChangeVisit(row) && !readOnlyDate && <div className="mt-2 flex gap-3">
+                {canEdit && <button type="button" onClick={() => { setTab("visits"); beginVisitEdit(row); }} className="text-sm underline">Edit</button>}
+                {canDelete && <button type="button" onClick={() => removeMutation.mutate({ kind: "visits", id: row.id })} className="text-sm text-destructive underline">Delete</button>}
+              </div>}
+            </div>)}
+          </section>
+        </article>)}
       </>}
 
       {viewingAttachment && <AttachmentViewer attachment={viewingAttachment} onClose={() => setViewingAttachment(null)} />}

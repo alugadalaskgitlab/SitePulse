@@ -75,9 +75,10 @@ describe("Daily work log screen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Team view" }));
     await screen.findByText("Checked the plant stock ledger.");
     expect(screen.getAllByText("BETA ENGINEER").length).toBeGreaterThan(0);
-    expect(screen.getByText("Field density")).toBeTruthy();
-    expect(screen.getByText("2:00")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Open DPR" }).getAttribute("href")).toBe("/site/edit/418");
+    const personDay = screen.getByRole("article", { name: "BETA ENGINEER day" });
+    expect(within(personDay).getByText("Field density")).toBeTruthy();
+    expect(within(personDay).getByText("2:00")).toBeTruthy();
+    expect(within(personDay).getByRole("link", { name: "Open DPR" }).getAttribute("href")).toBe("/site/edit/418");
     const filters = screen.getByRole("region", { name: "Team filters" });
     expect(within(filters).getByRole("combobox", { name: "Person" })).toBeTruthy();
     expect(within(filters).getByRole("combobox", { name: "Place" })).toBeTruthy();
