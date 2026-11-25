@@ -1,17 +1,20 @@
 import type { Express, Request, Response } from "express";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import {
   auditLogs, boqItems, boqProjects, levelSheetDesignRows, levelSheetSiteSettings,
-  levelSheets, levelSheetStaff, levelSheetTbms, personnel, sites,
+  levelSheets, levelSheetStaff, levelSheetTbms, levelSheetLayerDefaults, personnel, sites,
 } from "@shared/schema";
 import { boqItemDisplayText } from "@shared/boqItemName";
 import { assertApprove, assertCreate, assertEdit, assertView, currentUserName } from "./auth-routes";
 import { db } from "./db";
 import { storage } from "./storage";
+import { saveLevelDesignImport } from "./levelDesignImport";
 import {
   deriveDesignRowsFromFrl,
   LEVEL_SHEET_FALLBACK_LAYERS,
   normalizeDesignImportRows,
+  resolveDesignChainages,
+  repeatedDesignChainages,
   normalizeTbmImport, repeatedTbmNames,
   consultantLayoutLayers,
   quantitiesBetweenSheets, storedLevelSheetInput, levelSheetBasisLabel,
@@ -133,6 +136,12 @@ function errorResponse(res: Response, error: any) {
 }
 
 export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any; storage?: any } = {}) {
+  const importingSites = new Set<number>();
+  const beginImport = (siteId: number) => {
+    if (importingSites.has(siteId)) fail("An import is already running for this site. Try again when it finishes.", 409);
+    importingSites.add(siteId);
+    return () => importingSites.delete(siteId);
+  };
   const database = dependencies.db ?? db;
   const persistence = dependencies.storage ?? storage;
 
@@ -438,7 +447,38 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
       const rows = await database.select().from(levelSheetDesignRows).where(and(
         eq(levelSheetDesignRows.siteId, siteId), eq(levelSheetDesignRows.layerName, layerName),
       )).orderBy(asc(levelSheetDesignRows.chainageOursKm), asc(levelSheetDesignRows.id));
-      res.json({ settings: settings ?? { siteId, bookChainageSystem: "ours", consultantOffsetM: 0 }, rows });
+      const [defaults] = await database.select().from(levelSheetLayerDefaults).where(and(eq(levelSheetLayerDefaults.siteId, siteId), eq(levelSheetLayerDefaults.layerName, layerName)));
+      res.json({ settings: settings ?? { siteId, bookChainageSystem: "ours", consultantOffsetM: 0 }, rows, defaults: defaults ?? null });
+    } catch (error) { return errorResponse(res, error); }
+  });
+
+  app.get("/api/level-sheets/design/layers", async (req: any, res) => {
+    if (!assertView(req, res, SECTION)) return;
+    try {
+      const siteId = positiveId(req.query.siteId, "site", false) as number;
+      await assertSiteAllowed(req, siteId);
+      res.json(await database.select({ layerName: levelSheetDesignRows.layerName, count: sql`count(*)::int`,
+        fromKm: sql`min(${levelSheetDesignRows.chainageOursKm})`, toKm: sql`max(${levelSheetDesignRows.chainageOursKm})` })
+        .from(levelSheetDesignRows).where(eq(levelSheetDesignRows.siteId, siteId)).groupBy(levelSheetDesignRows.layerName));
+    } catch (error) { return errorResponse(res, error); }
+  });
+
+  app.post("/api/level-sheets/design/defaults", async (req: any, res) => {
+    if (!assertEdit(req, res, SECTION)) return;
+    try {
+      const siteId = positiveId(req.body.siteId, "site", false) as number;
+      const layerName = String(req.body.layerName ?? "").trim();
+      if (!layerName || layerName.length > 120) fail("Choose a layer.");
+      await assertSiteAllowed(req, siteId);
+      const { chainageOursKm, centreLevel, source, ...values } = validateDesignRow({ ...req.body, chainageOursKm: 0, centreLevel: 0 }, "TYPED");
+      const saved = await database.transaction(async (tx: any) => {
+        const [old] = await tx.select().from(levelSheetLayerDefaults).where(and(eq(levelSheetLayerDefaults.siteId, siteId), eq(levelSheetLayerDefaults.layerName, layerName)));
+        const [row] = await tx.insert(levelSheetLayerDefaults).values({ siteId, layerName, ...values, updatedByUserId: req.authUser.id })
+          .onConflictDoUpdate({ target: [levelSheetLayerDefaults.siteId, levelSheetLayerDefaults.layerName], set: { ...values, updatedByUserId: req.authUser.id, updatedAt: new Date() } }).returning();
+        await audit(tx, req, siteId, "design_layer_defaults", old ?? null, row);
+        return row;
+      });
+      res.json(saved);
     } catch (error) { return errorResponse(res, error); }
   });
 
@@ -503,7 +543,12 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
       const layerName = String(req.body?.layerName ?? "").trim();
       if (!layerName || layerName.length > 120) fail("Enter a layer name.");
       await assertSiteAllowed(req, siteId);
-      const row = validateDesignRow(req.body, "TYPED");
+      const [defaults] = await database.select().from(levelSheetLayerDefaults).where(and(eq(levelSheetLayerDefaults.siteId, siteId), eq(levelSheetLayerDefaults.layerName, layerName)));
+      const input = { ...req.body };
+      for (const field of ["crossfallLeftPct", "crossfallRightPct", "topWidthLeftM", "topWidthRightM"]) {
+        if (input[field] == null || input[field] === "") input[field] = defaults?.[field] ?? 0;
+      }
+      const row = validateDesignRow(input, "TYPED");
       const saved = await database.transaction(async (tx: any) => {
         const [created] = await tx.insert(levelSheetDesignRows).values({
           ...row, siteId, layerName, createdByUserId: req.authUser.id, updatedByUserId: req.authUser.id,
@@ -553,10 +598,12 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
 
   app.post("/api/level-sheets/design/import-layers", async (req: any, res) => {
     if (!assertCreate(req, res, SECTION)) return;
+    let release: (() => void) | undefined;
     try {
       const siteId = positiveId(req.body?.siteId, "site") as number;
       await assertSiteAllowed(req, siteId);
-      if (!Array.isArray(req.body.matrix) || req.body.matrix.length > 5002 || req.body.matrix.some((row: any) => !Array.isArray(row) || row.length > 200)) fail("Choose an Excel sheet with up to 5,000 data rows and 200 columns.");
+      release = beginImport(siteId);
+      if (!Array.isArray(req.body.matrix) || req.body.matrix.length > 10002 || req.body.matrix.some((row: any) => !Array.isArray(row) || row.length > 200)) fail("Choose an Excel sheet with up to 10,000 data rows and 200 columns.");
       const [settings] = await database.select().from(levelSheetSiteSettings).where(eq(levelSheetSiteSettings.siteId, siteId));
       const detected = consultantLayoutLayers(req.body.matrix, settings?.bookChainageSystem ?? "ours", Number(settings?.consultantOffsetM ?? 0));
       const picks = req.body.layers;
@@ -565,106 +612,47 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
         const found = detected.find(layer => layer.key === String(pick.key));
         const layerName = String(pick.layerName ?? "").trim();
         if (!found || !layerName || layerName.length > 120 || !found.rows.length) fail("Choose a layer with rows and a valid name.");
-        const rows = found.rows.map(row => validateDesignRow(row, "EXCEL"));
-        if (new Set(rows.map(row => row.chainageOursKm)).size !== rows.length) fail(`Duplicate chainages in ${layerName}.`);
-        return { layerName, rows };
+        const rows = resolveDesignChainages(found.rows, req.body.duplicateChoices?.[found.key]).map(row => validateDesignRow(row, "EXCEL"));
+        return { layerName, rows, skippedChainages: repeatedDesignChainages(found.rows).filter(group => req.body.duplicateChoices?.[found.key]?.[group.key] == null).map(group => group.entries[0].row.chainageOursKm) };
       });
       if (new Set(chosen.map(row => row.layerName.toLowerCase())).size !== chosen.length) fail("Each selected layer needs a unique name.");
       const replace = req.body.replace === true;
       if (replace && !assertEdit(req, res, SECTION)) return;
-      if (!replace) {
-        for (const layer of chosen) {
-          const old = await database.select().from(levelSheetDesignRows).where(and(eq(levelSheetDesignRows.siteId, siteId), eq(levelSheetDesignRows.layerName, layer.layerName)));
-          if (old.some((candidate: any) => candidate.source !== "TYPED" && layer.rows.some(row => Math.abs(row.chainageOursKm - Number(candidate.chainageOursKm)) < 1e-9))
-              && !assertEdit(req, res, SECTION)) return;
-        }
-      }
-      const result = await database.transaction(async (tx: any) => {
-        let imported = 0;
-        let skipped = 0;
-        for (const layer of chosen) {
-          const oldRows = await tx.select().from(levelSheetDesignRows).where(and(eq(levelSheetDesignRows.siteId, siteId), eq(levelSheetDesignRows.layerName, layer.layerName)));
-          if (replace) for (const old of oldRows) {
-            await tx.delete(levelSheetDesignRows).where(eq(levelSheetDesignRows.id, old.id));
-            await audit(tx, req, old.id, "design_import_replace_delete", old, null);
-          }
-          for (const row of layer.rows) {
-            const old = replace ? null : oldRows.find((old: any) => Math.abs(Number(old.chainageOursKm) - row.chainageOursKm) < 1e-9);
-            if (old?.source === "TYPED") { skipped++; continue; }
-            const [saved] = old
-              ? await tx.update(levelSheetDesignRows).set({ ...row, updatedByUserId: req.authUser.id, updatedAt: new Date() }).where(eq(levelSheetDesignRows.id, old.id)).returning()
-              : await tx.insert(levelSheetDesignRows).values({ ...row, siteId, layerName: layer.layerName, createdByUserId: req.authUser.id, updatedByUserId: req.authUser.id }).returning();
-            if (!saved) fail("A design row could not be saved.", 409);
-            await audit(tx, req, saved.id, old ? "design_import_update" : "design_import_add", old ?? null, saved);
-            imported++;
-          }
-        }
-        return { imported, skipped };
-      });
-      res.json(result);
-    } catch (error) { return errorResponse(res, error); }
+      const result = await saveLevelDesignImport(database, req, siteId, chosen, replace, audit, () => assertEdit(req, res, SECTION));
+      res.json({ imported: result.imported.length, skipped: result.skipped.length, layers: result.layers });
+    } catch (error) { if (!res.headersSent) return errorResponse(res, error); }
+    finally { release?.(); }
   });
 
   app.post("/api/level-sheets/design/import", async (req: any, res) => {
     if (!assertCreate(req, res, SECTION)) return;
+    let release: (() => void) | undefined;
     try {
       const siteId = positiveId(req.body?.siteId, "site", false) as number;
       const layerName = String(req.body?.layerName ?? "").trim();
       if (!layerName || layerName.length > 120) fail("Enter a layer name.");
       await assertSiteAllowed(req, siteId);
+      release = beginImport(siteId);
       const [settings] = await database.select().from(levelSheetSiteSettings).where(eq(levelSheetSiteSettings.siteId, siteId)).limit(1);
       const system = (settings?.bookChainageSystem ?? "ours") as BookChainageSystem;
       const offset = Number(settings?.consultantOffsetM ?? 0);
       const rawRows = req.body?.rows;
-      if (!Array.isArray(rawRows) || rawRows.length < 1 || rawRows.length > 5000) fail("Choose an Excel sheet with 1 to 5,000 rows.");
+      if (!Array.isArray(rawRows) || rawRows.length < 1 || rawRows.length > 10000) fail("Choose an Excel sheet with 1 to 10,000 rows.");
       const columns = req.body?.columns;
       if (!columns || ["chainage", "centreLevel", "crossfallLeft", "crossfallRight", "topWidthLeft", "topWidthRight"]
         .some(key => typeof columns[key] !== "string" || !columns[key])) {
         fail("Map chainage, centre level, both cross-falls and both top widths.");
       }
-      const normalized = normalizeDesignImportRows(rawRows, columns, system, offset)
+      const allRows = normalizeDesignImportRows(rawRows, columns, system, offset);
+      const normalized = resolveDesignChainages(allRows, req.body.duplicateChoices?.single)
         .map(row => validateDesignRow(row, "EXCEL"));
-      const normalizedChainages = normalized.map(row => row.chainageOursKm).sort((a, b) => a - b);
-      for (let i = 1; i < normalizedChainages.length; i++) {
-        if (Math.abs(normalizedChainages[i] - normalizedChainages[i - 1]) < 1e-9) fail("The Excel file has duplicate chainages.");
-      }
       const replace = req.body?.replace === true;
       if (replace && !assertEdit(req, res, SECTION)) return;
-      const result = await database.transaction(async (tx: any) => {
-        const oldRows = await tx.select().from(levelSheetDesignRows).where(and(
-          eq(levelSheetDesignRows.siteId, siteId), eq(levelSheetDesignRows.layerName, layerName),
-        )).orderBy(asc(levelSheetDesignRows.chainageOursKm));
-        if (replace) {
-          for (const old of oldRows) {
-            await tx.delete(levelSheetDesignRows).where(eq(levelSheetDesignRows.id, old.id));
-            await audit(tx, req, old.id, "design_import_replace_delete", old, null);
-          }
-        }
-        const imported: any[] = [];
-        const skipped: number[] = [];
-        for (const row of normalized) {
-          const existing = replace ? null : oldRows.find((candidate: any) =>
-            Math.abs(Number(candidate.chainageOursKm) - row.chainageOursKm) < 1e-9,
-          );
-          if (existing?.source === "TYPED") {
-            skipped.push(row.chainageOursKm);
-            continue;
-          }
-          const [saved] = existing
-            ? await tx.update(levelSheetDesignRows).set({
-                ...row, updatedByUserId: req.authUser.id, updatedAt: new Date(),
-              }).where(eq(levelSheetDesignRows.id, existing.id)).returning()
-            : await tx.insert(levelSheetDesignRows).values({
-                ...row, siteId, layerName, createdByUserId: req.authUser.id, updatedByUserId: req.authUser.id,
-              }).returning();
-          if (!saved) fail(`Excel row at ${row.chainageOursKm} was not saved.`, 409);
-          imported.push(saved);
-          await audit(tx, req, saved.id, existing ? "design_import_update" : "design_import_add", existing ?? null, saved);
-        }
-        return { imported, skipped };
-      });
+      const skippedChainages = repeatedDesignChainages(allRows).filter(group => req.body.duplicateChoices?.single?.[group.key] == null).map(group => group.entries[0].row.chainageOursKm);
+      const result = await saveLevelDesignImport(database, req, siteId, [{ layerName, rows: normalized, skippedChainages }], replace, audit, () => assertEdit(req, res, SECTION));
       res.json(result);
-    } catch (error) { return errorResponse(res, error); }
+    } catch (error) { if (!res.headersSent) return errorResponse(res, error); }
+    finally { release?.(); }
   });
 
   app.post("/api/level-sheets/design/derive", async (req: any, res) => {

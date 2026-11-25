@@ -90,6 +90,7 @@ beforeAll(async () => {
   await pg.exec(readFileSync(new URL("../migrations/0071_level_sheets.sql", import.meta.url), "utf8"));
   await pg.exec(readFileSync(new URL("../migrations/0074_level_sheet_tbms.sql", import.meta.url), "utf8"));
   await pg.exec(readFileSync(new URL("../migrations/0075_level_sheet_basis.sql", import.meta.url), "utf8"));
+  await pg.exec(readFileSync(new URL("../migrations/0076_level_sheet_layer_defaults.sql", import.meta.url), "utf8"));
   state.db = drizzle(pg, { schema });
   state.storage = { getUserPermittedSiteIds: async () => state.permittedSiteIds };
 
@@ -118,7 +119,7 @@ beforeAll(async () => {
   const { registerLevelSheetRoutes } = await import("../server/levelSheetRoutes");
   registerRoutes = registerLevelSheetRoutes;
   app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: "10mb" }));
   app.use((req: any, _res, next) => {
     req.authUser = state.user;
     req.authPermissions = { level_sheets: state.permissions };
@@ -131,6 +132,7 @@ beforeAll(async () => {
 afterAll(async () => { await pg?.close(); });
 
 beforeEach(async () => {
+  await state.db.delete(schema.levelSheetLayerDefaults);
   await state.db.delete(schema.levelSheetTbms);
   await state.db.delete(schema.levelSheetStaff);
   await state.db.delete(schema.levelSheets);
@@ -143,6 +145,68 @@ beforeEach(async () => {
 });
 
 describe("LEVELS-01 level-sheet routes", () => {
+  it("fills typed rows from site/layer defaults, allows a row override and does not change saved rows", async () => {
+    await request(app).post("/api/level-sheets/design/defaults").send({
+      siteId, layerName: "WMM", crossfallLeftPct: 2.5, crossfallRightPct: 3, topWidthLeftM: 4, topWidthRightM: 5,
+    }).expect(200);
+    const first = await request(app).post("/api/level-sheets/design/rows").send({ siteId, layerName: "WMM", chainageOursKm: 1, centreLevel: 100 }).expect(201);
+    expect(first.body).toMatchObject({ crossfallLeftPct: 2.5, crossfallRightPct: 3, topWidthLeftM: 4, topWidthRightM: 5 });
+    const second = await request(app).post("/api/level-sheets/design/rows").send({ siteId, layerName: "WMM", chainageOursKm: 1.01, centreLevel: 101, crossfallLeftPct: 0 }).expect(201);
+    expect(second.body.crossfallLeftPct).toBe(0);
+    await request(app).post("/api/level-sheets/design/defaults").send({
+      siteId, layerName: "WMM", crossfallLeftPct: 1, crossfallRightPct: 1, topWidthLeftM: 2, topWidthRightM: 2,
+    }).expect(200);
+    const result = await request(app).get(`/api/level-sheets/design?siteId=${siteId}&layerName=WMM`).expect(200);
+    expect(result.body.rows[0].topWidthLeftM).toBe(4);
+    expect(result.body.defaults.topWidthLeftM).toBe(2);
+    const layers = await request(app).get(`/api/level-sheets/design/layers?siteId=${siteId}`).expect(200);
+    expect(layers.body[0]).toMatchObject({ layerName: "WMM", count: 2, fromKm: 1 });
+  });
+  it("imports 6,000 rows in one request with one layer audit in under 20 seconds", async () => {
+    const start = Date.now();
+    const result = await request(app).post("/api/level-sheets/design/import-layers").send({
+      siteId, fileName: "fixture-6000.xlsx",
+      matrix: [["", "WMM", "", ""], ["Chainage", -5, 0, 5], ...Array.from({ length: 6000 }, (_, i) => [i * 10, 99.9, 100, 99.9])],
+      layers: [{ key: "1", layerName: "WMM" }],
+    }).expect(200);
+    expect(result.body.imported).toBe(6000);
+    expect(Date.now() - start).toBeLessThan(20000);
+    const audit = await state.db.select().from(schema.auditLogs);
+    expect(audit).toHaveLength(1);
+    expect(audit[0].action).toBe("design_layer_import");
+    expect(audit[0].newValues).toMatchObject({ count: 6000, fileName: "fixture-6000.xlsx", fromKm: 0, toKm: 59.99 });
+    expect((await state.db.select().from(schema.levelSheetDesignRows))).toHaveLength(6000);
+  }, 30000);
+  it("skips repeated chainages by default and applies only the row explicitly chosen", async () => {
+    const payload = { siteId, layerName: "WMM", columns: { chainage: "ch", centreLevel: "rl", crossfallLeft: "l", crossfallRight: "r", topWidthLeft: "wl", topWidthRight: "wr" },
+      rows: [
+        { ch: "0+750", rl: 100, l: 2, r: 2, wl: 5, wr: 5 },
+        { ch: "0+750", rl: 101, l: 3, r: 3, wl: 6, wr: 6 },
+        { ch: "0+760", rl: 102, l: 4, r: 4, wl: 7, wr: 7 },
+      ] };
+    const skipped = await request(app).post("/api/level-sheets/design/import").send(payload).expect(200);
+    expect(skipped.body.imported).toHaveLength(1);
+    const chosen = await request(app).post("/api/level-sheets/design/import").send({ ...payload, duplicateChoices: { single: { "0.75": 1 } } }).expect(200);
+    expect(chosen.body.imported).toHaveLength(2);
+    expect(chosen.body.imported.find((row: any) => row.chainageOursKm === 0.75).centreLevel).toBe(101);
+  });
+  it("refuses a second same-site import while the first is saving, then unlocks", async () => {
+    const payload = { siteId, layerName: "WMM", columns: { chainage: "ch", centreLevel: "rl", crossfallLeft: "l", crossfallRight: "r", topWidthLeft: "wl", topWidthRight: "wr" },
+      rows: [{ ch: 1, rl: 100, l: 2, r: 2, wl: 5, wr: 5 }] };
+    let ready!: () => void; let release!: () => void;
+    const entered = new Promise<void>(resolve => { ready = resolve; });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const original = state.db.transaction.bind(state.db);
+    const pause = vi.spyOn(state.db, "transaction").mockImplementationOnce(async (callback: any) => { ready(); await gate; return original(callback); });
+    const first = request(app).post("/api/level-sheets/design/import").send(payload).then(response => response);
+    try {
+      await entered;
+      const refused = await request(app).post("/api/level-sheets/design/import").send(payload).expect(409);
+      expect(refused.body.message).toContain("already running");
+    } finally { release(); pause.mockRestore(); }
+    expect((await first).status).toBe(200);
+    await request(app).post("/api/level-sheets/design/import").send(payload).expect(200);
+  });
   it("compares saved sheets read-only, reports basis, enforces site access and changes no sheets", async () => {
     const readings = (value: number) => [0, 0.01].map(chainageOursKm => ({ chainageOursKm, points: [
       { side: "L", distanceM: 5, value }, { side: "R", distanceM: 5, value },
@@ -174,11 +238,11 @@ describe("LEVELS-01 level-sheet routes", () => {
       crossfallLeftPct: 0, crossfallRightPct: 0, topWidthLeftM: 0, topWidthRightM: 0,
     }).expect(201);
     const first = await request(app).post("/api/level-sheets/design/import-layers").send(payload).expect(200);
-    expect(first.body).toEqual({ imported: 3, skipped: 1 });
+    expect(first.body).toMatchObject({ imported: 3, skipped: 1 });
     const ogl = await request(app).get(`/api/level-sheets/design?siteId=${siteId}&layerName=OGL`).expect(200);
     expect(ogl.body.rows[0].centreLevel).toBe(500);
     const replaced = await request(app).post("/api/level-sheets/design/import-layers").send({ ...payload, replace: true }).expect(200);
-    expect(replaced.body).toEqual({ imported: 4, skipped: 0 });
+    expect(replaced.body).toMatchObject({ imported: 4, skipped: 0 });
     const wmm = await request(app).get(`/api/level-sheets/design?siteId=${siteId}&layerName=WMM%20top`).expect(200);
     expect(wmm.body.rows[0].topWidthLeftM).toBe(7);
     expect(wmm.body.rows[0].crossfallLeftPct).toBeCloseTo(2.5, 5);
@@ -238,7 +302,7 @@ describe("LEVELS-01 level-sheet routes", () => {
     expect(derived.body.created).toHaveLength(2);
     expect(derived.body.created[0]).toMatchObject({ centreLevel: 99.75, source: "TYPED" });
     const audit = await state.db.select().from(schema.auditLogs);
-    expect(audit.map((row: any) => row.action)).toContain("design_import_add");
+    expect(audit.map((row: any) => row.action)).toContain("design_layer_import");
     expect(audit.map((row: any) => row.action)).toContain("design_derive_from_frl");
   });
 

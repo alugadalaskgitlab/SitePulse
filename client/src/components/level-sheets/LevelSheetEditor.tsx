@@ -388,7 +388,8 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
         </TabsList>
         <TabsContent value="design">
           <Card><CardContent className="p-4">
-            <DesignLevelsTab siteId={siteId} layerName={form.layerName} settings={settings} canCreate={canCreate} canEdit={canEdit} />
+            <p className="mb-3 text-sm">Design levels for this sheet’s layer are read-only here. <button type="button" className="underline" onClick={() => onOpenSiteTab?.("design", form.layerName)}>Edit in Design levels</button></p>
+            <DesignLevelsTab siteId={siteId} layerName={form.layerName} settings={settings} canCreate={false} canEdit={false} readOnly />
           </CardContent></Card>
         </TabsContent>
         <TabsContent value="readings">

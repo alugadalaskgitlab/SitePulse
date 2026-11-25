@@ -11,6 +11,7 @@ import {
   formatChainage,
   normalizeDesignImportRows,
   consultantLayoutLayers,
+  repeatedDesignChainages, resolveDesignChainages,
   type ConsultantLayerImport,
   parseChainage,
   toOursChainage,
@@ -62,12 +63,16 @@ function asNumber(value: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdit }: {
+export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdit, readOnly = false, onImported }: {
   siteId: number; layerName: string; settings: Settings; canCreate: boolean; canEdit: boolean;
+  readOnly?: boolean; onImported?: (layer: string) => void;
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+  const importBusy = useRef(false);
+  const [duplicateChoices, setDuplicateChoices] = useState<Record<string, Record<string, number | null>>>({});
+  const [defaults, setDefaults] = useState<Record<string, string>>({});
   const [newRow, setNewRow] = useState({
     chainage: "", centreLevel: "", crossfallLeftPct: "", crossfallRightPct: "",
     topWidthLeftM: "", topWidthRightM: "",
@@ -94,6 +99,7 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
   });
   useEffect(() => {
     setRows((designQuery.data?.rows ?? []) as Row[]);
+    setDefaults(Object.fromEntries(["crossfallLeftPct", "crossfallRightPct", "topWidthLeftM", "topWidthRightM"].map(key => [key, String(designQuery.data?.defaults?.[key] ?? 0)])));
   }, [designQuery.data]);
   useEffect(() => {
     setNewRow({ chainage: "", centreLevel: "", crossfallLeftPct: "", crossfallRightPct: "", topWidthLeftM: "", topWidthRightM: "" });
@@ -113,7 +119,15 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
 
   const refreshRows = async () => {
     await queryClient.invalidateQueries({ queryKey: ["/api/level-sheets/design", siteId, layerName] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/level-sheets/design/layers", siteId] });
   };
+  const defaultsMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/level-sheets/design/defaults", {
+      siteId, layerName, ...Object.fromEntries(Object.entries(defaults).map(([key, value]) => [key, asNumber(value)])),
+    }),
+    onSuccess: async () => { await refreshRows(); toast({ title: "Layer defaults saved" }); },
+    onError: (error: Error) => toast({ title: "Could not save defaults", description: error.message, variant: "destructive" }),
+  });
   const addMutation = useMutation({
     mutationFn: async () => {
       const bookKm = parseChainage(newRow.chainage);
@@ -122,10 +136,10 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
         siteId, layerName,
         chainageOursKm: toOursChainage(bookKm, settings.bookChainageSystem, Number(settings.consultantOffsetM)),
         centreLevel: asNumber(newRow.centreLevel),
-        crossfallLeftPct: asNumber(newRow.crossfallLeftPct),
-        crossfallRightPct: asNumber(newRow.crossfallRightPct),
-        topWidthLeftM: asNumber(newRow.topWidthLeftM),
-        topWidthRightM: asNumber(newRow.topWidthRightM),
+        crossfallLeftPct: asNumber(newRow.crossfallLeftPct) ?? asNumber(defaults.crossfallLeftPct ?? "") ?? 0,
+        crossfallRightPct: asNumber(newRow.crossfallRightPct) ?? asNumber(defaults.crossfallRightPct ?? "") ?? 0,
+        topWidthLeftM: asNumber(newRow.topWidthLeftM) ?? asNumber(defaults.topWidthLeftM ?? "") ?? 0,
+        topWidthRightM: asNumber(newRow.topWidthRightM) ?? asNumber(defaults.topWidthRightM ?? "") ?? 0,
       };
       if (Object.values(payload).some(value => value == null)) throw new Error("Enter a level, both cross-falls and both widths.");
       const response = await apiRequest("POST", "/api/level-sheets/design/rows", payload);
@@ -160,28 +174,32 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
     mutationFn: async () => {
       if (multiLayers.length) {
         const response = await apiRequest("POST", "/api/level-sheets/design/import-layers", {
-          siteId, matrix, layers: multiLayers.filter(layer => layer.selected).map(layer => ({ key: layer.key, layerName: layer.layerName })), replace: replaceImport,
+          siteId, matrix, layers: multiLayers.filter(layer => layer.selected).map(layer => ({ key: layer.key, layerName: layer.layerName })), replace: replaceImport, duplicateChoices, fileName: importName,
         });
         const result = await response.json();
-        return { imported: Array(result.imported).fill(null), skipped: Array(result.skipped).fill(null) };
+        return { ...result, imported: Array(result.imported).fill(null), skipped: Array(result.skipped).fill(null) };
       }
       const normalized = normalizeDesignImportRows(
         importRows, mapping, settings.bookChainageSystem, Number(settings.consultantOffsetM),
       );
       const response = await apiRequest("POST", "/api/level-sheets/design/import", {
-        siteId, layerName, columns: mapping, rows: importRows, replace: replaceImport,
+        siteId, layerName, columns: mapping, rows: importRows, replace: replaceImport, duplicateChoices, fileName: importName,
       });
       const result = await response.json();
       return { ...result, previewCount: normalized.length };
     },
     onSuccess: async result => {
-      setImportMessage(`${result.imported.length} rows imported${result.skipped.length ? ` · ${result.skipped.length} typed rows kept` : ""}.`);
+      setImportMessage((result.layers ?? []).map((layer: any) => `Imported ${layer.count} rows into ${layer.layerName.toUpperCase()} (${layer.fromKm == null ? "—" : formatChainage(layer.fromKm)} to ${layer.toKm == null ? "—" : formatChainage(layer.toKm)})`).join("\n")
+        + (result.skipped.length ? `\n${result.skipped.length} typed rows kept.` : ""));
       setImportOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["/api/level-sheets/design", siteId] });
       await queryClient.invalidateQueries({ queryKey: ["/api/level-sheets/bootstrap", siteId] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/level-sheets/design/layers", siteId] });
+      if (result.layers?.[0]) onImported?.(result.layers[0].layerName);
       toast({ title: "Excel design levels imported", description: `${result.imported.length} rows saved.` });
     },
     onError: error => toast({ title: "Could not import design levels", description: error.message, variant: "destructive" }),
+    onSettled: () => { importBusy.current = false; },
   });
   const deriveMutation = useMutation({
     mutationFn: async () => {
@@ -208,6 +226,7 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
   const readExcel = async (file?: File) => {
     if (!file) return;
     try {
+      setDuplicateChoices({});
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rawMatrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
@@ -245,7 +264,13 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
     } catch { return []; }
   }, [importRows, mapping, settings]);
 
-  const changeMapping = (key: keyof Mapping, value: string) => setMapping(current => ({ ...current, [key]: value }));
+  const changeMapping = (key: keyof Mapping, value: string) => { setDuplicateChoices({}); setMapping(current => ({ ...current, [key]: value })); };
+  const importGroups = useMemo(() => {
+    if (multiLayers.length) return multiLayers.filter(layer => layer.selected);
+    try { return [{ key: "single", layerName, rows: normalizeDesignImportRows(importRows, mapping, settings.bookChainageSystem, settings.consultantOffsetM) }]; }
+    catch { return []; }
+  }, [multiLayers, importRows, mapping, layerName, settings]);
+  const importCount = importGroups.reduce((sum, group) => sum + resolveDesignChainages(group.rows, duplicateChoices[group.key]).length, 0);
 
   return (
     <div className="space-y-5">
@@ -260,7 +285,16 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
             {canCreate && <Button variant="outline" onClick={() => fileRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import consultant Excel</Button>}
           </div>
         </div>
-        {importMessage && <p role="status" className="text-sm text-muted-foreground">{importMessage}</p>}
+        {importMessage && <p role="status" className="whitespace-pre-line text-sm text-muted-foreground">{importMessage}</p>}
+        {!readOnly && <section className="space-y-2 rounded border p-3">
+          <h4 className="font-medium">Defaults for {layerName.toUpperCase()}</h4>
+          <div className="grid gap-2 sm:grid-cols-4">{[
+            ["crossfallLeftPct", "Cross-fall left %"], ["crossfallRightPct", "Cross-fall right %"],
+            ["topWidthLeftM", "Top width left (m)"], ["topWidthRightM", "Top width right (m)"],
+          ].map(([key, label]) => <label key={key} className="text-sm">{label}<Input aria-label={`Default ${label}`} inputMode="decimal" value={defaults[key] ?? ""} disabled={!canEdit}
+            onChange={event => setDefaults(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
+          {canEdit && <Button variant="outline" disabled={defaultsMutation.isPending} onClick={() => defaultsMutation.mutate()}>Save defaults</Button>}
+        </section>}
         {designQuery.isLoading && <p className="text-sm text-muted-foreground">Loading design rows…</p>}
         {designQuery.isError && <p role="alert" className="text-sm text-destructive">{(designQuery.error as Error).message}</p>}
         {!!rows.length && <div className="overflow-x-auto rounded border">
@@ -300,16 +334,16 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
           <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
             <Input aria-label="New design chainage" placeholder="Chainage" value={newRow.chainage} onChange={event => setNewRow(current => ({ ...current, chainage: event.target.value }))} />
             <Input aria-label="New centre level" placeholder="Centre level" inputMode="decimal" value={newRow.centreLevel} onChange={event => setNewRow(current => ({ ...current, centreLevel: event.target.value }))} />
-            <Input aria-label="New left cross-fall" placeholder="Left %" inputMode="decimal" value={newRow.crossfallLeftPct} onChange={event => setNewRow(current => ({ ...current, crossfallLeftPct: event.target.value }))} />
-            <Input aria-label="New right cross-fall" placeholder="Right %" inputMode="decimal" value={newRow.crossfallRightPct} onChange={event => setNewRow(current => ({ ...current, crossfallRightPct: event.target.value }))} />
-            <Input aria-label="New left top width" placeholder="Left width (m)" inputMode="decimal" value={newRow.topWidthLeftM} onChange={event => setNewRow(current => ({ ...current, topWidthLeftM: event.target.value }))} />
-            <Input aria-label="New right top width" placeholder="Right width (m)" inputMode="decimal" value={newRow.topWidthRightM} onChange={event => setNewRow(current => ({ ...current, topWidthRightM: event.target.value }))} />
+            <Input aria-label="New left cross-fall" placeholder="Left %" inputMode="decimal" value={newRow.crossfallLeftPct || defaults.crossfallLeftPct || ""} onChange={event => setNewRow(current => ({ ...current, crossfallLeftPct: event.target.value }))} />
+            <Input aria-label="New right cross-fall" placeholder="Right %" inputMode="decimal" value={newRow.crossfallRightPct || defaults.crossfallRightPct || ""} onChange={event => setNewRow(current => ({ ...current, crossfallRightPct: event.target.value }))} />
+            <Input aria-label="New left top width" placeholder="Left width (m)" inputMode="decimal" value={newRow.topWidthLeftM || defaults.topWidthLeftM || ""} onChange={event => setNewRow(current => ({ ...current, topWidthLeftM: event.target.value }))} />
+            <Input aria-label="New right top width" placeholder="Right width (m)" inputMode="decimal" value={newRow.topWidthRightM || defaults.topWidthRightM || ""} onChange={event => setNewRow(current => ({ ...current, topWidthRightM: event.target.value }))} />
           </div>
           <Button className="mt-2" onClick={() => addMutation.mutate()} disabled={addMutation.isPending}><Plus className="mr-2 h-4 w-4" /> Add design row</Button>
         </div>}
       </section>
 
-      <section className="space-y-3 rounded-lg border p-3">
+      {!readOnly && <section className="space-y-3 rounded-lg border p-3">
         <div className="flex items-center gap-2"><FileSpreadsheet className="h-4 w-4" /><h3 className="font-semibold">Work out from FRL − depth</h3></div>
         <p className="text-sm text-muted-foreground">Layer level = FRL at centre − depth (m). Cross-falls and widths copy from the FRL rows.</p>
         <div className="grid gap-2 md:grid-cols-4">
@@ -327,12 +361,12 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
           <input type="checkbox" checked={replaceDerived} onChange={event => setReplaceDerived(event.target.checked)} />
           Replace target design rows
         </label>}
-      </section>
+      </section>}
 
       {importOpen && <div role="dialog" aria-modal="true" aria-label="Import consultant Excel" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
-        <div className="max-h-[90vh] w-full max-w-5xl space-y-4 overflow-auto rounded-lg bg-background p-4 shadow-lg">
+        <fieldset disabled={importMutation.isPending} className="max-h-[90vh] w-full max-w-5xl space-y-4 overflow-auto rounded-lg bg-background p-4 shadow-lg">
           <div className="flex items-center justify-between gap-3">
-            <div><h3 className="font-semibold">Import consultant Excel</h3><p className="text-sm text-muted-foreground">{importName} · {importRows.length} rows</p></div>
+            <div><h3 className="font-semibold">Import consultant Excel</h3><p className="text-sm text-muted-foreground">{importName} · {importCount} rows to import</p></div>
             <Button variant="outline" onClick={() => setImportOpen(false)}>Close</Button>
           </div>
           {!!multiLayers.length && <div className="space-y-2">
@@ -345,6 +379,15 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
               </p>)}</div>
             </div>)}
           </div>}
+          {importGroups.map(group => repeatedDesignChainages(group.rows).map(repeat => <div className="space-y-1 rounded border p-2" key={`${group.key}:${repeat.key}`}>
+            <p>Repeated chainage {formatChainage(repeat.entries[0].row.chainageOursKm)} · {group.layerName.toUpperCase()}</p>
+            {repeat.entries.map(({ row, index }) => <p key={index} className="text-xs">Row {index + 1}: centre {row.centreLevel.toFixed(3)} · left {row.crossfallLeftPct}% / {row.topWidthLeftM.toFixed(2)} m · right {row.crossfallRightPct}% / {row.topWidthRightM.toFixed(2)} m</p>)}
+            <select aria-label={`Repeated chainage ${group.key} ${repeat.key}`} className="rounded border p-2" value={duplicateChoices[group.key]?.[repeat.key] ?? ""}
+              onChange={event => setDuplicateChoices(current => ({ ...current, [group.key]: { ...current[group.key], [repeat.key]: event.target.value === "" ? null : Number(event.target.value) } }))}>
+              <option value="">Keep neither — skip this chainage</option>
+              {repeat.entries.map(({ index }) => <option key={index} value={index}>Keep row {index + 1}</option>)}
+            </select>
+          </div>))}
           {!multiLayers.length && <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {MAPPING_FIELDS.map(([key, label]) => <label key={key} className="space-y-1 text-sm">
               <span>{label}</span>
@@ -370,11 +413,11 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
           </div>}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setImportOpen(false)}>Cancel</Button>
-            <Button onClick={() => importMutation.mutate()} disabled={!canCreate || importMutation.isPending || (multiLayers.length ? !multiLayers.some(layer => layer.selected) || multiLayers.some(layer => layer.selected && (!layer.layerName.trim() || !layer.rows.length)) : !importRows.length || !preview.length || Object.values(mapping).some(value => !value)) || (replaceImport && !canEdit)}>
-              Import {multiLayers.length ? multiLayers.filter(layer => layer.selected).reduce((sum, layer) => sum + layer.rows.length, 0) : importRows.length} rows
+            <Button onClick={() => { if (importBusy.current) return; importBusy.current = true; importMutation.mutate(); }} disabled={!canCreate || importMutation.isPending || !importCount || (multiLayers.length ? !multiLayers.some(layer => layer.selected) || multiLayers.some(layer => layer.selected && (!layer.layerName.trim() || !layer.rows.length)) : !importRows.length || !preview.length || Object.values(mapping).some(value => !value)) || (replaceImport && !canEdit)}>
+              {importMutation.isPending ? "Importing" : "Import"} {importCount} rows{importMutation.isPending ? "…" : ""}
             </Button>
           </div>
-        </div>
+        </fieldset>
       </div>}
     </div>
   );

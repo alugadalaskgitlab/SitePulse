@@ -91,6 +91,7 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
   const [selectedChainage, setSelectedChainage] = useState<number | null>(null);
   const [manualStart, setManualStart] = useState(false);
   const [manualFinish, setManualFinish] = useState(false);
+  useEffect(() => { setManualStart(false); setManualFinish(false); setSelectedChainage(null); }, [resetKey]);
   useEffect(() => {
     const hydrated = hydrateRows(rows);
     setColumns(hydrated.columns);
@@ -199,19 +200,19 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
   const totalWidth = Math.max(orderedColumns.length * 104 + 250, 700);
   const checkError = calculation.closingErrorMm;
   const tbmPicker = (finish = false) => {
-    const name = finish ? header.closingTbmName || header.tbmName : header.tbmName;
-    const rl = finish ? header.closingTbmRl || header.tbmRl : header.tbmRl;
+    const name = finish ? manualFinish ? header.closingTbmName : header.closingTbmName || header.tbmName : header.tbmName;
+    const rl = finish ? manualFinish ? header.closingTbmRl : header.closingTbmRl || header.tbmRl : header.tbmRl;
     const active = tbms.filter(row => row.active);
-    const selected = !(finish ? manualFinish : manualStart) && active.find(row => row.name === name && Number(row.rl) === Number(rl));
+    const selected = (finish ? manualFinish : manualStart) ? undefined : active.find(row => row.name === name && Number(row.rl).toFixed(3) === Number(rl).toFixed(3));
     return <div className="space-y-2">
       <label className="block text-sm">{finish ? "Finish on TBM" : "Start from TBM"}
         <select aria-label={finish ? "Finish on TBM" : "Start from TBM"} className="block w-full rounded border p-2" disabled={readOnly}
           value={selected?.id ?? "manual"} onChange={event => {
             const row = active.find(row => String(row.id) === event.target.value);
             if (finish) setManualFinish(!row); else setManualStart(!row);
-            if (finish) onHeaderChange({ ...header, closingTbmName: row?.name ?? "", closingTbmRl: row ? Number(row.rl).toFixed(3) : "" });
-            else onHeaderChange({ ...header, tbmName: row?.name ?? "", tbmRl: row ? Number(row.rl).toFixed(3) : "",
-              ...(!header.closingTbmName || header.closingTbmName === header.tbmName ? { closingTbmName: row?.name ?? "", closingTbmRl: row ? Number(row.rl).toFixed(3) : "" } : {}) });
+            if (finish) onHeaderChange({ ...header, closingTbmName: row?.name ?? "", closingTbmRl: row ? String(row.rl) : "" });
+            else onHeaderChange({ ...header, tbmName: row?.name ?? "", tbmRl: row ? String(row.rl) : "",
+              ...(!manualFinish && (!header.closingTbmName || header.closingTbmName === header.tbmName) ? { closingTbmName: row?.name ?? "", closingTbmRl: row ? String(row.rl) : "" } : {}) });
           }}>
           {active.map(row => <option key={row.id} value={row.id}>{row.name.toUpperCase()} · {row.chainageOursKm == null ? "" : formatChainage(row.chainageOursKm)} · {Number(row.rl).toFixed(3)}</option>)}
           <option value="manual">Type a TBM</option>
@@ -220,7 +221,7 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
       {!finish && !active.length && <p className="text-sm">No TBMs saved for this site — <button type="button" className="underline" onClick={onOpenTbms}>add or import them in the TBMs tab</button></p>}
       {!selected && <label className="block text-sm">TBM name<Input aria-label={finish ? "Finish TBM name" : "TBM name"} value={name ?? ""} disabled={readOnly}
         onChange={event => onHeaderChange({ ...header, [finish ? "closingTbmName" : "tbmName"]: event.target.value })} /></label>}
-      <label className="block text-sm">Known level (RL)<Input aria-label={finish ? "Finish TBM RL" : "Known TBM RL"} inputMode="decimal" value={rl ?? ""} disabled={readOnly} readOnly={!!selected}
+      <label className="block text-sm">Known level (RL)<Input aria-label={finish ? "Finish TBM RL" : "Known TBM RL"} inputMode="decimal" value={selected ? Number(selected.rl).toFixed(3) : rl ?? ""} disabled={readOnly} readOnly={!!selected}
         onChange={event => { if (!selected) onHeaderChange({ ...header, [finish ? "closingTbmRl" : "tbmRl"]: event.target.value }); }} /></label>
     </div>;
   };
@@ -293,7 +294,7 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
           <tbody>
             {rows.map((row, rowIndex) => {
               const section = calculationByChainage.get(row.chainageOursKm);
-              return <tr key={`${row.chainageOursKm}:${rowIndex}`} className="border-b align-top">
+              return <tr key={rowIndex} className="border-b align-top">
                 <td onClick={() => setSelectedChainage(row.chainageOursKm)} className={`sticky left-0 z-10 min-w-[150px] border-r bg-background p-2 ${selectedChainage === row.chainageOursKm ? "ring-2 ring-inset ring-primary" : ""}`}>
                   <Input aria-label={`Reading chainage ${rowIndex + 1}`} className="h-8 w-[132px]" value={formatChainage(toBookChainage(row.chainageOursKm, settings.bookChainageSystem, Number(settings.consultantOffsetM)))}
                     inputMode="decimal" onChange={event => setChainage(rowIndex, event.target.value)} disabled={readOnly} />
@@ -309,10 +310,10 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
                     </label>
                     {point && <Input className="mt-1 h-7 w-full text-center text-[10px]" aria-label={`Remark ${rowIndex + 1} ${column.side} ${column.distanceM ?? ""}`}
                       placeholder="Remark" value={point.remark ?? ""} onChange={event => setPointRemark(rowIndex, column.key, event.target.value)} disabled={readOnly} />}
-                    {calculated?.rl != null && mode === "staff" && <p className="mt-1 text-[10px]">RL {calculated.rl.toFixed(3)}</p>}
+                    {calculated?.rl != null && mode === "staff" && <p className="mt-1 text-[10px]">Level (RL) {calculated.rl.toFixed(3)}</p>}
                     {calculated?.comparison === "outside width" && <p className="mt-1 text-[10px] font-medium">Outside width</p>}
                     {calculated?.differenceMm != null && <>
-                      <p className="mt-1 text-[10px]">D {calculated.designLevel?.toFixed(3)}</p>
+                      <p className="mt-1 text-[10px]">Design {calculated.designLevel?.toFixed(3)}</p>
                       <p className={`text-[10px] font-semibold ${calculated.comparison === "Within" ? "" : "underline"}`}>
                         {calculated.differenceMm > 0 ? "+" : ""}{Math.round(calculated.differenceMm)} mm · {calculated.comparison}
                       </p>

@@ -526,6 +526,30 @@ export function deriveDesignRowsFromFrl(
   }));
 }
 
+export function designChainageKey(km: number) { return String(Math.fround(km)); }
+
+export function repeatedDesignChainages<T extends { chainageOursKm: number }>(rows: T[]) {
+  const groups = new Map<string, Array<{ row: T; index: number }>>();
+  rows.forEach((row, index) => {
+    const key = designChainageKey(row.chainageOursKm);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push({ row, index });
+  });
+  return [...groups].filter(([, entries]) => entries.length > 1).map(([key, entries]) => ({ key, entries }));
+}
+
+export function resolveDesignChainages<T extends { chainageOursKm: number }>(rows: T[], choices: Record<string, number | null> = {}) {
+  const repeats = new Map(repeatedDesignChainages(rows).map(group => [group.key, group]));
+  for (const group of repeats.values()) {
+    const choice = choices[group.key];
+    if (choice != null && !group.entries.some(entry => entry.index === choice)) throw new Error("Choose one of the repeated rows or keep neither.");
+  }
+  return rows.filter((row, index) => {
+    const key = designChainageKey(row.chainageOursKm);
+    return !repeats.has(key) || choices[key] === index;
+  });
+}
+
 export function normalizeDesignImportRows(
   rows: Array<Record<string, unknown>>,
   columns: {

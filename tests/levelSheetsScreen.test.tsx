@@ -54,6 +54,8 @@ describe("Level sheets screen", () => {
   it("shows the design/readings/results tabs and keeps editable point columns aligned", async () => {
     renderEditor();
     await screen.findByText("Design levels · GSB");
+    expect(screen.getByRole("button", { name: "Edit in Design levels" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Import consultant Excel" })).toBeNull();
     fireEvent.mouseDown(screen.getByRole("tab", { name: "2. Readings" }), { button: 0 });
     const chainage = await screen.findByRole("textbox", { name: "Reading chainage 1" });
     expect((chainage as HTMLInputElement).value).toBe("0+000");
@@ -172,6 +174,19 @@ describe("Level sheets screen", () => {
     expect((reading as HTMLInputElement).value).toBe("1,5");
     fireEvent.blur(reading);
     expect((reading as HTMLInputElement).value).toBe("1.5");
+  });
+  it("keeps the chainage input mounted and its decimal buffer while the chainage changes", async () => {
+    renderEditor();
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "2. Readings" }), { button: 0 });
+    const chainage = await screen.findByLabelText("Reading chainage 1");
+    fireEvent.focus(chainage);
+    for (const value of ["3", "3.", "3.5"]) {
+      fireEvent.change(chainage, { target: { value } });
+      expect(screen.getByLabelText("Reading chainage 1")).toBe(chainage);
+      expect((chainage as HTMLInputElement).value).toBe(value);
+    }
+    fireEvent.blur(chainage);
+    expect((chainage as HTMLInputElement).value).toBe("3+500");
   });
   it("offers all layers even after choosing Other, and uses plain staff steps", async () => {
     renderEditor();

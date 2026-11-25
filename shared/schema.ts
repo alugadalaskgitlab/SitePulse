@@ -321,6 +321,20 @@ export const levelSheetTbms = pgTable("level_sheet_tbms", {
   siteNameUq: uniqueIndex("level_sheet_tbms_site_name_uq").on(table.siteId, sql`lower(trim(${table.name}))`),
 }));
 
+export const levelSheetLayerDefaults = pgTable("level_sheet_layer_defaults", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  layerName: text("layer_name").notNull(),
+  crossfallLeftPct: real("crossfall_left_pct").notNull().default(0),
+  crossfallRightPct: real("crossfall_right_pct").notNull().default(0),
+  topWidthLeftM: real("top_width_left_m").notNull().default(0),
+  topWidthRightM: real("top_width_right_m").notNull().default(0),
+  updatedByUserId: integer("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => ({
+  siteLayerUq: uniqueIndex("level_sheet_layer_defaults_site_layer_uq").on(table.siteId, table.layerName),
+}));
+
 export const levelSheetDesignRows = pgTable("level_sheet_design_rows", {
   id: serial("id").primaryKey(),
   siteId: integer("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),

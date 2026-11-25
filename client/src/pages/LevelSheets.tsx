@@ -12,6 +12,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { LevelSheetEditor } from "@/components/level-sheets/LevelSheetEditor";
 import { TbmsTab } from "@/components/level-sheets/TbmsTab";
 import { BetweenSheetsTab } from "@/components/level-sheets/BetweenSheetsTab";
+import { SiteDesignLevelsTab } from "@/components/level-sheets/SiteDesignLevelsTab";
 
 type Bootstrap = {
   sites: Array<{ id: number; name: string }>;
@@ -53,6 +54,7 @@ export default function LevelSheets() {
   const [sheetId, setSheetId] = useState<number | null>(null);
   const [newSheet, setNewSheet] = useState(false);
   const [siteTab, setSiteTab] = useState("sheets");
+  const [designLayer, setDesignLayer] = useState("");
 
   const bootstrapQuery = useQuery<Bootstrap>({
     queryKey: ["/api/level-sheets/bootstrap", siteId],
@@ -116,6 +118,7 @@ export default function LevelSheets() {
             <Select value={siteId ? String(siteId) : ""} onValueChange={value => {
               setSiteId(Number(value));
               closeEditor();
+              setDesignLayer("");
             }}>
               <SelectTrigger id="level-sheet-site"><SelectValue placeholder="Choose site" /></SelectTrigger>
               <SelectContent>
@@ -137,11 +140,13 @@ export default function LevelSheets() {
         {bootstrapQuery.isLoading && <p className="text-sm text-muted-foreground">Loading sites…</p>}
         {bootstrapQuery.isError && <p role="alert" className="rounded border border-destructive/40 p-3 text-sm text-destructive">{(bootstrapQuery.error as Error).message}</p>}
         {!bootstrapQuery.isLoading && bootstrap?.sites.length === 0 && <p className="rounded border border-dashed p-4 text-sm">No accessible active sites.</p>}
-        {siteId && !newSheet && sheetId == null && <div className="flex gap-2">
+        {siteId && !newSheet && sheetId == null && <div className="flex flex-wrap gap-2">
           <Button variant={siteTab === "sheets" ? "default" : "outline"} onClick={() => setSiteTab("sheets")}>Level sheets</Button>
           <Button variant={siteTab === "tbms" ? "default" : "outline"} onClick={() => setSiteTab("tbms")}>TBMs</Button>
+          <Button variant={siteTab === "design" ? "default" : "outline"} onClick={() => setSiteTab("design")}>Design levels</Button>
           <Button variant={siteTab === "quantities" ? "default" : "outline"} onClick={() => setSiteTab("quantities")}>Quantities between sheets</Button>
         </div>}
+        {siteId && bootstrap && !newSheet && sheetId == null && siteTab === "design" && <SiteDesignLevelsTab key={siteId} siteId={siteId} settings={bootstrap.settings} layerOptions={bootstrap.layerOptions} initialLayer={designLayer} canCreate={canCreate} canEdit={canEdit} />}
         {siteId && bootstrap && !newSheet && sheetId == null && siteTab === "quantities" && <BetweenSheetsTab key={siteId} siteId={siteId} siteName={selectedSite?.name ?? ""} sheets={listQuery.data ?? []} projects={bootstrap.projects.filter(project => Number(project.siteId) === siteId)} settings={bootstrap.settings} />}
         {siteId && bootstrap && !newSheet && sheetId == null && siteTab === "tbms" && <TbmsTab key={siteId} siteId={siteId} settings={bootstrap.settings} canCreate={canCreate} canEdit={canEdit} />}
 
@@ -157,7 +162,7 @@ export default function LevelSheets() {
             canEdit={canEdit}
             canApprove={canApprove}
             onBack={closeEditor}
-            onOpenSiteTab={tab => { closeEditor(); setSiteTab(tab); }}
+            onOpenSiteTab={(tab, layer) => { closeEditor(); if (layer) setDesignLayer(layer); setSiteTab(tab); }}
             onSave={payload => saveMutation.mutate(payload)}
             saving={saveMutation.isPending}
           />
