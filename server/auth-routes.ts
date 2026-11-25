@@ -1412,7 +1412,7 @@ export function assertAdmin(req: Request, res: Response): boolean {
   return true;
 }
 
-function hasSectionAccess(req: Request, sections: SectionKey[], action: string): boolean {
+export function hasSectionAccess(req: Request, sections: SectionKey[], action: string): boolean {
   const user = req.authUser;
   const matrix = req.authPermissions;
   if (!user || !matrix) return false;

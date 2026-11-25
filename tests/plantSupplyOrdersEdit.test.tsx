@@ -67,14 +67,25 @@ const mock = vi.hoisted(() => ({
           instructionAttached: true,
           createdByName: "Owner",
           components: [{ materialId: 9, materialName: "20MM", aggregateSharePercent: 94 }],
-          materialUsage: [{ materialId: 9, materialName: "20MM", allowance: 95, actual: 94, uom: "MT" }],
+          materialUsage: [{ materialId: 9, materialName: "20MM", allowance: 777, actual: 888, uom: "MT" }],
           attachments: [],
         },
       ],
     }],
     dispatches: [],
-    materials: [],
-    materialUsage: [],
+    materials: [{
+      materialId: 9,
+      materialName: "20MM",
+      need: 100,
+      uom: "MT",
+      scope: "hlc",
+      stockAvailable: 50,
+      stockUom: "MT",
+      shortage: 50,
+      runningLow: true,
+      dailyNeed: 20,
+    }],
+    materialUsage: [{ materialId: 9, materialName: "20MM", allowance: 777, actual: 888, variance: 111, uom: "MT" }],
     attachments: [],
     history: [],
     borrowings: [],
@@ -139,13 +150,16 @@ import PlantSupplyOrders from "../client/src/pages/PlantSupplyOrders";
 afterEach(() => cleanup());
 
 describe("ORDERS-02 order detail and editing UI", () => {
-  it("shows the order's two dated mix versions with per-version allowance and actual", async () => {
+  it("shows mix changes collapsed and keeps usage figures out of the regular order view", async () => {
     render(<PlantSupplyOrders />);
-    await waitFor(() => expect(screen.getByTestId("order-mix-timeline-12")).toBeInTheDocument());
-    expect(screen.getByText(/Original order mix/)).toBeInTheDocument();
-    expect(screen.getByText(/Version 1/)).toBeInTheDocument();
-    expect(screen.getByText(/allowance 95\.000 MT · actual 94\.000 MT/)).toBeInTheDocument();
-    expect(screen.getByText(/Mix instruction attached/)).toBeInTheDocument();
+    const changes = await screen.findByTestId("order-mix-changes");
+    expect(changes).toHaveTextContent("Mix changes (1)");
+    expect(changes).not.toHaveAttribute("open");
+    expect(screen.queryByText(/Material allowance and actual use/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Actually used/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Instruction attached/)).toBeInTheDocument();
+    expect(document.querySelector("#supply-order-print")?.textContent).not.toContain("888");
+    expect(document.querySelector("#supply-order-print")?.textContent).not.toContain("777");
   });
 
   it("offers order editing and a date-effective mix change to lifecycle managers", async () => {
@@ -155,19 +169,81 @@ describe("ORDERS-02 order detail and editing UI", () => {
     expect(screen.getByText(/Order history/)).toBeInTheDocument();
   });
 
-  it("shows current site and party master details and previews explicit copying from the order", async () => {
+  it("shows current Party and Site master details and hides copying when Site details exist", async () => {
     render(<PlantSupplyOrders />);
     await waitFor(() => expect(screen.getByTestId("order-party-master-details")).toBeInTheDocument());
     expect(screen.getAllByText("Current master road").length).toBeGreaterThan(0);
     expect(screen.getByTestId("order-party-master-details").textContent).toContain("Fixture contact");
     expect(screen.getByTestId("order-party-master-details").textContent).toContain("PAN no.: ABCDE1234F");
     expect(screen.getByRole("link", { name: "Edit in Party master" })).toHaveAttribute("href", "/plant/dashboard#party-master");
+    expect(screen.queryByRole("button", { name: /Copy work details to Site master/i })).not.toBeInTheDocument();
     expect(document.querySelector("#supply-order-print")?.textContent).toContain("PAN no.: ABCDE1234F");
     expect(screen.queryByText("Old order snapshot")).not.toBeInTheDocument();
+    expect(screen.getByTestId("dispatchpro-order-status")).toHaveTextContent("DispatchPro: not sent");
+    expect(screen.getByTestId("order-material-status")).toHaveTextContent("Available at plant");
+    expect(screen.getByTestId("order-material-status")).toHaveTextContent("50.0 MT");
+    expect(screen.getByTestId("order-material-status")).toHaveTextContent("Raise indent");
+    expect(screen.queryByText(/Quantity conversion/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/MT · \\d+\\.\\d+ cum/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Material supply for remaining mix/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("order-no-work-documents")).toHaveTextContent("Work documents: none");
 
-    fireEvent.click(screen.getByRole("button", { name: /Copy work details to Site master/i }));
-    expect((await screen.findAllByText(/Current master road/)).length).toBeGreaterThan(0);
-    expect((await screen.findAllByText(/Old order snapshot/)).length).toBeGreaterThan(0);
+  });
+
+  it("shows no mix changes until the order actually has a saved version", async () => {
+    const savedVersions = mock.order.lines[0].mixVersions;
+    mock.order.lines[0].mixVersions = [mock.order.lines[0].mixVersions[0]];
+    render(<PlantSupplyOrders />);
+    await waitFor(() => expect(screen.getAllByText("Order quantity").length).toBeGreaterThan(0));
+    expect(screen.queryByTestId("order-mix-changes")).not.toBeInTheDocument();
+    mock.order.lines[0].mixVersions = savedVersions;
+  });
+
+  it("keeps the Edit order form to approved fields and includes each material supplier", async () => {
+    render(<PlantSupplyOrders />);
+    fireEvent.click(await screen.findByRole("button", { name: /Edit order/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Who supplies each material");
+    expect(dialog).toHaveTextContent("20MM");
+    expect(screen.getByRole("combobox", { name: "Who supplies 20MM" })).toBeInTheDocument();
+    expect(dialog).not.toHaveTextContent("MT per cum factor");
+    expect(dialog).not.toHaveTextContent("Work details");
+    expect(dialog).not.toHaveTextContent("Division");
+    expect(dialog).not.toHaveTextContent("Mandal");
+    expect(dialog).not.toHaveTextContent("District");
+    expect(dialog).not.toHaveTextContent("Agreement / estimate reference");
+    expect(dialog).not.toHaveTextContent("Estimate SOR year");
+  });
+
+  it("offers copying typed work only when the Site master has no work details", async () => {
+    const saved = {
+      siteWorkDetails: mock.order.siteWorkDetails,
+      workName: mock.order.workName,
+      division: mock.order.division,
+    };
+    mock.order.siteWorkDetails = {
+      workName: null,
+      clientDepartment: null,
+      division: null,
+      mandal: null,
+      district: null,
+      agreementEstimateRef: null,
+      estimateSorYear: null,
+      mtPerCumFactor: null,
+    };
+    mock.order.workName = "Legacy typed work";
+    mock.order.division = "Legacy division";
+    render(<PlantSupplyOrders />);
+    expect(await screen.findByTestId("order-no-site-master-details")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Copy work details to Site master/i })).toBeInTheDocument();
+    cleanup();
+
+    mock.order.workName = null;
+    mock.order.division = null;
+    render(<PlantSupplyOrders />);
+    await screen.findByTestId("order-no-site-master-details");
+    expect(screen.queryByRole("button", { name: /Copy work details to Site master/i })).not.toBeInTheDocument();
+    Object.assign(mock.order, saved);
   });
 
   it("shows the no-details message when the Party master fields are empty", async () => {

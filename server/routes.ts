@@ -300,6 +300,7 @@ import {
   assertDeleteEither,
   assertExport,
   currentUserName,
+  hasSectionAccess,
 } from "./auth-routes";
 import { registerManagementReportRoutes } from "./management-report";
 import { PROGRAMME_BAR_OUTCOMES, PROGRAMME_BAR_OUTCOME_REASONS, programmeBarOutcomeInputError } from "@shared/programmeBarOutcome";
@@ -5120,13 +5121,6 @@ export async function registerRoutes(
     orderNo: z.string().trim().max(80).nullable(),
     periodFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     periodTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    workName: z.string().trim().max(240).nullable(),
-    division: z.string().trim().max(160).nullable(),
-    mandal: z.string().trim().max(160).nullable(),
-    district: z.string().trim().max(160).nullable(),
-    agreementEstimateRef: z.string().trim().max(200).nullable(),
-    estimateSorYear: z.string().trim().max(80).nullable(),
-    mtPerCumFactor: z.number().positive().max(100),
     remarks: z.string().trim().max(1000).nullable(),
     lines: z.preprocess(withoutBlankPlantSupplyLines, z.array(z.object({
       id: z.number().int().positive().optional(),
@@ -5163,6 +5157,26 @@ export async function registerRoutes(
         status: "failed",
         lastError: "Could not queue the order for DispatchPro.",
       },
+    };
+  };
+
+  const supplyOrderResponseForRequest = (req: Request, order: any) => {
+    if (!order || hasSectionAccess(req, ["plant_norm_vs_actual"], "view")) return order;
+    const { materialUsage: _materialUsage, ...safeOrder } = order;
+    return {
+      ...safeOrder,
+      lines: order.lines?.map((line: any) => {
+        const { mixVersions, ...safeLine } = line;
+        return {
+          ...safeLine,
+          mixVersions: Array.isArray(mixVersions)
+            ? mixVersions.map((version: any) => {
+                const { materialUsage: _versionMaterialUsage, ...safeVersion } = version;
+                return safeVersion;
+              })
+            : mixVersions,
+        };
+      }),
     };
   };
 
@@ -5207,7 +5221,8 @@ export async function registerRoutes(
   app.get("/api/plant-module/supply-orders", async (req, res) => {
     if (!assertView(req, res, "plant_supply_orders")) return;
     try {
-      res.json(await listPlantSupplyOrders());
+      const orders = await listPlantSupplyOrders();
+      res.json(orders.map(order => supplyOrderResponseForRequest(req, order)));
     } catch (err) {
       console.error("[plant supply orders] list", err);
       res.status(500).json({ message: "Failed to load plant supply orders." });
@@ -5274,7 +5289,7 @@ export async function registerRoutes(
         name: currentUserName(req),
       });
       const order = await queueSupplyOrderDispatch(created);
-      res.status(201).json(order);
+      res.status(201).json(supplyOrderResponseForRequest(req, order));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid order." });
       const message = err instanceof Error ? err.message : "Failed to create plant supply order.";
@@ -5335,7 +5350,7 @@ export async function registerRoutes(
     if (!assertView(req, res, "plant_supply_orders")) return;
     const order = await getPlantSupplyOrder(Number(req.params.id));
     if (!order) return res.status(404).json({ message: "Plant supply order not found." });
-    res.json(order);
+    res.json(supplyOrderResponseForRequest(req, order));
   });
 
   app.post("/api/plant-module/supply-orders/:id/copy-work-details-to-site", async (req, res) => {
@@ -5416,7 +5431,7 @@ export async function registerRoutes(
         userId,
         name: currentUserName(req),
       });
-      res.json(await queueSupplyOrderDispatch(edited));
+      res.json(supplyOrderResponseForRequest(req, await queueSupplyOrderDispatch(edited)));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not save order changes.";
       res.status(/already exists|unique/i.test(message) ? 409 : 400).json({ message });
@@ -5441,7 +5456,7 @@ export async function registerRoutes(
         { userId, name: currentUserName(req) },
       );
       await queueSupplyOrderDispatch(result.order);
-      res.json(result);
+      res.json({ ...result, order: supplyOrderResponseForRequest(req, result.order) });
     } catch (err) {
       res.status(400).json({ message: err instanceof Error ? err.message : "Could not save the new mix version." });
     }
@@ -5476,7 +5491,7 @@ export async function registerRoutes(
         input.data.scope,
         { userId: Number(req.authUser?.id ?? 0), name: currentUserName(req) },
       );
-      res.json(order);
+      res.json(supplyOrderResponseForRequest(req, order));
     } catch (err) {
       res.status(400).json({ message: err instanceof Error ? err.message : "Could not update material scope." });
     }
@@ -5497,7 +5512,7 @@ export async function registerRoutes(
       });
       if (!updated) return res.status(404).json({ message: "Plant supply order not found." });
       const order = await queueSupplyOrderDispatch(updated);
-      res.json(order);
+      res.json(supplyOrderResponseForRequest(req, order));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not update order status.";
       res.status(/unique|one open/i.test(message) ? 409 : 400).json({ message });
@@ -5514,7 +5529,7 @@ export async function registerRoutes(
     if (!order) return res.status(404).json({ message: "Plant supply order not found." });
     try {
       await enqueueSupplyOrderDispatchPro(order);
-      return res.json(await getPlantSupplyOrder(order.id));
+      return res.json(supplyOrderResponseForRequest(req, await getPlantSupplyOrder(order.id)));
     } catch {
       return res.status(500).json({ message: "Could not queue the DispatchPro retry." });
     }
@@ -5531,7 +5546,7 @@ export async function registerRoutes(
         input.data.choice,
         { userId: Number(req.authUser.id), name: currentUserName(req) },
       );
-      return res.json(await getPlantSupplyOrder(Number(req.params.id)));
+      return res.json(supplyOrderResponseForRequest(req, await getPlantSupplyOrder(Number(req.params.id))));
     } catch (error) {
       return res.status(400).json({ message: error instanceof Error ? error.message : "Could not save the DispatchPro site choice." });
     }

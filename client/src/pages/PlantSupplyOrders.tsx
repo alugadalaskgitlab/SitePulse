@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ClipboardCheck, History, PackagePlus, Pencil, Settings2, Trash2 } from "lucide-react";
@@ -16,7 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { formatSupplyOrderVersionTime } from "@shared/plantSupplyOrderVersions";
-import { formatPackedUnitLabel } from "@shared/packedStock";
 
 type OrderMixDraft = {
   mixName: string;
@@ -196,13 +195,55 @@ export default function PlantSupplyOrders() {
     agreementEstimateRef: order.agreementEstimateRef,
     estimateSorYear: order.estimateSorYear,
   } : null);
-  const visibleWorkEntries = order?.siteId
-    ? siteWorkEntriesForOrder
-    : savedOrderWorkEntries;
   const dispatchProOrder = order?.dispatchPro;
   const dispatchProCandidateLabel = dispatchProOrder?.responseSiteName || dispatchProOrder?.responseSiteId;
   const dispatchProExistingLabel = dispatchProOrder?.existingLinkId || dispatchProOrder?.partyLinkId || dispatchProOrder?.linkedSiteId;
   const dispatchProConflictPrefix = dispatchProOrder?.conflictSource === "site" ? "Site already linked to" : "Party already linked to";
+  const dispatchProIsLinked = dispatchProOrder?.status === "sent" && dispatchProOrder?.hasSite &&
+    dispatchProOrder?.responseSiteId && dispatchProOrder?.linkedSiteId === dispatchProOrder?.responseSiteId;
+  const dispatchProPrintStatus = dispatchProIsLinked
+    ? "DispatchPro: linked ✓"
+    : dispatchProOrder?.needsOwnerChoice
+      ? "DispatchPro: waiting for Owner site-link choice"
+      : dispatchProOrder?.status === "sent"
+        ? "DispatchPro: order sent, site link not saved"
+        : dispatchProOrder?.lastError
+          ? `DispatchPro: ${dispatchProOrder.lastError}`
+          : dispatchProOrder?.status === "pending" || dispatchProOrder?.status === "retry" || dispatchProOrder?.status === "sending"
+            ? "DispatchPro: queued for delivery"
+            : "DispatchPro: not sent";
+  const formatOrderQuantity = (value: number) =>
+    Number(value ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const formatMaterialQuantity = (value: number, uom: string) => {
+    const decimals = /^(mt|t|ton|tons|tonne|tonnes)$/i.test(uom.trim())
+      ? 1
+      : /^(l|litre|litres|liter|liters)$/i.test(uom.trim()) ? 0 : 2;
+    return Number(value ?? 0).toLocaleString("en-IN", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
+  };
+  const orderMixDescription = (line: any) => {
+    const bitumenPercent = line.orderMix?.bitumenPercent ??
+      line.mixVersions?.find((version: any) => version.versionId == null)?.bitumenPercent;
+    const components = line.orderMix?.components ??
+      line.mixVersions?.find((version: any) => version.versionId == null)?.components ?? [];
+    return [
+      bitumenPercent == null ? null : `Bitumen ${Number(bitumenPercent).toFixed(1)}%`,
+      ...components.map((component: any) => {
+        const name = component.materialName ??
+          options?.materials.find(material => material.id === component.materialId)?.name ??
+          `Material #${component.materialId}`;
+        return `${String(name).toUpperCase()} ${Number(component.aggregateSharePercent).toFixed(0)}%`;
+      }),
+    ].filter(Boolean).join(" · ");
+  };
+  const workDocumentType = (docType: string | null | undefined) => {
+    if (docType === "estimate_pdf") return "Estimate PDF";
+    if (docType === "mix_instruction") return "Party mix instruction";
+    if (docType === "other") return "Other";
+    return docType?.replaceAll("_", " ") || "Document";
+  };
 
   const invalidate = async () => {
     await Promise.all([
@@ -381,14 +422,7 @@ export default function PlantSupplyOrders() {
       const payload = {
         ...editForm,
         orderNo: editForm.orderNo?.trim() || null,
-        workName: editForm.workName?.trim() || null,
-        division: editForm.division?.trim() || null,
-        mandal: editForm.mandal?.trim() || null,
-        district: editForm.district?.trim() || null,
-        agreementEstimateRef: editForm.agreementEstimateRef?.trim() || null,
-        estimateSorYear: editForm.estimateSorYear?.trim() || null,
         remarks: editForm.remarks?.trim() || null,
-        mtPerCumFactor: Number(editForm.mtPerCumFactor),
         lines: editLines.filter(line => !isBlankMixLine(line)).map(line => ({
           ...(line.id ? { id: line.id } : {}),
           mixTemplateId: Number(line.mixTemplateId),
@@ -519,13 +553,6 @@ export default function PlantSupplyOrders() {
       orderNo: order.orderNo ?? "",
       periodFrom: order.periodFrom,
       periodTo: order.periodTo,
-      workName: order.workName ?? "",
-      division: order.division ?? "",
-      mandal: order.mandal ?? "",
-      district: order.district ?? "",
-      agreementEstimateRef: order.agreementEstimateRef ?? "",
-      estimateSorYear: order.estimateSorYear ?? "",
-      mtPerCumFactor: String(order.mtPerCumFactor || 2.356),
       remarks: order.remarks ?? "",
     });
     setEditLines(order.lines.map((line: any) => ({
@@ -616,36 +643,72 @@ export default function PlantSupplyOrders() {
         <>
           <style>{`@media print { body * { visibility: hidden !important; } #supply-order-print, #supply-order-print * { visibility: visible !important; } #supply-order-print { display: block !important; position: absolute; inset: 0; width: 100%; padding: 24px; color: #111; background: #fff; font: 12pt Arial, sans-serif; } }`}</style>
           <div id="supply-order-print" className="hidden print:block">
-            <h1>{order.orderNo} · {order.partyName}</h1>
-            <p>{order.periodFrom} – {order.periodTo}{order.siteName ? ` · ${order.siteName}` : ""}</p>
-            <h2>Contractor details</h2>
-            <p>Name: {order.partyName}</p>
-            {order.partyContactPerson && <p>Contact person: {order.partyContactPerson}</p>}
+            <h1 className="uppercase">{order.orderNo} · {order.partyName}</h1>
+            <p>{order.periodFrom} – {order.periodTo} · {order.status === "closed" ? "Closed" : "Open"}{order.siteName ? <> · <span className="uppercase">{order.siteName}</span></> : ""}</p>
+            {order.remarks && <p>Remarks: {order.remarks}</p>}
+            <h2>Contractor</h2>
+            <p>Name: <span className="uppercase">{order.partyName}</span></p>
+            {order.partyContactPerson && <p>Contact person: <span className="uppercase">{order.partyContactPerson}</span></p>}
             {order.partyMobile && <p>Mobile: {order.partyMobile}</p>}
             {order.partyGstNo && <p>GST no.: {order.partyGstNo}</p>}
             {order.partyPanNo && <p>PAN no.: {order.partyPanNo}</p>}
             {order.partyAddress && <p>Address: {order.partyAddress}</p>}
-            {visibleWorkEntries.map(([label, value]) => <p key={label}>{label}: {value}</p>)}
-            <p>MT per cum factor: {Number(order.siteWorkDetails?.mtPerCumFactor || order.mtPerCumFactor || 2.356).toFixed(3)}</p>
-            <h2>Mixes</h2>
+            {!order.partyContactPerson && !order.partyMobile && !order.partyGstNo && !order.partyPanNo && !order.partyAddress && <p>No contractor details in Party master</p>}
+            <h2>Work</h2>
+            {siteWorkEntriesForOrder.length
+              ? siteWorkEntriesForOrder.map(([label, value]) => <p key={label}>{label}: {value}</p>)
+              : <p>No work details in Site master</p>}
+            <p>{dispatchProPrintStatus}</p>
+            <h2>Order quantity</h2>
             <table className="w-full border-collapse">
               <thead><tr><th className="border p-2 text-left">Mix</th><th className="border p-2 text-right">Ordered MT</th><th className="border p-2 text-right">Dispatched MT</th><th className="border p-2 text-right">Balance MT</th></tr></thead>
               <tbody>{order.lines.map((line: any) => <tr key={line.id}>
-                <td className="border p-2">{line.mixName}</td>
-                <td className="border p-2 text-right">{Number(line.orderedMt).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</td>
-                <td className="border p-2 text-right">{Number(line.dispatchedMt).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</td>
-                <td className="border p-2 text-right">{Number(line.balanceMt).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</td>
+                <td className="border p-2"><span className="uppercase">{line.mixName}</span>{orderMixDescription(line) && <small className="block">{orderMixDescription(line)}</small>}</td>
+                <td className="border p-2 text-right">{formatOrderQuantity(line.orderedMt)}</td>
+                <td className="border p-2 text-right">{formatOrderQuantity(line.dispatchedMt)}</td>
+                <td className="border p-2 text-right">{formatOrderQuantity(line.balanceMt)}</td>
               </tr>)}</tbody>
             </table>
+            {(() => {
+              const lowerBitumenLine = order.lines.find((line: any) => line.orderMix &&
+                Number(line.orderMix.bitumenPercent) < Number(line.orderMix.sourceBitumenPercent));
+              if (!lowerBitumenLine) return null;
+              const latestVersion = lowerBitumenLine.mixVersions?.at(-1);
+              const instructionAttached = latestVersion?.instructionAttached ||
+                order.attachments?.some((attachment: any) => attachment.docType === "mix_instruction");
+              return <p>Bitumen {Number(lowerBitumenLine.orderMix.bitumenPercent).toFixed(1)}% as instructed by party — instruction {instructionAttached ? "attached" : "not attached"}.</p>;
+            })()}
             <h2>Material status</h2>
             <table className="w-full border-collapse">
-              <thead><tr><th className="border p-2 text-left">Material</th><th className="border p-2 text-right">Need</th><th className="border p-2 text-right">Short</th></tr></thead>
+              <thead><tr><th className="border p-2 text-left">Material</th><th className="border p-2 text-left">Supplied by</th><th className="border p-2 text-right">Need for balance</th><th className="border p-2 text-right">Available at plant</th><th className="border p-2 text-right">Short</th></tr></thead>
               <tbody>{order.materials.map((material: any) => <tr key={material.materialId}>
-                <td className="border p-2">{material.materialName}</td>
-                <td className="border p-2 text-right">{Number(material.need).toLocaleString("en-IN", { maximumFractionDigits: 2 })} {material.uom}</td>
-                <td className="border p-2 text-right">{Number(material.shortage).toLocaleString("en-IN", { maximumFractionDigits: 2 })} {material.uom}</td>
+                <td className="border p-2 uppercase">{material.materialName}</td>
+                <td className="border p-2">{material.scope === "party" ? <span className="uppercase">{order.partyName}</span> : "HLC"}</td>
+                <td className="border p-2 text-right">{formatMaterialQuantity(material.need, material.uom)} {material.uom}</td>
+                <td className="border p-2 text-right">{formatMaterialQuantity(material.stockAvailable, material.stockUom)} {material.stockUom}</td>
+                <td className="border p-2 text-right">{formatMaterialQuantity(material.shortage, material.uom)} {material.uom}</td>
               </tr>)}</tbody>
             </table>
+            {order.lines.some((line: any) => line.mixVersions?.some((version: any) => version.versionId != null)) && <>
+              <h2>Mix changes</h2>
+              {order.lines.flatMap((line: any) => (line.mixVersions ?? []).filter((version: any) => version.versionId != null).map((version: any) => (
+                <p key={version.versionId}>
+                  {line.mixName} · {formatSupplyOrderVersionTime(version.effectiveAt)}{version.effectiveUntil ? ` – ${formatSupplyOrderVersionTime(version.effectiveUntil)}` : " – current"}
+                  {" · "}Bitumen {Number(version.bitumenPercent).toFixed(1)}%
+                  {version.components?.length ? ` · ${version.components.map((component: any) => `${component.materialName} ${Number(component.aggregateSharePercent).toFixed(0)}%`).join(" · ")}` : ""}
+                  {version.reason ? ` · ${version.reason}` : ""}
+                  {" · "}{version.createdByName || "Unknown"} · {formatOrderQuantity(version.dispatchedMt)} MT dispatched
+                  {version.attachments?.length ? ` · ${version.attachments.map((attachment: any) => `${workDocumentType(attachment.docType)}: ${attachment.fileName}`).join("; ")}` : ""}
+                </p>
+              )))}
+            </>}
+            <h2>Work documents</h2>
+            {[...(order.attachments ?? []).map((attachment: any) => ({ ...attachment, source: "Order" })),
+              ...(orderSiteAttachmentsQuery.data ?? []).map((attachment: any) => ({ ...attachment, source: "Site master" }))].length
+              ? [...(order.attachments ?? []).map((attachment: any) => ({ ...attachment, source: "Order" })),
+                  ...(orderSiteAttachmentsQuery.data ?? []).map((attachment: any) => ({ ...attachment, source: "Site master" }))]
+                  .map(attachment => <p key={`${attachment.source}-${attachment.id}`}>{attachment.fileName} · {attachment.source} · {workDocumentType(attachment.docType)}</p>)
+              : <p>Work documents: none</p>}
           </div>
         </>
       )}
@@ -675,12 +738,12 @@ export default function PlantSupplyOrders() {
                     className={`w-full rounded-lg border px-3 py-2 text-left ${selectedId === row.id ? "border-teal-500 bg-teal-50" : "border-slate-200 hover:bg-slate-50"}`}
                   >
                     <span className="block font-medium">{row.orderNo}</span>
-                    {(row.siteId ? row.siteWorkDetails?.workName : row.workName) && (
-                      <span className="block text-sm text-slate-700">
-                        {row.siteId ? row.siteWorkDetails?.workName : row.workName}
+                    {row.siteId && row.siteWorkDetails?.workName && (
+                      <span className="block text-sm text-slate-700 uppercase">
+                        {row.siteWorkDetails.workName}
                       </span>
                     )}
-                    <span className="block text-sm text-slate-600">{row.partyName}</span>
+                    <span className="block text-sm text-slate-600 uppercase">{row.partyName}</span>
                     <span className="block text-xs text-slate-500">{row.periodFrom} – {row.periodTo} · {row.status}</span>
                   </button>
                 ))}
@@ -694,108 +757,17 @@ export default function PlantSupplyOrders() {
                   <Card>
                     <CardHeader className="flex flex-row items-start justify-between gap-3">
                       <div>
-                        <CardTitle>{order.orderNo} · {order.partyName}</CardTitle>
-                        {visibleWorkEntries.map(([label, value]) => (
-                          <p key={label} className={label === "Work name" ? "mt-1 font-medium text-slate-800" : "text-sm text-slate-600"}>
-                            {label === "Work name" ? value : `${label}: ${value}`}
-                          </p>
-                        ))}
+                        <CardTitle>{order.orderNo} · <span className="uppercase">{order.partyName}</span></CardTitle>
                         <p className="mt-1 text-sm text-slate-600">
                           {order.periodFrom} – {order.periodTo}
-                          {order.siteName ? ` · ${order.siteName}` : order.dispatchProSiteId ? " · DispatchPro site linked" : ""}
+                          {order.siteName ? <> · <span className="uppercase">{order.siteName}</span></> : ""}
                           {order.status === "closed" ? " · Closed" : " · Open"}
                         </p>
-                        <div className="mt-3 rounded-md border bg-slate-50 p-3 text-sm" data-testid="order-party-master-details">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <h3 className="font-semibold">Contractor details</h3>
-                            <Link href="/plant/dashboard#party-master" className="underline">Edit in Party master</Link>
-                          </div>
-                          <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2">
-                            <div><dt className="inline text-slate-500">Name: </dt><dd className="inline">{order.partyName}</dd></div>
-                            {order.partyContactPerson && <div><dt className="inline text-slate-500">Contact person: </dt><dd className="inline">{order.partyContactPerson}</dd></div>}
-                            {order.partyMobile && <div><dt className="inline text-slate-500">Mobile: </dt><dd className="inline">{order.partyMobile}</dd></div>}
-                            {order.partyGstNo && <div><dt className="inline text-slate-500">GST no.: </dt><dd className="inline">{order.partyGstNo}</dd></div>}
-                            {order.partyPanNo && <div><dt className="inline text-slate-500">PAN no.: </dt><dd className="inline">{order.partyPanNo}</dd></div>}
-                            {order.partyAddress && <div className="sm:col-span-2"><dt className="inline text-slate-500">Address: </dt><dd className="inline">{order.partyAddress}</dd></div>}
-                          </dl>
-                          {!order.partyContactPerson && !order.partyMobile && !order.partyGstNo && !order.partyPanNo && !order.partyAddress && (
-                            <p className="mt-2 text-sm text-slate-600" data-testid="order-no-contractor-details">No contractor details in Party master</p>
-                          )}
-                        </div>
-                        <div className="mt-2 text-sm" data-testid="dispatchpro-order-status" aria-live="polite">
-                          {dispatchProOrder?.hasSite === false ? (
-                            <p className="text-amber-800">DispatchPro: choose a site for this order first</p>
-                          ) : dispatchProOrder?.needsOwnerChoice ? (
-                            <div className="space-y-1">
-                              <p className="font-medium text-amber-800">
-                                {dispatchProConflictPrefix} {dispatchProExistingLabel} in DispatchPro — use it / replace with {dispatchProCandidateLabel}.
-                              </p>
-                              {isOwner ? (
-                                <div className="flex flex-wrap gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={dispatchProLinkChoiceMutation.isPending}
-                                    onClick={() => dispatchProLinkChoiceMutation.mutate("use_existing")}
-                                  >Use it</Button>
-                                  <Button
-                                    size="sm"
-                                    disabled={dispatchProLinkChoiceMutation.isPending}
-                                    onClick={() => dispatchProLinkChoiceMutation.mutate("replace")}
-                                  >Replace</Button>
-                                </div>
-                              ) : <p className="text-xs text-slate-500">Waiting for the Owner to choose.</p>}
-                            </div>
-                          ) : dispatchProOrder?.status === "sent" && dispatchProOrder?.hasSite &&
-                            dispatchProOrder?.responseSiteId && dispatchProOrder?.linkedSiteId === dispatchProOrder?.responseSiteId ? (
-                            <p className="text-emerald-800">
-                              DispatchPro: linked ✓ ({dispatchProCandidateLabel})
-                            </p>
-                          ) : dispatchProOrder?.status === "sent" ? (
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-amber-800">DispatchPro: order sent, but the site link was not saved.</span>
-                              {options?.canManageLifecycle && (
-                                <Button size="sm" variant="outline" disabled={dispatchProRetryMutation.isPending} onClick={() => dispatchProRetryMutation.mutate()}>
-                                  {dispatchProRetryMutation.isPending ? "Retrying…" : "Retry"}
-                                </Button>
-                              )}
-                            </div>
-                          ) : dispatchProOrder?.lastError ? (
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-amber-800">DispatchPro: {dispatchProOrder.lastError}</span>
-                              {options?.canManageLifecycle && (
-                                <Button size="sm" variant="outline" disabled={dispatchProRetryMutation.isPending} onClick={() => dispatchProRetryMutation.mutate()}>
-                                  {dispatchProRetryMutation.isPending ? "Retrying…" : "Retry"}
-                                </Button>
-                              )}
-                            </div>
-                          ) : dispatchProOrder?.status === "pending" || dispatchProOrder?.status === "retry" || dispatchProOrder?.status === "sending" ? (
-                            <p className="text-slate-600">DispatchPro: queued for delivery</p>
-                          ) : (
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-slate-600">DispatchPro: not sent</span>
-                              {options?.canManageLifecycle && (
-                                <Button size="sm" variant="outline" disabled={dispatchProRetryMutation.isPending} onClick={() => dispatchProRetryMutation.mutate()}>
-                                  {dispatchProRetryMutation.isPending ? "Retrying…" : "Retry"}
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        {order.siteId && !siteWorkEntriesForOrder.length && (
-                          <p className="mt-1 text-sm text-amber-800" data-testid="order-no-site-master-details">
-                            No work details in Site master. <Link className="underline" href="/plant/dashboard#site-master">Edit Site master</Link>
-                          </p>
-                        )}
-                        <p className="text-xs text-slate-500">
-                          Quantity conversion: {Number(order.siteWorkDetails?.mtPerCumFactor || order.mtPerCumFactor || 2.356).toFixed(3)} MT/cum
-                          {Number(order.siteWorkDetails?.mtPerCumFactor) > 0 ? " · from Site master" : ""}
-                        </p>
-                        {order.remarks && <p className="mt-2 text-sm text-slate-600">{order.remarks}</p>}
+                        {order.remarks && <p className="mt-2 text-sm text-slate-600">Remarks: {order.remarks}</p>}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button size="sm" variant="outline" onClick={() => window.print()} data-testid="button-print-supply-order">Print order</Button>
-                        {isOwner && order.siteId && savedOrderWorkEntries.length > 0 && (
+                        {isOwner && order.siteId && !siteWorkEntriesForOrder.length && savedOrderWorkEntries.length > 0 && (
                           <Button size="sm" variant="outline" onClick={() => { setOverwriteSiteDetails(false); setCopySiteDetailsOpen(true); }}>
                             Copy work details to Site master
                           </Button>
@@ -831,96 +803,100 @@ export default function PlantSupplyOrders() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-5">
-                      {(orderSiteAttachmentsQuery.data ?? []).length > 0 && (
-                        <section data-testid="order-site-attachments">
-                          <h2 className="mb-2 font-semibold">Site master documents</h2>
-                          <div className="flex flex-wrap gap-3 text-sm">
-                            {(orderSiteAttachmentsQuery.data ?? []).map((attachment: any) => (
-                              <a key={attachment.id} className="underline" href={attachment.objectPath} target="_blank" rel="noreferrer">
-                                {attachment.fileName}
-                              </a>
-                            ))}
-                          </div>
-                        </section>
-                      )}
-                      <section id="order-material-status" className="scroll-mt-4">
-                        <h2 className="mb-2 font-semibold">Material status</h2>
-                        <div className="space-y-2">
-                          {order.materials.map((material: any) => (
-                            <div key={material.materialId} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
-                              <span className="font-medium">{material.materialName}</span>
-                              <span>Need {Number(material.need).toLocaleString("en-IN", { maximumFractionDigits: 2 })} {material.uom}</span>
-                              <span>Dispatched {Number(material.dispatched ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })} {material.uom}</span>
-                              <span>Short {Number(material.shortage ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })} {material.uom}</span>
-                            </div>
-                          ))}
+                      <section data-testid="order-party-master-details">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h2 className="font-semibold">Contractor</h2>
+                          <Link href="/plant/dashboard#party-master" className="text-sm underline">Edit in Party master</Link>
                         </div>
+                        <dl className="mt-2 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
+                          <div><dt className="inline text-slate-500">Name: </dt><dd className="inline uppercase">{order.partyName}</dd></div>
+                          {order.partyContactPerson && <div><dt className="inline text-slate-500">Contact person: </dt><dd className="inline">{order.partyContactPerson}</dd></div>}
+                          {order.partyMobile && <div><dt className="inline text-slate-500">Mobile: </dt><dd className="inline">{order.partyMobile}</dd></div>}
+                          {order.partyGstNo && <div><dt className="inline text-slate-500">GST no.: </dt><dd className="inline">{order.partyGstNo}</dd></div>}
+                          {order.partyPanNo && <div><dt className="inline text-slate-500">PAN no.: </dt><dd className="inline">{order.partyPanNo}</dd></div>}
+                          {order.partyAddress && <div className="sm:col-span-2"><dt className="inline text-slate-500">Address: </dt><dd className="inline">{order.partyAddress}</dd></div>}
+                        </dl>
+                        {!order.partyContactPerson && !order.partyMobile && !order.partyGstNo && !order.partyPanNo && !order.partyAddress && (
+                          <p className="mt-2 text-sm text-slate-600" data-testid="order-no-contractor-details">No contractor details in Party master</p>
+                        )}
+                      </section>
+                      <section data-testid="order-site-master-details">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h2 className="font-semibold">Work</h2>
+                          {order.siteId && <Link href="/plant/dashboard#site-master" className="text-sm underline">Edit in Site master</Link>}
+                        </div>
+                        {siteWorkEntriesForOrder.length ? (
+                          <dl className="mt-2 grid min-w-0 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
+                            {siteWorkEntriesForOrder.map(([label, value]) => (
+                              <div key={label} className={`min-w-0 ${label === "Work name" ? "sm:col-span-2" : ""}`}>
+                                <dt className="text-slate-500">{label}</dt><dd className="break-words uppercase">{value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        ) : <p className="mt-2 text-sm text-slate-600" data-testid="order-no-site-master-details">No work details in Site master</p>}
+                      </section>
+                      <section className="text-sm" data-testid="dispatchpro-order-status" aria-live="polite">
+                        {dispatchProOrder?.hasSite === false ? (
+                          <p className="text-amber-800">DispatchPro: choose a site for this order first</p>
+                        ) : dispatchProOrder?.needsOwnerChoice ? (
+                          <div className="space-y-1">
+                            <p className="font-medium text-amber-800">
+                              {dispatchProConflictPrefix} {dispatchProExistingLabel} in DispatchPro — use it / replace with {dispatchProCandidateLabel}.
+                            </p>
+                            {isOwner ? (
+                              <div className="flex flex-wrap gap-2">
+                                <Button size="sm" variant="outline" disabled={dispatchProLinkChoiceMutation.isPending} onClick={() => dispatchProLinkChoiceMutation.mutate("use_existing")}>Use it</Button>
+                                <Button size="sm" disabled={dispatchProLinkChoiceMutation.isPending} onClick={() => dispatchProLinkChoiceMutation.mutate("replace")}>Replace</Button>
+                              </div>
+                            ) : <p className="text-xs text-slate-500">Waiting for the Owner to choose.</p>}
+                          </div>
+                        ) : dispatchProIsLinked ? (
+                          <p className="text-emerald-800">DispatchPro: linked ✓</p>
+                        ) : dispatchProOrder?.status === "sent" ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-amber-800">DispatchPro: order sent, but the site link was not saved.</span>
+                            {options?.canManageLifecycle && <Button size="sm" variant="outline" disabled={dispatchProRetryMutation.isPending} onClick={() => dispatchProRetryMutation.mutate()}>{dispatchProRetryMutation.isPending ? "Retrying…" : "Retry"}</Button>}
+                          </div>
+                        ) : dispatchProOrder?.lastError ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-amber-800">DispatchPro: {dispatchProOrder.lastError}</span>
+                            {options?.canManageLifecycle && <Button size="sm" variant="outline" disabled={dispatchProRetryMutation.isPending} onClick={() => dispatchProRetryMutation.mutate()}>{dispatchProRetryMutation.isPending ? "Retrying…" : "Retry"}</Button>}
+                          </div>
+                        ) : dispatchProOrder?.status === "pending" || dispatchProOrder?.status === "retry" || dispatchProOrder?.status === "sending" ? (
+                          <p className="text-slate-600">DispatchPro: queued for delivery</p>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-slate-600">DispatchPro: not sent</span>
+                            {options?.canManageLifecycle && <Button size="sm" variant="outline" disabled={dispatchProRetryMutation.isPending} onClick={() => dispatchProRetryMutation.mutate()}>{dispatchProRetryMutation.isPending ? "Retrying…" : "Retry"}</Button>}
+                          </div>
+                        )}
                       </section>
                       <section>
-                        <h2 className="mb-2 font-semibold">Mix balance</h2>
-                        <div className="space-y-2">
-                          {order.lines.map((line: any) => (
-                            <div key={line.id} className="grid grid-cols-2 gap-2 rounded-md bg-slate-50 p-3 text-sm sm:grid-cols-4">
-                              <span className="font-medium">{line.mixName}</span>
-                              <span>Ordered: {line.orderedMt.toFixed(1)} MT · {Number(line.equivalentCum).toFixed(3)} cum</span>
-                              <span>Dispatched: {line.dispatchedMt.toFixed(3)} MT</span>
-                              <span className="font-semibold">Balance: {line.balanceMt.toFixed(3)} MT</span>
-                              {line.orderMix && (
-                                <span className="col-span-2 text-xs text-slate-600 sm:col-span-4">
-                                  Bitumen {Number(line.orderMix.bitumenPercent).toFixed(2)}% · {line.orderMix.components.map((component: any) => {
-                                    const material = options?.materials.find(row => row.id === component.materialId);
-                                    return `${material?.name ?? `Material #${component.materialId}`} ${Number(component.aggregateSharePercent).toFixed(2)}%`;
-                                  }).join(" · ")}
-                                </span>
-                              )}
-                              {options?.canManageLifecycle && order.status === "open" && (
-                                <span className="col-span-2 sm:col-span-4">
-                                  <Button size="sm" variant="outline" onClick={() => openMixChange(line)}>Change mix from a date and time</Button>
-                                </span>
-                              )}
-                              {line.mixVersions?.length > 0 && (
-                                <div className="col-span-2 space-y-2 border-t pt-2 sm:col-span-4" data-testid={`order-mix-timeline-${line.id}`}>
-                                  <p className="text-xs font-semibold text-slate-700">Mix versions</p>
-                                  {line.mixVersions.map((version: any, versionIndex: number) => (
-                                    <div key={version.versionId ?? `base-${line.id}`} className="rounded border bg-white p-2 text-xs">
-                                      <p className="font-medium">
-                                        {version.versionId == null ? "Original order mix" : `Version ${versionIndex}`}
-                                        {" · "}{formatSupplyOrderVersionTime(version.effectiveAt)}
-                                        {version.effectiveUntil ? ` – ${formatSupplyOrderVersionTime(version.effectiveUntil)}` : " – current"}
-                                      </p>
-                                      <p>Bitumen {Number(version.bitumenPercent).toFixed(2)}% · {Number(version.dispatchedMt).toFixed(3)} MT dispatched</p>
-                                      {version.reason && <p>Reason: {version.reason}</p>}
-                                      <p>{version.instructionAttached ? "Mix instruction attached" : "No mix instruction attached"} · Added by {version.createdByName || "Unknown"}</p>
-                                      {version.components?.length > 0 && <p>{version.components.map((component: any) =>
-                                        `${component.materialName ?? options?.materials.find((material: any) => material.id === component.materialId)?.name ?? `Material #${component.materialId}`} ${Number(component.aggregateSharePercent).toFixed(2)}%`
-                                      ).join(" · ")}</p>}
-                                      <div className="mt-1 space-y-0.5">
-                                        {version.materialUsage?.map((usage: any) => (
-                                          <p key={usage.materialId}>
-                                            {usage.materialName}: allowance {Number(usage.allowance).toFixed(3)} {usage.uom} · actual {Number(usage.actual).toFixed(3)} {usage.uom}
-                                          </p>
-                                        ))}
-                                      </div>
-                                      {version.attachments?.map((attachment: any) => (
-                                        <p key={attachment.id}>
-                                          <a className="underline" href={attachment.objectPath}>{attachment.fileName}</a>
-                                          {isOwner && <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="ml-2 h-6 px-2 text-red-700"
-                                            disabled={removeAttachmentMutation.isPending}
-                                            onClick={() => {
-                                              if (window.confirm(`Remove ${attachment.fileName}?`)) removeAttachmentMutation.mutate(attachment.id);
-                                            }}
-                                          >Remove</Button>}
-                                        </p>
-                                      ))}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
+                        <h2 className="mb-2 font-semibold">Order quantity</h2>
+                        <div className="overflow-x-auto rounded-md border">
+                          <table className="w-full min-w-[580px] text-left text-sm">
+                            <thead className="border-b bg-slate-50 text-xs text-slate-600">
+                              <tr><th className="p-2">Mix</th><th className="p-2 text-right">Ordered MT</th><th className="p-2 text-right">Dispatched MT</th><th className="p-2 text-right">Balance MT</th></tr>
+                            </thead>
+                            <tbody>
+                              {order.lines.map((line: any) => (
+                                <Fragment key={line.id}>
+                                  <tr className="border-b">
+                                    <td className="p-2 font-medium uppercase">
+                                      <span className="block">{line.mixName}</span>
+                                      {options?.canManageLifecycle && order.status === "open" && (
+                                        <Button className="mt-1 normal-case" size="sm" variant="outline" onClick={() => openMixChange(line)}>Change mix from a date and time</Button>
+                                      )}
+                                    </td>
+                                    <td className="p-2 text-right">{formatOrderQuantity(line.orderedMt)}</td>
+                                    <td className="p-2 text-right">{formatOrderQuantity(line.dispatchedMt)}</td>
+                                    <td className="p-2 text-right font-semibold">{formatOrderQuantity(line.balanceMt)}</td>
+                                  </tr>
+                                  {orderMixDescription(line) && <tr className="border-b text-xs text-slate-600"><td className="px-2 pb-2 pt-0" colSpan={4}>{orderMixDescription(line)}</td></tr>}
+                                </Fragment>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                         {(() => {
                           const lowerBitumenLine = order.lines.find((line: any) => line.orderMix &&
@@ -930,98 +906,99 @@ export default function PlantSupplyOrders() {
                           const instructionAttached = latestVersion?.instructionAttached ||
                             order.attachments?.some((attachment: any) => attachment.docType === "mix_instruction");
                           return <p className="mt-2 text-xs text-amber-700" data-testid="order-bitumen-instruction-note">
-                            Bitumen {Number(lowerBitumenLine.orderMix.bitumenPercent).toFixed(2)}% as instructed by party — instruction {instructionAttached ? "attached" : "not attached"}.
+                            Bitumen {Number(lowerBitumenLine.orderMix.bitumenPercent).toFixed(1)}% as instructed by party — instruction {instructionAttached ? "attached" : "not attached"}.
                           </p>;
                         })()}
                       </section>
-                      <section>
-                        <h2 className="mb-2 font-semibold">Material supply for remaining mix</h2>
-                        <div className="space-y-2">
-                          {order.materials.map((material: any) => (
-                            <div key={material.materialId} className="rounded-lg border p-3">
-                              <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                  <p className="font-medium">{material.materialName}</p>
-                                  <p className="text-xs text-slate-600">
-                                    Need for balance: {material.need.toFixed(3)} {material.uom}
-                                    {material.dailyNeed > 0 && ` · Daily need: ${material.dailyNeed.toFixed(3)} ${material.uom}`}
-                                  </p>
-                                </div>
-                                <Select
-                                  value={material.scope}
-                                  onValueChange={(scope: "hlc" | "party") => scopeMutation.mutate({ materialId: material.materialId, scope })}
-                                  disabled={scopeMutation.isPending || order.status !== "open"}
-                                >
-                                  <SelectTrigger className="w-full sm:w-48"><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="hlc">HLC supplies</SelectItem>
-                                    <SelectItem value="party">{order.partyName} supplies</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
-                                <span>
-                                  Stock available: {material.stockAvailable.toFixed(3)} {material.stockUom}
-                                  {material.packedStockCount > 0 && ` (incl. ${Number(material.packedStockCount).toLocaleString()} in ${formatPackedUnitLabel(material.packedUnitName, Number(material.packedStockCount))})`}
-                                </span>
-                                {material.shortage > 0 && material.scope === "hlc" && (
-                                  <span className="text-amber-700">
-                                    Short: {material.shortage.toFixed(3)} {material.uom} ·{" "}
-                                    <a
-                                      className="font-medium underline"
-                                      href={`/plant/purchase-indents?returnTo=/plant/supply-orders&context=hmp&from=hmp&materialId=${material.materialId}&material=${encodeURIComponent(material.materialName)}&qty=${material.shortage.toFixed(3)}&uom=${encodeURIComponent(material.uom)}`}
-                                    >Raise indent</a>
-                                  </span>
-                                )}
-                                {material.shortage > 0 && material.scope === "party" && (
-                                  <span className="font-medium text-amber-700">Party to supply {material.shortage.toFixed(3)} {material.uom}</span>
-                                )}
-                                {material.runningLow && <span className="font-medium text-orange-700">Running low — less than one production day</span>}
-                              </div>
-                            </div>
-                          ))}
-                          {!order.materials.length && <p className="text-sm text-slate-500">No material need remains for the ordered mix.</p>}
-                        </div>
-                      </section>
-                      <section>
-                        <h2 className="mb-2 font-semibold">Material allowance and actual use</h2>
+                      <section id="order-material-status" className="scroll-mt-4" data-testid="order-material-status">
+                        <h2 className="mb-2 font-semibold">Material status</h2>
                         <div className="overflow-x-auto rounded-md border">
-                          <table className="w-full min-w-[620px] text-left text-sm">
+                          <table className="w-full min-w-[680px] text-left text-sm">
                             <thead className="border-b bg-slate-50 text-xs text-slate-600">
-                              <tr><th className="p-2">Material</th><th className="p-2">Supply</th><th className="p-2">Allowance</th><th className="p-2">Actually used</th><th className="p-2">Difference</th></tr>
+                              <tr><th className="p-2">Material</th><th className="p-2">Supplied by</th><th className="p-2 text-right">Need for balance</th><th className="p-2 text-right">Available at plant</th><th className="p-2 text-right">Short</th></tr>
                             </thead>
                             <tbody>
-                              {order.materialUsage?.map((row: any) => (
-                                <tr key={row.materialId} className="border-b last:border-0">
-                                  <td className="p-2 font-medium">{row.materialName}</td>
-                                  <td className="p-2">{row.scope === "party" ? order.partyName : "HLC"}</td>
-                                  <td className="p-2">{Number(row.allowance).toFixed(3)} {row.uom}</td>
-                                  <td className="p-2">{Number(row.actual).toFixed(3)} {row.uom}{row.plantAllocatedLdo > 0 ? ` (includes ${Number(row.plantAllocatedLdo).toFixed(1)} L plant pre-heat / boiler)` : ""}</td>
-                                  <td className="p-2">{row.variance > 0 ? "+" : ""}{Number(row.variance).toFixed(3)} {row.uom}</td>
+                              {order.materials.map((material: any) => (
+                                <tr key={material.materialId} className="border-b last:border-0">
+                                  <td className="p-2 font-medium uppercase">{material.materialName}</td>
+                                  <td className="p-2">{material.scope === "party" ? <span className="uppercase">{order.partyName}</span> : "HLC"}</td>
+                                  <td className="p-2 text-right">{formatMaterialQuantity(material.need, material.uom)} {material.uom}</td>
+                                  <td className="p-2 text-right">{formatMaterialQuantity(material.stockAvailable, material.stockUom)} {material.stockUom}</td>
+                                  <td className="p-2 text-right">
+                                    <span>{formatMaterialQuantity(material.shortage ?? 0, material.uom)} {material.uom}</span>
+                                    {material.shortage > 0 && material.scope === "hlc" && <a className="ml-2 font-medium underline" href={`/plant/purchase-indents?returnTo=/plant/supply-orders&context=hmp&from=hmp&materialId=${material.materialId}&material=${encodeURIComponent(material.materialName)}&qty=${material.shortage.toFixed(3)}&uom=${encodeURIComponent(material.uom)}`}>Raise indent</a>}
+                                    {material.runningLow && <span className="ml-2 inline-block rounded border px-1.5 py-0.5 text-xs text-orange-800">Running low</span>}
+                                    {material.shortage > 0 && material.scope === "party" && <span className="ml-2 text-xs text-amber-700">Contractor to supply</span>}
+                                  </td>
                                 </tr>
                               ))}
-                              {!order.materialUsage?.length && <tr><td className="p-3 text-slate-500" colSpan={5}>No dispatch usage recorded yet.</td></tr>}
+                              {!order.materials.length && <tr><td className="p-3 text-slate-500" colSpan={5}>No material need remains for the ordered mix.</td></tr>}
                             </tbody>
                           </table>
                         </div>
                       </section>
+                      {(() => {
+                        const changedVersions = order.lines.flatMap((line: any) =>
+                          (line.mixVersions ?? []).filter((version: any) => version.versionId != null)
+                            .map((version: any) => ({ line, version })),
+                        );
+                        if (!changedVersions.length) return null;
+                        return (
+                          <details className="rounded-md border p-3" data-testid="order-mix-changes">
+                            <summary className="cursor-pointer font-semibold">Mix changes ({changedVersions.length})</summary>
+                            <div className="mt-3 space-y-3 border-t pt-3">
+                              {changedVersions.map(({ line, version }: any) => (
+                                <div key={version.versionId} className="rounded border p-2 text-sm">
+                                  <p className="font-medium uppercase">
+                                    {line.mixName} · {formatSupplyOrderVersionTime(version.effectiveAt)}
+                                    {version.effectiveUntil ? ` – ${formatSupplyOrderVersionTime(version.effectiveUntil)}` : " – current"}
+                                  </p>
+                                  <p className="mt-1">
+                                    Bitumen {Number(version.bitumenPercent).toFixed(1)}%
+                                    {version.components?.length ? ` · ${version.components.map((component: any) =>
+                                      `${component.materialName ?? options?.materials.find((material: any) => material.id === component.materialId)?.name ?? `Material #${component.materialId}`} ${Number(component.aggregateSharePercent).toFixed(0)}%`,
+                                    ).join(" · ")}` : ""}
+                                  </p>
+                                  {version.reason && <p>Reason: {version.reason}</p>}
+                                  <p>{version.createdByName || "Unknown"} · {formatOrderQuantity(version.dispatchedMt)} MT dispatched · {version.instructionAttached ? "Instruction attached" : "No instruction file"}</p>
+                                  {version.attachments?.map((attachment: any) => (
+                                    <p key={attachment.id}>
+                                      <a className="underline" href={attachment.objectPath}>{attachment.fileName}</a>
+                                      <span className="ml-2 text-xs text-slate-500">{workDocumentType(attachment.docType)}</span>
+                                      {isOwner && <Button size="sm" variant="ghost" className="ml-2 h-6 px-2 text-red-700" disabled={removeAttachmentMutation.isPending} onClick={() => {
+                                        if (window.confirm(`Remove ${attachment.fileName}?`)) removeAttachmentMutation.mutate(attachment.id);
+                                      }}>Remove</Button>}
+                                    </p>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        );
+                      })()}
                       <section className="space-y-2 border-t pt-4">
                         <h2 className="font-semibold">Work documents</h2>
-                        {order.attachments?.map((attachment: any) => (
-                          <p key={attachment.id} className="text-sm">
-                            <a className="underline" href={attachment.objectPath}>{attachment.fileName}</a>
-                            <span className="ml-2 text-xs text-slate-500">{attachment.docType === "estimate_pdf" ? "Estimate PDF" : attachment.docType === "mix_instruction" ? "Party mix instruction" : "Document"}</span>
-                            {isOwner && <Button
-                              size="sm"
-                              variant="ghost"
-                              className="ml-2 h-6 px-2 text-red-700"
-                              disabled={removeAttachmentMutation.isPending}
-                              onClick={() => {
-                                if (window.confirm(`Remove ${attachment.fileName}?`)) removeAttachmentMutation.mutate(attachment.id);
-                              }}
-                            >Remove</Button>}
-                          </p>
-                        ))}
+                        {(() => {
+                          const workDocuments = [
+                            ...(order.attachments ?? []).map((attachment: any) => ({ ...attachment, source: "Order" })),
+                            ...(orderSiteAttachmentsQuery.data ?? []).map((attachment: any) => ({ ...attachment, source: "Site master" })),
+                          ];
+                          return workDocuments.length ? workDocuments.map((attachment: any) => (
+                            <p key={`${attachment.source}-${attachment.id}`} className="text-sm">
+                              <a className="underline" href={attachment.objectPath}>{attachment.fileName}</a>
+                              <span className="ml-2 text-xs text-slate-500">{attachment.source} · {workDocumentType(attachment.docType)}</span>
+                              {attachment.source === "Order" && isOwner && <Button
+                                size="sm"
+                                variant="ghost"
+                                className="ml-2 h-6 px-2 text-red-700"
+                                disabled={removeAttachmentMutation.isPending}
+                                onClick={() => {
+                                  if (window.confirm(`Remove ${attachment.fileName}?`)) removeAttachmentMutation.mutate(attachment.id);
+                                }}
+                              >Remove</Button>}
+                            </p>
+                          )) : <p className="text-sm text-slate-500" data-testid="order-no-work-documents">Work documents: none</p>;
+                        })()}
                         <div className="grid gap-3 sm:grid-cols-3">
                           <label className="space-y-1 text-xs text-slate-600">
                             Add estimate PDF
@@ -1128,15 +1105,8 @@ export default function PlantSupplyOrders() {
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2"><Label>Order number</Label><Input value={editForm.orderNo} onChange={event => setEditForm((current: any) => ({ ...current, orderNo: event.target.value }))} /></div>
-                <div className="space-y-2"><Label>MT per cum factor</Label><Input type="number" min="0.001" step="0.001" value={editForm.mtPerCumFactor} onChange={event => setEditForm((current: any) => ({ ...current, mtPerCumFactor: event.target.value }))} /></div>
                 <div className="space-y-2"><Label>Period from</Label><Input type="date" value={editForm.periodFrom} onChange={event => setEditForm((current: any) => ({ ...current, periodFrom: event.target.value }))} /></div>
                 <div className="space-y-2"><Label>Period to</Label><Input type="date" value={editForm.periodTo} onChange={event => setEditForm((current: any) => ({ ...current, periodTo: event.target.value }))} /></div>
-                <div className="space-y-2"><Label>Work details</Label><Input value={editForm.workName} onChange={event => setEditForm((current: any) => ({ ...current, workName: event.target.value }))} /></div>
-                <div className="space-y-2"><Label>Division</Label><Input value={editForm.division} onChange={event => setEditForm((current: any) => ({ ...current, division: event.target.value }))} /></div>
-                <div className="space-y-2"><Label>Mandal</Label><Input value={editForm.mandal} onChange={event => setEditForm((current: any) => ({ ...current, mandal: event.target.value }))} /></div>
-                <div className="space-y-2"><Label>District</Label><Input value={editForm.district} onChange={event => setEditForm((current: any) => ({ ...current, district: event.target.value }))} /></div>
-                <div className="space-y-2"><Label>Agreement / estimate reference</Label><Input value={editForm.agreementEstimateRef} onChange={event => setEditForm((current: any) => ({ ...current, agreementEstimateRef: event.target.value }))} /></div>
-                <div className="space-y-2"><Label>Estimate SOR year</Label><Input value={editForm.estimateSorYear} onChange={event => setEditForm((current: any) => ({ ...current, estimateSorYear: event.target.value }))} /></div>
               </div>
               {order?.dispatches?.length > 0 && (() => {
                 const outside = order.dispatches.filter((dispatch: any) =>
@@ -1154,7 +1124,8 @@ export default function PlantSupplyOrders() {
                   <Button type="button" size="sm" variant="outline" onClick={addEditLine}>Add mix line</Button>
                 </div>
                 {editLines.map((line, index) => {
-                  const orderedMt = Number(line.enteredQuantity) * (line.enteredUnit === "cum" ? Number(editForm.mtPerCumFactor) : 1);
+                  const orderFactor = Number(order?.mtPerCumFactor || 2.356);
+                  const orderedMt = Number(line.enteredQuantity) * (line.enteredUnit === "cum" ? orderFactor : 1);
                   const belowUsed = Number.isFinite(orderedMt) && orderedMt + 0.000001 < Number(line.dispatchedMt || 0);
                   return (
                     <div key={line.id ?? `new-${index}`} className="space-y-2 rounded-md border p-3">
@@ -1178,6 +1149,30 @@ export default function PlantSupplyOrders() {
                   );
                 })}
               </div>
+              <section className="space-y-2">
+                <h3 className="font-semibold">Who supplies each material</h3>
+                <div className="space-y-2">
+                  {order?.materials.map((material: any) => (
+                    <div key={material.materialId} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
+                      <span className="font-medium uppercase">{material.materialName}</span>
+                      <Select
+                        value={material.scope}
+                        onValueChange={(scope: "hlc" | "party") => scopeMutation.mutate({ materialId: material.materialId, scope })}
+                        disabled={scopeMutation.isPending || order.status !== "open"}
+                      >
+                        <SelectTrigger className="w-full sm:w-56" aria-label={`Who supplies ${material.materialName}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="hlc">HLC</SelectItem>
+                          <SelectItem value="party" className="uppercase">{order.partyName}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                  {!order?.materials.length && <p className="text-sm text-slate-500">No material supply choices are available.</p>}
+                </div>
+              </section>
               <div className="space-y-2"><Label>Remarks</Label><Textarea value={editForm.remarks} onChange={event => setEditForm((current: any) => ({ ...current, remarks: event.target.value }))} /></div>
             </div>
           )}
@@ -1189,7 +1184,7 @@ export default function PlantSupplyOrders() {
                   Number(line.plannedMtPerDay) < 0 ||
                   (line.plannedMtPerDay !== "" && Number(line.plannedMtPerDay) <= 0))) ||
                 editLines.some(line => !editLineBlank(line) && Number(line.dispatchedMt) > 0 &&
-                  Number(line.enteredQuantity) * (line.enteredUnit === "cum" ? Number(editForm?.mtPerCumFactor) : 1) + 0.000001 < Number(line.dispatchedMt)) ||
+                  Number(line.enteredQuantity) * (line.enteredUnit === "cum" ? Number(order?.mtPerCumFactor || 2.356) : 1) + 0.000001 < Number(line.dispatchedMt)) ||
                 (order?.dispatches ?? []).some((dispatch: any) => dispatch.date < (editForm?.periodFrom ?? "") || dispatch.date > (editForm?.periodTo ?? ""))}
               onClick={() => editOrderMutation.mutate()}
             >{editOrderMutation.isPending ? "Saving…" : "Save changes"}</Button>

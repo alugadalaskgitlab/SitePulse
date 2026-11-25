@@ -358,13 +358,6 @@ export type PlantSupplyOrderEditInput = {
   orderNo: string | null;
   periodFrom: string;
   periodTo: string;
-  workName: string | null;
-  division: string | null;
-  mandal: string | null;
-  district: string | null;
-  agreementEstimateRef: string | null;
-  estimateSorYear: string | null;
-  mtPerCumFactor: number;
   remarks: string | null;
   lines: Array<{
     id?: number;
@@ -407,8 +400,9 @@ export async function editPlantSupplyOrder(
     if (!current) throw new Error("Plant supply order not found.");
     if (current.status !== "open") throw new Error("Only an open order can be edited.");
     if (input.periodTo < input.periodFrom) throw new Error("The period end must be on or after the start.");
-    if (!Number.isFinite(input.mtPerCumFactor) || input.mtPerCumFactor <= 0 || input.mtPerCumFactor > 100) {
-      throw new Error("Enter an MT-per-cum factor greater than zero.");
+    const mtPerCumFactor = finite(current.mtPerCumFactor || 2.356);
+    if (!Number.isFinite(mtPerCumFactor) || mtPerCumFactor <= 0 || mtPerCumFactor > 100) {
+      throw new Error("The saved MT-per-cum factor is invalid; correct it before editing this order.");
     }
     if (!input.lines.length) throw new Error("Keep at least one mix line on the order.");
 
@@ -459,7 +453,7 @@ export async function editPlantSupplyOrder(
         submittedExistingIds.add(line.id);
       }
       const orderedMt = line.enteredUnit === "cum"
-        ? line.enteredQuantity * input.mtPerCumFactor
+        ? line.enteredQuantity * mtPerCumFactor
         : line.enteredQuantity;
       const dispatchedMt = dispatchedByTemplate.get(line.mixTemplateId) ?? 0;
       const quantityError = supplyOrderLineQuantityError(orderedMt, dispatchedMt);
@@ -479,26 +473,12 @@ export async function editPlantSupplyOrder(
       ["orderNo", current.orderNo, input.orderNo?.trim() || null],
       ["periodFrom", current.periodFrom, input.periodFrom],
       ["periodTo", current.periodTo, input.periodTo],
-      ["workName", current.workName, input.workName?.trim() || null],
-      ["division", current.division, input.division?.trim() || null],
-      ["mandal", current.mandal, input.mandal?.trim() || null],
-      ["district", current.district, input.district?.trim() || null],
-      ["agreementEstimateRef", current.agreementEstimateRef, input.agreementEstimateRef?.trim() || null],
-      ["estimateSorYear", current.estimateSorYear, input.estimateSorYear?.trim() || null],
-      ["mtPerCumFactor", finite(current.mtPerCumFactor), input.mtPerCumFactor],
       ["remarks", current.remarks, input.remarks?.trim() || null],
     ];
     await tx.update(plantSupplyOrders).set({
       orderNo: input.orderNo?.trim() || null,
       periodFrom: input.periodFrom,
       periodTo: input.periodTo,
-      workName: input.workName?.trim() || null,
-      division: input.division?.trim() || null,
-      mandal: input.mandal?.trim() || null,
-      district: input.district?.trim() || null,
-      agreementEstimateRef: input.agreementEstimateRef?.trim() || null,
-      estimateSorYear: input.estimateSorYear?.trim() || null,
-      mtPerCumFactor: String(input.mtPerCumFactor),
       remarks: input.remarks?.trim() || null,
       updatedAt: new Date(),
     }).where(eq(plantSupplyOrders.id, orderId));

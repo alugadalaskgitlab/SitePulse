@@ -10,13 +10,16 @@ const state = vi.hoisted(() => ({
   partyAudits: [] as any[],
   openOrderIds: [] as number[],
   ordersById: {} as Record<number, any>,
+  listedOrders: [] as any[],
+  scopeUpdates: [] as any[],
+  permissions: {} as Record<string, any>,
   user: { id: 1, fullName: "Test Owner", isOwner: true, isAdmin: true, isActive: true },
 }));
 
 vi.mock("../server/auth", () => {
   const inject = (req: any, _res: any, next: any) => {
     req.authUser = state.user;
-    req.authPermissions = {};
+    req.authPermissions = state.permissions;
     req.authFeatureAccess = { rolesConfigured: false };
     next();
   };
@@ -84,6 +87,7 @@ vi.mock("../server/plantSupplyOrderService", async (importOriginal) => {
   return {
     ...actual,
     getPlantSupplyOrder: vi.fn(async (id: number) => state.ordersById[id] ?? state.order),
+    listPlantSupplyOrders: vi.fn(async () => state.listedOrders),
     getOpenPlantSupplyOrderIdsForParty: vi.fn(async (partyId: number) =>
       state.parties.some(party => party.id === partyId) ? state.openOrderIds : []),
     createPlantSupplyOrder: vi.fn(async (input: any) => {
@@ -92,6 +96,21 @@ vi.mock("../server/plantSupplyOrderService", async (importOriginal) => {
     }),
     editPlantSupplyOrder: vi.fn(async (_id: number, input: any) => {
       state.order = { ...state.order, ...input };
+      return state.order;
+    }),
+    updateSupplyOrderScope: vi.fn(async (orderId: number, materialId: number, scope: "hlc" | "party", actor: any) => {
+      if (state.order?.status !== "open") throw new Error("Only an open order can be changed.");
+      const update = {
+        orderId,
+        materialId,
+        scope,
+        actor,
+        audit: {
+          oldValues: { materialId, scope: "hlc" },
+          newValues: { materialId, scope },
+        },
+      };
+      state.scopeUpdates.push(update);
       return state.order;
     }),
     changeSupplyOrderMix: vi.fn(async () => ({ order: state.order, versionId: 12 })),
@@ -141,6 +160,9 @@ describe("SP-DP-LINK-01 supply order routes", () => {
     state.partyAudits.length = 0;
     state.openOrderIds.length = 0;
     state.ordersById = {};
+    state.listedOrders = [];
+    state.scopeUpdates.length = 0;
+    state.permissions = {};
     state.user = { id: 1, fullName: "Test Owner", isOwner: true, isAdmin: true, isActive: true };
   });
 
@@ -159,23 +181,26 @@ describe("SP-DP-LINK-01 supply order routes", () => {
     });
     expect(created.status).toBe(201);
     expect(state.queued.at(-1)).toMatchObject({ status: "open", orderNo: "PO-91" });
+    Object.assign(state.order, {
+      workName: "Legacy typed work",
+      division: "Legacy division",
+      mtPerCumFactor: "2.356",
+    });
 
     const edited = await request(app).patch("/api/plant-module/supply-orders/91").send({
       orderNo: "PO-91",
       periodFrom: "2026-11-01",
       periodTo: "2026-12-15",
-      workName: null,
-      division: null,
-      mandal: null,
-      district: null,
-      agreementEstimateRef: null,
-      estimateSorYear: null,
-      mtPerCumFactor: 2.3,
       remarks: null,
       lines: [{ mixTemplateId: 4, enteredQuantity: 120, enteredUnit: "MT", plannedMtPerDay: 12 }],
     });
     expect(edited.status).toBe(200);
     expect(state.queued.at(-1)).toMatchObject({ status: "open", lines: [{ enteredQuantity: 120 }] });
+    expect(state.order).toMatchObject({
+      workName: "Legacy typed work",
+      division: "Legacy division",
+      mtPerCumFactor: "2.356",
+    });
 
     const mixChanged = await request(app)
       .post("/api/plant-module/supply-orders/91/lines/4/mix-versions")
@@ -196,6 +221,60 @@ describe("SP-DP-LINK-01 supply order routes", () => {
     expect(reopened.status).toBe(200);
     expect(state.queued.at(-1)).toMatchObject({ status: "open" });
     expect(state.queued).toHaveLength(5);
+  });
+
+  it("returns allowance and actual fields only to users with norm-vs-actual permission", async () => {
+    state.order = {
+      id: 91,
+      status: "open",
+      lines: [{
+        id: 2,
+        mixVersions: [{ versionId: 11, materialUsage: [{ materialId: 9, allowance: 10, actual: 9, variance: -1 }] }],
+      }],
+      materialUsage: [{ materialId: 9, allowance: 10, actual: 9, variance: -1 }],
+    };
+    state.user = { id: 2, fullName: "Engineer", isOwner: false, isAdmin: false, isActive: true };
+    state.permissions = {
+      plant_supply_orders: { view: true },
+      plant_norm_vs_actual: { view: false },
+    };
+    const restricted = await request(app).get("/api/plant-module/supply-orders/91");
+    expect(restricted.status).toBe(200);
+    expect(restricted.body).not.toHaveProperty("materialUsage");
+    expect(restricted.body.lines[0].mixVersions[0]).not.toHaveProperty("materialUsage");
+
+    state.permissions.plant_norm_vs_actual.view = true;
+    const allowed = await request(app).get("/api/plant-module/supply-orders/91");
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.materialUsage).toEqual(state.order.materialUsage);
+    expect(allowed.body.lines[0].mixVersions[0].materialUsage).toEqual(state.order.lines[0].mixVersions[0].materialUsage);
+
+    state.permissions.plant_norm_vs_actual.view = false;
+    state.listedOrders = [state.order];
+    const restrictedList = await request(app).get("/api/plant-module/supply-orders");
+    expect(restrictedList.status).toBe(200);
+    expect(restrictedList.body[0]).not.toHaveProperty("materialUsage");
+    expect(restrictedList.body[0].lines[0].mixVersions[0]).not.toHaveProperty("materialUsage");
+  });
+
+  it("keeps supplier changes on the existing open-order audit path", async () => {
+    state.order = { id: 91, status: "open", materials: [{ materialId: 9 }] };
+    const updated = await request(app).patch("/api/plant-module/supply-orders/91/material-scope")
+      .send({ materialId: 9, scope: "party" });
+    expect(updated.status).toBe(200);
+    expect(state.scopeUpdates.at(-1)).toMatchObject({
+      orderId: 91,
+      materialId: 9,
+      scope: "party",
+      actor: { userId: 1, name: "Test Owner" },
+      audit: { oldValues: { scope: "hlc" }, newValues: { scope: "party" } },
+    });
+
+    state.order.status = "closed";
+    const closed = await request(app).patch("/api/plant-module/supply-orders/91/material-scope")
+      .send({ materialId: 9, scope: "hlc" });
+    expect(closed.status).toBe(400);
+    expect(state.scopeUpdates).toHaveLength(1);
   });
 
   it("keeps the site-link conflict choice Owner-only", async () => {
