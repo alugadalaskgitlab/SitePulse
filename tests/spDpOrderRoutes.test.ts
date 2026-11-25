@@ -6,6 +6,10 @@ import request from "supertest";
 const state = vi.hoisted(() => ({
   order: null as any,
   queued: [] as any[],
+  parties: [] as any[],
+  partyAudits: [] as any[],
+  openOrderIds: [] as number[],
+  ordersById: {} as Record<number, any>,
   user: { id: 1, fullName: "Test Owner", isOwner: true, isAdmin: true, isActive: true },
 }));
 
@@ -35,6 +39,19 @@ vi.mock("../server/db", () => ({
 vi.mock("../server/storage", () => {
   const storage = new Proxy({} as Record<string, any>, {
     get(target, key: string) {
+      if (key === "getParties") return async () => state.parties;
+      if (key === "createParty") return async (input: any) => {
+        const party = { ...input, id: state.parties.length + 1, name: input.name.toUpperCase() };
+        state.parties.push(party);
+        return party;
+      };
+      if (key === "updateParty") return async (id: number, input: any) => {
+        const index = state.parties.findIndex(party => party.id === id);
+        if (index < 0) return undefined;
+        state.parties[index] = { ...state.parties[index], ...input };
+        return state.parties[index];
+      };
+      if (key === "logAudit") return async (entry: any) => { state.partyAudits.push(entry); };
       if (!(key in target)) target[key] = async () => [];
       return target[key];
     },
@@ -66,11 +83,13 @@ vi.mock("../server/plantSupplyOrderService", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../server/plantSupplyOrderService")>();
   return {
     ...actual,
+    getPlantSupplyOrder: vi.fn(async (id: number) => state.ordersById[id] ?? state.order),
+    getOpenPlantSupplyOrderIdsForParty: vi.fn(async (partyId: number) =>
+      state.parties.some(party => party.id === partyId) ? state.openOrderIds : []),
     createPlantSupplyOrder: vi.fn(async (input: any) => {
       state.order = { ...input, id: 91, orderNo: input.orderNo ?? "PO-91", status: "open", partyName: "North party", siteName: "Test road" };
       return state.order;
     }),
-    getPlantSupplyOrder: vi.fn(async () => state.order),
     editPlantSupplyOrder: vi.fn(async (_id: number, input: any) => {
       state.order = { ...state.order, ...input };
       return state.order;
@@ -94,6 +113,8 @@ vi.mock("../server/dispatchProOutbox", async (importOriginal) => {
         status: order.status,
         orderNo: order.orderNo,
         lines: order.lines,
+        partyName: order.partyName,
+        partyPanNo: order.partyPanNo,
       });
       return { queued: true };
     }),
@@ -116,6 +137,10 @@ describe("SP-DP-LINK-01 supply order routes", () => {
   beforeEach(() => {
     state.order = null;
     state.queued.length = 0;
+    state.parties.length = 0;
+    state.partyAudits.length = 0;
+    state.openOrderIds.length = 0;
+    state.ordersById = {};
     state.user = { id: 1, fullName: "Test Owner", isOwner: true, isAdmin: true, isActive: true };
   });
 
@@ -204,6 +229,69 @@ describe("SP-DP-LINK-01 supply order routes", () => {
       id: 91,
       orderNo: "PO-CURRENT",
       lines: [{ mixTemplateId: 4, mixName: "Current template", orderedMt: 225 }],
+    });
+  });
+
+  it("normalizes GST and PAN, allows blanks, and gives plain format errors", async () => {
+    const badGst = await request(app).post("/api/plant-module/parties").send({
+      name: "Format test", gstNo: "bad", panNo: "ABCDE1234F",
+    });
+    expect(badGst.status).toBe(400);
+    expect(badGst.body.message).toBe("GST no. must be 15 letters or digits.");
+
+    const badPan = await request(app).post("/api/plant-module/parties").send({
+      name: "Format test", gstNo: "36ABCDE1234F1Z5", panNo: "bad",
+    });
+    expect(badPan.status).toBe(400);
+    expect(badPan.body.message).toBe("PAN no. must be 5 letters, 4 digits and 1 letter.");
+
+    const created = await request(app).post("/api/plant-module/parties").send({
+      name: "Format test", gstNo: " 36abcde1234f1z5 ", panNo: " abcde1234f ",
+    });
+    expect(created.status).toBe(201);
+    expect(state.parties[0]).toMatchObject({ gstNo: "36ABCDE1234F1Z5", panNo: "ABCDE1234F" });
+    expect(state.partyAudits.at(-1).newValues).toMatchObject({ gstNo: "36ABCDE1234F1Z5", panNo: "ABCDE1234F" });
+
+    const blank = await request(app).post("/api/plant-module/parties").send({
+      name: "Blank identifiers", gstNo: " ", panNo: "",
+    });
+    expect(blank.status).toBe(201);
+    expect(state.parties.at(-1)).toMatchObject({ gstNo: null, panNo: null });
+  });
+
+  it("re-queues open order details after a Party master edit and skips orders that closed meanwhile", async () => {
+    state.parties.push({
+      id: 7, name: "OLD PARTY", contactPerson: null, mobile: null, gstNo: null, panNo: null, address: null,
+    });
+    state.openOrderIds.push(91, 92);
+    state.ordersById[91] = {
+      id: 91, partyId: 7, partyName: "NEW PARTY", siteId: 18, siteName: "Test road",
+      orderNo: "PO-91", status: "open", partyPanNo: "ABCDE1234F", lines: [],
+    };
+    state.ordersById[92] = {
+      id: 92, partyId: 7, partyName: "NEW PARTY", siteId: 19, siteName: "Closed road",
+      orderNo: "PO-92", status: "closed", lines: [],
+    };
+
+    const response = await request(app).patch("/api/plant-module/parties/7").send({
+      name: "New party",
+      contactPerson: "New contact",
+      mobile: null,
+      gstNo: null,
+      panNo: "abcde1234f",
+      address: null,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.dispatchProRequeue).toEqual({ queued: 1, skipped: 1, failed: 0 });
+    expect(state.queued).toEqual([
+      expect.objectContaining({ id: 91, status: "open", partyPanNo: "ABCDE1234F" }),
+    ]);
+    expect(state.partyAudits.at(-1)).toMatchObject({
+      module: "party_master",
+      action: "edit",
+      oldValues: expect.objectContaining({ panNo: null }),
+      newValues: expect.objectContaining({ panNo: "ABCDE1234F" }),
     });
   });
 });

@@ -623,6 +623,7 @@ export const parties = pgTable("parties", {
   contactPerson: text("contact_person"),
   mobile: text("mobile"),
   gstNo: text("gst_no"),
+  panNo: text("pan_no"),
   address: text("address"),
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),

@@ -2738,7 +2738,14 @@ export function PartyMaster() {
   const [contactPerson, setContactPerson] = useState("");
   const [mobile, setMobile] = useState("");
   const [gstNo, setGstNo] = useState("");
+  const [panNo, setPanNo] = useState("");
   const [address, setAddress] = useState("");
+  const gstNoError = gstNo.trim() && !/^[A-Z0-9]{15}$/.test(gstNo.trim().toUpperCase())
+    ? "GST no. must be 15 letters or digits."
+    : "";
+  const panNoError = panNo.trim() && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(panNo.trim().toUpperCase())
+    ? "PAN no. must be 5 letters, 4 digits and 1 letter."
+    : "";
 
   const exportToExcel = (data: Party[]) => {
     const ws = XLSX.utils.json_to_sheet(data.map(p => ({
@@ -2746,6 +2753,7 @@ export function PartyMaster() {
       "Contact person": p.contactPerson || "",
       Mobile: p.mobile || "",
       "GST no": p.gstNo || "",
+      "PAN no": p.panNo || "",
       Address: p.address || "",
       Notes: p.notes || "",
     })));
@@ -2774,7 +2782,7 @@ export function PartyMaster() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; notes?: string; dispatchProSiteId?: string | null; contactPerson?: string | null; mobile?: string | null; gstNo?: string | null; address?: string | null }) =>
+    mutationFn: (data: { name: string; notes?: string; dispatchProSiteId?: string | null; contactPerson?: string | null; mobile?: string | null; gstNo?: string | null; panNo?: string | null; address?: string | null }) =>
       apiRequest("POST", "/api/plant-module/parties", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/parties"] });
@@ -2792,13 +2800,22 @@ export function PartyMaster() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { name: string; notes?: string; dispatchProSiteId?: string | null; contactPerson?: string | null; mobile?: string | null; gstNo?: string | null; address?: string | null } }) =>
-      apiRequest("PATCH", `/api/plant-module/parties/${id}`, data),
-    onSuccess: () => {
+    mutationFn: async ({ id, data }: { id: number; data: { name: string; notes?: string; dispatchProSiteId?: string | null; contactPerson?: string | null; mobile?: string | null; gstNo?: string | null; panNo?: string | null; address?: string | null } }) => {
+      const response = await apiRequest("PATCH", `/api/plant-module/parties/${id}`, data);
+      return response.json();
+    },
+    onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/parties"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/supply-orders"] });
       setDialogOpen(false);
       resetForm();
-      toast({ title: "Party updated successfully" });
+      const requeue = result?.dispatchProRequeue;
+      toast({
+        title: "Party updated successfully",
+        ...(requeue ? {
+          description: `DispatchPro orders queued: ${requeue.queued}; skipped: ${requeue.skipped}; failed: ${requeue.failed}.`,
+        } : {}),
+      });
     },
     onError: (error: any) => {
       if (isForbiddenError(error)) {
@@ -2832,6 +2849,7 @@ export function PartyMaster() {
     setContactPerson("");
     setMobile("");
     setGstNo("");
+    setPanNo("");
     setAddress("");
     setEditingParty(null);
   };
@@ -2846,7 +2864,8 @@ export function PartyMaster() {
           notes,
           contactPerson: contactPerson.trim() || null,
           mobile: mobile.trim() || null,
-          gstNo: gstNo.trim() || null,
+          gstNo: gstNo.trim().toUpperCase() || null,
+          panNo: panNo.trim().toUpperCase() || null,
           address: address.trim() || null,
           ...(user?.isOwner ? { dispatchProSiteId: dispatchProSiteId || null } : {}),
         },
@@ -2857,7 +2876,8 @@ export function PartyMaster() {
         notes,
         contactPerson: contactPerson.trim() || null,
         mobile: mobile.trim() || null,
-        gstNo: gstNo.trim() || null,
+        gstNo: gstNo.trim().toUpperCase() || null,
+        panNo: panNo.trim().toUpperCase() || null,
         address: address.trim() || null,
         ...(user?.isOwner && dispatchProSiteId ? { dispatchProSiteId } : {}),
       });
@@ -2872,6 +2892,7 @@ export function PartyMaster() {
     setContactPerson(party.contactPerson || "");
     setMobile(party.mobile || "");
     setGstNo(party.gstNo || "");
+    setPanNo(party.panNo || "");
     setAddress(party.address || "");
     setDialogOpen(true);
   };
@@ -2930,7 +2951,16 @@ export function PartyMaster() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div><Label htmlFor="party-contact-person">Contact person</Label><Input id="party-contact-person" value={contactPerson} onChange={event => setContactPerson(event.target.value)} /></div>
                 <div><Label htmlFor="party-mobile">Mobile</Label><Input id="party-mobile" value={mobile} onChange={event => setMobile(event.target.value)} /></div>
-                <div><Label htmlFor="party-gst-no">GST no</Label><Input id="party-gst-no" value={gstNo} onChange={event => setGstNo(event.target.value)} /></div>
+                <div>
+                  <Label htmlFor="party-gst-no">GST no</Label>
+                  <Input id="party-gst-no" value={gstNo} onChange={event => setGstNo(event.target.value.toUpperCase())} aria-invalid={!!gstNoError} />
+                  {gstNoError && <p className="mt-1 text-xs text-destructive" role="alert">{gstNoError}</p>}
+                </div>
+                <div>
+                  <Label htmlFor="party-pan-no">PAN no.</Label>
+                  <Input id="party-pan-no" value={panNo} onChange={event => setPanNo(event.target.value.toUpperCase())} aria-invalid={!!panNoError} />
+                  {panNoError && <p className="mt-1 text-xs text-destructive" role="alert">{panNoError}</p>}
+                </div>
                 <div><Label htmlFor="party-address">Address</Label><Input id="party-address" value={address} onChange={event => setAddress(event.target.value)} /></div>
               </div>
               {user?.isOwner && (
@@ -2958,7 +2988,7 @@ export function PartyMaster() {
                   )}
                 </div>
               )}
-              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-save-party">
+              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !!gstNoError || !!panNoError} data-testid="button-save-party">
                 {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingParty ? "Update" : "Create"}
               </Button>
             </div>
@@ -2979,8 +3009,8 @@ export function PartyMaster() {
               <div key={party.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
                 <div>
                   <p className="font-medium">{party.name}</p>
-                  {[party.contactPerson, party.mobile, party.gstNo, party.address].filter(Boolean).length > 0 && (
-                    <p className="text-sm text-muted-foreground">{[party.contactPerson, party.mobile, party.gstNo, party.address].filter(Boolean).join(" · ")}</p>
+                  {[party.contactPerson, party.mobile, party.gstNo, party.panNo, party.address].filter(Boolean).length > 0 && (
+                    <p className="text-sm text-muted-foreground">{[party.contactPerson, party.mobile, party.gstNo, party.panNo, party.address].filter(Boolean).join(" · ")}</p>
                   )}
                   {party.notes && <p className="text-sm text-muted-foreground">{party.notes}</p>}
                 </div>

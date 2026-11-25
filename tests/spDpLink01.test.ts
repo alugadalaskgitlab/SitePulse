@@ -174,6 +174,38 @@ describe("SP-DP-LINK-01 supply order DispatchPro outbox", () => {
     });
   });
 
+  it("sends only nonblank string contractor details using the DispatchPro field names", () => {
+    const payload = buildSupplyOrderDispatchProPayload(order({
+      partyAddress: "  12 Road, Alladurg ",
+      partyGstNo: " 36ABCDE1234F1Z5 ",
+      partyPanNo: "ABCDE1234F",
+      partyContactPerson: " Sunil Kumar ",
+      partyMobile: " 9876543210 ",
+    }));
+    expect(payload.partyDetails).toEqual({
+      address: "12 Road, Alladurg",
+      gstNo: "36ABCDE1234F1Z5",
+      panNo: "ABCDE1234F",
+      contactPerson: "Sunil Kumar",
+      mobile: "9876543210",
+    });
+    expect(Object.values(payload.partyDetails ?? {}).every(value => typeof value === "string" && value.length > 0)).toBe(true);
+    expect(Object.keys(payload.partyDetails ?? []).sort()).toEqual([
+      "address", "contactPerson", "gstNo", "mobile", "panNo",
+    ].sort());
+  });
+
+  it("omits partyDetails when all Party master details are blank", () => {
+    const payload = buildSupplyOrderDispatchProPayload(order({
+      partyAddress: "  ",
+      partyGstNo: "",
+      partyPanNo: null,
+      partyContactPerson: null,
+      partyMobile: " ",
+    }));
+    expect(payload).not.toHaveProperty("partyDetails");
+  });
+
   it("does not queue an order without a SitePulse site", async () => {
     const result = await enqueueSupplyOrderDispatchPro(order({ siteId: null }));
     expect(result).toEqual({ queued: false, reason: "site_required" });

@@ -9737,7 +9737,7 @@ export class DatabaseStorage implements IStorage {
 
   async getPartyStatement(partyId: number, materialId: number, dateFrom?: string, dateTo?: string): Promise<{
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
-    partyDetails: { name: string; contactPerson: string | null; mobile: string | null; gstNo: string | null; address: string | null } | null;
+    partyDetails: { name: string; contactPerson: string | null; mobile: string | null; gstNo: string | null; panNo: string | null; address: string | null } | null;
     siteDetails: Array<{
       siteName: string;
       workName: string | null;
@@ -9765,6 +9765,7 @@ export class DatabaseStorage implements IStorage {
       contactPerson: parties.contactPerson,
       mobile: parties.mobile,
       gstNo: parties.gstNo,
+      panNo: parties.panNo,
       address: parties.address,
     }).from(parties).where(eq(parties.id, partyId)).limit(1);
     // Fetch ledger entries for this party+material in the date range

@@ -163,6 +163,18 @@ export async function enqueueDispatchProChange(dispatchId: number, operation: "c
 }
 
 export function buildSupplyOrderDispatchProPayload(order: any) {
+  const partyDetails: Record<string, string> = {};
+  const partyFields = [
+    ["address", order.partyAddress],
+    ["gstNo", order.partyGstNo],
+    ["panNo", order.partyPanNo],
+    ["contactPerson", order.partyContactPerson],
+    ["mobile", order.partyMobile],
+  ] as const;
+  for (const [key, value] of partyFields) {
+    const normalized = typeof value === "string" ? value.trim() : "";
+    if (normalized) partyDetails[key] = normalized;
+  }
   return {
     sitePulseOrderId: `SP-ORDER-${order.id}`,
     partyName: order.partyName,
@@ -177,6 +189,7 @@ export function buildSupplyOrderDispatchProPayload(order: any) {
     periodFrom: dispatchProOrderDate(order.periodFrom),
     periodTo: dispatchProOrderDate(order.periodTo),
     status: order.status === "closed" ? "closed" : "open",
+    ...(Object.keys(partyDetails).length ? { partyDetails } : {}),
   };
 }
 

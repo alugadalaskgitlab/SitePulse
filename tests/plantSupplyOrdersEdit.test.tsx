@@ -12,6 +12,7 @@ const mock = vi.hoisted(() => ({
     partyContactPerson: "Fixture contact",
     partyMobile: "9876543210",
     partyGstNo: "GST-TEST",
+    partyPanNo: "ABCDE1234F",
     partyAddress: "Fixture address",
     dispatchProSiteId: null,
     siteId: 5,
@@ -159,11 +160,34 @@ describe("ORDERS-02 order detail and editing UI", () => {
     await waitFor(() => expect(screen.getByTestId("order-party-master-details")).toBeInTheDocument());
     expect(screen.getAllByText("Current master road").length).toBeGreaterThan(0);
     expect(screen.getByTestId("order-party-master-details").textContent).toContain("Fixture contact");
+    expect(screen.getByTestId("order-party-master-details").textContent).toContain("PAN no.: ABCDE1234F");
+    expect(screen.getByRole("link", { name: "Edit in Party master" })).toHaveAttribute("href", "/plant/dashboard#party-master");
+    expect(document.querySelector("#supply-order-print")?.textContent).toContain("PAN no.: ABCDE1234F");
     expect(screen.queryByText("Old order snapshot")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Copy work details to Site master/i }));
     expect((await screen.findAllByText(/Current master road/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/Old order snapshot/)).length).toBeGreaterThan(0);
+  });
+
+  it("shows the no-details message when the Party master fields are empty", async () => {
+    const saved = {
+      partyContactPerson: mock.order.partyContactPerson,
+      partyMobile: mock.order.partyMobile,
+      partyGstNo: mock.order.partyGstNo,
+      partyPanNo: mock.order.partyPanNo,
+      partyAddress: mock.order.partyAddress,
+    };
+    Object.assign(mock.order, {
+      partyContactPerson: null,
+      partyMobile: null,
+      partyGstNo: null,
+      partyPanNo: null,
+      partyAddress: null,
+    });
+    render(<PlantSupplyOrders />);
+    expect(await screen.findByTestId("order-no-contractor-details")).toHaveTextContent("No contractor details in Party master");
+    Object.assign(mock.order, saved);
   });
 
   it("shows the DispatchPro link status and Owner-only conflict choices", async () => {

@@ -359,7 +359,7 @@ export default function PlantStock() {
 
   type PartyStatementResult = {
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
-    partyDetails: { name: string; contactPerson: string | null; mobile: string | null; gstNo: string | null; address: string | null } | null;
+    partyDetails: { name: string; contactPerson: string | null; mobile: string | null; gstNo: string | null; panNo: string | null; address: string | null } | null;
     siteDetails: Array<Record<string, string | null> & { siteName: string }>;
     entries: (ReceiptDatedLedgerEntry & {
       displayType: string;
@@ -2951,7 +2951,13 @@ export default function PlantStock() {
                   }])).values()]
                   .map(order => [order.orderNo, order.workName, order.siteName].filter(Boolean).join(" · "))
                   .join(" | ");
-                const partyMasterLine = [stmtData.partyDetails?.contactPerson, stmtData.partyDetails?.mobile, stmtData.partyDetails?.gstNo, stmtData.partyDetails?.address].filter(Boolean).join(" · ");
+                const partyMasterLine = [
+                  stmtData.partyDetails?.contactPerson ? `Contact person: ${stmtData.partyDetails.contactPerson}` : "",
+                  stmtData.partyDetails?.mobile ? `Mobile: ${stmtData.partyDetails.mobile}` : "",
+                  stmtData.partyDetails?.gstNo ? `GST no.: ${stmtData.partyDetails.gstNo}` : "",
+                  stmtData.partyDetails?.panNo ? `PAN no.: ${stmtData.partyDetails.panNo}` : "",
+                  stmtData.partyDetails?.address ? `Address: ${stmtData.partyDetails.address}` : "",
+                ].filter(Boolean).join(" · ");
                 const siteMasterLines = stmtData.siteDetails.map(site => [
                   site.siteName, site.workName, site.clientDepartment, site.division, site.mandal, site.district,
                   site.agreementEstimateRef, site.estimateSorYear,

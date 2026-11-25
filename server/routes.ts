@@ -231,6 +231,7 @@ import {
   getSupplyAlertOptions,
   getSupplyAlertSettings,
   getUserSupplyAlerts,
+  getOpenPlantSupplyOrderIdsForParty,
   listPlantSupplyOrders,
   markAllUserSupplyAlertsRead,
   markBorrowingReplacement,
@@ -378,12 +379,25 @@ function verifyRoleCookie(val: string | undefined): 'admin' | 'manager' | null {
   return role as 'admin' | 'manager';
 }
 
+const partyTaxNumberSchema = (pattern: RegExp, message: string) => z.preprocess(
+  value => typeof value === "string" ? value.trim().toUpperCase() || null : value,
+  z.string().regex(pattern, message).nullable().optional(),
+);
+
 const partyCreateBodySchema = insertPartySchema
-  .pick({ name: true, notes: true, dispatchProSiteId: true, contactPerson: true, mobile: true, gstNo: true, address: true })
+  .pick({ name: true, notes: true, dispatchProSiteId: true, contactPerson: true, mobile: true, address: true })
+  .extend({
+    gstNo: partyTaxNumberSchema(/^[A-Z0-9]{15}$/, "GST no. must be 15 letters or digits."),
+    panNo: partyTaxNumberSchema(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "PAN no. must be 5 letters, 4 digits and 1 letter."),
+  })
   .strict();
 
 const partyUpdateBodySchema = insertPartySchema
-  .pick({ name: true, notes: true, dispatchProSiteId: true, contactPerson: true, mobile: true, gstNo: true, address: true })
+  .pick({ name: true, notes: true, dispatchProSiteId: true, contactPerson: true, mobile: true, address: true })
+  .extend({
+    gstNo: partyTaxNumberSchema(/^[A-Z0-9]{15}$/, "GST no. must be 15 letters or digits."),
+    panNo: partyTaxNumberSchema(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "PAN no. must be 5 letters, 4 digits and 1 letter."),
+  })
   .partial()
   .strict();
 
@@ -5152,6 +5166,31 @@ export async function registerRoutes(
     };
   };
 
+  const requeueOpenSupplyOrdersForParty = async (partyId: number) => {
+    const result = { queued: 0, skipped: 0, failed: 0 };
+    let orderIds: number[];
+    try {
+      orderIds = await getOpenPlantSupplyOrderIdsForParty(partyId);
+    } catch {
+      return { ...result, failed: 1 };
+    }
+    for (const orderId of orderIds) {
+      try {
+        const order = await getPlantSupplyOrder(orderId);
+        if (!order || order.status !== "open") {
+          result.skipped += 1;
+          continue;
+        }
+        const queued = await enqueueSupplyOrderDispatchPro(order);
+        if (queued.queued) result.queued += 1;
+        else result.skipped += 1;
+      } catch {
+        result.failed += 1;
+      }
+    }
+    return result;
+  };
+
   app.get("/api/plant-module/supply-orders/options", async (req, res) => {
     if (!assertView(req, res, "plant_supply_orders")) return;
     try {
@@ -5637,8 +5676,17 @@ export async function registerRoutes(
   app.post("/api/plant-module/parties", async (req, res) => {
     try {
       if (!assertCreate(req, res, "master_parties")) return;
-      const input = parseCreateBody(partyCreateBodySchema, req.body, res);
-      if (input === null) return;
+      const parsed = partyCreateBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        const taxNumberIssue = parsed.error.errors.find(issue =>
+          issue.path[0] === "gstNo" || issue.path[0] === "panNo",
+        );
+        if (taxNumberIssue) {
+          return res.status(400).json({ message: taxNumberIssue.message });
+        }
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      const input = parsed.data;
       if (input.dispatchProSiteId !== undefined && !req.authUser?.isOwner) {
         return res.status(403).json({ message: "Only the Owner can link a party to DispatchPro." });
       }
@@ -5688,7 +5736,11 @@ export async function registerRoutes(
         oldValues,
         newValues,
       });
-      res.json(party);
+      const partyDetailFields = ["name", "contactPerson", "mobile", "gstNo", "panNo", "address"];
+      const dispatchProRequeue = partyDetailFields.some(field => Object.prototype.hasOwnProperty.call(parsed.data, field))
+        ? await requeueOpenSupplyOrdersForParty(partyId)
+        : undefined;
+      res.json({ ...party, ...(dispatchProRequeue ? { dispatchProRequeue } : {}) });
     } catch (err) {
       res.status(500).json({ message: "Failed to update party" });
     }

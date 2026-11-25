@@ -618,9 +618,13 @@ export default function PlantSupplyOrders() {
           <div id="supply-order-print" className="hidden print:block">
             <h1>{order.orderNo} · {order.partyName}</h1>
             <p>{order.periodFrom} – {order.periodTo}{order.siteName ? ` · ${order.siteName}` : ""}</p>
-            {[order.partyContactPerson, order.partyMobile, order.partyGstNo, order.partyAddress].filter(Boolean).length > 0 && (
-              <p>{[order.partyContactPerson, order.partyMobile, order.partyGstNo, order.partyAddress].filter(Boolean).join(" · ")}</p>
-            )}
+            <h2>Contractor details</h2>
+            <p>Name: {order.partyName}</p>
+            {order.partyContactPerson && <p>Contact person: {order.partyContactPerson}</p>}
+            {order.partyMobile && <p>Mobile: {order.partyMobile}</p>}
+            {order.partyGstNo && <p>GST no.: {order.partyGstNo}</p>}
+            {order.partyPanNo && <p>PAN no.: {order.partyPanNo}</p>}
+            {order.partyAddress && <p>Address: {order.partyAddress}</p>}
             {visibleWorkEntries.map(([label, value]) => <p key={label}>{label}: {value}</p>)}
             <p>MT per cum factor: {Number(order.siteWorkDetails?.mtPerCumFactor || order.mtPerCumFactor || 2.356).toFixed(3)}</p>
             <h2>Mixes</h2>
@@ -701,6 +705,23 @@ export default function PlantSupplyOrders() {
                           {order.siteName ? ` · ${order.siteName}` : order.dispatchProSiteId ? " · DispatchPro site linked" : ""}
                           {order.status === "closed" ? " · Closed" : " · Open"}
                         </p>
+                        <div className="mt-3 rounded-md border bg-slate-50 p-3 text-sm" data-testid="order-party-master-details">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h3 className="font-semibold">Contractor details</h3>
+                            <Link href="/plant/dashboard#party-master" className="underline">Edit in Party master</Link>
+                          </div>
+                          <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                            <div><dt className="inline text-slate-500">Name: </dt><dd className="inline">{order.partyName}</dd></div>
+                            {order.partyContactPerson && <div><dt className="inline text-slate-500">Contact person: </dt><dd className="inline">{order.partyContactPerson}</dd></div>}
+                            {order.partyMobile && <div><dt className="inline text-slate-500">Mobile: </dt><dd className="inline">{order.partyMobile}</dd></div>}
+                            {order.partyGstNo && <div><dt className="inline text-slate-500">GST no.: </dt><dd className="inline">{order.partyGstNo}</dd></div>}
+                            {order.partyPanNo && <div><dt className="inline text-slate-500">PAN no.: </dt><dd className="inline">{order.partyPanNo}</dd></div>}
+                            {order.partyAddress && <div className="sm:col-span-2"><dt className="inline text-slate-500">Address: </dt><dd className="inline">{order.partyAddress}</dd></div>}
+                          </dl>
+                          {!order.partyContactPerson && !order.partyMobile && !order.partyGstNo && !order.partyPanNo && !order.partyAddress && (
+                            <p className="mt-2 text-sm text-slate-600" data-testid="order-no-contractor-details">No contractor details in Party master</p>
+                          )}
+                        </div>
                         <div className="mt-2 text-sm" data-testid="dispatchpro-order-status" aria-live="polite">
                           {dispatchProOrder?.hasSite === false ? (
                             <p className="text-amber-800">DispatchPro: choose a site for this order first</p>
@@ -770,11 +791,6 @@ export default function PlantSupplyOrders() {
                           Quantity conversion: {Number(order.siteWorkDetails?.mtPerCumFactor || order.mtPerCumFactor || 2.356).toFixed(3)} MT/cum
                           {Number(order.siteWorkDetails?.mtPerCumFactor) > 0 ? " · from Site master" : ""}
                         </p>
-                        {(order.partyContactPerson || order.partyMobile || order.partyGstNo || order.partyAddress) && (
-                          <p className="mt-1 text-sm text-slate-600" data-testid="order-party-master-details">
-                            {[order.partyContactPerson, order.partyMobile, order.partyGstNo, order.partyAddress].filter(Boolean).join(" · ")}
-                          </p>
-                        )}
                         {order.remarks && <p className="mt-2 text-sm text-slate-600">{order.remarks}</p>}
                       </div>
                       <div className="flex flex-wrap gap-2">

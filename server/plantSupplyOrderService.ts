@@ -735,6 +735,14 @@ export async function listPlantSupplyOrders() {
   return Promise.all(orders.map(row => getPlantSupplyOrder(row.id)));
 }
 
+export async function getOpenPlantSupplyOrderIdsForParty(partyId: number): Promise<number[]> {
+  const rows = await db.select({ id: plantSupplyOrders.id })
+    .from(plantSupplyOrders)
+    .where(and(eq(plantSupplyOrders.partyId, partyId), eq(plantSupplyOrders.status, "open")))
+    .orderBy(asc(plantSupplyOrders.id));
+  return rows.map(row => row.id);
+}
+
 export async function getSupplyOrderLdoAllocations(date: string, plantName = "Main Plant") {
   const dispatched = await db.select({
     orderId: truckDispatches.supplyOrderId,
@@ -915,6 +923,7 @@ export async function getPlantSupplyOrder(orderId: number) {
     partyContactPerson: parties.contactPerson,
     partyMobile: parties.mobile,
     partyGstNo: parties.gstNo,
+    partyPanNo: parties.panNo,
     partyAddress: parties.address,
     siteId: plantSupplyOrders.siteId,
     siteName: sites.name,
