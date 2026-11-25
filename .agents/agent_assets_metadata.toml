@@ -6457,3 +6457,17 @@ mtime_ms = 1794140498657
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/afbce76d-f550-4704-8518-20ea15857c17/62f36385-2476-437e-a61e-83d9bae43cc1"
 storage_version_token = "1794140515529096"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "g0dw9-ZIA2r19S_HUndk7"
+uri = "file://reports/ORDERS-04-order-view.jpg"
+type = "image"
+title = "Supply order at phone width"
+description = "Browser-only demo order data; no saved order was changed."
+logical_id = "6b4fedde-136a-4fb1-bcbd-94b80020ee5d"
+content_hash = "sha256:dae828f3e53720f4fd49ce185de9c5212cef8ca6aceccd677b8936c7317a3c3d"
+size = 83921
+mtime_ms = 1795577500778
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:38c7ea14-bfd7-450d-9ff9-db514905afac/6b4fedde-136a-4fb1-bcbd-94b80020ee5d/d7dd1490-a9ea-469d-8d82-8ff1c4640ff2"
+storage_version_token = "1795578046035899"
+content_type = "image/jpeg"
