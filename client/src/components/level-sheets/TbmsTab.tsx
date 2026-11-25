@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input } from "./LevelInput";
 import { apiRequest } from "@/lib/queryClient";
 import {
   detectTbmHeading, normalizeTbmImport, repeatedTbmNames, TBM_IMPORT_FIELDS,
@@ -44,8 +44,8 @@ export function TbmsTab({ siteId, settings, canCreate, canEdit }: {
       if (chainage == null) throw new Error("Enter a valid chainage.");
       const response = await apiRequest(editing ? "PATCH" : "POST", editing ? `/api/level-sheets/tbms/${editing}` : "/api/level-sheets/tbms", {
         ...form, siteId, chainageOursKm: toOursChainage(chainage, settings.bookChainageSystem, settings.consultantOffsetM),
-        rl: form.rl === "" ? null : Number(form.rl),
-        easting: form.easting === "" ? null : Number(form.easting), northing: form.northing === "" ? null : Number(form.northing),
+        rl: form.rl === "" ? null : Number(form.rl.replace(",", ".")),
+        easting: form.easting === "" ? null : Number(form.easting.replace(",", ".")), northing: form.northing === "" ? null : Number(form.northing.replace(",", ".")),
       });
       return response.json();
     },
@@ -80,7 +80,7 @@ export function TbmsTab({ siteId, settings, canCreate, canEdit }: {
     </table></div>
     {(editing ? canEdit : canCreate) && <div className="space-y-3">
       <h3 className="font-semibold">{editing ? "Edit TBM" : "Add TBM"}</h3>
-      <div className="grid gap-2 sm:grid-cols-3">{TBM_IMPORT_FIELDS.map(key => <label key={key} className="text-sm">{labels[key]}<Input value={form[key]} onChange={event => setForm(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
+      <div className="grid gap-2 sm:grid-cols-3">{TBM_IMPORT_FIELDS.map(key => <label key={key} className="text-sm">{labels[key]}<Input inputMode={["rl", "easting", "northing"].includes(key) ? "decimal" : undefined} value={form[key]} onChange={event => setForm(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
       <label className="flex gap-2"><input type="checkbox" checked={form.active} onChange={event => setForm(current => ({ ...current, active: event.target.checked }))} />Active</label>
       <Button disabled={save.isPending} onClick={() => save.mutate()}>Save TBM</Button>{" "}
       {editing && <Button variant="outline" onClick={() => { setEditing(null); setForm({ ...blank }); }}>Cancel</Button>}

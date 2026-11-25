@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Input } from "./LevelInput";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -16,6 +16,7 @@ import { ResultsTab } from "./ResultsTab";
 import {
   calculateLevelSheet,
   levelSheetBasisLabel,
+  LEVEL_SHEET_FALLBACK_LAYERS,
   formatChainagePair,
   type BookChainageSystem,
   type ReadingMode,
@@ -119,7 +120,8 @@ function displayItem(item: any) {
   return `${item.itemCode ? `${item.itemCode} · ` : ""}${label}`.toLocaleUpperCase("en");
 }
 
-export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingSheet, sheetError, canCreate, canEdit, canApprove, onBack, onSave, saving }: {
+export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingSheet, sheetError, canCreate, canEdit, canApprove, onBack, onSave, saving, onOpenSiteTab }: {
+  onOpenSiteTab?: (tab: "tbms" | "design", layer?: string) => void;
   siteId: number;
   bootstrap: Bootstrap;
   sheetId: number | null;
@@ -136,6 +138,7 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("design");
+  const [otherLayer, setOtherLayer] = useState(false);
   const [form, setForm] = useState<FormState>(() => blankForm(siteId, bootstrap.boqProjectId, bootstrap.layerOptions[0] ?? "Original ground"));
   const [checkForm, setCheckForm] = useState<CheckFormState>(() => blankCheckForm());
   const [settings, setSettings] = useState<Bootstrap["settings"]>(bootstrap.settings);
@@ -191,7 +194,7 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
   const projectData = projectItemsQuery.data;
   const items = projectData?.items ?? (Number(form.boqProjectId) === Number(bootstrap.boqProjectId) ? bootstrap.items : []);
   const layerOptions = [...new Set([
-    ...(projectData?.layerOptions ?? bootstrap.layerOptions),
+    ...bootstrap.layerOptions, ...(projectData?.layerOptions ?? []), ...LEVEL_SHEET_FALLBACK_LAYERS,
     form.layerName,
   ].filter(Boolean))];
   const staff = useMemo(() => {
@@ -327,8 +330,13 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
             </select>
           </label>
           <label className="space-y-1 text-sm"><span>Levels of</span>
-            <input list={`level-layers-${siteId}`} className="h-10 w-full rounded-md border bg-background px-3" value={form.layerName} onChange={event => setField("layerName", event.target.value)} disabled={!sheetCanSave} />
-            <datalist id={`level-layers-${siteId}`}>{layerOptions.map(layer => <option key={layer} value={layer} />)}</datalist>
+            <select aria-label="Levels of" className="h-10 w-full rounded border bg-background px-3" value={otherLayer ? "__other" : form.layerName} onChange={event => {
+              setOtherLayer(event.target.value === "__other");
+              if (event.target.value !== "__other") setField("layerName", event.target.value);
+            }} disabled={!sheetCanSave}>
+              {layerOptions.map(layer => <option key={layer} value={layer}>{layer.toUpperCase()}</option>)}<option value="__other">Other…</option>
+            </select>
+            {otherLayer && <Input aria-label="Other layer" value={form.layerName} onChange={event => setField("layerName", event.target.value)} disabled={!sheetCanSave} />}
           </label>
           <label className="space-y-1 text-sm"><span>Date</span><Input type="date" value={form.sheetDate} onChange={event => setField("sheetDate", event.target.value)} disabled={!sheetCanSave} /></label>
           <label className="space-y-1 text-sm"><span>Instrument</span><Input value={form.instrument} onChange={event => setField("instrument", event.target.value)} disabled={!sheetCanSave} /></label>
@@ -395,6 +403,7 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
               settings={settings}
               header={{ tbmName: form.tbmName, tbmRl: form.tbmRl, initialBackSight: form.initialBackSight, closingForeSight: form.closingForeSight, closingTbmName: form.closingTbmName, closingTbmRl: form.closingTbmRl }}
               tbms={Array.isArray(tbmsQuery.data) ? tbmsQuery.data : []}
+              onOpenTbms={() => onOpenSiteTab?.("tbms")}
               onHeaderChange={header => setForm(current => ({ ...current, ...header }))}
               toleranceAboveMm={Number(form.toleranceAboveMm || 0)}
               toleranceBelowMm={Number(form.toleranceBelowMm || 0)}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input } from "./LevelInput";
 import {
   calculateLevelSheet,
   convertReadingValues,
@@ -69,8 +69,9 @@ export function hydrateRows(value: unknown): { columns: PointColumn[]; rows: She
   return { columns, rows: rows.length ? rows : [emptyRow(0, columns)] };
 }
 
-export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows, settings, header, onHeaderChange, toleranceAboveMm, toleranceBelowMm, allowedClosingErrorMm, resetKey, readOnly, tbms = [] }: {
-  tbms?: Array<{ id: number; name: string; rl: number; active: boolean }>;
+export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows, settings, header, onHeaderChange, toleranceAboveMm, toleranceBelowMm, allowedClosingErrorMm, resetKey, readOnly, tbms = [], onOpenTbms }: {
+  onOpenTbms?: () => void;
+  tbms?: Array<{ id: number; name: string; rl: number; active: boolean; chainageOursKm?: number }>;
   rows: SheetReadingRow[];
   onRowsChange: (rows: SheetReadingRow[]) => void;
   mode: ReadingMode;
@@ -88,6 +89,8 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
   const [columns, setColumns] = useState<PointColumn[]>(() => hydrateRows(rows).columns);
   const [duplicateMessage, setDuplicateMessage] = useState("");
   const [selectedChainage, setSelectedChainage] = useState<number | null>(null);
+  const [manualStart, setManualStart] = useState(false);
+  const [manualFinish, setManualFinish] = useState(false);
   useEffect(() => {
     const hydrated = hydrateRows(rows);
     setColumns(hydrated.columns);
@@ -195,38 +198,55 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
   };
   const totalWidth = Math.max(orderedColumns.length * 104 + 250, 700);
   const checkError = calculation.closingErrorMm;
+  const tbmPicker = (finish = false) => {
+    const name = finish ? header.closingTbmName || header.tbmName : header.tbmName;
+    const rl = finish ? header.closingTbmRl || header.tbmRl : header.tbmRl;
+    const active = tbms.filter(row => row.active);
+    const selected = !(finish ? manualFinish : manualStart) && active.find(row => row.name === name && Number(row.rl) === Number(rl));
+    return <div className="space-y-2">
+      <label className="block text-sm">{finish ? "Finish on TBM" : "Start from TBM"}
+        <select aria-label={finish ? "Finish on TBM" : "Start from TBM"} className="block w-full rounded border p-2" disabled={readOnly}
+          value={selected?.id ?? "manual"} onChange={event => {
+            const row = active.find(row => String(row.id) === event.target.value);
+            if (finish) setManualFinish(!row); else setManualStart(!row);
+            if (finish) onHeaderChange({ ...header, closingTbmName: row?.name ?? "", closingTbmRl: row ? Number(row.rl).toFixed(3) : "" });
+            else onHeaderChange({ ...header, tbmName: row?.name ?? "", tbmRl: row ? Number(row.rl).toFixed(3) : "",
+              ...(!header.closingTbmName || header.closingTbmName === header.tbmName ? { closingTbmName: row?.name ?? "", closingTbmRl: row ? Number(row.rl).toFixed(3) : "" } : {}) });
+          }}>
+          {active.map(row => <option key={row.id} value={row.id}>{row.name.toUpperCase()} · {row.chainageOursKm == null ? "" : formatChainage(row.chainageOursKm)} · {Number(row.rl).toFixed(3)}</option>)}
+          <option value="manual">Type a TBM</option>
+        </select>
+      </label>
+      {!finish && !active.length && <p className="text-sm">No TBMs saved for this site — <button type="button" className="underline" onClick={onOpenTbms}>add or import them in the TBMs tab</button></p>}
+      {!selected && <label className="block text-sm">TBM name<Input aria-label={finish ? "Finish TBM name" : "TBM name"} value={name ?? ""} disabled={readOnly}
+        onChange={event => onHeaderChange({ ...header, [finish ? "closingTbmName" : "tbmName"]: event.target.value })} /></label>}
+      <label className="block text-sm">Known level (RL)<Input aria-label={finish ? "Finish TBM RL" : "Known TBM RL"} inputMode="decimal" value={rl ?? ""} disabled={readOnly} readOnly={!!selected}
+        onChange={event => { if (!selected) onHeaderChange({ ...header, [finish ? "closingTbmRl" : "tbmRl"]: event.target.value }); }} /></label>
+    </div>;
+  };
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2 lg:grid-cols-4">
-        {mode === "staff" && <>
-          <label className="space-y-1 text-sm">Start on TBM<select aria-label="Start on TBM" className="block w-full rounded border p-2" value="" disabled={readOnly} onChange={event => {
-            const row = tbms.find(row => String(row.id) === event.target.value);
-            if (row) onHeaderChange({ ...header, tbmName: row.name, tbmRl: String(row.rl) });
-          }}><option value="">Choose TBM or type below</option>{tbms.filter(row => row.active).map(row => <option key={row.id} value={row.id}>{row.name.toUpperCase()} · {Number(row.rl).toFixed(3)}</option>)}</select></label>
-          <label className="space-y-1 text-sm">Close on TBM<select aria-label="Close on TBM" className="block w-full rounded border p-2" value="" disabled={readOnly} onChange={event => {
-            const row = tbms.find(row => String(row.id) === event.target.value);
-            if (row) onHeaderChange({ ...header, closingTbmName: row.name, closingTbmRl: String(row.rl) });
-          }}><option value="">Choose TBM or type below</option>{tbms.filter(row => row.active).map(row => <option key={row.id} value={row.id}>{row.name.toUpperCase()} · {Number(row.rl).toFixed(3)}</option>)}</select></label>
-          <label className="space-y-1 text-sm">Closing TBM name<Input value={header.closingTbmName ?? ""} disabled={readOnly} onChange={event => onHeaderChange({ ...header, closingTbmName: event.target.value })} /></label>
-          <label className="space-y-1 text-sm">Closing TBM RL<Input value={header.closingTbmRl ?? ""} disabled={readOnly} placeholder="Start TBM if empty" onChange={event => onHeaderChange({ ...header, closingTbmRl: event.target.value })} /></label>
-        </>}
+      {mode === "staff" ? <div className="space-y-3 rounded border p-3">
+        {tbmPicker()}
+        <label className="block text-sm">Staff reading on the start TBM (BS)<Input inputMode="decimal" value={header.initialBackSight} onChange={event => onHeaderChange({ ...header, initialBackSight: event.target.value })} disabled={readOnly} /></label>
+      </div> : <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className="space-y-1 text-sm"><span>TBM name</span><Input value={header.tbmName} onChange={event => onHeaderChange({ ...header, tbmName: event.target.value })} disabled={readOnly} /></label>
         <label className="space-y-1 text-sm"><span>Known TBM RL</span><Input inputMode="decimal" value={header.tbmRl} onChange={event => onHeaderChange({ ...header, tbmRl: event.target.value })} disabled={readOnly} /></label>
         <label className="space-y-1 text-sm"><span>Back sight on TBM</span><Input inputMode="decimal" value={header.initialBackSight} onChange={event => onHeaderChange({ ...header, initialBackSight: event.target.value })} disabled={readOnly} /></label>
         <label className="space-y-1 text-sm"><span>Closing fore sight on TBM</span><Input inputMode="decimal" value={header.closingForeSight} onChange={event => onHeaderChange({ ...header, closingForeSight: event.target.value })} disabled={readOnly} /></label>
-      </div>
+      </div>}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2" role="group" aria-label="Reading mode">
           <Button type="button" size="sm" variant={mode === "rl" ? "default" : "outline"} onClick={() => switchMode("rl")} disabled={readOnly}>Enter RLs</Button>
           <Button type="button" size="sm" variant={mode === "staff" ? "default" : "outline"} onClick={() => switchMode("staff")} disabled={readOnly}>Enter staff readings</Button>
         </div>
-        <p className="text-xs text-muted-foreground">
-          HI = {header.tbmRl && header.initialBackSight
+        {mode === "staff" && <p className="text-xs text-muted-foreground">
+          Instrument height (HI) {header.tbmRl && header.initialBackSight
             ? (Number(header.tbmRl.replace(",", ".")) + Number(header.initialBackSight.replace(",", "."))).toFixed(3)
             : "—"}
-        </p>
+        </p>}
       </div>
       {duplicateMessage && <p role="alert" className="text-sm text-destructive">{duplicateMessage}</p>}
 
@@ -278,20 +298,15 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
                   <Input aria-label={`Reading chainage ${rowIndex + 1}`} className="h-8 w-[132px]" value={formatChainage(toBookChainage(row.chainageOursKm, settings.bookChainageSystem, Number(settings.consultantOffsetM)))}
                     inputMode="decimal" onChange={event => setChainage(rowIndex, event.target.value)} disabled={readOnly} />
                   <span className="mt-1 block whitespace-nowrap text-[9px] leading-tight text-muted-foreground">{formatChainagePair(row.chainageOursKm, settings.bookChainageSystem, Number(settings.consultantOffsetM))}</span>
-                  {row.shift ? <div className="mt-2 space-y-1 rounded border p-1">
-                    <p className="text-[10px] font-medium">Instrument shift</p>
-                    <Input className="h-7 text-xs" aria-label={`Change-point foresight ${rowIndex + 1}`} placeholder="FS on change point" inputMode="decimal" value={numericText(row.shift.foresight)} onChange={event => setShift(rowIndex, "foresight", event.target.value)} disabled={readOnly} />
-                    <Input className="h-7 text-xs" aria-label={`New back sight ${rowIndex + 1}`} placeholder="New BS" inputMode="decimal" value={numericText(row.shift.backsight)} onChange={event => setShift(rowIndex, "backsight", event.target.value)} disabled={readOnly} />
-                    {section?.shiftCpRl != null && <span className="block text-[10px]">CP RL {section.shiftCpRl.toFixed(3)} · HI {section.hi?.toFixed(3)}</span>}
-                    <button type="button" className="text-[10px] underline" onClick={() => onRowsChange(rows.map((current, index) => index === rowIndex ? { ...current, shift: null } : current))} disabled={readOnly}>Remove shift</button>
-                  </div> : null}
+                  {row.shift && <p className="text-[10px]">Instrument moved{section?.shiftCpRl == null ? "" : ` · Turning point level (RL) ${section.shiftCpRl.toFixed(3)}`}</p>}
                 </td>
                 {orderedColumns.map(column => {
                   const point = row.points.find(item => item.columnKey === column.key);
                   const calculated = section?.points.find(item => item.columnKey === column.key);
                   return <td key={column.key} className="w-[104px] min-w-[104px] border-r p-1">
-                    <Input className="h-8 w-full text-center" aria-label={`Reading ${rowIndex + 1} ${column.side} ${column.distanceM ?? ""}`} inputMode="decimal"
+                    <label className="text-[10px]">{mode === "staff" ? "Staff reading" : "Level (RL)"}<Input className="h-8 w-full text-center" aria-label={`Reading ${rowIndex + 1} ${column.side} ${column.distanceM ?? ""}`} inputMode="decimal"
                       value={numericText(point?.value)} onChange={event => setPointValue(rowIndex, column.key, event.target.value)} disabled={readOnly} />
+                    </label>
                     {point && <Input className="mt-1 h-7 w-full text-center text-[10px]" aria-label={`Remark ${rowIndex + 1} ${column.side} ${column.distanceM ?? ""}`}
                       placeholder="Remark" value={point.remark ?? ""} onChange={event => setPointRemark(rowIndex, column.key, event.target.value)} disabled={readOnly} />}
                     {calculated?.rl != null && mode === "staff" && <p className="mt-1 text-[10px]">RL {calculated.rl.toFixed(3)}</p>}
@@ -311,13 +326,22 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
         </table>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {mode === "staff" && <Button variant="outline" disabled={readOnly || selectedChainage == null} onClick={() => onRowsChange(rows.map(row => row.chainageOursKm === selectedChainage ? { ...row, shift: row.shift ?? { foresight: null, backsight: null } } : row))}>Shift instrument before selected chainage</Button>}
+        {mode === "staff" && <Button variant="outline" disabled={readOnly || selectedChainage == null} onClick={() => onRowsChange(rows.map(row => row.chainageOursKm === selectedChainage ? { ...row, shift: row.shift ?? { foresight: null, backsight: null } } : row))}>Moved the level instrument?</Button>}
         <Button type="button" variant="outline" onClick={addNextChainage} disabled={readOnly}><Plus className="mr-2 h-4 w-4" /> Next chainage</Button>
-        <p className="text-sm">
-          Closing error {checkError == null ? "—" : `${Math.round(checkError)} mm`}{" "}
-          {checkError == null ? "" : Math.abs(checkError) <= Number(allowedClosingErrorMm) ? "— accepted" : "— too high, re-check"}
-        </p>
       </div>
+      {mode === "staff" && rows.map((row, rowIndex) => row.chainageOursKm === selectedChainage && row.shift ? <div key={rowIndex} className="space-y-2 rounded border p-3">
+        <p className="text-sm">Instrument moved before {formatChainage(row.chainageOursKm)}</p>
+        <label className="block text-sm">Reading on the turning point before moving (FS)<Input aria-label={`Change-point foresight ${rowIndex + 1}`} inputMode="decimal" value={numericText(row.shift.foresight)} onChange={event => setShift(rowIndex, "foresight", event.target.value)} disabled={readOnly} /></label>
+        <label className="block text-sm">Reading on the same point after moving (BS)<Input aria-label={`New back sight ${rowIndex + 1}`} inputMode="decimal" value={numericText(row.shift.backsight)} onChange={event => setShift(rowIndex, "backsight", event.target.value)} disabled={readOnly} /></label>
+        <Button variant="outline" disabled={readOnly} onClick={() => onRowsChange(rows.map((current, index) => index === rowIndex ? { ...current, shift: null } : current))}>Remove shift</Button>
+      </div> : null)}
+      {mode === "staff" && <div className="space-y-3 rounded border p-3">
+        {tbmPicker(true)}
+        <label className="block text-sm">Staff reading on the finish TBM (FS)<Input inputMode="decimal" value={header.closingForeSight} onChange={event => onHeaderChange({ ...header, closingForeSight: event.target.value })} disabled={readOnly} /></label>
+        <p className="text-sm">{checkError == null ? "Enter the finish reading to check the levels." : Math.abs(checkError) <= allowedClosingErrorMm
+          ? `Levels check OK — closed within ${Math.abs(checkError).toFixed(1)} mm (allowed ${allowedClosingErrorMm} mm)`
+          : `Levels do not close — off by ${Math.abs(checkError).toFixed(1)} mm (allowed ${allowedClosingErrorMm} mm). Take the levels again.`}</p>
+      </div>}
     </div>
   );
 }

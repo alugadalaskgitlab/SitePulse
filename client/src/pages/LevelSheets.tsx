@@ -157,6 +157,7 @@ export default function LevelSheets() {
             canEdit={canEdit}
             canApprove={canApprove}
             onBack={closeEditor}
+            onOpenSiteTab={tab => { closeEditor(); setSiteTab(tab); }}
             onSave={payload => saveMutation.mutate(payload)}
             saving={saveMutation.isPending}
           />

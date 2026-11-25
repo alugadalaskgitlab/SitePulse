@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input } from "./LevelInput";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { formatChainage, parseChainage, toBookChainage, type BookChainageSystem } from "@shared/levelSheets";
 import { boqItemDisplayText } from "@shared/boqItemName";

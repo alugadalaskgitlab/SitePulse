@@ -143,10 +143,49 @@ describe("Level sheets screen", () => {
     expect(left.closest("th")?.textContent).toBe("+LCL+R");
     expect(screen.queryByRole("button", { name: "Shift instrument", exact: true })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Enter staff readings" }));
-    const shift = screen.getByRole("button", { name: "Shift instrument before selected chainage" }) as HTMLButtonElement;
+    const shift = screen.getByRole("button", { name: "Moved the level instrument?" }) as HTMLButtonElement;
     expect(shift.disabled).toBe(true);
     fireEvent.click(screen.getByRole("textbox", { name: "Reading chainage 1" }));
     fireEvent.click(shift);
     expect(screen.getByRole("textbox", { name: "Change-point foresight 1" })).toBeTruthy();
+  });
+  it("keeps sequential decimal typing in reading, distance and TBM level boxes", async () => {
+    renderEditor();
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "2. Readings" }), { button: 0 });
+    fireEvent.click(await screen.findByRole("button", { name: "Add point left of centre" }));
+    const distance = screen.getByRole("textbox", { name: /L point distance/ });
+    const reading = screen.getByRole("textbox", { name: "Reading 1 CL 0" });
+    const tbm = screen.getByRole("textbox", { name: "Known TBM RL" });
+    for (const box of [distance, reading, tbm]) {
+      fireEvent.focus(box);
+      for (const value of ["3", "3.", "3.5"]) {
+        fireEvent.change(box, { target: { value } });
+        expect((box as HTMLInputElement).value).toBe(value);
+      }
+      fireEvent.blur(box);
+      expect((box as HTMLInputElement).value).toBe("3.5");
+    }
+    fireEvent.focus(reading);
+    fireEvent.change(reading, { target: { value: "-" } });
+    expect((reading as HTMLInputElement).value).toBe("-");
+    fireEvent.change(reading, { target: { value: "1,5" } });
+    expect((reading as HTMLInputElement).value).toBe("1,5");
+    fireEvent.blur(reading);
+    expect((reading as HTMLInputElement).value).toBe("1.5");
+  });
+  it("offers all layers even after choosing Other, and uses plain staff steps", async () => {
+    renderEditor();
+    fireEvent.change(await screen.findByLabelText("Levels of"), { target: { value: "__other" } });
+    fireEvent.change(screen.getByLabelText("Other layer"), { target: { value: "Custom layer" } });
+    const layers = screen.getByLabelText("Levels of");
+    expect(layers.textContent).toContain("WMM");
+    expect(layers.textContent).toContain("GSB");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "2. Readings" }), { button: 0 });
+    fireEvent.click(await screen.findByRole("button", { name: "Enter staff readings" }));
+    expect(screen.getByLabelText("Start from TBM")).toBeTruthy();
+    expect(screen.getByLabelText("Finish on TBM")).toBeTruthy();
+    expect(screen.getByText(/No TBMs saved for this site/)).toBeTruthy();
+    expect(screen.getByLabelText("Staff reading on the start TBM (BS)")).toBeTruthy();
+    expect(screen.queryByLabelText("Closing TBM name")).toBeNull();
   });
 });

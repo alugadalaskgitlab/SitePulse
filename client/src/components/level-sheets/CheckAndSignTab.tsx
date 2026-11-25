@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AttachmentViewer } from "@/components/AttachmentViewer";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input } from "./LevelInput";
 import { useUpload } from "@/hooks/use-upload";
 import { formatChainagePair, type BookChainageSystem, type CalculatedSection } from "@shared/levelSheets";
 import type { SheetReadingRow } from "./ReadingsTab";
