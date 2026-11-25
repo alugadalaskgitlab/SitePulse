@@ -57,7 +57,9 @@ function renderPage() {
 
 beforeEach(() => {
   fixture.teamAllowed = true;
+  fixture.context.linked = true;
   fixture.context.teamViewAllowed = true;
+  fixture.context.personName = "ALPHA ENGINEER";
   fixture.apiRequest.mockResolvedValue(new Response(JSON.stringify({ id: 1 }), { status: 201 }));
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -95,6 +97,39 @@ describe("Daily work log screen", () => {
     const place = screen.getByRole("combobox", { name: "Place" }) as HTMLSelectElement;
     expect(Array.from(place.options).map(option => option.textContent)).toEqual(["HLC plant", "Head office"]);
     expect(Array.from(place.options).some(option => option.textContent === "Site office")).toBe(false);
+  });
+
+  it("opens an unlinked team user directly in Team view and lets them record visits", async () => {
+    fixture.context.linked = false;
+    fixture.context.personName = null;
+    fixture.context.teamViewAllowed = true;
+    renderPage();
+    await screen.findByText("Daily work log");
+
+    expect(screen.queryByRole("button", { name: "My day" })).toBeNull();
+    expect(screen.queryByRole("alert", { name: "" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Team view" }).getAttribute("aria-current")).toBe("page");
+    fireEvent.click(screen.getByRole("button", { name: "Visits & inspections" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add visit" }));
+    fireEvent.change(screen.getByLabelText("Visitor"), { target: { value: "Department visitor" } });
+    fireEvent.change(screen.getByLabelText("Instructions given / points discussed"), { target: { value: "Reviewed the levels." } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fixture.apiRequest).toHaveBeenCalledWith(
+      "POST", "/api/daily-work-log/unlinked-visits", expect.objectContaining({
+        visitorName: "Department visitor", pointsDiscussed: "Reviewed the levels.",
+      }),
+    ));
+  });
+
+  it("shows the unlinked warning only when team view is not allowed", async () => {
+    fixture.teamAllowed = false;
+    fixture.context.linked = false;
+    fixture.context.teamViewAllowed = false;
+    fixture.context.personName = null;
+    renderPage();
+    expect((await screen.findByRole("alert")).textContent).toContain("Your login is not linked to a person");
+    expect(screen.queryByRole("button", { name: "My day" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Team view" })).toBeNull();
   });
 
   it("submits a new work entry through the create endpoint", async () => {

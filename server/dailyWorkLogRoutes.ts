@@ -8,6 +8,8 @@ import {
   officeVisits,
   personnel,
   sites,
+  unlinkedOfficeVisits,
+  users,
 } from "@shared/schema";
 import { businessToday } from "@shared/planOutcome";
 import { db } from "./db";
@@ -142,18 +144,6 @@ export function registerDailyWorkLogRoutes(
 ) {
   const database = (dependencies.db ?? db) as typeof db;
   const persistence = dependencies.storage ?? storage;
-  const linkedUser = (req: Request, res: Response) => {
-    if (!assertView(req, res, SECTION)) return null;
-    if (!req.authUser?.personnelId) {
-      res.status(409).json({
-        message: "Your login is not linked to a person in the Personnel master — ask the Owner",
-        linked: false,
-      });
-      return null;
-    }
-    return req.authUser;
-  };
-
   async function assertAllowedSite(req: Request, siteId: number | null) {
     if (siteId == null) return;
     const allowedIds = await persistence.getUserPermittedSiteIds(
@@ -196,12 +186,18 @@ export function registerDailyWorkLogRoutes(
   });
 
   app.get("/api/daily-work-log", async (req, res) => {
-    const user = linkedUser(req, res);
-    if (!user) return;
+    if (!assertView(req, res, SECTION)) return;
+    const user = req.authUser!;
     const date = req.query.date;
     if (!isDate(date)) return res.status(400).json({ message: "Choose a valid date." });
     const team = req.query.view === "team";
     if (team && !(await canSeeTeam(req))) return res.status(403).json({ message: "You do not have permission to see everyone’s day." });
+    if (!user.personnelId && !(await canSeeTeam(req))) {
+      return res.status(409).json({
+        message: "Your login is not linked to a person in the Personnel master — ask the Owner",
+        linked: false,
+      });
+    }
     const requestedPersonId = req.query.personnelId == null || req.query.personnelId === ""
       ? null : Number(req.query.personnelId);
     if (requestedPersonId != null && (!team || !Number.isInteger(requestedPersonId) || requestedPersonId <= 0)) {
@@ -218,7 +214,7 @@ export function registerDailyWorkLogRoutes(
         visitConditions.push(eq(officeVisits.recordedByPersonnelId, requestedPersonId));
       }
       const [workRows, visitRows] = await Promise.all([
-        database.select({
+        user.personnelId ? database.select({
           id: dailyWorkEntries.id, personnelId: dailyWorkEntries.personnelId,
           personName: personnel.name, createdByUserId: dailyWorkEntries.createdByUserId,
           workDate: dailyWorkEntries.workDate, place: dailyWorkEntries.place,
@@ -228,7 +224,8 @@ export function registerDailyWorkLogRoutes(
         }).from(dailyWorkEntries)
           .innerJoin(personnel, eq(personnel.id, dailyWorkEntries.personnelId))
           .leftJoin(sites, eq(sites.id, dailyWorkEntries.siteId))
-          .where(and(...workConditions)).orderBy(asc(dailyWorkEntries.createdAt), asc(dailyWorkEntries.id)),
+          .where(and(...workConditions)).orderBy(asc(dailyWorkEntries.createdAt), asc(dailyWorkEntries.id))
+          : Promise.resolve([]),
         database.select({
           id: officeVisits.id, recordedByPersonnelId: officeVisits.recordedByPersonnelId,
           personName: personnel.name, recordedByUserId: officeVisits.recordedByUserId,
@@ -241,6 +238,22 @@ export function registerDailyWorkLogRoutes(
         }).from(officeVisits).innerJoin(personnel, eq(personnel.id, officeVisits.recordedByPersonnelId))
           .where(and(...visitConditions)).orderBy(asc(officeVisits.createdAt), asc(officeVisits.id)),
       ]);
+      const unlinkedConditions = [eq(unlinkedOfficeVisits.visitDate, date)];
+      if (!team) unlinkedConditions.push(eq(unlinkedOfficeVisits.recordedByUserId, user.id));
+      const unlinkedVisitRows = team && requestedPersonId != null ? [] : await database.select({
+        id: unlinkedOfficeVisits.id,
+        recordedByUserId: unlinkedOfficeVisits.recordedByUserId,
+        personName: users.fullName,
+        visitDate: unlinkedOfficeVisits.visitDate, place: unlinkedOfficeVisits.place,
+        visitorName: unlinkedOfficeVisits.visitorName, visitorDesignation: unlinkedOfficeVisits.visitorDesignation,
+        organisation: unlinkedOfficeVisits.organisation, purpose: unlinkedOfficeVisits.purpose,
+        pointsDiscussed: unlinkedOfficeVisits.pointsDiscussed, fileName: unlinkedOfficeVisits.fileName,
+        objectPath: unlinkedOfficeVisits.objectPath, mimeType: unlinkedOfficeVisits.mimeType,
+        fileSize: unlinkedOfficeVisits.fileSize, updatedAt: unlinkedOfficeVisits.updatedAt,
+      }).from(unlinkedOfficeVisits)
+        .innerJoin(users, eq(users.id, unlinkedOfficeVisits.recordedByUserId))
+        .where(and(...unlinkedConditions))
+        .orderBy(asc(unlinkedOfficeVisits.createdAt), asc(unlinkedOfficeVisits.id));
       const permittedForWork = await persistence.getUserPermittedSiteIds(
         user.id,
         !!req.authFeatureAccess?.rolesConfigured,
@@ -251,7 +264,7 @@ export function registerDailyWorkLogRoutes(
 
       const personIds = team
         ? Array.from(new Set([...scopedWorkRows.map(row => row.personnelId), ...visitRows.map(row => row.recordedByPersonnelId)]))
-        : [Number(user.personnelId)];
+        : user.personnelId ? [Number(user.personnelId)] : [];
       let dprRows: any[] = [];
       if (team || personIds.length) {
         const permitted = permittedForWork;
@@ -302,18 +315,31 @@ export function registerDailyWorkLogRoutes(
         (!team || requestedPersonId == null || row.recordedByPersonnelId === requestedPersonId) &&
         (!team || !req.query.place || req.query.place === row.place),
       );
-      const visibleDprActivities = dprRows.filter(row => !team || !req.query.place || req.query.place === row.place);
-      const personName = scopedWorkRows[0]?.personName ?? visitRows[0]?.personName ?? null;
-      return res.json({
-        date, view: team ? "team" : "personal", personName,
-        workEntries: visibleWork,
-        visits: visibleVisits.map(row => ({
-          ...row,
+      const visibleUnlinkedVisits = unlinkedVisitRows
+        .filter(row => !team || !req.query.place || req.query.place === row.place)
+        .map(row => ({
+          ...row, recordedByPersonnelId: null, unlinked: true,
           attachment: row.objectPath ? {
             fileName: row.fileName, objectPath: row.objectPath,
             mimeType: row.mimeType, fileSize: row.fileSize,
           } : null,
-        })),
+        }));
+      const visibleDprActivities = dprRows.filter(row => !team || !req.query.place || req.query.place === row.place);
+      const personName = scopedWorkRows[0]?.personName ?? visitRows[0]?.personName ??
+        unlinkedVisitRows[0]?.personName ?? null;
+      const formattedVisits = visibleVisits.map(row => ({
+        ...row,
+        unlinked: false,
+        attachment: row.objectPath ? {
+          fileName: row.fileName, objectPath: row.objectPath,
+          mimeType: row.mimeType, fileSize: row.fileSize,
+        } : null,
+      }));
+      return res.json({
+        date, view: team ? "team" : "personal", personName,
+        workEntries: visibleWork,
+        visits: team ? formattedVisits : [...formattedVisits, ...visibleUnlinkedVisits],
+        unlinkedVisits: team ? visibleUnlinkedVisits : [],
         dprActivities: visibleDprActivities,
         totalDurationMinutes: visibleWork.reduce((sum, row) => sum + (row.durationMinutes ?? 0), 0),
       });
@@ -430,6 +456,79 @@ export function registerDailyWorkLogRoutes(
         return created;
       });
       return res.status(201).json(row);
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.post("/api/daily-work-log/unlinked-visits", async (req, res) => {
+    if (!assertCreate(req, res, SECTION)) return;
+    const user = req.authUser!;
+    if (user.personnelId) return res.status(409).json({ message: "This login is linked to Personnel; use the standard visit form." });
+    if (!(await canSeeTeam(req))) return res.status(403).json({ message: "See everyone’s day permission is required." });
+    try {
+      const values = validateVisitBody(req.body);
+      if (!mayCreateDate(values.visitDate)) return res.status(403).json({ message: "You can add visits only for today or yesterday." });
+      const row = await database.transaction(async tx => {
+        const [created] = await tx.insert(unlinkedOfficeVisits).values({
+          ...values, recordedByUserId: user.id,
+        }).returning();
+        await persistence.logAudit({
+          module: "office_visit_unlinked", transactionId: created.id, action: "create",
+          userId: user.id, userName: currentUserName(req), userRole: user.isOwner ? "owner" : user.businessRole ?? null,
+          newValues: values,
+        }, tx);
+        return created;
+      });
+      return res.status(201).json({ ...row, recordedByPersonnelId: null, unlinked: true, personName: currentUserName(req) });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.patch("/api/daily-work-log/unlinked-visits/:id", async (req, res) => {
+    if (!assertEdit(req, res, SECTION)) return;
+    const user = req.authUser!;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid visit." });
+    try {
+      const values = validateVisitBody(req.body);
+      const row = await database.transaction(async tx => {
+        const [old] = await tx.select().from(unlinkedOfficeVisits).where(eq(unlinkedOfficeVisits.id, id)).limit(1);
+        if (!old) throw Object.assign(new Error("Visit not found."), { status: 404 });
+        if (!user.isOwner && (old.recordedByUserId !== user.id || !mayCreateDate(old.visitDate) || !mayCreateDate(values.visitDate))) {
+          throw Object.assign(new Error("You can edit visits you recorded for today or yesterday only."), { status: 403 });
+        }
+        const [updated] = await tx.update(unlinkedOfficeVisits).set({ ...values, updatedAt: new Date() })
+          .where(eq(unlinkedOfficeVisits.id, id)).returning();
+        if (!updated) throw Object.assign(new Error("Visit could not be updated."), { status: 409 });
+        await persistence.logAudit({
+          module: "office_visit_unlinked", transactionId: id, action: "edit",
+          userId: user.id, userName: currentUserName(req), userRole: user.isOwner ? "owner" : user.businessRole ?? null,
+          oldValues: old, newValues: values,
+        }, tx);
+        return updated;
+      });
+      return res.json({ ...row, recordedByPersonnelId: null, unlinked: true });
+    } catch (error) { return sendError(res, error); }
+  });
+
+  app.delete("/api/daily-work-log/unlinked-visits/:id", async (req, res) => {
+    if (!assertDelete(req, res, SECTION)) return;
+    const user = req.authUser!;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid visit." });
+    try {
+      await database.transaction(async tx => {
+        const [old] = await tx.select().from(unlinkedOfficeVisits).where(eq(unlinkedOfficeVisits.id, id)).limit(1);
+        if (!old) throw Object.assign(new Error("Visit not found."), { status: 404 });
+        if (!user.isOwner && (old.recordedByUserId !== user.id || !mayCreateDate(old.visitDate))) {
+          throw Object.assign(new Error("You can delete visits you recorded for today or yesterday only."), { status: 403 });
+        }
+        await tx.delete(unlinkedOfficeVisits).where(eq(unlinkedOfficeVisits.id, id));
+        await persistence.logAudit({
+          module: "office_visit_unlinked", transactionId: id, action: "delete",
+          userId: user.id, userName: currentUserName(req), userRole: user.isOwner ? "owner" : user.businessRole ?? null,
+          oldValues: old, newValues: null,
+        }, tx);
+      });
+      return res.json({ ok: true, id });
     } catch (error) { return sendError(res, error); }
   });
 
