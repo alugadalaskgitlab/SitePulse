@@ -4,16 +4,17 @@ import { z } from "zod";
 import { db } from "./db";
 import {
   auditLogs, boqItemQualitySpecs, boqItems, boqProjects, dprs, labCalibrations,
-  labTestAttachments, labTests, materialBenchmarks, personnel, plantMaterials,
+  labTestAttachments, labTests, levelSheets, materialBenchmarks, personnel, plantMaterials,
   progressEntries, sites, userSiteAccess, users,
 } from "@shared/schema";
 import { assertCreate, assertEdit, assertView } from "./auth-routes";
-import { calculateSoilLabTest, labTestDisplayName, parseSprayRateFromBoqText, soilQualityDefaultsForWork, type LabCalculationContext, type SoilLabTestType } from "@shared/labTests";
+import { calculateSoilLabTest, labTestDisplayName, matchLevelSheetThicknessPoints, parseSprayRateFromBoqText, soilQualityDefaultsForWork, type LabCalculationContext, type SoilLabTestType } from "@shared/labTests";
+import { calculateLevelSheet } from "@shared/levelSheets";
 import { getUnitConversionFactor } from "@shared/planningEngine";
 
 const testTypes = [
   "field_density_sand", "field_density_core_cutter", "moisture_content",
-  "proctor_light", "proctor_modified", "cbr", "atterberg", "tray_spray_rate",
+  "proctor_light", "proctor_modified", "cbr", "atterberg", "tray_spray_rate", "layer_thickness",
 ] as const;
 const TEST_CODES: Record<SoilLabTestType, string> = {
   field_density_sand: "FDD",
@@ -24,6 +25,7 @@ const TEST_CODES: Record<SoilLabTestType, string> = {
   cbr: "CBR",
   atterberg: "ATL",
   tray_spray_rate: "TR",
+  layer_thickness: "TH",
 };
 const calibrationKindForTest: Partial<Record<SoilLabTestType, string>> = {
   field_density_sand: "sand_pouring_cylinder",
@@ -214,12 +216,63 @@ async function contextForTest(input: any): Promise<LabCalculationContext> {
     if (itemSpecs) {
       context.minValue = itemSpecs.minValue;
       context.maxValue = itemSpecs.maxValue;
+      if (testType === "layer_thickness") {
+        context.thicknessToleranceBelowMm = itemSpecs.thicknessToleranceBelowMm ?? 10;
+        context.thicknessToleranceAboveMm = itemSpecs.thicknessToleranceAboveMm ?? 15;
+      }
     } else {
       const defaults = soilQualityDefaultsForWork(`${item?.itemName ?? ""} ${item?.description ?? ""}`);
       const compatible = defaults.find(spec => spec.testType === testType);
       if (compatible) {
         context.minValue = compatible.minValue;
         context.maxValue = compatible.maxValue;
+      }
+    }
+  }
+  if (testType === "layer_thickness") {
+    context.thicknessToleranceBelowMm ??= 10;
+    context.thicknessToleranceAboveMm ??= 15;
+    if (input.boqItemId != null) {
+      const [item] = await db.select({ layerConfig: boqItems.layerConfig })
+        .from(boqItems).where(eq(boqItems.id, Number(input.boqItemId))).limit(1);
+      const configured = numeric((item?.layerConfig as any)?.thicknessMm);
+      if (configured != null && configured > 0) context.designThicknessMm = configured;
+    }
+    if (context.designThicknessMm == null) context.designThicknessMm = numeric(input.readings?.designThicknessMm);
+    if (input.readings?.sourceMode === "level_sheets") {
+      const belowSheetId = numeric(input.readings?.belowSheetId);
+      const topSheetId = numeric(input.readings?.topSheetId);
+      if (belowSheetId == null || topSheetId == null || belowSheetId === topSheetId) {
+        context.levelSheetError = "Choose two different saved level sheets for the same site.";
+      } else {
+        const rows = await db.select().from(levelSheets).where(inArray(levelSheets.id, [belowSheetId, topSheetId]));
+        const below = rows.find((row: any) => Number(row.id) === belowSheetId);
+        const top = rows.find((row: any) => Number(row.id) === topSheetId);
+        if (!below || !top || Number(below.siteId) !== Number(input.siteId) || Number(top.siteId) !== Number(input.siteId)
+            || below.status !== "saved" || top.status !== "saved") {
+          context.levelSheetError = "Both selected sheets must be saved sheets from this site.";
+        } else {
+          const pointsFrom = (sheet: any) => calculateLevelSheet({
+            designRows: [],
+            readings: Array.isArray(sheet.readings) ? sheet.readings as any : [],
+            mode: sheet.readingMode,
+            tbmRl: numeric(sheet.tbmRl),
+            backsight: numeric(sheet.initialBackSight),
+            closingForesight: numeric(sheet.closingForeSight),
+            toleranceAboveMm: numeric(sheet.toleranceAboveMm) ?? 0,
+            toleranceBelowMm: numeric(sheet.toleranceBelowMm) ?? 0,
+          }).sections.flatMap(section => section.points.flatMap(point =>
+            point.rl == null || point.distanceM == null ? [] : [{
+              chainageOursKm: section.chainageOursKm,
+              side: point.side,
+              offsetM: Number(point.distanceM),
+              rl: Number(point.rl),
+            }],
+          ));
+          context.levelSheetPoints = matchLevelSheetThicknessPoints(pointsFrom(below), pointsFrom(top));
+          context.belowSheetLabel = `${below.layerName} · ${below.sheetDate}`;
+          context.topSheetLabel = `${top.layerName} · ${top.sheetDate}`;
+        }
       }
     }
   }
@@ -261,7 +314,7 @@ function validateInput(input: any) {
     }).nullable().optional(),
   });
   const parsed = bodySchema.safeParse(input);
-  if (parsed.success && parsed.data.testType === "tray_spray_rate") {
+  if (parsed.success && (parsed.data.testType === "tray_spray_rate" || parsed.data.testType === "layer_thickness")) {
     parsed.data.sampleSourceKind = "site";
   }
   return parsed;
@@ -360,6 +413,52 @@ async function upsertBenchmarkFromSubmittedProctor(tx: any, test: any, results: 
 }
 
 export function registerLabTestRoutes(app: Express) {
+  app.get("/api/lab-tests/level-sheets", async (req: any, res) => {
+    if (!assertView(req, res, "lab_tests")) return;
+    try {
+      const siteId = Number(req.query.siteId);
+      if (!Number.isSafeInteger(siteId) || siteId <= 0) return res.status(400).json({ error: "Choose a site." });
+      if (!await siteAllowed(req, res, siteId)) return;
+      const rows = await db.select({
+        id: levelSheets.id, siteId: levelSheets.siteId, layerName: levelSheets.layerName,
+        sheetDate: levelSheets.sheetDate, readings: levelSheets.readings, readingMode: levelSheets.readingMode,
+        tbmRl: levelSheets.tbmRl, initialBackSight: levelSheets.initialBackSight,
+        closingForeSight: levelSheets.closingForeSight, toleranceAboveMm: levelSheets.toleranceAboveMm,
+        toleranceBelowMm: levelSheets.toleranceBelowMm,
+      }).from(levelSheets).where(and(
+        eq(levelSheets.siteId, siteId), eq(levelSheets.status, "saved"),
+      )).orderBy(desc(levelSheets.sheetDate), desc(levelSheets.id));
+      res.json(rows.map((sheet: any) => {
+        const calculated = calculateLevelSheet({
+          designRows: [],
+          readings: Array.isArray(sheet.readings) ? sheet.readings as any : [],
+          mode: sheet.readingMode,
+          tbmRl: numeric(sheet.tbmRl),
+          backsight: numeric(sheet.initialBackSight),
+          closingForesight: numeric(sheet.closingForeSight),
+          toleranceAboveMm: numeric(sheet.toleranceAboveMm) ?? 0,
+          toleranceBelowMm: numeric(sheet.toleranceBelowMm) ?? 0,
+        });
+        return {
+          id: sheet.id,
+          siteId: sheet.siteId,
+          layerName: sheet.layerName,
+          sheetDate: sheet.sheetDate,
+          points: calculated.sections.flatMap(section => section.points.flatMap(point =>
+            point.rl == null || point.distanceM == null ? [] : [{
+              chainageOursKm: section.chainageOursKm,
+              side: point.side,
+              offsetM: Number(point.distanceM),
+              rl: Number(point.rl),
+            }],
+          )),
+        };
+      }));
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Could not load saved level-sheet points." });
+    }
+  });
+
   app.get("/api/lab-tests/bootstrap", async (req: any, res) => {
     if (!assertView(req, res, "lab_tests")) return;
     const siteIds = await allowedSiteIds(req);
@@ -987,6 +1086,8 @@ export function registerLabTestRoutes(app: Express) {
         minValue: row.minValue == null || row.minValue === "" ? null : Number(row.minValue),
         maxValue: row.maxValue == null || row.maxValue === "" ? null : Number(row.maxValue),
         targetTolerance: row.targetTolerance == null || row.targetTolerance === "" ? null : Number(row.targetTolerance),
+        thicknessToleranceBelowMm: row.thicknessToleranceBelowMm == null || row.thicknessToleranceBelowMm === "" ? null : Number(row.thicknessToleranceBelowMm),
+        thicknessToleranceAboveMm: row.thicknessToleranceAboveMm == null || row.thicknessToleranceAboveMm === "" ? null : Number(row.thicknessToleranceAboveMm),
         frequencyQty: Number(row.frequencyQty),
         frequencyUnit: String(row.frequencyUnit),
         note: row.note ? String(row.note) : null,
@@ -999,6 +1100,8 @@ export function registerLabTestRoutes(app: Express) {
         || (spec.minValue != null && !Number.isFinite(spec.minValue))
         || (spec.maxValue != null && !Number.isFinite(spec.maxValue))
         || (spec.targetTolerance != null && (!Number.isFinite(spec.targetTolerance) || spec.targetTolerance < 0))
+        || (spec.thicknessToleranceBelowMm != null && (!Number.isFinite(spec.thicknessToleranceBelowMm) || spec.thicknessToleranceBelowMm < 0))
+        || (spec.thicknessToleranceAboveMm != null && (!Number.isFinite(spec.thicknessToleranceAboveMm) || spec.thicknessToleranceAboveMm < 0))
         || (spec.minValue != null && spec.maxValue != null && spec.minValue > spec.maxValue),
       )) return res.status(422).json({ error: "quality_spec_invalid" });
       const oldSpecs = await db.select().from(boqItemQualitySpecs).where(eq(boqItemQualitySpecs.boqItemId, itemId));

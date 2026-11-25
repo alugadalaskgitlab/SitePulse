@@ -473,6 +473,8 @@ export const boqItemQualitySpecs = pgTable("boq_item_quality_specs", {
   minValue: real("min_value"),
   maxValue: real("max_value"),
   targetTolerance: real("target_tolerance"),
+  thicknessToleranceBelowMm: real("thickness_tolerance_below_mm"),
+  thicknessToleranceAboveMm: real("thickness_tolerance_above_mm"),
   frequencyQty: real("frequency_qty").notNull(),
   frequencyUnit: text("frequency_unit").notNull(),
   note: text("note"),
@@ -1636,7 +1638,7 @@ export const insertDprSiteActivitySchema = createInsertSchema(dprSiteActivities)
 export const insertLabTestSchema = createInsertSchema(labTests)
   .omit({ id: true, testNo: true, sampleNo: true, results: true, verdict: true, createdByUserId: true, createdAt: true, updatedAt: true })
   .extend({
-    testType: z.enum(["field_density_sand", "field_density_core_cutter", "moisture_content", "proctor_light", "proctor_modified", "cbr", "atterberg", "tray_spray_rate"]),
+    testType: z.enum(["field_density_sand", "field_density_core_cutter", "moisture_content", "proctor_light", "proctor_modified", "cbr", "atterberg", "tray_spray_rate", "layer_thickness"]),
     place: z.enum(["on_site", "site_lab", "plant_lab", "outside_lab"]),
     sampleSourceKind: z.enum(["site", "borrow_area", "quarry", "plant", "stockpile", "other"]),
     status: z.enum(["draft", "submitted"]).optional(),

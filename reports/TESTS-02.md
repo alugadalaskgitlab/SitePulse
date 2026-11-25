@@ -22,3 +22,13 @@
 - Focused tests: 21 passed across `tests/labTests.test.ts` and `tests/labTestRoutes.integration.test.ts`, including two-tray average, parsed BOQ rates, tolerance pass/fail, and server storage as `site`.
 - `npm run build`: passed.
 - Full suite: not run yet; scheduled once after Part 3. No production access or publish.
+
+## Part 3 — Layer thickness test
+
+- Added measured-point and saved-level-sheet modes. The level-sheet mode reads only saved sheets at the selected site, matches chainage, side and offset, and calculates thickness as top RL minus below-layer RL. Level sheets are not changed.
+- Design thickness comes from the selected BOQ item's `layerConfig.thicknessMm` when present; otherwise the test form accepts a typed value. Setup tolerances default to 10 mm below and 15 mm above. Each point shows its thinner/thicker difference; the result includes average, minimum and out-of-tolerance points. Pass requires every point to be within tolerance.
+- Added the nullable `boq_item_quality_specs.thickness_tolerance_below_mm` and `thickness_tolerance_above_mm` columns in migration `0073_lab_test_thickness_tolerance.sql`. Applied to development databases `sitelog_dev` and `heliumdb`; no existing rows were changed. Read-only startup readiness after restart reported `ready: true` with 2,533 checked columns.
+- The test stores the existing `sample_source_kind` value `site`. No production access, real level-sheet edits, or publish.
+- Focused tests: 23 passed across `tests/labTests.test.ts` and `tests/labTestRoutes.integration.test.ts`, covering measured-point failures, point matching, saved-sheet reads, and thickness results.
+- `npm run build`: passed.
+- Full suite: running once after Part 3; final result to be added here.

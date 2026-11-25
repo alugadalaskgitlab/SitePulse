@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateSoilLabTest, filterLabBoqItems, labBoqItemLabel, labItemLayerChoices,
-  labTestContextVisibility, labTestDisplayName, parseSprayRateFromBoqText, soilQualityDefaultsForWork,
+  labTestContextVisibility, labTestDisplayName, matchLevelSheetThicknessPoints, parseSprayRateFromBoqText, soilQualityDefaultsForWork,
 } from "@shared/labTests";
 import { applyRoleTemplate, emptyMatrix, ROLE_TEMPLATES } from "@shared/permissions";
 import { canLegacySection } from "@shared/featureAccess";
@@ -243,6 +243,50 @@ describe("soil laboratory calculations", () => {
     }, { sprayRateTargetKgSqm: 0.6, sprayRateToleranceKgSqm: 0.05 });
     expect(fail.results.averageRateKgSqm).toBe(0.66);
     expect(fail.verdict).toBe("fail");
+  });
+
+  it("calculates layer thickness from measured points and read-only level-sheet matches", () => {
+    const measured = calculateSoilLabTest("layer_thickness", {
+      sourceMode: "measured",
+      designThicknessMm: 120,
+      points: [
+        { chainage: "2+600", side: "LHS", offsetM: 1, measuredThicknessMm: 100 },
+        { chainage: "2+700", side: "RHS", offsetM: 1, measuredThicknessMm: 115 },
+      ],
+    }, { thicknessToleranceBelowMm: 10, thicknessToleranceAboveMm: 15 });
+    expect(measured.results.averageThicknessMm).toBe(107.5);
+    expect(measured.results.minimumThicknessMm).toBe(100);
+    expect(measured.results.pointsOutsideTolerance).toBe(1);
+    expect((measured.results.points as any[]).map(point => point.differenceText)).toEqual(["20 mm thinner", "5 mm thinner"]);
+    expect(measured.verdict).toBe("fail");
+
+    const pairs = matchLevelSheetThicknessPoints(
+      [
+        { chainageOursKm: 2.6, side: "CL", offsetM: 0, rl: 100 },
+        { chainageOursKm: 2.7, side: "L", offsetM: 1.5, rl: 99.8 },
+      ],
+      [
+        { chainageOursKm: 2.6, side: "CL", offsetM: 0, rl: 100.12 },
+        { chainageOursKm: 2.7, side: "R", offsetM: 1.5, rl: 99.95 },
+      ],
+    );
+    expect(pairs).toEqual([{
+      chainageOursKm: 2.6, side: "CL", offsetM: 0, belowRl: 100, topRl: 100.12,
+    }]);
+    const fromSheets = calculateSoilLabTest("layer_thickness", { sourceMode: "level_sheets" }, {
+      designThicknessMm: 120,
+      thicknessToleranceBelowMm: 10,
+      thicknessToleranceAboveMm: 15,
+      levelSheetPoints: pairs,
+      belowSheetLabel: "GSB · 2026-11-18",
+      topSheetLabel: "WMM · 2026-11-20",
+    });
+    expect(fromSheets.results.points[0]).toEqual(expect.objectContaining({
+      measuredThicknessMm: 120, differenceMm: 0, withinTolerance: true,
+    }));
+    expect(fromSheets.results.belowSheetLabel).toBe("GSB · 2026-11-18");
+    expect(fromSheets.results.averageThicknessMm).toBe(120);
+    expect(fromSheets.verdict).toBe("pass");
   });
 
   it("keeps Tests off for every saved role template by default", () => {

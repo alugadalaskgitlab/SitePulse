@@ -17,7 +17,7 @@ vi.mock("../server/auth-routes", () => ({
 
 const tableNames = [
   "sites", "boq_projects", "boq_items", "personnel", "plant_materials", "dprs", "progress_entries",
-  "lab_tests", "lab_test_attachments", "lab_calibrations", "material_benchmarks",
+  "lab_tests", "lab_test_attachments", "lab_calibrations", "material_benchmarks", "level_sheets",
   "boq_item_quality_specs", "audit_logs",
 ];
 let pg: PGlite;
@@ -302,6 +302,51 @@ describe("soil test draft, submit and correction routes", () => {
     expect(response.body.results.minRateKgSqm).toBe(0.55);
     expect(response.body.results.maxRateKgSqm).toBe(0.65);
     expect(response.body.verdict).toBe("pass");
+  });
+
+  it("uses matching saved level-sheet points for a read-only thickness check", async () => {
+    await testState.db.insert(schema.boqItemQualitySpecs).values({
+      boqItemId: itemId,
+      testType: "layer_thickness",
+      thicknessToleranceBelowMm: 10,
+      thicknessToleranceAboveMm: 15,
+      frequencyQty: 1,
+      frequencyUnit: "as_required",
+    });
+    const [below] = await testState.db.insert(schema.levelSheets).values({
+      siteId, layerName: "GSB", sheetDate: "2026-11-18", readingMode: "rl", status: "saved",
+      readings: [{ chainageOursKm: 2.6, points: [{ side: "CL", distanceM: 0, value: 100 }] }],
+    }).returning();
+    const [top] = await testState.db.insert(schema.levelSheets).values({
+      siteId, layerName: "WMM", sheetDate: "2026-11-20", readingMode: "rl", status: "saved",
+      readings: [{ chainageOursKm: 2.6, points: [{ side: "CL", distanceM: 0, value: 100.12 }] }],
+    }).returning();
+    await testState.db.insert(schema.levelSheets).values({
+      siteId, layerName: "Draft only", sheetDate: "2026-11-21", readingMode: "rl", status: "draft",
+      readings: [{ chainageOursKm: 2.6, points: [{ side: "CL", distanceM: 0, value: 101 }] }],
+    });
+    const listed = await request(app).get(`/api/lab-tests/level-sheets?siteId=${siteId}`).expect(200);
+    expect(listed.body).toHaveLength(2);
+    expect(listed.body.find((row: any) => row.id === below.id).points[0].rl).toBe(100);
+    expect(listed.body.find((row: any) => row.id === top.id).points[0].rl).toBe(100.12);
+
+    const submitted = await request(app).post("/api/lab-tests").send({
+      ...baseInput("layer_thickness", {
+        sourceMode: "level_sheets", designThicknessMm: 120,
+        belowSheetId: below.id, topSheetId: top.id,
+      }),
+      sampleSourceKind: "quarry",
+      status: "submitted",
+    }).expect(201);
+    expect(submitted.body.sampleSourceKind).toBe("site");
+    expect(submitted.body.results.belowSheetLabel).toBe("GSB · 2026-11-18");
+    expect(submitted.body.results.topSheetLabel).toBe("WMM · 2026-11-20");
+    expect(submitted.body.results.points).toEqual([expect.objectContaining({
+      chainageOursKm: 2.6, side: "CL", offsetM: 0, belowRl: 100, topRl: 100.12,
+      measuredThicknessMm: 120, differenceMm: 0, withinTolerance: true,
+    })]);
+    expect(submitted.body.results.averageThicknessMm).toBe(120);
+    expect(submitted.body.verdict).toBe("pass");
   });
 
   it("returns only submitted tests for the DPR read-only block", async () => {

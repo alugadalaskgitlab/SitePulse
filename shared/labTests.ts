@@ -6,7 +6,8 @@ export type SoilLabTestType =
   | "proctor_modified"
   | "cbr"
   | "atterberg"
-  | "tray_spray_rate";
+  | "tray_spray_rate"
+  | "layer_thickness";
 
 /**
  * User-facing names are shared by the entry form, register, frequency review,
@@ -94,6 +95,19 @@ export interface LabCalculationContext {
   ringConstantKgPerDivision?: number | null;
   sprayRateTargetKgSqm?: number | null;
   sprayRateToleranceKgSqm?: number | null;
+  designThicknessMm?: number | null;
+  thicknessToleranceBelowMm?: number | null;
+  thicknessToleranceAboveMm?: number | null;
+  levelSheetPoints?: Array<{
+    chainageOursKm: number;
+    side: string;
+    offsetM: number;
+    belowRl: number;
+    topRl: number;
+  }> | null;
+  levelSheetError?: string | null;
+  belowSheetLabel?: string | null;
+  topSheetLabel?: string | null;
   speedyCorrection?: Array<{ indicated: number; corrected: number }> | null;
 }
 
@@ -386,6 +400,116 @@ export function parseSprayRateFromBoqText(text: string): number | null {
   return Number.isFinite(rate) && rate > 0 ? rate : null;
 }
 
+export function matchLevelSheetThicknessPoints(
+  belowPoints: Array<{ chainageOursKm: number; side: string; offsetM: number; rl: number }>,
+  topPoints: Array<{ chainageOursKm: number; side: string; offsetM: number; rl: number }>,
+) {
+  const key = (point: { chainageOursKm: number; side: string; offsetM: number }) =>
+    `${Math.round(point.chainageOursKm * 1_000_000)}|${point.side}|${Math.round(point.offsetM * 10_000)}`;
+  const topByKey = new Map<string, { chainageOursKm: number; side: string; offsetM: number; rl: number }>();
+  for (const point of topPoints) {
+    const pointKey = key(point);
+    if (!topByKey.has(pointKey)) topByKey.set(pointKey, point);
+  }
+  return belowPoints.flatMap(below => {
+    const top = topByKey.get(key(below));
+    return top ? [{
+      chainageOursKm: below.chainageOursKm,
+      side: below.side,
+      offsetM: below.offsetM,
+      belowRl: below.rl,
+      topRl: top.rl,
+    }] : [];
+  });
+}
+
+function parseThicknessChainage(value: unknown): number | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const plus = text.match(/^(-?\d+)\s*\+\s*(\d+(?:\.\d+)?)$/);
+  const parsed = plus ? Number(plus[1]) + Number(plus[2]) / 1000 : Number(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function calculateLayerThickness(readings: any, context: LabCalculationContext): LabCalculation {
+  const errors: string[] = [];
+  const sourceMode = readings?.sourceMode === "level_sheets" ? "level_sheets" : "measured";
+  const designThicknessMm = numberOrNull(context.designThicknessMm) ?? numberOrNull(readings?.designThicknessMm);
+  const toleranceBelowMm = numberOrNull(context.thicknessToleranceBelowMm) ?? 10;
+  const toleranceAboveMm = numberOrNull(context.thicknessToleranceAboveMm) ?? 15;
+  if (designThicknessMm == null || designThicknessMm <= 0) errors.push("Select a BOQ item with design thickness or enter the design thickness on this test.");
+  let inputPoints: any[];
+  if (sourceMode === "level_sheets") {
+    if (context.levelSheetError) errors.push(context.levelSheetError);
+    inputPoints = Array.isArray(context.levelSheetPoints) ? context.levelSheetPoints : [];
+    if (!inputPoints.length && !context.levelSheetError) errors.push("The selected level sheets have no matching points.");
+  } else {
+    inputPoints = Array.isArray(readings?.points) ? readings.points : [];
+    if (!inputPoints.length) errors.push("Add at least one measured thickness point.");
+  }
+  const points = inputPoints.map((point, index) => {
+    let thicknessMm: number | null = null;
+    let chainageOursKm: number | null = null;
+    if (sourceMode === "level_sheets") {
+      const belowRl = numberOrNull(point?.belowRl);
+      const topRl = numberOrNull(point?.topRl);
+      chainageOursKm = numberOrNull(point?.chainageOursKm);
+      if (belowRl == null || topRl == null) errors.push(`Point ${index + 1}: both level sheets need a valid RL.`);
+      else thicknessMm = (topRl - belowRl) * 1000;
+    } else {
+      thicknessMm = numberOrNull(point?.measuredThicknessMm);
+      chainageOursKm = parseThicknessChainage(point?.chainage);
+      if (thicknessMm == null || thicknessMm <= 0) errors.push(`Point ${index + 1}: enter a positive measured thickness.`);
+    }
+    const differenceMm = thicknessMm == null || designThicknessMm == null ? null : round(thicknessMm - designThicknessMm, 1);
+    const withinTolerance = differenceMm != null
+      && differenceMm >= -toleranceBelowMm
+      && differenceMm <= toleranceAboveMm;
+    return {
+      chainage: point?.chainage ?? null,
+      chainageOursKm,
+      side: point?.side ?? null,
+      offsetM: numberOrNull(point?.offsetM),
+      belowRl: numberOrNull(point?.belowRl),
+      topRl: numberOrNull(point?.topRl),
+      measuredThicknessMm: thicknessMm == null ? null : round(thicknessMm, 1),
+      differenceMm,
+      differenceText: differenceMm == null ? null
+        : differenceMm === 0 ? "At design"
+          : `${Math.abs(differenceMm)} mm ${differenceMm < 0 ? "thinner" : "thicker"}`,
+      withinTolerance,
+    };
+  });
+  const valid = points.filter((point: any) => point.measuredThicknessMm != null);
+  const averageThicknessMm = valid.length
+    ? round(valid.reduce((sum: number, point: any) => sum + Number(point.measuredThicknessMm), 0) / valid.length, 1)
+    : null;
+  const minimumThicknessMm = valid.length
+    ? Math.min(...valid.map((point: any) => Number(point.measuredThicknessMm)))
+    : null;
+  const pointsOutsideTolerance = points.filter((point: any) => point.differenceMm != null && !point.withinTolerance).length;
+  return {
+    results: {
+      sourceMode,
+      belowSheetId: readings?.belowSheetId ?? null,
+      topSheetId: readings?.topSheetId ?? null,
+      belowSheetLabel: context.belowSheetLabel ?? null,
+      topSheetLabel: context.topSheetLabel ?? null,
+      designThicknessMm,
+      toleranceBelowMm,
+      toleranceAboveMm,
+      minimumAllowedThicknessMm: designThicknessMm == null ? null : round(designThicknessMm - toleranceBelowMm, 1),
+      maximumAllowedThicknessMm: designThicknessMm == null ? null : round(designThicknessMm + toleranceAboveMm, 1),
+      points,
+      averageThicknessMm,
+      minimumThicknessMm,
+      pointsOutsideTolerance,
+    },
+    verdict: errors.length || !valid.length ? "na" : pointsOutsideTolerance ? "fail" : "pass",
+    errors,
+  };
+}
+
 function calculateTraySprayRate(readings: any, context: LabCalculationContext): LabCalculation {
   const errors: string[] = [];
   const inputTrays = Array.isArray(readings?.trays) ? readings.trays : [];
@@ -435,7 +559,7 @@ function calculateTraySprayRate(readings: any, context: LabCalculationContext): 
   if (minRateKgSqm == null && maxRateKgSqm == null) {
     errors.push("Set a spray-rate range in Setup or include a rate in the BOQ item.");
   }
-  const verdict = averageRateKgSqm == null
+  const verdict = errors.length || averageRateKgSqm == null
     ? "na"
     : minRateKgSqm == null && maxRateKgSqm == null
       ? "na"
@@ -488,6 +612,7 @@ export function calculateSoilLabTest(
   if (testType === "proctor_light" || testType === "proctor_modified") return calculateProctor(input, context);
   if (testType === "cbr") return calculateCbr(input, context);
   if (testType === "tray_spray_rate") return calculateTraySprayRate(input, context);
+  if (testType === "layer_thickness") return calculateLayerThickness(input, context);
   return calculateAtterberg(input, context);
 }
 

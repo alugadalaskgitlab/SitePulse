@@ -23,7 +23,7 @@ import { useUpload } from "@/hooks/use-upload";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   calculateSoilLabTest, filterLabBoqItems, labBoqItemLabel, labItemLayerChoices,
-  labTestContextVisibility, labTestDisplayName, parseSprayRateFromBoqText, soilQualityDefaultsForWork,
+  labTestContextVisibility, labTestDisplayName, matchLevelSheetThicknessPoints, parseSprayRateFromBoqText, soilQualityDefaultsForWork,
   type LabCalculationContext, type SoilLabTestType,
 } from "@shared/labTests";
 
@@ -36,6 +36,7 @@ const TEST_TYPES: Array<{ value: SoilLabTestType; label: string }> = [
   { value: "cbr", label: labTestDisplayName("cbr") },
   { value: "atterberg", label: labTestDisplayName("atterberg") },
   { value: "tray_spray_rate", label: labTestDisplayName("tray_spray_rate") },
+  { value: "layer_thickness", label: labTestDisplayName("layer_thickness") },
 ];
 const PLACES = [
   ["on_site", "On site (field test)"],
@@ -114,6 +115,7 @@ function initialReadings(testType: SoilLabTestType) {
   if (testType === "cbr") return { dialReadings: {} };
   if (testType === "atterberg") return { liquidLimitTrials: [{}, {}, {}], plasticLimitTrials: [{}, {}] };
   if (testType === "tray_spray_rate") return { coat: "Prime", trays: [{}], appliedBy: "" };
+  if (testType === "layer_thickness") return { sourceMode: "measured", designThicknessMm: "", points: [{}] };
   return {};
 }
 
@@ -266,8 +268,23 @@ export default function LabTests() {
     },
     enabled: !!siteId && !!projectId,
   });
+  const { data: savedLevelSheets = [], isLoading: levelSheetsLoading, error: levelSheetsError } = useQuery<any[]>({
+    queryKey: ["/api/lab-tests/level-sheets", siteId],
+    queryFn: async () => {
+      const response = await fetch(`/api/lab-tests/level-sheets?siteId=${siteId}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load saved level sheets.");
+      return response.json();
+    },
+    enabled: form.testType === "layer_thickness" && form.readings?.sourceMode === "level_sheets" && !!siteId,
+  });
 
   const selectedItem = projectItems.find((item: any) => Number(item.id) === Number(form.boqItemId));
+  const belowSheet = savedLevelSheets.find((sheet: any) => Number(sheet.id) === Number(form.readings?.belowSheetId));
+  const topSheet = savedLevelSheets.find((sheet: any) => Number(sheet.id) === Number(form.readings?.topSheetId));
+  const matchedLevelSheetPoints = belowSheet && topSheet
+    ? matchLevelSheetThicknessPoints(belowSheet.points ?? [], topSheet.points ?? [])
+    : [];
+  const configuredDesignThicknessMm = Number(selectedItem?.layerConfig?.thicknessMm);
   const layerChoices = labItemLayerChoices(selectedItem);
   const itemLayerCount = Math.max(1, Number(
     Array.isArray(selectedItem?.layerConfig?.layers)
@@ -316,9 +333,30 @@ export default function LabTests() {
       ? parseSprayRateFromBoqText(`${selectedItem?.itemName ?? ""} ${selectedItem?.description ?? ""}`)
       : null,
     sprayRateToleranceKgSqm: activeSpec?.targetTolerance == null ? 0.05 : Number(activeSpec.targetTolerance),
+    designThicknessMm: Number.isFinite(configuredDesignThicknessMm) && configuredDesignThicknessMm > 0
+      ? configuredDesignThicknessMm : Number(form.readings.designThicknessMm) || null,
+    thicknessToleranceBelowMm: activeSpec?.thicknessToleranceBelowMm == null ? 10 : Number(activeSpec.thicknessToleranceBelowMm),
+    thicknessToleranceAboveMm: activeSpec?.thicknessToleranceAboveMm == null ? 15 : Number(activeSpec.thicknessToleranceAboveMm),
+    levelSheetPoints: form.testType === "layer_thickness" && form.readings.sourceMode === "level_sheets"
+      ? matchedLevelSheetPoints : null,
+    levelSheetError: form.testType === "layer_thickness" && form.readings.sourceMode === "level_sheets"
+      ? Number(form.readings.belowSheetId) === Number(form.readings.topSheetId) && form.readings.belowSheetId && form.readings.topSheetId
+        ? "Choose two different saved level sheets for the two surfaces." : null
+      : null,
+    belowSheetLabel: belowSheet ? `${belowSheet.layerName} · ${belowSheet.sheetDate}` : null,
+    topSheetLabel: topSheet ? `${topSheet.layerName} · ${topSheet.sheetDate}` : null,
     speedyCorrection: activeCalibration?.values?.correctionPairs ?? null,
   };
-  const calculation = useMemo(() => calculateSoilLabTest(form.testType, form.readings, calculationContext), [form.testType, form.readings, calculationContext.mddGcc, calculationContext.omcPercent, calculationContext.minValue, calculationContext.maxValue, calculationContext.requiredPercent, calculationContext.sandBulkDensityGcc, calculationContext.sandInConeG, calculationContext.ringConstantKgPerDivision, calculationContext.speedyCorrection]);
+  const calculation = useMemo(() => calculateSoilLabTest(form.testType, form.readings, calculationContext), [
+    form.testType, form.readings, calculationContext.mddGcc, calculationContext.omcPercent,
+    calculationContext.minValue, calculationContext.maxValue, calculationContext.requiredPercent,
+    calculationContext.sandBulkDensityGcc, calculationContext.sandInConeG,
+    calculationContext.ringConstantKgPerDivision, calculationContext.speedyCorrection,
+    calculationContext.sprayRateTargetKgSqm, calculationContext.sprayRateToleranceKgSqm,
+    calculationContext.designThicknessMm, calculationContext.thicknessToleranceBelowMm,
+    calculationContext.thicknessToleranceAboveMm, calculationContext.levelSheetPoints,
+    calculationContext.levelSheetError, calculationContext.belowSheetLabel, calculationContext.topSheetLabel,
+  ]);
 
   const saveMutation = useMutation({
     mutationFn: async (status: "draft" | "submitted") => {
@@ -521,6 +559,19 @@ export default function LabTests() {
                         <FieldSelect label="Coat" value={form.readings.coat ?? "Prime"} options={[["Prime", "Prime"], ["Tack", "Tack"]]} onChange={value => setReading("coat", value)} />
                         <FieldInput label="Applied by (equipment or person)" value={form.readings.appliedBy ?? ""} onChange={value => setReading("appliedBy", value)} />
                       </>}
+                      {form.testType === "layer_thickness" && <>
+                        <FieldSelect label="Thickness source" value={form.readings.sourceMode ?? "measured"} options={[["measured", "Measured"], ["level_sheets", "From level sheets"]]} onChange={value => setReading("sourceMode", value)} />
+                        {Number.isFinite(configuredDesignThicknessMm) && configuredDesignThicknessMm > 0
+                          ? <div className="self-end rounded border p-2 text-sm">Design thickness from BOQ layer setup: <strong>{configuredDesignThicknessMm} mm</strong></div>
+                          : <FieldInput label="Design thickness (mm)" type="number" value={form.readings.designThicknessMm ?? ""} onChange={value => setReading("designThicknessMm", value === "" ? "" : Number(value))} />}
+                        {form.readings.sourceMode === "level_sheets" && <>
+                          <FieldSelect label="Layer below" value={form.readings.belowSheetId ? String(form.readings.belowSheetId) : ""} options={savedLevelSheets.map((sheet: any) => [String(sheet.id), `${displayCaps(sheet.layerName)} · ${sheet.sheetDate} (${sheet.points?.length ?? 0} points)`] as [string, string])} onChange={value => setReading("belowSheetId", value ? Number(value) : null)} optional />
+                          <FieldSelect label="Top of this layer" value={form.readings.topSheetId ? String(form.readings.topSheetId) : ""} options={savedLevelSheets.map((sheet: any) => [String(sheet.id), `${displayCaps(sheet.layerName)} · ${sheet.sheetDate} (${sheet.points?.length ?? 0} points)`] as [string, string])} onChange={value => setReading("topSheetId", value ? Number(value) : null)} optional />
+                          {levelSheetsLoading && <p className="self-end text-sm text-muted-foreground">Loading saved level sheets…</p>}
+                          {levelSheetsError && <p role="alert" className="self-end text-sm text-destructive">Could not load saved level sheets.</p>}
+                          {belowSheet && topSheet && <p className="self-end text-sm">Matching points: {matchedLevelSheetPoints.length}</p>}
+                        </>}
+                      </>}
                       {visibleContext.sampleSource && <FieldSelect label="Sample source" value={form.sampleSourceKind} options={SOURCE_KINDS} onChange={value => setFormField("sampleSourceKind", value)} />}
                       {visibleContext.sourceName && <FieldInput label="Source name" value={form.sampleSourceName} onChange={value => setFormField("sampleSourceName", value)} placeholder="Borrow area / quarry / stockpile" />}
                       {visibleContext.material && <FieldSelect label="Material" value={form.materialId ? String(form.materialId) : ""} options={materials.map((item: any) => [String(item.id), displayCaps(item.name)])} onChange={value => setFormField("materialId", value ? Number(value) : null)} optional />}
@@ -546,6 +597,11 @@ export default function LabTests() {
                         : calculationContext.sprayRateTargetKgSqm != null
                           ? <p>From BOQ item: {Number(calculationContext.sprayRateTargetKgSqm).toFixed(2)} kg/sqm · tolerance ±{calculationContext.sprayRateToleranceKgSqm ?? 0.05} kg/sqm</p>
                           : <p>Set a spray-rate range in Setup or include a rate in the BOQ item.</p>}
+                    </div>}
+                    {form.testType === "layer_thickness" && <div className="rounded border p-3 text-sm">
+                      <p className="font-semibold">Thickness tolerance</p>
+                      <p>From Setup: −{activeSpec?.thicknessToleranceBelowMm ?? 10} mm / +{activeSpec?.thicknessToleranceAboveMm ?? 15} mm.</p>
+                      {form.readings.sourceMode === "level_sheets" && <p className="mt-1">Only saved sheets from this site are listed; the sheets are read-only.</p>}
                     </div>}
 
                     <TestReadings
@@ -735,14 +791,22 @@ export default function LabTests() {
                     setSpecRows((saved.length ? saved : defaults).map((row: any) => ({
                       ...row, testType: row.testType, minValue: row.minValue, maxValue: row.maxValue,
                       targetTolerance: row.targetTolerance == null && row.testType === "tray_spray_rate" ? 0.05 : row.targetTolerance,
+                      thicknessToleranceBelowMm: row.thicknessToleranceBelowMm == null && row.testType === "layer_thickness" ? 10 : row.thicknessToleranceBelowMm,
+                      thicknessToleranceAboveMm: row.thicknessToleranceAboveMm == null && row.testType === "layer_thickness" ? 15 : row.thicknessToleranceAboveMm,
                       frequencyQty: row.frequencyQty, frequencyUnit: row.frequencyUnit, note: row.note,
                     })));
                   }} optional />
-                  {specRows.map((row, index) => <div key={`${row.testType}-${index}`} className={`grid grid-cols-2 gap-2 rounded border p-3 ${row.testType === "tray_spray_rate" ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
+                  {specRows.map((row, index) => <div key={`${row.testType}-${index}`} className={`grid grid-cols-2 gap-2 rounded border p-3 ${row.testType === "tray_spray_rate" || row.testType === "layer_thickness" ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
                     <span className="col-span-2 self-center text-sm font-medium sm:col-span-1">{labelForTest(row.testType)}</span>
-                    <FieldInput label={row.testType === "tray_spray_rate" ? "Minimum rate (kg/sqm)" : "Minimum"} type="number" value={numberInput(row.minValue)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, minValue: value === "" ? null : Number(value) } : entry))} />
-                    <FieldInput label={row.testType === "tray_spray_rate" ? "Maximum rate (kg/sqm)" : "Maximum"} type="number" value={numberInput(row.maxValue)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, maxValue: value === "" ? null : Number(value) } : entry))} />
+                    {row.testType !== "layer_thickness" && <>
+                      <FieldInput label={row.testType === "tray_spray_rate" ? "Minimum rate (kg/sqm)" : "Minimum"} type="number" value={numberInput(row.minValue)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, minValue: value === "" ? null : Number(value) } : entry))} />
+                      <FieldInput label={row.testType === "tray_spray_rate" ? "Maximum rate (kg/sqm)" : "Maximum"} type="number" value={numberInput(row.maxValue)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, maxValue: value === "" ? null : Number(value) } : entry))} />
+                    </>}
                     {row.testType === "tray_spray_rate" && <FieldInput label="Tolerance ± (kg/sqm)" type="number" value={numberInput(row.targetTolerance ?? 0.05)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, targetTolerance: value === "" ? null : Number(value) } : entry))} />}
+                    {row.testType === "layer_thickness" && <>
+                      <FieldInput label="Below tolerance (mm)" type="number" value={numberInput(row.thicknessToleranceBelowMm ?? 10)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, thicknessToleranceBelowMm: value === "" ? null : Number(value) } : entry))} />
+                      <FieldInput label="Above tolerance (mm)" type="number" value={numberInput(row.thicknessToleranceAboveMm ?? 15)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, thicknessToleranceAboveMm: value === "" ? null : Number(value) } : entry))} />
+                    </>}
                     <FieldInput label="Frequency quantity" type="number" value={numberInput(row.frequencyQty)} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, frequencyQty: value === "" ? "" : Number(value) } : entry))} />
                     <FieldSelect label="Frequency unit" value={row.frequencyUnit} options={[["sqm", "sqm"], ["cum", "cum"], ["MT", "MT"], ["per_layer", "per layer"], ["as_required", "As required"]]} onChange={value => setSpecRows(rows => rows.map((entry, i) => i === index ? { ...entry, frequencyUnit: value } : entry))} />
                   </div>)}
@@ -750,7 +814,13 @@ export default function LabTests() {
                     <FieldSelect label="Add test requirement" value="" options={TEST_TYPES.filter(row => !specRows.some(spec => spec.testType === row.value)).map(row => [row.value, row.label] as [string, string])} onChange={value => {
                       const item = projectItems.find((candidate: any) => Number(candidate.id) === Number(specItemId));
                       const fallback = soilQualityDefaultsForWork(`${item?.itemName ?? ""} ${item?.description ?? ""}`).find(row => row.testType === value);
-                      setSpecRows(rows => [...rows, fallback ? { ...fallback } : { testType: value, minValue: null, maxValue: null, targetTolerance: value === "tray_spray_rate" ? 0.05 : null, frequencyQty: 1, frequencyUnit: "as_required", note: "" }]);
+                      setSpecRows(rows => [...rows, fallback ? { ...fallback } : {
+                        testType: value, minValue: null, maxValue: null,
+                        targetTolerance: value === "tray_spray_rate" ? 0.05 : null,
+                        thicknessToleranceBelowMm: value === "layer_thickness" ? 10 : null,
+                        thicknessToleranceAboveMm: value === "layer_thickness" ? 15 : null,
+                        frequencyQty: 1, frequencyUnit: "as_required", note: "",
+                      }]);
                     }} optional />
                     <Button onClick={() => void saveSpecs(specItemId, specRows)}><Save className="mr-2 h-4 w-4" />Save specifications</Button>
                   </div>}
@@ -1018,6 +1088,43 @@ function TestReadings({ testType, readings, results, activeCalibration, onReadin
     </div>;
   }
 
+  if (testType === "layer_thickness") {
+    const sourceMode = readings.sourceMode === "level_sheets" ? "level_sheets" : "measured";
+    const points = Array.isArray(readings.points) && readings.points.length ? readings.points : [{}];
+    const updatePoint = (index: number, key: string, value: string) =>
+      onArrayRow("points", index, key, value === "" ? "" : Number.isFinite(Number(value)) ? Number(value) : value);
+    if (sourceMode === "level_sheets") {
+      return <div className="space-y-3">
+        <h3 className="font-semibold">Matched level-sheet points</h3>
+        {!results?.points?.length && <p className="text-sm text-muted-foreground">Choose the layer-below sheet and this-layer top sheet to list matching chainage/offset points.</p>}
+        <TestResultsTable testType={testType} readings={readings} results={results} />
+      </div>;
+    }
+    return <div className="space-y-4">
+      <h3 className="font-semibold">Measured thickness points</h3>
+      {points.map((point: any, index: number) => {
+        const result = results?.points?.[index] ?? {};
+        return <div key={index} className="space-y-3 rounded-lg border p-3">
+          <div className="flex items-center justify-between"><h4 className="font-semibold">Point {index + 1}</h4>{points.length > 1 && <Button type="button" size="sm" variant="ghost" onClick={() => onReading("points", points.filter((_: any, row: number) => row !== index))}>Remove</Button>}</div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <FieldInput label={`Point ${index + 1} chainage (km)`} value={point.chainage ?? ""} onChange={value => updatePoint(index, "chainage", value)} placeholder="2+600" />
+            <FieldSelect label={`Point ${index + 1} side`} value={point.side ?? ""} options={[["Centre", "Centre"], ["LHS", "LHS"], ["RHS", "RHS"]]} onChange={value => updatePoint(index, "side", value)} />
+            <FieldInput label={`Point ${index + 1} offset (m)`} type="number" value={point.offsetM ?? ""} onChange={value => updatePoint(index, "offsetM", value)} />
+            <FieldInput label={`Point ${index + 1} measured thickness (mm)`} type="number" value={point.measuredThicknessMm ?? ""} onChange={value => updatePoint(index, "measuredThicknessMm", value)} />
+            <ResultCell label="Difference" value={result.differenceText} />
+            <ResultCell label="Check" value={result.withinTolerance == null ? "—" : result.withinTolerance ? "PASS" : "FAIL"} />
+          </div>
+        </div>;
+      })}
+      <Button type="button" variant="outline" onClick={() => onReading("points", points.concat({}))}>Add point</Button>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <ResultCell label="Average thickness" value={results?.averageThicknessMm} unit="mm" />
+        <ResultCell label="Minimum thickness" value={results?.minimumThicknessMm} unit="mm" />
+        <ResultCell label="Points outside tolerance" value={results?.pointsOutsideTolerance} />
+      </div>
+    </div>;
+  }
+
   if (testType === "field_density_sand" || testType === "field_density_core_cutter") {
     return (
       <div className="space-y-4">
@@ -1147,6 +1254,7 @@ function TestReadings({ testType, readings, results, activeCalibration, onReadin
 function firstResult(test: any) {
   const result: any = test?.results ?? {};
   if (result.averageRateKgSqm != null) return `${result.averageRateKgSqm} kg/sqm`;
+  if (result.averageThicknessMm != null) return `${result.averageThicknessMm} mm`;
   return result.pits?.[0]?.compactionPercent ?? result.reportedCbrPercent ?? result.plasticityIndexPercent ?? result.averageRateKgSqm ?? "—";
 }
 
@@ -1159,6 +1267,28 @@ function TestResultsTable({ testType, readings = {}, results = {}, materialName 
       </tr>)}</tbody>
     </table>
   </div>;
+  if (testType === "layer_thickness") {
+    const points = Array.isArray(results.points) ? results.points : [];
+    const fromSheets = results.sourceMode === "level_sheets";
+    return <div className="space-y-3">
+      <p>Source: {fromSheets ? `From level sheets · ${results.belowSheetLabel ?? "below"} → ${results.topSheetLabel ?? "top"}` : "Measured points"}</p>
+      {compactRows(["Point", "Chainage", "Side", "Offset (m)", "Below RL", "Top RL", "Thickness (mm)", "Difference", "Check"],
+        points.map((point: any, index: number) => [
+          index + 1,
+          point.chainageOursKm == null ? point.chainage : chainageText(point.chainageOursKm),
+          point.side, point.offsetM, point.belowRl, point.topRl,
+          point.measuredThicknessMm, point.differenceText,
+          point.withinTolerance == null ? "—" : point.withinTolerance ? "PASS" : "FAIL",
+        ]))}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <ResultCell label="Design thickness" value={results.designThicknessMm} unit="mm" />
+        <ResultCell label="Average thickness" value={results.averageThicknessMm} unit="mm" />
+        <ResultCell label="Minimum thickness" value={results.minimumThicknessMm} unit="mm" />
+        <ResultCell label="Points outside tolerance" value={results.pointsOutsideTolerance} />
+      </div>
+      <p>Allowed: {results.minimumAllowedThicknessMm ?? "—"} to {results.maximumAllowedThicknessMm ?? "—"} mm.</p>
+    </div>;
+  }
   if (testType === "tray_spray_rate") {
     const trays = Array.isArray(readings.trays) ? readings.trays : [];
     const calculated = Array.isArray(results.trays) ? results.trays : [];
@@ -1330,6 +1460,8 @@ function resultSummary(value: any) {
   if (results.reportedCbrPercent != null) return `${value.verdict ?? "na"} · CBR ${results.reportedCbrPercent}%`;
   if (results.mddGcc != null) return `${value.verdict ?? "na"} · MDD ${results.mddGcc} g/cc, OMC ${results.omcPercent}%`;
   if (results.plasticityIndexPercent != null) return `${value.verdict ?? "na"} · PI ${results.plasticityIndexPercent}%`;
+  if (results.averageRateKgSqm != null) return `${value.verdict ?? "na"} · ${results.averageRateKgSqm} kg/sqm average`;
+  if (results.averageThicknessMm != null) return `${value.verdict ?? "na"} · ${results.averageThicknessMm} mm average`;
   if (results.moisturePercent != null) return `${value.verdict ?? "na"} · moisture ${results.moisturePercent}%`;
   return String(value.verdict ?? value.status ?? "Saved");
 }
@@ -1380,6 +1512,7 @@ function standardForType(testType: SoilLabTestType) {
     cbr: "IS 2720 Part 16",
     atterberg: "IS 2720 Part 5",
     tray_spray_rate: "Project / BOQ specification",
+    layer_thickness: "Project / MoRTH specification",
   } as Record<SoilLabTestType, string>)[testType];
 }
 
