@@ -290,6 +290,92 @@ export const officeVisits = pgTable("office_visits", {
   fileSizeCheck: check("office_visits_attachment_size", sql`${table.fileSize} IS NULL OR ${table.fileSize} BETWEEN 0 AND 15728640`),
 }));
 
+// Level sheets are independent survey records. Chainages are stored in the
+// project's own system; the site setting supplies the consultant offset for
+// display and input conversion.
+export const levelSheetSiteSettings = pgTable("level_sheet_site_settings", {
+  siteId: integer("site_id").primaryKey().references(() => sites.id, { onDelete: "cascade" }),
+  bookChainageSystem: text("book_chainage_system", { enum: ["ours", "consultant"] }).notNull().default("ours"),
+  consultantOffsetM: real("consultant_offset_m").notNull().default(0),
+  updatedByUserId: integer("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => ({
+  systemCheck: check("level_sheet_site_settings_system_check", sql`${table.bookChainageSystem} IN ('ours', 'consultant')`),
+}));
+
+export const levelSheetDesignRows = pgTable("level_sheet_design_rows", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  layerName: text("layer_name").notNull(),
+  chainageOursKm: real("chainage_ours_km").notNull(),
+  centreLevel: real("centre_level").notNull(),
+  crossfallLeftPct: real("crossfall_left_pct").notNull(),
+  crossfallRightPct: real("crossfall_right_pct").notNull(),
+  topWidthLeftM: real("top_width_left_m").notNull(),
+  topWidthRightM: real("top_width_right_m").notNull(),
+  source: text("source", { enum: ["EXCEL", "TYPED"] }).notNull(),
+  createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  updatedByUserId: integer("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => ({
+  siteLayerChainageUq: uniqueIndex("level_sheet_design_site_layer_chainage_uq")
+    .on(table.siteId, table.layerName, table.chainageOursKm),
+  sourceCheck: check("level_sheet_design_source_check", sql`${table.source} IN ('EXCEL', 'TYPED')`),
+  widthCheck: check("level_sheet_design_width_check", sql`${table.topWidthLeftM} >= 0 AND ${table.topWidthRightM} >= 0`),
+}));
+
+export const levelSheets = pgTable("level_sheets", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  boqProjectId: integer("boq_project_id").references(() => boqProjects.id, { onDelete: "set null" }),
+  boqItemId: integer("boq_item_id").references(() => boqItems.id, { onDelete: "set null" }),
+  layerName: text("layer_name").notNull(),
+  sheetDate: date("sheet_date").notNull(),
+  instrument: text("instrument"),
+  toleranceAboveMm: real("tolerance_above_mm").notNull().default(20),
+  toleranceBelowMm: real("tolerance_below_mm").notNull().default(25),
+  allowedClosingErrorMm: real("allowed_closing_error_mm").notNull().default(10),
+  readingMode: text("reading_mode", { enum: ["rl", "staff"] }).notNull().default("rl"),
+  tbmName: text("tbm_name"),
+  tbmRl: real("tbm_rl"),
+  initialBackSight: real("initial_back_sight"),
+  closingForeSight: real("closing_fore_sight"),
+  readings: jsonb("readings").$type<unknown[]>().notNull().default([]),
+  checkedByType: text("checked_by_type", { enum: ["not_checked", "department", "consultant"] }).notNull().default("not_checked"),
+  checkedByName: text("checked_by_name"),
+  checkedByDesignation: text("checked_by_designation"),
+  checkedDate: date("checked_date"),
+  checkedPoints: jsonb("checked_points").$type<unknown[]>().notNull().default([]),
+  fileName: text("file_name"),
+  objectPath: text("object_path"),
+  mimeType: text("mime_type"),
+  fileSize: integer("file_size"),
+  status: text("status", { enum: ["draft", "saved"] }).notNull().default("draft"),
+  createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  updatedByUserId: integer("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => ({
+  siteDateIdx: index("level_sheets_site_date_idx").on(table.siteId, table.sheetDate, table.id),
+  projectItemIdx: index("level_sheets_project_item_idx").on(table.boqProjectId, table.boqItemId),
+  modeCheck: check("level_sheets_reading_mode_check", sql`${table.readingMode} IN ('rl', 'staff')`),
+  checkedByCheck: check("level_sheets_checked_by_check", sql`${table.checkedByType} IN ('not_checked', 'department', 'consultant')`),
+  statusCheck: check("level_sheets_status_check", sql`${table.status} IN ('draft', 'saved')`),
+  toleranceCheck: check("level_sheets_tolerance_check", sql`${table.toleranceAboveMm} >= 0 AND ${table.toleranceBelowMm} >= 0 AND ${table.allowedClosingErrorMm} >= 0`),
+  attachmentSizeCheck: check("level_sheets_attachment_size_check", sql`${table.fileSize} IS NULL OR ${table.fileSize} BETWEEN 0 AND 15728640`),
+}));
+
+export const levelSheetStaff = pgTable("level_sheet_staff", {
+  id: serial("id").primaryKey(),
+  levelSheetId: integer("level_sheet_id").notNull().references(() => levelSheets.id, { onDelete: "cascade" }),
+  personnelId: integer("personnel_id").notNull().references(() => personnel.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, table => ({
+  sheetPersonnelUq: uniqueIndex("level_sheet_staff_sheet_personnel_uq").on(table.levelSheetId, table.personnelId),
+  personnelIdx: index("level_sheet_staff_personnel_idx").on(table.personnelId),
+}));
+
 // Soil laboratory / field quality testing. Calculated result JSON is written
 // by the server only; readings remain the user's captured source values.
 export const labTests = pgTable("lab_tests", {

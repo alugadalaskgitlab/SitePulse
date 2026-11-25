@@ -305,6 +305,7 @@ import {
 } from "./auth-routes";
 import { registerManagementReportRoutes } from "./management-report";
 import { registerDailyWorkLogRoutes } from "./dailyWorkLogRoutes";
+import { registerLevelSheetRoutes } from "./levelSheetRoutes";
 import { PROGRAMME_BAR_OUTCOMES, PROGRAMME_BAR_OUTCOME_REASONS, programmeBarOutcomeInputError } from "@shared/programmeBarOutcome";
 
 const ESTIMATOR_COOKIE = 'hlc_est_role';
@@ -869,6 +870,7 @@ export async function registerRoutes(
   });
   registerLabTestRoutes(app);
   registerDailyWorkLogRoutes(app);
+  registerLevelSheetRoutes(app);
 
   // ============================================
   // ESTIMATOR PORTAL SESSION AUTH

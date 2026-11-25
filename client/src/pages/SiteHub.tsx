@@ -111,6 +111,15 @@ export default function SiteHub() {
               enabled={sectionVisible("lab_tests")}
             />
             <HubActionTile
+              href="/site/level-sheets"
+              icon={FileText}
+              title="Level sheets"
+              description="Enter design levels, field readings and cut/fill results"
+              accent="blue"
+              iconBg="bg-blue-100"
+              enabled={sectionVisible("level_sheets")}
+            />
+            <HubActionTile
               href={roadDprHref(HUB)}
               icon={Route}
               title="Road Works DPR"

@@ -20,6 +20,7 @@ export const SECTION_KEYS = [
   // ── Site DPRs ─────────────────────────────────────────────────────────────
   "site_dprs",
   "lab_tests",
+  "level_sheets",
   "site_materials",
   "dpr_layer_assignment",
   "daily_work_log",
@@ -162,6 +163,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   site_dprs: "Site DPRs — File & View",
   daily_work_log: "Daily work log",
   lab_tests: "Tests — Soil laboratory and field testing",
+  level_sheets: "Level sheets",
   site_materials: "Site Materials Received",
   dpr_layer_assignment: "DPR layer assignment — Owner only",
 
@@ -285,6 +287,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
 export const SECTION_DESCRIPTIONS: Partial<Record<SectionKey, string>> = {
   fund_planner: "Bill value, material cost and margin planning",
   boq_item_sections: "Owner-only by default; does not change saved BOQ quantities",
+  level_sheets: "Design levels, field readings, checked points and cut/fill quantities",
   plant_norm_vs_actual: "Confidential plant fuel comparison; Owner-only unless explicitly granted",
 };
 
@@ -303,9 +306,9 @@ export const ACTION_LABELS: Record<Action, string> = {
 };
 
 export function permissionActionLabel(section: SectionKey, action: Action): string {
-  return section === "daily_work_log" && action === "view_reports"
-    ? "See everyone’s day"
-    : ACTION_LABELS[action];
+  if (section === "daily_work_log" && action === "view_reports") return "See everyone’s day";
+  if (section === "level_sheets" && action === "approve") return "Record department / consultant check";
+  return ACTION_LABELS[action];
 }
 
 export type SectionPermission = {
@@ -362,6 +365,8 @@ export function fullMatrix(): PermissionMatrix {
   for (const k of SECTION_KEYS) out[k] = { ...FULL_PERMISSION };
   out.vendor_financials = { ...EMPTY_PERMISSION };
   out.boq_item_sections = { ...EMPTY_PERMISSION };
+  // Survey data remains Owner-only until an explicit Level sheets grant.
+  out.level_sheets = { ...EMPTY_PERMISSION };
   // Personal/team day records are private unless explicitly granted.
   out.daily_work_log = { ...EMPTY_PERMISSION };
   // Savings are confidential by default; grant only through an explicit
@@ -639,8 +644,8 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
   },
   {
     id: "site",
-    label: "Site — DPRs, Daily work log, Tests & Materials",
-    sections: ["site_dprs", "daily_work_log", "lab_tests", "site_materials", "labour_management"],
+    label: "Site — DPRs, Daily work log, Tests, Levels & Materials",
+    sections: ["site_dprs", "daily_work_log", "lab_tests", "level_sheets", "site_materials", "labour_management"],
   },
   {
     id: "indents",

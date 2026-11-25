@@ -131,6 +131,20 @@
       "edit": "Edit draft tests. Submitted tests require an Owner correction."
     }
   },
+  "level_sheets": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "approve"
+    ],
+    "tooltips": {
+      "view": "Open site level sheets and design levels.",
+      "create": "Create level sheets, design rows and import mapped design levels.",
+      "edit": "Edit level sheets, design rows and site chainage settings.",
+      "approve": "Record department or consultant checks and signed points."
+    }
+  },
   "site_materials": {
     "actions": [
       "view",
