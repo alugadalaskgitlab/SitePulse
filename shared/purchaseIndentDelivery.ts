@@ -4,6 +4,7 @@ export type DeliveryEvidence = {
   kind: "receipt" | "trip"; id: number; date: string; quantity: number;
   uom: string; reference: string | null; status: "active" | "cancelled" | "deleted";
   countedQty?: number | null;
+  countedWarning?: string | null;
 };
 
 // A linked material master is authoritative for bulk routing. Never infer a route
@@ -20,28 +21,63 @@ export function isBulkPiDeliveryItem(item: Parameters<typeof effectivePiDelivery
   return ["material", "bulk_plant"].includes(effectivePiDeliveryRoute(item) ?? "");
 }
 
-export function convertDeliveryQuantity(qty: number, from: string, to: string): number | null {
-  const unit = (value: string): [string, number] => {
-    const s = value.trim().toLowerCase();
-    if (["mt", "t", "ton", "tons", "tonne", "tonnes"].includes(s)) return ["mass", 1000];
-    if (["kg", "kgs"].includes(s)) return ["mass", 1];
-    if (["cum", "m3", "m³"].includes(s)) return ["volume", 1];
-    if (["l", "ltr", "litre", "litres", "liter", "liters"].includes(s)) return ["volume", .001];
-    return [s, 1];
-  };
-  const [a, x] = unit(from), [b, y] = unit(to);
-  return Number.isFinite(qty) && qty >= 0 && a && a === b ? qty * x / y : null;
+export function normalizeDeliveryMaterialName(value: unknown): string {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ").toLocaleUpperCase("en") : "";
 }
 
-export function reconcileDeliveryEvidence(evidence: DeliveryEvidence[], uom: string) {
+function deliveryUnit(value: string): { kind: "mass" | "volume" | "other"; key: string; factor: number } {
+  const key = value.trim().toLowerCase().replace(/\s+/g, " ");
+  if (["mt", "t", "ton", "tons", "tonne", "tonnes"].includes(key)) return { kind: "mass", key: "mt", factor: 1 };
+  if (["kg", "kgs"].includes(key)) return { kind: "mass", key: "mt", factor: 0.001 };
+  if (["cum", "m3", "m³"].includes(key)) return { kind: "volume", key: "cum", factor: 1 };
+  if (["cft", "ft3", "ft³"].includes(key)) return { kind: "volume", key: "cum", factor: 1 / 35.315 };
+  if (["l", "ltr", "litre", "litres", "liter", "liters"].includes(key)) return { kind: "volume", key: "cum", factor: 0.001 };
+  return { kind: "other", key, factor: 1 };
+}
+
+export function convertDeliveryQuantity(
+  qty: number,
+  from: string,
+  to: string,
+  bulkDensityMtPerCum?: number | null,
+): number | null {
+  if (!Number.isFinite(qty) || qty < 0) return null;
+  const source = deliveryUnit(from);
+  const target = deliveryUnit(to);
+  if (source.kind === target.kind && (source.kind !== "other" || source.key === target.key)) {
+    return qty * source.factor / target.factor;
+  }
+  const density = Number(bulkDensityMtPerCum);
+  if (!Number.isFinite(density) || density <= 0) return null;
+  if (source.kind === "mass" && target.kind === "volume") {
+    return qty * source.factor / density / target.factor;
+  }
+  if (source.kind === "volume" && target.kind === "mass") {
+    return qty * source.factor * density / target.factor;
+  }
+  return null;
+}
+
+export function reconcileDeliveryEvidence(
+  evidence: DeliveryEvidence[],
+  uom: string,
+  bulkDensityMtPerCum?: number | null,
+  materialName?: string | null,
+) {
   const unique = Array.from(new Map(evidence.map(e => [`${e.kind}:${e.id}`, e])).values());
   const deliveryWarnings: string[] = [];
   let deliveredQty = 0;
   const deliveryEvidence = unique.map(e => {
-    const countedQty = e.status === "active" ? convertDeliveryQuantity(e.quantity, e.uom, uom) : 0;
-    if (countedQty === null) deliveryWarnings.push(`${e.kind} ${e.id}: cannot convert ${e.uom} to ${uom}; excluded from delivered quantity`);
+    const countedQty = e.status === "active" ? convertDeliveryQuantity(e.quantity, e.uom, uom, bulkDensityMtPerCum) : 0;
+    const needsDensity = countedQty === null
+      && ((deliveryUnit(e.uom).kind === "mass" && deliveryUnit(uom).kind === "volume")
+        || (deliveryUnit(e.uom).kind === "volume" && deliveryUnit(uom).kind === "mass"));
+    const countedWarning = needsDensity
+      ? `Not counted — set bulk density for ${materialName?.trim() || "this material"} in Material master`
+      : countedQty === null ? `Not counted — cannot convert ${e.uom} to ${uom}` : null;
+    if (countedQty === null) deliveryWarnings.push(`${e.kind} ${e.id}: ${countedWarning}`);
     else deliveredQty += countedQty;
-    return { ...e, countedQty };
+    return { ...e, countedQty, countedWarning };
   });
   return { deliveredQty, deliveryEvidence, deliveryWarnings };
 }

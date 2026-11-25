@@ -1797,12 +1797,86 @@ export async function registerRoutes(
         if (!assertEdit(req, res, "site_materials")) return;
         hireLink = { ...tripHireConfirmationSchema.parse(req.body.hireEquipmentLink), actor: req.authUser! };
       }
-      const trip = await storage.createSiteMaterialTrip(input, hireLink, masterSelection);
+      let trip = await storage.createSiteMaterialTrip(input, hireLink, masterSelection);
+      let piLinkOptions: any[] = [];
+      // If the caller did not choose a PI explicitly, associate only an
+      // unambiguous BOQ match first, then an unambiguous open item for the
+      // same site/material. Ambiguity never blocks saving the trip.
+      if (trip.indentItemId == null) {
+        try {
+          let candidates: any[] = [];
+          if (input.boqProjectId != null && input.boqItemId != null) {
+            const boqMatch = await storage.getApplicablePiForBoqItem(input.boqProjectId, input.boqItemId);
+            if (boqMatch && !("ambiguous" in boqMatch)) {
+              candidates = [{
+                indentId: boqMatch.indentId,
+                indentItemId: boqMatch.indentItemId,
+                indentNo: boqMatch.indentNo,
+                description: input.material,
+                orderedQty: boqMatch.orderedQty,
+                deliveredQty: boqMatch.receivedQty,
+                balanceQty: boqMatch.balanceQty,
+                uom: input.uom,
+              }];
+            }
+          }
+          if (!candidates.length) {
+            candidates = await storage.getUnlinkedPiCandidatesForSiteTrip(trip.site, trip.material);
+          }
+          if (candidates.length === 1) {
+            try {
+              await storage.linkSiteMaterialTripsToPiItem({
+                indentId: candidates[0].indentId,
+                itemId: candidates[0].indentItemId,
+                tripIds: [trip.id],
+                actor: {
+                  userId: req.authUser!.id,
+                  userName: currentUserName(req),
+                  userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : null,
+                },
+                action: "auto",
+              });
+              trip = (await storage.getSiteMaterialTripById(trip.id)) ?? trip;
+            } catch (linkError) {
+              // A BOQ match can fail its destination validation; then make
+              // one safe site/material fallback attempt. The trip itself is
+              // already saved and is never rolled back by a link failure.
+              console.warn("Automatic PI trip link was not applied:", (linkError as Error).message);
+              if (input.boqProjectId != null && input.boqItemId != null) {
+                const fallback = await storage.getUnlinkedPiCandidatesForSiteTrip(trip.site, trip.material);
+                if (fallback.length === 1 && fallback[0].indentItemId !== candidates[0].indentItemId) {
+                  try {
+                    await storage.linkSiteMaterialTripsToPiItem({
+                      indentId: fallback[0].indentId,
+                      itemId: fallback[0].indentItemId,
+                      tripIds: [trip.id],
+                      actor: {
+                        userId: req.authUser!.id,
+                        userName: currentUserName(req),
+                        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : null,
+                      },
+                      action: "auto",
+                    });
+                    trip = (await storage.getSiteMaterialTripById(trip.id)) ?? trip;
+                  } catch (fallbackError) {
+                    console.warn("Site/material PI fallback was not applied:", (fallbackError as Error).message);
+                  }
+                } else if (fallback.length > 1) piLinkOptions = fallback;
+              }
+            }
+          } else if (candidates.length > 1) {
+            piLinkOptions = candidates;
+          }
+        } catch (lookupError) {
+          console.warn("Automatic PI trip match was unavailable:", (lookupError as Error).message);
+        }
+      }
       sendPushToSection("site_materials", "Site Material Trip Added", `${input.material || 'Material'} - ${input.site || ''}`, "/site-reports").catch(() => {});
       res.status(201).json({
         ...trip,
         enteredByUserName: req.authUser!.fullName ?? null,
         latestEditAt: null,
+        piLinkOptions,
       });
     } catch (err) {
       console.error("Error creating site material trip:", err);
@@ -12257,6 +12331,79 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/purchase-indents/:id/items/:itemId/site-trips", async (req, res) => {
+    try {
+      if (!assertPiRaiserRead(req, res)) return;
+      const indentId = Number(req.params.id), itemId = Number(req.params.itemId);
+      const indent = await storage.getPurchaseIndent(indentId);
+      const item = indent?.items.find(row => row.id === itemId);
+      if (!indent || !item) return res.status(404).json({ message: "Purchase indent item not found" });
+      if (!await assertPiDeliveryScope(req, res, indentId, [{
+        receivingLocation: item.receivingLocation,
+        receivingSiteId: item.receivingSiteId,
+      }])) return;
+      const panel = await storage.getPiSiteTripLinkPanel(indentId, itemId, String(req.query.fromDate ?? ""));
+      res.json({ ...panel, canLink: requestFeatureAllowed(req, "purchase_indent", "edit") });
+    } catch (err) {
+      res.status(400).json({ message: (err as Error).message });
+    }
+  });
+
+  app.post("/api/purchase-indents/:id/items/:itemId/site-trips/link", async (req, res) => {
+    try {
+      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
+      const indentId = Number(req.params.id), itemId = Number(req.params.itemId);
+      const body = z.object({ tripIds: z.array(z.number().int().positive()).min(1).max(200) }).strict().parse(req.body);
+      const indent = await storage.getPurchaseIndent(indentId);
+      const item = indent?.items.find(row => row.id === itemId);
+      if (!indent || !item) return res.status(404).json({ message: "Purchase indent item not found" });
+      if (!await assertPiDeliveryScope(req, res, indentId, [{
+        receivingLocation: item.receivingLocation,
+        receivingSiteId: item.receivingSiteId,
+      }])) return;
+      const linked = await storage.linkSiteMaterialTripsToPiItem({
+        indentId,
+        itemId,
+        tripIds: body.tripIds,
+        actor: {
+          userId: req.authUser!.id,
+          userName: currentUserName(req),
+          userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : null,
+        },
+      });
+      res.json({ linked, indent: await storage.getPurchaseIndent(indentId) });
+    } catch (err) {
+      res.status(err instanceof z.ZodError ? 400 : 409).json({ message: (err as Error).message });
+    }
+  });
+
+  app.post("/api/purchase-indents/:id/items/:itemId/site-trips/:tripId/unlink", async (req, res) => {
+    try {
+      if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
+      const indentId = Number(req.params.id), itemId = Number(req.params.itemId), tripId = Number(req.params.tripId);
+      const indent = await storage.getPurchaseIndent(indentId);
+      const item = indent?.items.find(row => row.id === itemId);
+      if (!indent || !item) return res.status(404).json({ message: "Purchase indent item not found" });
+      if (!await assertPiDeliveryScope(req, res, indentId, [{
+        receivingLocation: item.receivingLocation,
+        receivingSiteId: item.receivingSiteId,
+      }])) return;
+      await storage.unlinkSiteMaterialTripFromPi({
+        tripId,
+        indentId,
+        itemId,
+        actor: {
+          userId: req.authUser!.id,
+          userName: currentUserName(req),
+          userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : null,
+        },
+      });
+      res.json(await storage.getPurchaseIndent(indentId));
+    } catch (err) {
+      res.status(409).json({ message: (err as Error).message });
+    }
+  });
+
   app.get("/api/purchase-indents/vendor-options", async (req, res) => {
     try {
       if (!assertEditEither(req, res, "site_procurement", "purchase_indents_raise")) return;
@@ -12286,6 +12433,39 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error fetching purchase indent:", err);
       res.status(500).json({ message: "Failed to fetch purchase indent" });
+    }
+  });
+
+  app.post("/api/purchase-indents/:id/close-with-balance", async (req, res) => {
+    try {
+      if (!assertApprove(req, res, "purchase_indents_approve")) return;
+      const indentId = Number(req.params.id);
+      if (!await assertPiDeliveryScope(req, res, indentId)) return;
+      const body = z.object({ reason: z.string().trim().min(1).max(1000) }).strict().parse(req.body);
+      const result = await storage.closePurchaseIndentWithBalance(indentId, body.reason, {
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+      });
+      if (!result) return res.status(404).json({ message: "Purchase indent not found" });
+      res.json(result);
+    } catch (err) {
+      res.status(err instanceof z.ZodError ? 400 : 409).json({ message: (err as Error).message });
+    }
+  });
+
+  app.post("/api/purchase-indents/:id/reopen-with-balance", async (req, res) => {
+    try {
+      if (!assertApprove(req, res, "purchase_indents_approve")) return;
+      const indentId = Number(req.params.id);
+      if (!await assertPiDeliveryScope(req, res, indentId)) return;
+      const result = await storage.reopenPurchaseIndentWithBalance(indentId, {
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+      });
+      if (!result) return res.status(404).json({ message: "Purchase indent not found" });
+      res.json(result);
+    } catch (err) {
+      res.status(409).json({ message: (err as Error).message });
     }
   });
 

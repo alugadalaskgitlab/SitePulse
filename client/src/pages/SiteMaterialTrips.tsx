@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { EquipmentMasterType, SiteMaterialTrip, Site } from "@shared/schema";
@@ -90,6 +91,7 @@ export default function SiteMaterialTrips() {
   const [editingRoleTrip, setEditingRoleTrip] = useState<SiteMaterialTrip | null>(null);
   const [linkingHireTrip, setLinkingHireTrip] = useState<SiteMaterialTrip | null>(null);
   const [savedTripForSlip, setSavedTripForSlip] = useState<MaterialReceiptSlipData | null>(null);
+  const [pendingPiLinkChoice, setPendingPiLinkChoice] = useState<{ tripId: number; options: any[] } | null>(null);
   const savedTripPanelRef = useRef<HTMLDivElement | null>(null);
   const enteredByTouchedRef = useRef(false);
 
@@ -334,6 +336,9 @@ export default function SiteMaterialTrips() {
       return res.json();
     },
     onSuccess: async (trip: any) => {
+      if (Array.isArray(trip?.piLinkOptions) && trip.piLinkOptions.length > 1) {
+        setPendingPiLinkChoice({ tripId: Number(trip.id), options: trip.piLinkOptions });
+      }
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/vendor-bills") });
       if (stagedPhotos.length > 0 && trip?.id) {
         await uploadStagedPhotos(trip.id);
@@ -350,7 +355,7 @@ export default function SiteMaterialTrips() {
       queryClient.invalidateQueries({ predicate: (q) =>
         typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/materials-received")
       });
-      if (isPILinked) {
+      if (isPILinked || trip?.indentItemId != null || (trip?.piLinkOptions?.length ?? 0) > 1) {
         queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
         queryClient.invalidateQueries({ predicate: (q) =>
           typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/purchase-indents")
@@ -454,6 +459,23 @@ export default function SiteMaterialTrips() {
       toast({ title: "Failed to log material trip", description: error instanceof Error ? error.message : "The trip could not be saved.", variant: "destructive" });
       console.error("Error creating trip:", error);
     },
+  });
+  const choosePiForTripMutation = useMutation({
+    mutationFn: async (choice: any) => {
+      const response = await apiRequest("POST", `/api/purchase-indents/${choice.indentId}/items/${choice.indentItemId}/site-trips/link`, {
+        tripIds: [pendingPiLinkChoice?.tripId],
+      });
+      return response.json();
+    },
+    onSuccess: async () => {
+      setPendingPiLinkChoice(null);
+      await queryClient.invalidateQueries({ predicate: query => typeof query.queryKey[0] === "string"
+        && query.queryKey[0].startsWith("/api/purchase-indents") });
+      queryClient.invalidateQueries({ predicate: query => typeof query.queryKey[0] === "string"
+        && query.queryKey[0].startsWith("/api/site-material-trips") });
+      toast({ title: "Trip linked to purchase indent" });
+    },
+    onError: (error: Error) => toast({ title: "Trip saved; PI link not applied", description: error.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -1160,6 +1182,32 @@ export default function SiteMaterialTrips() {
           </CardContent>
         </Card>}
       </div>
+
+      <Dialog open={pendingPiLinkChoice !== null} onOpenChange={open => { if (!open && !choosePiForTripMutation.isPending) setPendingPiLinkChoice(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Which purchase indent is this trip for?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">The trip is saved. Choose one matching open PI item, or leave it unlinked.</p>
+          <div className="space-y-2">
+            {pendingPiLinkChoice?.options.map(option => <Button
+              key={`${option.indentId}-${option.indentItemId}`}
+              type="button"
+              variant="outline"
+              className="h-auto w-full justify-start whitespace-normal text-left"
+              disabled={choosePiForTripMutation.isPending}
+              onClick={() => choosePiForTripMutation.mutate(option)}
+              data-testid={`button-choose-trip-pi-${option.indentItemId}`}
+            >
+              <span>
+                <span className="block font-semibold">{option.indentNo} · {option.description}</span>
+                <span className="block text-xs text-muted-foreground">{option.deliveredQty} of {option.orderedQty} {option.uom} delivered · balance {option.balanceQty} {option.uom}</span>
+              </span>
+            </Button>)}
+          </div>
+          <Button type="button" variant="ghost" disabled={choosePiForTripMutation.isPending} onClick={() => setPendingPiLinkChoice(null)} data-testid="button-leave-trip-unlinked">
+            None — leave unlinked
+          </Button>
+        </DialogContent>
+      </Dialog>
 
       {editingRoleTrip && <TripRoleEditDialog key={editingRoleTrip.id} trip={editingRoleTrip} sitesList={sitesList} vendors={vendors} equipment={internalEquipment} vendorsLoading={vendorQuery.isLoading} vendorsError={vendorQuery.isError} onRetryVendors={() => void vendorQuery.refetch()} onClose={() => setEditingRoleTrip(null)} />}
       {linkingHireTrip && <TripHireLinkDialog trip={linkingHireTrip} onClose={() => setLinkingHireTrip(null)} />}

@@ -5,7 +5,11 @@ import { eq } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { readFileSync } from "node:fs";
 import * as schema from "../shared/schema";
-import { reconcileDeliveryEvidence, validateDeliveryDestination } from "../shared/purchaseIndentDelivery";
+import {
+  convertDeliveryQuantity,
+  reconcileDeliveryEvidence,
+  validateDeliveryDestination,
+} from "../shared/purchaseIndentDelivery";
 
 const holder = vi.hoisted(() => ({ db: null as any }));
 vi.mock("../server/db", () => ({ get db() { return holder.db; }, pool: {} }));
@@ -244,5 +248,34 @@ describe("PI-01 executable PostgreSQL and storage integration", () => {
       await storage.linkReceiptToIndentItem(1, confirmed.linkedReceiptId, "Receiver");
       expect(await total()).toBe(200);
     } finally { detail.mockRestore(); }
+  });
+
+  it("converts CFT, cum and MT using the material's bulk density", () => {
+    expect(convertDeliveryQuantity(353.15, "CFT", "cum")).toBeCloseTo(10, 8);
+    expect(convertDeliveryQuantity(10, "cum", "CFT")).toBeCloseTo(353.15, 8);
+    expect(convertDeliveryQuantity(22.05, "MT", "cum", 2.205)).toBeCloseTo(10, 8);
+    expect(convertDeliveryQuantity(10, "cum", "MT", 2.205)).toBeCloseTo(22.05, 8);
+    expect(convertDeliveryQuantity(353.15, "CFT", "MT", 2.205)).toBeCloseTo(22.05, 8);
+    expect(convertDeliveryQuantity(22.05, "MT", "CFT", 2.205)).toBeCloseTo(353.15, 8);
+    expect(convertDeliveryQuantity(100_000, "kg", "MT")).toBeCloseTo(100, 8);
+    expect(convertDeliveryQuantity(10, "MT", "cum")).toBeNull();
+  });
+
+  it("shows the precise bulk-density instruction when cross-unit delivery cannot be counted", () => {
+    const result = reconcileDeliveryEvidence([{
+      kind: "trip",
+      id: 55,
+      date: "2026-12-01",
+      quantity: 353.15,
+      uom: "CFT",
+      reference: "CH-55",
+      status: "active",
+    }], "MT", null, "WMM");
+    expect(result.deliveredQty).toBe(0);
+    expect(result.deliveryEvidence[0].countedQty).toBeNull();
+    expect(result.deliveryEvidence[0].countedWarning).toBe("Not counted — set bulk density for WMM in Material master");
+    expect(result.deliveryWarnings).toEqual([
+      "trip 55: Not counted — set bulk density for WMM in Material master",
+    ]);
   });
 });

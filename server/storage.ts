@@ -42,7 +42,11 @@ import { insertLabourWithWorkers, readWorkerNames } from "./labourWorkers";
 import { readDprSiteActivities, readDprSiteActivitiesByDprIds, reconcileDprSiteActivities } from "./dprSiteActivities";
 import { assertSectionTokens, DprSectionConflict, findSectionDrafts, lockDprIdentity, readSectionAggregate, readDraftStoppages, stageDraftStoppages, reconcileRows, reconcileDraftEquipmentAssignments, sameContext, sectionSnapshot } from "./dprSections";
 import { normalizeDprSectionContext } from "../shared/dprSections";
-import { formatPurchaseIndentNumber, reconcileDeliveryEvidence, validateDeliveryDestination, isBulkPiDeliveryItem, type DeliveryEvidence } from "../shared/purchaseIndentDelivery";
+import {
+  convertDeliveryQuantity, formatPurchaseIndentNumber, isBulkPiDeliveryItem,
+  normalizeDeliveryMaterialName, reconcileDeliveryEvidence, validateDeliveryDestination,
+  type DeliveryEvidence,
+} from "../shared/purchaseIndentDelivery";
 import { authoritativeHireDieselPeriod, calculateEquipmentHireFinancials, calculateEquipmentHireFinancialsLegacy, calculateHireGroup, getHireReviewGaps, isEquipmentHireBillEligible, monthlyHireSegments, normalizeHireActivities, rawAutoItemCoveredByHireGroup, replaceHireNetAmountsWithTaxBases, type HireExceptionDecisionInput, type HireMaintenance } from "../shared/hireBilling";
 import { hasCumulativeVendorPayment } from "../shared/vendorBillPayment";
 import { normalizeDprSiteName } from "../shared/dprBoqSelection";
@@ -1530,6 +1534,10 @@ export interface IStorage {
   }>;
   createSiteMaterialTrip(data: InsertSiteMaterialTrip, hireLink?: NewTripHireLink, masterSelection?: TripMasterSelection): Promise<SiteMaterialTrip>;
   getSiteMaterialTripById(id: number): Promise<SiteMaterialTrip | undefined>;
+  getPiSiteTripLinkPanel(indentId: number, itemId: number, fromDate?: string): Promise<{ siteName: string; materialName: string; uom: string; bulkDensity: number | null; piDate: string; candidates: any[]; linked: any[] }>;
+  getUnlinkedPiCandidatesForSiteTrip(site: string, material: string): Promise<any[]>;
+  linkSiteMaterialTripsToPiItem(input: { indentId: number; itemId: number; tripIds: number[]; actor: { userId: number; userName: string; userRole?: string | null }; action?: "manual" | "auto" }): Promise<any[]>;
+  unlinkSiteMaterialTripFromPi(input: { tripId: number; indentId: number; itemId: number; actor: { userId: number; userName: string; userRole?: string | null } }): Promise<void>;
   markSiteMaterialTripSlipShared(id: number, userId: number): Promise<SiteMaterialTrip | undefined>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>, actor?: { userId: number; userName: string; userRole?: string | null }, masterSelection?: TripMasterSelection): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
@@ -1581,6 +1589,8 @@ export interface IStorage {
   // Purchase Indents
   getPurchaseIndents(filters?: { dateFrom?: string; dateTo?: string; status?: string; priority?: string }): Promise<PurchaseIndentWithItems[]>;
   getPurchaseIndent(id: number): Promise<PurchaseIndentWithItems | undefined>;
+  closePurchaseIndentWithBalance(indentId: number, reason: string, actor: { userId: number; userName: string }): Promise<PurchaseIndentWithItems | undefined>;
+  reopenPurchaseIndentWithBalance(indentId: number, actor: { userId: number; userName: string }): Promise<PurchaseIndentWithItems | undefined>;
   scanPurchaseIndentRouteCorrections(permittedSiteNames?: string[]): Promise<PurchaseIndentRouteCorrection[]>;
   applyPurchaseIndentRouteCorrections(input: {
     items: { itemId: number; expectedProcurementRoute: string | null }[];
@@ -2740,6 +2750,7 @@ async function lockBoqItemForRecipeWrite(tx: any, boqItemId: number, manualEdit:
 }
 
 function effectivePiStatusFromReceipts(status: string, items: any[]): string {
+  if (status === "closed_with_balance") return status;
   const eligible = items.filter(item =>
     Number(item.approvedQty ?? item.qty) > 0 &&
     !["REJECTED", "CANCELLED", "NOT_PURCHASED"].includes(String(item.purchaseStatus ?? "").toUpperCase())
@@ -2753,17 +2764,23 @@ function effectivePiStatusFromReceipts(status: string, items: any[]): string {
     item.grnHasHistory === true || Number(item.grnReceivedQty ?? 0) > 0 ||
     String(item.purchaseStatus ?? "").toUpperCase() === "PURCHASED"
   ));
-  if (storeItems.length === 0) return status;
+  const bulkItems = eligible.filter(item => isBulkPiDeliveryItem(item));
+  if (storeItems.length === 0 && bulkItems.length === 0) return status;
   const allEligibleComplete = eligible.every(item => {
     if (isStoreReceiptItem(item)) {
       return Number(item.grnReceivedQty ?? 0) >= Number(item.approvedQty ?? item.qty);
+    }
+    if (isBulkPiDeliveryItem(item)) {
+      return Number(item.deliveredQty ?? 0) >= Number(item.orderedQty ?? item.approvedQty ?? item.qty);
     }
     const state = String(item.purchaseStatus ?? "").toUpperCase();
     return ["PURCHASED", "PARTIAL", "SERVICE_COMPLETED", "SERVICE_PARTLY_COMPLETED"].includes(state) &&
       !(state === "PARTIAL" && Number(item.totalAcceptedQty ?? 0) < Number(item.orderedQty ?? item.approvedQty ?? item.qty));
   });
   if (allEligibleComplete) return "completed";
-  if (storeItems.some(item => Number(item.grnReceivedQty ?? 0) > 0)) return "partially_received";
+  if (storeItems.some(item => Number(item.grnReceivedQty ?? 0) > 0) ||
+      bulkItems.some(item => Number(item.deliveredQty ?? 0) > 0)) return "partially_received";
+  if (storeItems.length === 0) return status;
   return "awaiting_delivery";
 }
 
@@ -2925,7 +2942,28 @@ export class DatabaseStorage implements IStorage {
   async _reconcilePiDeliveryWithinTx(tx: any, itemId: number): Promise<void> {
     const [item] = await tx.select().from(purchaseIndentItems).where(eq(purchaseIndentItems.id, itemId)).for("update");
     if (!item) return;
-    const { deliveredQty } = reconcileDeliveryEvidence(await this._getPiDeliveryEvidence(tx, itemId), item.uom);
+    let material: { name: string; bulkDensity: number | null } | undefined;
+    if (item.materialId != null) {
+      const [linked] = await tx.select({ name: plantMaterials.name, bulkDensity: plantMaterials.bulkDensity })
+        .from(plantMaterials).where(eq(plantMaterials.id, item.materialId)).limit(1);
+      material = linked ? { name: linked.name, bulkDensity: linked.bulkDensity == null ? null : Number(linked.bulkDensity) } : undefined;
+    } else {
+      const matches = await tx.select({ name: plantMaterials.name, bulkDensity: plantMaterials.bulkDensity })
+        .from(plantMaterials);
+      const exactMatches = matches.filter(row =>
+        normalizeDeliveryMaterialName(row.name) === normalizeDeliveryMaterialName(item.description)
+      );
+      if (exactMatches.length === 1) material = {
+        name: exactMatches[0].name,
+        bulkDensity: exactMatches[0].bulkDensity == null ? null : Number(exactMatches[0].bulkDensity),
+      };
+    }
+    const { deliveredQty } = reconcileDeliveryEvidence(
+      await this._getPiDeliveryEvidence(tx, itemId),
+      item.uom,
+      material?.bulkDensity,
+      material?.name ?? item.description,
+    );
     await tx.update(purchaseIndentItems).set({ deliveredQty }).where(eq(purchaseIndentItems.id, itemId));
   }
 
@@ -14820,14 +14858,23 @@ export class DatabaseStorage implements IStorage {
       id: purchaseIndentItems.id,
       indentId: purchaseIndentItems.indentId,
       totalPurchasedQty: purchaseIndentItems.totalPurchasedQty,
+      orderedQty: purchaseIndentItems.orderedQty,
+      approvedQty: purchaseIndentItems.approvedQty,
+      qty: purchaseIndentItems.qty,
       purchaseStatus: purchaseIndentItems.purchaseStatus,
     }).from(purchaseIndentItems).where(eq(purchaseIndentItems.id, indentItemId)).limit(1);
     if (!piItem?.indentId) return;
+    const [parentIndent] = await db.select({ status: purchaseIndents.status })
+      .from(purchaseIndents).where(eq(purchaseIndents.id, piItem.indentId)).limit(1);
+    if (parentIndent?.status === "closed_with_balance") return;
 
-    const purchasedQty = piItem.totalPurchasedQty ?? 0;
+    const purchasedQty = piItem.totalPurchasedQty ?? piItem.orderedQty ?? piItem.approvedQty ?? piItem.qty ?? 0;
     if (purchasedQty <= 0) return;
 
-    const newStatus = totalDelivered >= purchasedQty ? "PURCHASED" : "PARTIAL";
+    const newStatus = totalDelivered >= purchasedQty ? "PURCHASED"
+      : totalDelivered > 0 ? "PARTIAL"
+      : ["PURCHASED", "PARTIAL"].includes(String(piItem.purchaseStatus ?? "").toUpperCase()) ? "ORDERED"
+      : piItem.purchaseStatus;
     await db.update(purchaseIndentItems)
       .set({ totalAcceptedQty: totalDelivered, purchaseStatus: newStatus })
       .where(eq(purchaseIndentItems.id, indentItemId));
@@ -14841,18 +14888,282 @@ export class DatabaseStorage implements IStorage {
           eq(pendingPlantReceipts.status, "pending"),
         ));
       await db.update(purchaseIndents)
-        .set({ status: "purchasing" })
+        .set({ status: "partially_received" })
         .where(and(
           eq(purchaseIndents.id, piItem.indentId),
-          inArray(purchaseIndents.status, ["purchaser_actioned", "purchasing", "approved"])
+          inArray(purchaseIndents.status, ["purchaser_actioned", "purchasing", "approved", "ordered", "awaiting_delivery", "partially_received"])
         ));
       await this.checkAndCompleteIndent(piItem.indentId);
+    } else {
+      await db.update(purchaseIndents)
+        .set({ status: totalDelivered > 0 ? "partially_received" : "ordered" })
+        .where(and(
+          eq(purchaseIndents.id, piItem.indentId),
+          inArray(purchaseIndents.status, ["purchaser_actioned", "purchasing", "approved", "ordered", "awaiting_delivery", "partially_received"])
+        ));
     }
   }
 
   async getSiteMaterialTripById(id: number): Promise<SiteMaterialTrip | undefined> {
     const [trip] = await db.select().from(siteMaterialTrips).where(eq(siteMaterialTrips.id, id)).limit(1);
     return trip;
+  }
+
+  private async getPiSiteTripContext(executor: any, indentId: number, itemId: number) {
+    const [row] = await executor.select({
+      indentId: purchaseIndents.id,
+      indentNo: purchaseIndents.indentNo,
+      indentDate: purchaseIndents.date,
+      indentStatus: purchaseIndents.status,
+      piType: purchaseIndents.piType,
+      itemId: purchaseIndentItems.id,
+      description: purchaseIndentItems.description,
+      uom: purchaseIndentItems.uom,
+      materialId: purchaseIndentItems.materialId,
+      procurementRoute: purchaseIndentItems.procurementRoute,
+      orderedQty: purchaseIndentItems.orderedQty,
+      approvedQty: purchaseIndentItems.approvedQty,
+      qty: purchaseIndentItems.qty,
+      deliveredQty: purchaseIndentItems.deliveredQty,
+      purchaseStatus: purchaseIndentItems.purchaseStatus,
+      catalogName: plantMaterials.name,
+      catalogDensity: plantMaterials.bulkDensity,
+      catalogRoute: plantMaterials.procurementRoute,
+    }).from(purchaseIndentItems)
+      .innerJoin(purchaseIndents, eq(purchaseIndents.id, purchaseIndentItems.indentId))
+      .leftJoin(plantMaterials, eq(plantMaterials.id, purchaseIndentItems.materialId))
+      .where(and(eq(purchaseIndents.id, indentId), eq(purchaseIndentItems.id, itemId)))
+      .limit(1);
+    if (!row) throw new Error("Purchase indent item not found");
+    const destinationRows = await executor.select().from(pendingPlantReceipts)
+      .where(and(eq(pendingPlantReceipts.indentId, indentId), eq(pendingPlantReceipts.indentItemId, itemId)))
+      .orderBy(desc(pendingPlantReceipts.id));
+    const destination = destinationRows.find((entry: any) => entry.status === "pending") ?? destinationRows[0];
+    if (destination?.receivingLocation !== "site" || destination.receivingSiteId == null) {
+      throw new Error("This purchase indent item is not assigned to a receiving site");
+    }
+    const [site] = await executor.select({ id: sites.id, name: sites.name })
+      .from(sites).where(eq(sites.id, destination.receivingSiteId)).limit(1);
+    if (!site) throw new Error("Receiving site not found");
+    const materialName = row.catalogName ?? row.description;
+    const routeItem = {
+      procurementRoute: row.procurementRoute,
+      catalogProcurementRoute: row.catalogRoute,
+      piType: row.piType,
+    };
+    if (!isBulkPiDeliveryItem(routeItem)) {
+      throw new Error("Site-trip links are available only for bulk material purchase indent items");
+    }
+    if (row.indentStatus === "closed_with_balance") {
+      throw new Error("This purchase indent is closed with balance; reopen it before changing trip links");
+    }
+    return {
+      ...row,
+      siteId: site.id,
+      siteName: site.name,
+      piDate: String(row.indentDate ?? ""),
+      materialName,
+      bulkDensity: row.catalogDensity == null ? null : Number(row.catalogDensity),
+      destination,
+    };
+  }
+
+  async getPiSiteTripLinkPanel(indentId: number, itemId: number, fromDate?: string) {
+    const context = await this.getPiSiteTripContext(db, indentId, itemId);
+    const dateFrom = fromDate?.trim() || context.piDate;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) throw new Error("Enter a valid From date");
+    const siteKey = normalizeDeliveryMaterialName(context.siteName);
+    const materialKey = normalizeDeliveryMaterialName(context.materialName);
+    const candidatesRaw = await db.select().from(siteMaterialTrips).where(and(
+      sql`regexp_replace(upper(trim(${siteMaterialTrips.site})), '[[:space:]]+', ' ', 'g') = ${siteKey}`,
+      sql`regexp_replace(upper(trim(${siteMaterialTrips.material})), '[[:space:]]+', ' ', 'g') = ${materialKey}`,
+      gte(siteMaterialTrips.date, dateFrom),
+      isNull(siteMaterialTrips.indentId),
+      isNull(siteMaterialTrips.indentItemId),
+      or(isNull(siteMaterialTrips.isCancelled), eq(siteMaterialTrips.isCancelled, false)),
+      or(isNull(siteMaterialTrips.isDeleted), eq(siteMaterialTrips.isDeleted, false)),
+    )).orderBy(desc(siteMaterialTrips.date), desc(siteMaterialTrips.id));
+    const linkedRaw = await db.select().from(siteMaterialTrips).where(and(
+      eq(siteMaterialTrips.indentId, indentId),
+      eq(siteMaterialTrips.indentItemId, itemId),
+    )).orderBy(desc(siteMaterialTrips.date), desc(siteMaterialTrips.id));
+    const countTrip = (trip: SiteMaterialTrip) => {
+      const countedQty = convertDeliveryQuantity(Number(trip.quantity), trip.uom, context.uom, context.bulkDensity);
+      return {
+        ...trip,
+        countedQty,
+        countedWarning: countedQty == null
+          ? `Not counted — set bulk density for ${context.materialName} in Material master`
+          : null,
+      };
+    };
+    const linked = linkedRaw.map(countTrip);
+    const candidates = candidatesRaw.map(countTrip);
+    return {
+      siteName: context.siteName,
+      materialName: context.materialName,
+      uom: context.uom,
+      bulkDensity: context.bulkDensity,
+      piDate: context.piDate,
+      candidates,
+      linked,
+    };
+  }
+
+  async getUnlinkedPiCandidatesForSiteTrip(site: string, material: string): Promise<any[]> {
+    const sitesByName = await db.select({ id: sites.id, name: sites.name }).from(sites);
+    const siteMatches = sitesByName.filter(row =>
+      normalizeDeliveryMaterialName(row.name) === normalizeDeliveryMaterialName(site)
+    );
+    if (siteMatches.length !== 1) return [];
+    const targetSiteId = siteMatches[0].id;
+    const rows = await db.select({
+      indentId: purchaseIndents.id,
+      indentNo: purchaseIndents.indentNo,
+      indentDate: purchaseIndents.date,
+      indentStatus: purchaseIndents.status,
+      piType: purchaseIndents.piType,
+      itemId: purchaseIndentItems.id,
+      description: purchaseIndentItems.description,
+      uom: purchaseIndentItems.uom,
+      materialId: purchaseIndentItems.materialId,
+      procurementRoute: purchaseIndentItems.procurementRoute,
+      orderedQty: purchaseIndentItems.orderedQty,
+      approvedQty: purchaseIndentItems.approvedQty,
+      qty: purchaseIndentItems.qty,
+      deliveredQty: purchaseIndentItems.deliveredQty,
+      purchaseStatus: purchaseIndentItems.purchaseStatus,
+      catalogName: plantMaterials.name,
+      catalogDensity: plantMaterials.bulkDensity,
+      catalogRoute: plantMaterials.procurementRoute,
+    }).from(purchaseIndentItems)
+      .innerJoin(purchaseIndents, eq(purchaseIndents.id, purchaseIndentItems.indentId))
+      .leftJoin(plantMaterials, eq(plantMaterials.id, purchaseIndentItems.materialId))
+      .where(inArray(purchaseIndents.status, [
+        "approved", "purchasing", "purchaser_actioned", "awaiting_delivery", "ordered", "partially_received",
+      ]));
+    if (!rows.length) return [];
+    const itemIds = rows.map(row => row.itemId);
+    const destinations = await db.select().from(pendingPlantReceipts)
+      .where(inArray(pendingPlantReceipts.indentItemId, itemIds))
+      .orderBy(desc(pendingPlantReceipts.id));
+    const latestDestination = new Map<number, typeof destinations[number]>();
+    const pendingDestination = new Map<number, typeof destinations[number]>();
+    for (const destination of destinations) {
+      if (!latestDestination.has(destination.indentItemId)) latestDestination.set(destination.indentItemId, destination);
+      if (destination.status === "pending" && !pendingDestination.has(destination.indentItemId)) {
+        pendingDestination.set(destination.indentItemId, destination);
+      }
+    }
+    return rows.flatMap(row => {
+      const routeItem = { procurementRoute: row.procurementRoute, catalogProcurementRoute: row.catalogRoute, piType: row.piType };
+      if (!isBulkPiDeliveryItem(routeItem)) return [];
+      const deliveryDestination = pendingDestination.get(row.itemId) ?? latestDestination.get(row.itemId);
+      if (deliveryDestination?.receivingLocation !== "site" || deliveryDestination.receivingSiteId !== targetSiteId) return [];
+      const materialName = row.catalogName ?? row.description;
+      if (normalizeDeliveryMaterialName(materialName) !== normalizeDeliveryMaterialName(material)) return [];
+      if (["CANCELLED", "REJECTED", "NOT_PURCHASED"].includes(String(row.purchaseStatus ?? "").toUpperCase())) return [];
+      const orderedQty = Number(row.orderedQty ?? row.approvedQty ?? row.qty ?? 0);
+      const deliveredQty = Number(row.deliveredQty ?? 0);
+      if (!(orderedQty > deliveredQty + 0.001)) return [];
+      return [{
+        indentId: row.indentId,
+        indentItemId: row.itemId,
+        indentNo: row.indentNo,
+        indentDate: row.indentDate,
+        description: row.description,
+        orderedQty,
+        deliveredQty,
+        balanceQty: orderedQty - deliveredQty,
+        uom: row.uom,
+        siteId: targetSiteId,
+        siteName: siteMatches[0].name,
+      }];
+    });
+  }
+
+  async linkSiteMaterialTripsToPiItem(input: {
+    indentId: number; itemId: number; tripIds: number[];
+    actor: { userId: number; userName: string; userRole?: string | null };
+    action?: "manual" | "auto";
+  }): Promise<any[]> {
+    const tripIds = Array.from(new Set(input.tripIds)).sort((a, b) => a - b);
+    if (!tripIds.length) throw new Error("Select at least one site trip");
+    const updated = await db.transaction(async tx => {
+      const context = await this.getPiSiteTripContext(tx, input.indentId, input.itemId);
+      const trips = await tx.select().from(siteMaterialTrips)
+        .where(inArray(siteMaterialTrips.id, tripIds))
+        .orderBy(asc(siteMaterialTrips.id))
+        .for("update");
+      if (trips.length !== tripIds.length) throw new Error("One or more selected trips no longer exist");
+      for (const trip of trips) {
+        if (trip.indentItemId != null || trip.indentId != null) throw new Error(`Trip ${trip.id} is already linked to a purchase indent`);
+        if (trip.isCancelled === true || trip.isDeleted === true) throw new Error(`Trip ${trip.id} is cancelled or deleted`);
+        if (normalizeDeliveryMaterialName(trip.site) !== normalizeDeliveryMaterialName(context.siteName)) {
+          throw new Error(`Trip ${trip.id} belongs to a different site`);
+        }
+        if (normalizeDeliveryMaterialName(trip.material) !== normalizeDeliveryMaterialName(context.materialName)) {
+          throw new Error(`Trip ${trip.id} is for a different material`);
+        }
+      }
+      const results = [];
+      for (const trip of trips) {
+        const [linked] = await this._mutatePiDeliverySourceWithinTx(tx, "trip", trip.id, async () => tx.update(siteMaterialTrips)
+          .set({ indentId: input.indentId, indentItemId: input.itemId })
+          .where(eq(siteMaterialTrips.id, trip.id))
+          .returning(), input.itemId);
+        if (!linked) throw new Error(`Trip ${trip.id} could not be linked`);
+        await tx.insert(auditLogs).values({
+          module: "purchase_indent",
+          transactionId: input.indentId,
+          action: input.action === "auto" ? "site_trip_auto_link" : "site_trip_link",
+          userId: input.actor.userId,
+          userName: input.actor.userName,
+          userRole: input.actor.userRole ?? null,
+          oldValues: { tripId: trip.id, indentId: trip.indentId, indentItemId: trip.indentItemId },
+          newValues: { tripId: trip.id, indentId: input.indentId, indentItemId: input.itemId, action: input.action ?? "manual" },
+          reason: input.action === "auto" ? "Unique open PI item matched by site and material" : "Site trip linked to PI item",
+        });
+        results.push(linked);
+      }
+      return results;
+    });
+    await this.checkSiteDeliveryCompletion(input.itemId).catch(error =>
+      console.error("PI delivery completion check after trip link failed:", error)
+    );
+    return updated;
+  }
+
+  async unlinkSiteMaterialTripFromPi(input: {
+    tripId: number; indentId: number; itemId: number;
+    actor: { userId: number; userName: string; userRole?: string | null };
+  }): Promise<void> {
+    await db.transaction(async tx => {
+      const context = await this.getPiSiteTripContext(tx, input.indentId, input.itemId);
+      const [trip] = await tx.select().from(siteMaterialTrips)
+        .where(eq(siteMaterialTrips.id, input.tripId)).for("update").limit(1);
+      if (!trip || trip.indentId !== input.indentId || trip.indentItemId !== input.itemId) {
+        throw new Error("This trip is no longer linked to the selected purchase indent item");
+      }
+      await this._mutatePiDeliverySourceWithinTx(tx, "trip", trip.id, async () => tx.update(siteMaterialTrips)
+        .set({ indentId: null, indentItemId: null })
+        .where(eq(siteMaterialTrips.id, trip.id))
+        .returning(), null);
+      await tx.insert(auditLogs).values({
+        module: "purchase_indent",
+        transactionId: input.indentId,
+        action: "site_trip_unlink",
+        userId: input.actor.userId,
+        userName: input.actor.userName,
+        userRole: input.actor.userRole ?? null,
+        oldValues: { tripId: trip.id, indentId: input.indentId, indentItemId: input.itemId },
+        newValues: { tripId: trip.id, indentId: null, indentItemId: null },
+        reason: `Site trip unlinked from ${context.indentNo} item ${input.itemId}`,
+      });
+    });
+    await this.checkSiteDeliveryCompletion(input.itemId).catch(error =>
+      console.error("PI delivery completion check after trip unlink failed:", error)
+    );
   }
 
   async markSiteMaterialTripSlipShared(id: number, userId: number): Promise<SiteMaterialTrip | undefined> {
@@ -16837,11 +17148,20 @@ export class DatabaseStorage implements IStorage {
       orderBy: desc(purchaseIndents.date),
     });
 
-    const catalogIds = Array.from(new Set(indents.flatMap(indent => indent.items.map(item => item.materialId).filter((id): id is number => id != null))));
-    const catalogRoutes = new Map((catalogIds.length
-      ? await db.select({ id: plantMaterials.id, procurementRoute: plantMaterials.procurementRoute })
-        .from(plantMaterials).where(inArray(plantMaterials.id, catalogIds))
-      : []).map(row => [row.id, row.procurementRoute]));
+    const plantMaterialRows = await db.select({
+      id: plantMaterials.id,
+      name: plantMaterials.name,
+      bulkDensity: plantMaterials.bulkDensity,
+      procurementRoute: plantMaterials.procurementRoute,
+    }).from(plantMaterials);
+    const catalogMaterials = new Map(plantMaterialRows.map(row => [row.id, row]));
+    const materialsByName = new Map<string, typeof plantMaterialRows>();
+    for (const row of plantMaterialRows) {
+      const key = normalizeDeliveryMaterialName(row.name);
+      const rows = materialsByName.get(key) ?? [];
+      rows.push(row);
+      materialsByName.set(key, rows);
+    }
     const storeLinks = await this.piStoreLinks(indents.flatMap(i => i.items));
     const linkedStoreIds = Array.from(new Set(Array.from(storeLinks.values()).filter((id): id is number => id != null && id > 0)));
     const liveStores = linkedStoreIds.length ? await this.getStoreItemsWithBalance(linkedStoreIds) : [];
@@ -16853,10 +17173,19 @@ export class DatabaseStorage implements IStorage {
           ...item,
           linkedVendorName: item.vendorId == null ? null : linkedVendorNames.get(Number(item.vendorId)) ?? null,
           ...linkedPiStoreStock({ ...item, storeItemId: storeLinks.get(item.id) }, liveStores),
-          catalogProcurementRoute: item.materialId ? catalogRoutes.get(item.materialId) ?? null : null,
+          catalogProcurementRoute: item.materialId ? catalogMaterials.get(item.materialId)?.procurementRoute ?? null : null,
         };
         if (!isBulkPiDeliveryItem(withCatalog)) return withCatalog;
-        return { ...withCatalog, ...reconcileDeliveryEvidence(await this._getPiDeliveryEvidence(db, item.id), item.uom) };
+        const namedMatches = materialsByName.get(normalizeDeliveryMaterialName(item.description)) ?? [];
+        const deliveryMaterial = item.materialId
+          ? catalogMaterials.get(item.materialId)
+          : namedMatches.length === 1 ? namedMatches[0] : undefined;
+        return { ...withCatalog, ...reconcileDeliveryEvidence(
+          await this._getPiDeliveryEvidence(db, item.id),
+          item.uom,
+          deliveryMaterial?.bulkDensity,
+          deliveryMaterial?.name ?? item.description,
+        ) };
       })),
     })));
     const progressByItem = await this.getStoreGrnProgressByIndentItem(enrichedIndents.flatMap(indent => indent.items.map(item => item.id)));
@@ -17094,18 +17423,21 @@ export class DatabaseStorage implements IStorage {
 
     // Expose the catalog route independently so a mistagged saved Stores route
     // remains visible for explicit review while bulk actions remain guarded.
-    const linkedMaterialIds = Array.from(new Set<number>(
-      finalItems.filter((i: any) => i.materialId).map((i: any) => i.materialId as number)
-    ));
     let materialRouteMap = new Map<number, string | null>();
-    if (linkedMaterialIds.length > 0) {
-      const matRows = await db
-        .select({ id: plantMaterials.id, procurementRoute: plantMaterials.procurementRoute })
-        .from(plantMaterials)
-        .where(inArray(plantMaterials.id, linkedMaterialIds));
-      for (const m of matRows) {
-        materialRouteMap.set(m.id, m.procurementRoute ?? null);
-      }
+    const allPlantMaterials = await db.select({
+      id: plantMaterials.id,
+      name: plantMaterials.name,
+      bulkDensity: plantMaterials.bulkDensity,
+      procurementRoute: plantMaterials.procurementRoute,
+    }).from(plantMaterials);
+    const materialById = new Map(allPlantMaterials.map(row => [row.id, row]));
+    const materialsByName = new Map<string, typeof allPlantMaterials>();
+    for (const material of allPlantMaterials) {
+      materialRouteMap.set(material.id, material.procurementRoute ?? null);
+      const key = normalizeDeliveryMaterialName(material.name);
+      const matches = materialsByName.get(key) ?? [];
+      matches.push(material);
+      materialsByName.set(key, matches);
     }
     const resolvedItems = finalItems.map((item: any) =>
       item.materialId && materialRouteMap.has(item.materialId)
@@ -17126,7 +17458,16 @@ export class DatabaseStorage implements IStorage {
       const evidence = await this._getPiDeliveryEvidence(db, item.id);
       const destination = destinationRows.find(row => row.indentItemId === item.id && row.status === "pending")
         ?? destinationRows.find(row => row.indentItemId === item.id);
-      return { ...item, ...reconcileDeliveryEvidence(evidence, item.uom),
+      const namedMatches = materialsByName.get(normalizeDeliveryMaterialName(item.description)) ?? [];
+      const deliveryMaterial = item.materialId
+        ? materialById.get(item.materialId)
+        : namedMatches.length === 1 ? namedMatches[0] : undefined;
+      return { ...item, ...reconcileDeliveryEvidence(
+        evidence,
+        item.uom,
+        deliveryMaterial?.bulkDensity,
+        deliveryMaterial?.name ?? item.description,
+      ),
         receivingLocation: destination?.receivingLocation ?? null,
         receivingSiteId: destination?.receivingSiteId ?? null };
     }));
@@ -17213,6 +17554,95 @@ export class DatabaseStorage implements IStorage {
       timeline,
       unlockedByName,
     } as PurchaseIndentWithItems | undefined;
+  }
+
+  async closePurchaseIndentWithBalance(
+    indentId: number,
+    reason: string,
+    actor: { userId: number; userName: string },
+  ): Promise<PurchaseIndentWithItems | undefined> {
+    const cleanReason = reason.trim();
+    if (!cleanReason) throw new Error("Enter a reason for closing this purchase indent with balance");
+    await db.transaction(async tx => {
+      const [header] = await tx.select().from(purchaseIndents)
+        .where(eq(purchaseIndents.id, indentId)).for("update").limit(1);
+      if (!header) throw new Error("Purchase indent not found");
+      if (header.status === "closed_with_balance") throw new Error("This purchase indent is already closed with balance");
+      if (["completed", "rejected", "cancelled", "pending", "stores_check"].includes(header.status)) {
+        throw new Error(`Cannot close a purchase indent in ${header.status} status`);
+      }
+      const items = await tx.select().from(purchaseIndentItems)
+        .where(eq(purchaseIndentItems.indentId, indentId))
+        .orderBy(asc(purchaseIndentItems.id));
+      const snapshotItems = items.flatMap(item => {
+        const orderedQty = Number(item.orderedQty ?? item.approvedQty ?? item.qty ?? 0);
+        const deliveredQty = Math.max(
+          Number(item.deliveredQty ?? 0),
+          Number(item.totalAcceptedQty ?? 0),
+        );
+        const balanceQty = Math.max(0, orderedQty - deliveredQty);
+        return orderedQty > 0 && balanceQty > 0
+          ? [{ itemId: item.id, description: item.description, orderedQty, deliveredQty, balanceQty, uom: item.uom }]
+          : [];
+      });
+      if (!snapshotItems.length) throw new Error("No outstanding balance remains to close");
+      const snapshot = { priorStatus: header.status, items: snapshotItems };
+      const [updated] = await tx.update(purchaseIndents).set({
+        status: "closed_with_balance",
+        closedBalanceReason: cleanReason,
+        closedBalanceSnapshot: snapshot,
+        closedBalanceByUserId: actor.userId,
+        closedBalanceAt: new Date(),
+      }).where(eq(purchaseIndents.id, indentId)).returning();
+      if (!updated) throw new Error("Purchase indent could not be closed");
+      await tx.insert(auditLogs).values({
+        module: "purchase_indent",
+        transactionId: indentId,
+        action: "close_with_balance",
+        userId: actor.userId,
+        userName: actor.userName,
+        oldValues: { status: header.status, closedBalanceSnapshot: header.closedBalanceSnapshot ?? null },
+        newValues: { status: "closed_with_balance", reason: cleanReason, snapshot },
+        reason: cleanReason,
+      });
+    });
+    return this.getPurchaseIndent(indentId);
+  }
+
+  async reopenPurchaseIndentWithBalance(
+    indentId: number,
+    actor: { userId: number; userName: string },
+  ): Promise<PurchaseIndentWithItems | undefined> {
+    await db.transaction(async tx => {
+      const [header] = await tx.select().from(purchaseIndents)
+        .where(eq(purchaseIndents.id, indentId)).for("update").limit(1);
+      if (!header) throw new Error("Purchase indent not found");
+      if (header.status !== "closed_with_balance") throw new Error("This purchase indent is not closed with balance");
+      const snapshot = header.closedBalanceSnapshot as { priorStatus?: string; items?: unknown[] } | null;
+      const restoredStatus = typeof snapshot?.priorStatus === "string" && snapshot.priorStatus
+        ? snapshot.priorStatus
+        : "ordered";
+      const [updated] = await tx.update(purchaseIndents).set({
+        status: restoredStatus,
+        closedBalanceReason: null,
+        closedBalanceSnapshot: null,
+        closedBalanceByUserId: null,
+        closedBalanceAt: null,
+      }).where(eq(purchaseIndents.id, indentId)).returning();
+      if (!updated) throw new Error("Purchase indent could not be reopened");
+      await tx.insert(auditLogs).values({
+        module: "purchase_indent",
+        transactionId: indentId,
+        action: "reopen_with_balance",
+        userId: actor.userId,
+        userName: actor.userName,
+        oldValues: { status: "closed_with_balance", reason: header.closedBalanceReason, snapshot: header.closedBalanceSnapshot },
+        newValues: { status: restoredStatus },
+        reason: "Purchase indent reopened after a close-with-balance decision",
+      });
+    });
+    await this.checkAndCompleteIndent(indentId);
+    return this.getPurchaseIndent(indentId);
   }
 
   private async purchaseIndentRouteCorrectionRows(tx: any, itemIds?: number[]): Promise<PurchaseIndentRouteCorrection[]> {
@@ -18890,7 +19320,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async checkAndCompleteIndent(indentId: number): Promise<void> {
-    const [header] = await db.select({ piType: purchaseIndents.piType }).from(purchaseIndents).where(eq(purchaseIndents.id, indentId));
+    const [header] = await db.select({ piType: purchaseIndents.piType, status: purchaseIndents.status })
+      .from(purchaseIndents).where(eq(purchaseIndents.id, indentId));
+    if (header?.status === "closed_with_balance") return;
     const allItems = await db.select({
       id: purchaseIndentItems.id,
       qty: purchaseIndentItems.qty,

@@ -2,11 +2,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { readFileSync } from "node:fs";
 import { deliveryQuantities, deliveryProgress, DestinationFields, PurchaseIndentDeliveryPanel } from "@/components/purchase-indent-delivery";
 import { isBulkPiDeliveryItem } from "@shared/purchaseIndentDelivery";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+const renderWithQueryClient = (element: ReactElement) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const rendered = render(<QueryClientProvider client={client}>{element}</QueryClientProvider>);
+  return {
+    ...rendered,
+    rerender: (next: ReactElement) => rendered.rerender(<QueryClientProvider client={client}>{next}</QueryClientProvider>),
+  };
+};
 const item = { id: 12, description: "WMM", qty: 1500, uom: "MT", requiredBy: "2026-02-10", purchaseStatus: "ordered", deliveredQty: 600 };
 const today = new Date(2026, 1, 20);
 describe("PI-01 delivery display", () => {
@@ -40,7 +53,7 @@ describe("PI-01 delivery display", () => {
     expect(screen.getByLabelText("Receiving site")).toHaveValue("");
   });
   it("shows receipt and trip quantities together including excluded evidence", () => {
-    render(<PurchaseIndentDeliveryPanel item={{ ...item, deliveryEvidence: [
+    renderWithQueryClient(<PurchaseIndentDeliveryPanel item={{ ...item, deliveryEvidence: [
       { kind: "receipt", id: 1, date: "2026-02-11", quantity: 400, uom: "MT", status: "active", countedQty: 400 },
       { kind: "trip", id: 2, date: "2026-02-12", quantity: 200, uom: "MT", status: "active", countedQty: 200 },
       { kind: "trip", id: 3, date: "2026-02-12", quantity: 20, uom: "Cum", status: "cancelled", countedQty: 0 },
@@ -53,7 +66,7 @@ describe("PI-01 delivery display", () => {
   });
   it("allows legacy ordered destination correction and surfaces save errors", async () => {
     const save = vi.fn().mockRejectedValue(new Error("No permission"));
-    render(<PurchaseIndentDeliveryPanel item={item} sites={[{ id: 3, name: "Site A" }]} canEdit onSave={save} />);
+    renderWithQueryClient(<PurchaseIndentDeliveryPanel item={item} sites={[{ id: 3, name: "Site A" }]} canEdit onSave={save} />);
     fireEvent.click(screen.getByText("Confirm destination"));
     expect(screen.getByText("Save destination")).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Delivery destination"), { target: { value: "site" } });
@@ -65,7 +78,7 @@ describe("PI-01 delivery display", () => {
   });
   it("routes confirmed destinations to the existing recording paths with PI linkage", () => {
     const props = { sites: [{ id: 3, name: "Site A" }], canEdit: true, onSave: vi.fn(), indentId: 21, indentNo: "HLC/PI/A/2026/0001" };
-    const { rerender } = render(<PurchaseIndentDeliveryPanel {...props} item={{ ...item, receivingLocation: "site", receivingSiteId: 3 }} />);
+    const { rerender } = renderWithQueryClient(<PurchaseIndentDeliveryPanel {...props} item={{ ...item, receivingLocation: "site", receivingSiteId: 3 }} />);
     expect(screen.getByText("Log Site Delivery →")).toHaveAttribute("href", expect.stringContaining("/site/material-trips?piIndentId=21&piItemId=12"));
     expect(new URL(screen.getByText("Log Site Delivery →").getAttribute("href")!, "http://fixture").searchParams.get("qty")).toBe("900");
     rerender(<PurchaseIndentDeliveryPanel {...props} item={{ ...item, receivingLocation: "hmp_plant" }} />);
@@ -85,7 +98,7 @@ describe("PI-01 delivery display", () => {
   ])("uses the progress target for the site link: %j", (values, target, remainingQty) => {
     const row = { ...item, ...values, description: "WMM & GSB / MIX", receivingLocation: "site", receivingSiteId: 3 };
     expect(deliveryQuantities(row)).toEqual({ target, delivered: Number(row.deliveredQty ?? 0), remainingQty });
-    render(<PurchaseIndentDeliveryPanel item={row} sites={[{ id: 3, name: "Site A & B" }]} canEdit onSave={vi.fn()} indentId={21} />);
+    renderWithQueryClient(<PurchaseIndentDeliveryPanel item={row} sites={[{ id: 3, name: "Site A & B" }]} canEdit onSave={vi.fn()} indentId={21} />);
     const url = new URL(screen.getByText("Log Site Delivery →").getAttribute("href")!, "http://fixture");
     expect(url.pathname).toBe("/site/material-trips");
     expect(Object.fromEntries(url.searchParams)).toEqual({
@@ -94,10 +107,76 @@ describe("PI-01 delivery display", () => {
     });
   });
   it.each(["hmp_plant", "rmc_plant"])("keeps the %s receipt URL exactly unchanged", receivingLocation => {
-    render(<PurchaseIndentDeliveryPanel item={{ ...item, materialId: 45, receivingLocation }}
+    renderWithQueryClient(<PurchaseIndentDeliveryPanel item={{ ...item, materialId: 45, receivingLocation }} 
       sites={[]} canEdit onSave={vi.fn()} indentId={21} indentNo="HLC/PI/A/2026/0001" />);
     expect(screen.getByText("Record Plant Receipt →")).toHaveAttribute("href",
       "/plant/material-receipts?autoOpen=1&piRef=HLC%2FPI%2FA%2F2026%2F0001&piItemId=12&materialId=45");
+  });
+  it("shows existing trip matches, links selected trips, and supports unlink", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = url.includes("/site-trips?") ? {
+        canLink: true,
+        siteName: "Site A",
+        materialName: "WMM",
+        piDate: "2026-02-01",
+        uom: "MT",
+        candidates: [{
+          id: 55, date: "2026-02-02", receiptNumber: "CH-55", vehicleNumber: "TG01A1234",
+          supplier: "Transporter", quantity: 353.15, uom: "CFT", countedQty: 22.05,
+        }],
+        linked: [{
+          id: 54, date: "2026-02-01", receiptNumber: "CH-54", vehicleNumber: "TG01A1233",
+          supplier: "Transporter", quantity: 10, uom: "MT", countedQty: 10,
+        }],
+      } : {};
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const row = {
+      ...item,
+      receivingLocation: "site",
+      receivingSiteId: 3,
+      qtyPurchased: 100,
+      orderedQty: 100,
+    };
+    renderWithQueryClient(<PurchaseIndentDeliveryPanel
+      item={row}
+      sites={[{ id: 3, name: "Site A" }]}
+      canEdit
+      onSave={vi.fn()}
+      indentId={21}
+      indentNo="PI-21"
+      piDate="2026-02-01"
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Link existing site trips" }));
+    expect(await screen.findByText(/CH-55 · 2026-02-02/)).toBeInTheDocument();
+    expect(screen.getByText(/Counted: 22\.05 MT/)).toBeInTheDocument();
+    expect(screen.getByText(/CH-54 · 2026-02-01/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select trip 55" }));
+    fireEvent.click(screen.getByRole("button", { name: "Link selected (1)" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/purchase-indents/21/items/12/site-trips/link"),
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ tripIds: [55] }) }),
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Unlink" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/purchase-indents/21/items/12/site-trips/54/unlink"),
+      expect.objectContaining({ method: "POST" }),
+    ));
+  });
+  it("shows the saved close-with-balance quantity instead of live progress", () => {
+    renderWithQueryClient(<PurchaseIndentDeliveryPanel
+      item={{ ...item, receivingLocation: "site", receivingSiteId: 3 }}
+      sites={[{ id: 3, name: "Site A" }]}
+      canEdit={false}
+      onSave={vi.fn()}
+      indentId={21}
+      closedBalance={{ orderedQty: 100, deliveredQty: 72.5, balanceQty: 27.5, uom: "MT" }}
+    />);
+    expect(screen.getByTestId("delivery-progress-12")).toHaveTextContent("Closed with balance — 72.5 of 100 MT delivered");
   });
   it("guards bulk spec fields and all legacy spec display surfaces", () => {
     const source = readFileSync("client/src/pages/PurchaseIndents.tsx", "utf8");

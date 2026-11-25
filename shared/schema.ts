@@ -2487,6 +2487,16 @@ export const purchaseIndents = pgTable("purchase_indents", {
   requirementId: integer("requirement_id"),
   // allocationId references material_requirement_allocations.id — column added via ensureMaterialRequirementsTable
   allocationId: integer("allocation_id"),
+  // PI-LINK-01: a close-with-balance snapshot preserves the outstanding amount
+  // per item and the reason/actor/time. Reopening clears these current-state
+  // fields; the audit log retains the close and reopen history.
+  closedBalanceReason: text("closed_balance_reason"),
+  closedBalanceSnapshot: jsonb("closed_balance_snapshot").$type<{
+    priorStatus: string;
+    items: Array<{ itemId: number; description: string; orderedQty: number; deliveredQty: number; balanceQty: number; uom: string }>;
+  }>(),
+  closedBalanceByUserId: integer("closed_balance_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  closedBalanceAt: timestamp("closed_balance_at"),
 });
 
 export const purchaseIndentItems = pgTable("purchase_indent_items", {

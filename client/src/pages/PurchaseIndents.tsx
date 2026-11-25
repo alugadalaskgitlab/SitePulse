@@ -361,6 +361,8 @@ function getStatusBadge(status: string, storesStatus?: string | null, piType?: s
       return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid="badge-status-partially-received">PARTIALLY RECEIVED</Badge>;
     case "closed":
       return <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600" data-testid="badge-status-closed">CLOSED</Badge>;
+    case "closed_with_balance":
+      return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300" data-testid="badge-status-closed-with-balance">CLOSED WITH BALANCE</Badge>;
     case "completed":
       return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700" data-testid="badge-status-completed">COMPLETED</Badge>;
     case "rejected":
@@ -835,6 +837,8 @@ export default function PurchaseIndents() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showForceCloseConfirm, setShowForceCloseConfirm] = useState(false);
   const [forceCloseReason, setForceCloseReason] = useState("");
+  const [showCloseBalanceDialog, setShowCloseBalanceDialog] = useState(false);
+  const [closeBalanceReason, setCloseBalanceReason] = useState("");
   const [grnPanelOpen, setGrnPanelOpen] = useState(true);
   const [expandedHistoryItems, setExpandedHistoryItems] = useState<Set<number>>(new Set());
 
@@ -1406,6 +1410,32 @@ export default function PurchaseIndents() {
     onError: (err: Error) => {
       toast({ title: "Failed to force close indent", description: err.message, variant: "destructive" });
     },
+  });
+
+  const closeBalanceMutation = useMutation({
+    mutationFn: (reason: string) => apiRequest("POST", `/api/purchase-indents/${selectedIndentId}/close-with-balance`, { reason }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] }),
+        ...(selectedIndentId ? [queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] })] : []),
+      ]);
+      setShowCloseBalanceDialog(false);
+      setCloseBalanceReason("");
+      toast({ title: "Purchase indent closed with balance" });
+    },
+    onError: (error: Error) => toast({ title: "Could not close purchase indent", description: error.message, variant: "destructive" }),
+  });
+
+  const reopenBalanceMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/purchase-indents/${selectedIndentId}/reopen-with-balance`, {}),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] }),
+        ...(selectedIndentId ? [queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] })] : []),
+      ]);
+      toast({ title: "Purchase indent reopened" });
+    },
+    onError: (error: Error) => toast({ title: "Could not reopen purchase indent", description: error.message, variant: "destructive" }),
   });
 
   const editMutation = useMutation({
@@ -2215,6 +2245,7 @@ export default function PurchaseIndents() {
       case "stores_check": return "border-l-cyan-500";
       case "approved": return "border-l-emerald-500";
       case "completed": return "border-l-blue-500";
+      case "closed_with_balance": return "border-l-amber-500";
       case "rejected": return "border-l-red-500";
       default: return "border-l-muted";
     }
@@ -2229,7 +2260,7 @@ export default function PurchaseIndents() {
 
     const statusLabel = (s: string) => ({
       pending: "PENDING", stores_check: "STORES CHECK", approved: "APPROVED",
-      rejected: "REJECTED", completed: "COMPLETED",
+      rejected: "REJECTED", completed: "COMPLETED", closed_with_balance: "CLOSED WITH BALANCE",
     }[s] ?? esc(s.toUpperCase()));
 
     const priorityLabel = (p: string) => ({ normal: "Normal", high: "HIGH", urgent: "URGENT" }[p] ?? esc(p));
@@ -2693,15 +2724,60 @@ export default function PurchaseIndents() {
         <Card data-testid="bulk-delivery-tracking">
           <CardHeader><CardTitle className="text-base">Bulk delivery tracking</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {selectedIndent.items.filter(isBulkPiDeliveryItem).map(item => <PurchaseIndentDeliveryPanel key={`${selectedIndent.id}-${item.id}`} item={item} indentId={selectedIndent.id} indentNo={selectedIndent.indentNo} sites={allSites} canEdit={canEdit}
+            {selectedIndent.items.filter(isBulkPiDeliveryItem).map(item => {
+              const savedBalance = (selectedIndent as any).closedBalanceSnapshot?.items?.find((row: any) => row.itemId === item.id);
+              return <PurchaseIndentDeliveryPanel key={`${selectedIndent.id}-${item.id}`} item={item} indentId={selectedIndent.id} indentNo={selectedIndent.indentNo}
+              piDate={(selectedIndent as any).date} closedBalance={savedBalance ?? null} sites={allSites} canEdit={canEdit}
               onSave={async (itemId, receivingLocation, receivingSiteId) => {
                 await apiRequest("PATCH", `/api/purchase-indents/${selectedIndent.id}/items/${itemId}/destination`, { receivingLocation, receivingSiteId });
                 await queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
                 await queryClient.invalidateQueries({ queryKey: ["/api/pending-plant-receipts"] });
-              }} />)}
+              }} />;
+            })}
           </CardContent>
         </Card>
       )}
+
+      {selectedIndent && !["list", "form", "report"].includes(view) && isApprover && (
+        <Card data-testid="pi-close-balance-actions">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
+            <div className="text-sm">
+              <p className="font-semibold">{selectedIndent.status === "closed_with_balance" ? "Closed with balance" : `Purchase indent status: ${selectedIndent.status.replaceAll("_", " ")}`}</p>
+              {(selectedIndent as any).closedBalanceReason && <p className="text-muted-foreground">Reason: {(selectedIndent as any).closedBalanceReason}</p>}
+              {(selectedIndent as any).closedBalanceSnapshot?.items?.map((row: any) => (
+                <p key={row.itemId} className="text-muted-foreground" data-testid={`closed-balance-summary-${row.itemId}`}>
+                  Closed with balance — {Number(row.deliveredQty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} of {Number(row.orderedQty).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {row.uom} delivered
+                </p>
+              ))}
+            </div>
+            {selectedIndent.status === "closed_with_balance" ? (
+              <Button size="sm" variant="outline" disabled={reopenBalanceMutation.isPending} onClick={() => reopenBalanceMutation.mutate()} data-testid="button-reopen-pi-balance">
+                <LockOpen className="mr-1 h-4 w-4" /> Reopen
+              </Button>
+            ) : !["completed", "rejected", "cancelled", "pending", "stores_check"].includes(selectedIndent.status) ? (
+              <Button size="sm" variant="outline" onClick={() => setShowCloseBalanceDialog(true)} data-testid="button-close-pi-with-balance">
+                <Lock className="mr-1 h-4 w-4" /> Close with balance
+              </Button>
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={showCloseBalanceDialog} onOpenChange={open => { if (!open) setCloseBalanceReason(""); setShowCloseBalanceDialog(open); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Close purchase indent with balance</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">The remaining quantities will be saved as a close-with-balance snapshot. No delivery or stock records will be changed.</p>
+          <Label htmlFor="close-pi-balance-reason">Reason *</Label>
+          <Textarea id="close-pi-balance-reason" value={closeBalanceReason} onChange={event => setCloseBalanceReason(event.target.value)} data-testid="input-close-pi-balance-reason" />
+          {closeBalanceMutation.isError && <p role="alert" className="text-sm text-red-700">{(closeBalanceMutation.error as Error).message}</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowCloseBalanceDialog(false)}>Cancel</Button>
+            <Button disabled={!closeBalanceReason.trim() || closeBalanceMutation.isPending} onClick={() => closeBalanceMutation.mutate(closeBalanceReason)}>
+              {closeBalanceMutation.isPending ? "Saving…" : "Close with balance"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {view === "list" && (
         <>
@@ -2770,7 +2846,9 @@ export default function PurchaseIndents() {
                       <SelectItem value="pending">PENDING STORES</SelectItem>
                       <SelectItem value="stores_check">AWAITING APPROVAL</SelectItem>
                       <SelectItem value="approved">APPROVED</SelectItem>
+                      <SelectItem value="partially_received">PARTIALLY RECEIVED</SelectItem>
                       <SelectItem value="completed">COMPLETED</SelectItem>
+                      <SelectItem value="closed_with_balance">CLOSED WITH BALANCE</SelectItem>
                       <SelectItem value="rejected">REJECTED</SelectItem>
                     </SelectContent>
                   </Select>
