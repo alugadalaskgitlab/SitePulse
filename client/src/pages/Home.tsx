@@ -239,6 +239,14 @@ function HomeDashboard({
         </div>
 
         {/* ── Stat cards ── */}
+        {sectionVisible("daily_work_log") && (
+          <Link href="/daily-work-log">
+            <a className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium hover:bg-slate-50" data-testid="shortcut-daily-work-log">
+              <span className="flex items-center gap-2"><FileText className="h-4 w-4 text-slate-600" />Daily work log</span>
+              <ChevronRight className="h-4 w-4 text-slate-400" />
+            </a>
+          </Link>
+        )}
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Dispatches — plant/HMP metric; hidden for field-engineer-only viewers */}
           {canSeeDispatchTile && (

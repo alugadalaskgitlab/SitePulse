@@ -303,6 +303,7 @@ import {
   hasSectionAccess,
 } from "./auth-routes";
 import { registerManagementReportRoutes } from "./management-report";
+import { registerDailyWorkLogRoutes } from "./dailyWorkLogRoutes";
 import { PROGRAMME_BAR_OUTCOMES, PROGRAMME_BAR_OUTCOME_REASONS, programmeBarOutcomeInputError } from "@shared/programmeBarOutcome";
 
 const ESTIMATOR_COOKIE = 'hlc_est_role';
@@ -866,6 +867,7 @@ export async function registerRoutes(
     return requireAuth(req, res, next);
   });
   registerLabTestRoutes(app);
+  registerDailyWorkLogRoutes(app);
 
   // ============================================
   // ESTIMATOR PORTAL SESSION AUTH

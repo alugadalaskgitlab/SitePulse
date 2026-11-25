@@ -17,6 +17,7 @@ import {
   SECTION_DESCRIPTIONS,
   ACTIONS,
   ACTION_LABELS,
+  permissionActionLabel,
   PERMISSION_GROUPS,
   ROLE_TEMPLATES,
   emptyMatrix,
@@ -1249,7 +1250,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
                 >
                   {a === "notify" && notifyMismatch ? (
                     <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400" title="Push notifications are disabled for this user">
-                      {ACTION_LABELS[a]}
+                  {ACTION_LABELS[a]}
                       <AlertTriangle className="h-3 w-3" />
                     </span>
                   ) : (
@@ -1285,14 +1286,18 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
                         data-testid={`cell-${s}-${a}`}
                       >
                         {active ? (
-                          <Checkbox
-                            checked={hub ? hubChecked(s) : !!row[a]}
-                            disabled={!grantable}
-                            aria-label={`${SECTION_LABELS[s]} — ${hub ? "Access" : ACTION_LABELS[a]}`}
-                            onCheckedChange={(v) => hub ? setHubAccess(s, !!v) : toggleCell(s, a)}
-                            data-testid={`checkbox-${s}-${hub ? "access" : a}`}
-                            className={!grantable ? "opacity-30" : ""}
-                          />
+                          <>
+                            <Checkbox
+                              checked={hub ? hubChecked(s) : !!row[a]}
+                              disabled={!grantable}
+                              aria-label={`${SECTION_LABELS[s]} — ${hub ? "Access" : permissionActionLabel(s, a)}`}
+                              onCheckedChange={(v) => hub ? setHubAccess(s, !!v) : toggleCell(s, a)}
+                              data-testid={`checkbox-${s}-${hub ? "access" : a}`}
+                              className={!grantable ? "opacity-30" : ""}
+                            />
+                            {s === "daily_work_log" && a === "view_reports" &&
+                              <span className="block text-[10px] leading-tight">See everyone’s day</span>}
+                          </>
                         ) : <span aria-label="Not used for this section">—</span>}
                       </td>
                     );

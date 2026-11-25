@@ -103,6 +103,22 @@
       "notify": "Receive notifications for Site DPRs — File & View, when user notifications and a device subscription are enabled."
     }
   },
+  "daily_work_log": {
+    "actions": [
+      "view",
+      "create",
+      "edit",
+      "delete",
+      "view_reports"
+    ],
+    "tooltips": {
+      "view": "Open the Daily work log. Other action switches do not grant page access.",
+      "create": "Add your own daily work entries and plant/head-office visits.",
+      "edit": "Edit permitted daily work entries and visits.",
+      "delete": "Delete permitted daily work entries and visits.",
+      "view_reports": "See everyone’s day in the team view. This does not grant access to edit another person’s entries."
+    }
+  },
   "lab_tests": {
     "actions": [
       "view",

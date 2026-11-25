@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import {
-  ACTIONS, ACTION_LABELS, SECTION_LABELS, type PermissionMatrix, type SectionKey, type Action,
+  ACTIONS, ACTION_LABELS, SECTION_LABELS, permissionActionLabel, type PermissionMatrix, type SectionKey, type Action,
 } from "@shared/permissions";
 import {
   inventory, operationByName, availableActions, capabilityPreview,
@@ -201,10 +201,10 @@ export function HierarchicalPermissionsEditor(props: HierarchicalPermissionsEdit
               const cellEvidence = inventory.cells.find(c => c[0] === section && c[1] === action);
               return <div className="authority-action" key={action}>
                 <div className="authority-action-top">
-                  <label>{available ? <input type="checkbox" aria-label={`${SECTION_LABELS[section]} — ${ACTION_LABELS[action]}`}
+                  <label>{available ? <input type="checkbox" aria-label={`${SECTION_LABELS[section]} — ${permissionActionLabel(section, action)}`}
                     checked={active} disabled={readOnly || disabled || !canGrant(section, action)}
                     onChange={e => edit(section, action, e.target.checked)} /> : <span className="authority-chip">Unavailable</span>}
-                    <strong>{ACTION_LABELS[action]}</strong></label>
+                    <strong>{permissionActionLabel(section, action)}</strong></label>
                   <span className="authority-chip">{isChanged ? "Changed" : "Unchanged"}{!available && active ? " · retained inactive bit: on" : ""}</span>
                 </div>
                 <p>{retainedUnwired ? "Retained legacy/unwired control: no implemented controlled page. Existing stored value is preserved, not represented as a working grant." : tooltipFor(section, action)}</p>

@@ -240,6 +240,56 @@ export const dprSiteActivityStaff = pgTable("dpr_site_activity_staff", {
   personnelIdx: index("dpr_site_activity_staff_personnel_idx").on(table.personnelId),
 }));
 
+// Daily office/plant work notes are separate from DPR progress. They are
+// attributed to both the linked personnel record and the authenticated user.
+export const dailyWorkEntries = pgTable("daily_work_entries", {
+  id: serial("id").primaryKey(),
+  personnelId: integer("personnel_id").notNull().references(() => personnel.id),
+  createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
+  workDate: date("work_date").notNull(),
+  place: text("place", { enum: ["Site office", "Plant office", "Head office"] }).notNull(),
+  workType: text("work_type", { enum: [
+    "MB entry", "RA bill preparation", "Drawings / cross sections", "Reports",
+    "Letters / correspondence", "Stores / records", "Accounts", "Purchase", "Other",
+  ] }).notNull(),
+  siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
+  durationMinutes: integer("duration_minutes"),
+  details: text("details").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => ({
+  datePersonnelIdx: index("daily_work_entries_date_personnel_idx").on(table.workDate, table.personnelId),
+  creatorDateIdx: index("daily_work_entries_creator_date_idx").on(table.createdByUserId, table.workDate),
+  placeCheck: check("daily_work_entries_place_check", sql`${table.place} IN ('Site office', 'Plant office', 'Head office')`),
+  workTypeCheck: check("daily_work_entries_work_type_check", sql`${table.workType} IN ('MB entry', 'RA bill preparation', 'Drawings / cross sections', 'Reports', 'Letters / correspondence', 'Stores / records', 'Accounts', 'Purchase', 'Other')`),
+  durationCheck: check("daily_work_entries_duration_range", sql`${table.durationMinutes} IS NULL OR ${table.durationMinutes} BETWEEN 1 AND 1440`),
+}));
+
+export const officeVisits = pgTable("office_visits", {
+  id: serial("id").primaryKey(),
+  recordedByPersonnelId: integer("recorded_by_personnel_id").notNull().references(() => personnel.id),
+  recordedByUserId: integer("recorded_by_user_id").notNull().references(() => users.id),
+  visitDate: date("visit_date").notNull(),
+  place: text("place", { enum: ["HLC plant", "Head office"] }).notNull(),
+  visitorName: text("visitor_name").notNull(),
+  visitorDesignation: text("visitor_designation"),
+  organisation: text("organisation"),
+  purpose: text("purpose", { enum: ["Inspection", "Meeting", "Audit", "Other"] }).notNull(),
+  pointsDiscussed: text("points_discussed").notNull(),
+  fileName: text("file_name"),
+  objectPath: text("object_path"),
+  mimeType: text("mime_type"),
+  fileSize: integer("file_size"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => ({
+  dateRecorderIdx: index("office_visits_date_recorder_idx").on(table.visitDate, table.recordedByPersonnelId),
+  userDateIdx: index("office_visits_user_date_idx").on(table.recordedByUserId, table.visitDate),
+  placeCheck: check("office_visits_place_check", sql`${table.place} IN ('HLC plant', 'Head office')`),
+  purposeCheck: check("office_visits_purpose_check", sql`${table.purpose} IN ('Inspection', 'Meeting', 'Audit', 'Other')`),
+  fileSizeCheck: check("office_visits_attachment_size", sql`${table.fileSize} IS NULL OR ${table.fileSize} BETWEEN 0 AND 15728640`),
+}));
+
 // Soil laboratory / field quality testing. Calculated result JSON is written
 // by the server only; readings remain the user's captured source values.
 export const labTests = pgTable("lab_tests", {

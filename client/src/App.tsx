@@ -32,6 +32,7 @@ const EditRequestsPage  = lazy(() => import("@/pages/EditRequestsPage"));
 
 // Home / hubs
 const Home              = lazy(() => import("@/pages/Home"));
+const DailyWorkLog      = lazy(() => import("@/pages/DailyWorkLog"));
 const HmpHub            = lazy(() => import("@/pages/HmpHub"));
 const EquipmentHub      = lazy(() => import("@/pages/EquipmentHub"));
 const ReportsHub        = lazy(() => import("@/pages/ReportsHub"));
@@ -380,6 +381,7 @@ function AuthedShell() {
            <Route path="/equipment/status" component={reportGated(EquipmentStatus, "equipment_usage")} />
           {/* Site pages */}
           <Route path="/site" component={gated(SiteHome, "site_hub")} />
+          <Route path="/daily-work-log" component={gated(DailyWorkLog, "daily_work_log")} />
           <Route path="/site/dashboard" component={gated(SiteDashboard, "site_dprs")} />
           <Route path="/site/new" component={gated(DprSections, "site_dprs")} />
           <Route path="/site/guided" component={gated(DprSections, "site_dprs")} />

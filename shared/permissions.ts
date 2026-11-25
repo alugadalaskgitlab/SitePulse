@@ -22,6 +22,7 @@ export const SECTION_KEYS = [
   "lab_tests",
   "site_materials",
   "dpr_layer_assignment",
+  "daily_work_log",
 
   // ── Purchase Indents (granular: view / raise / approve) ───────────────────
   "site_procurement",            // legacy broad key — kept for backward compat
@@ -159,6 +160,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
 
   // Site
   site_dprs: "Site DPRs — File & View",
+  daily_work_log: "Daily work log",
   lab_tests: "Tests — Soil laboratory and field testing",
   site_materials: "Site Materials Received",
   dpr_layer_assignment: "DPR layer assignment — Owner only",
@@ -300,6 +302,12 @@ export const ACTION_LABELS: Record<Action, string> = {
   notify: "Receive Notifications",
 };
 
+export function permissionActionLabel(section: SectionKey, action: Action): string {
+  return section === "daily_work_log" && action === "view_reports"
+    ? "See everyone’s day"
+    : ACTION_LABELS[action];
+}
+
 export type SectionPermission = {
   view: boolean;
   create: boolean;
@@ -354,6 +362,8 @@ export function fullMatrix(): PermissionMatrix {
   for (const k of SECTION_KEYS) out[k] = { ...FULL_PERMISSION };
   out.vendor_financials = { ...EMPTY_PERMISSION };
   out.boq_item_sections = { ...EMPTY_PERMISSION };
+  // Personal/team day records are private unless explicitly granted.
+  out.daily_work_log = { ...EMPTY_PERMISSION };
   // Savings are confidential by default; grant only through an explicit
   // user permission. Owners bypass the matrix.
   out.plant_norm_vs_actual = { ...EMPTY_PERMISSION };
@@ -629,8 +639,8 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
   },
   {
     id: "site",
-    label: "Site — DPRs, Tests & Materials",
-    sections: ["site_dprs", "lab_tests", "site_materials", "labour_management"],
+    label: "Site — DPRs, Daily work log, Tests & Materials",
+    sections: ["site_dprs", "daily_work_log", "lab_tests", "site_materials", "labour_management"],
   },
   {
     id: "indents",
