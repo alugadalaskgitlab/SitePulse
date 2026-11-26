@@ -310,6 +310,7 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
             checkedByDesignation={checkForm.checkedByDesignation} checkedDate={checkForm.checkedDate}
             basisLabel={levelSheetBasisLabel({ basis: form.basis, checkedByType: checkForm.checkedByType })}
             closingTbmName={form.closingTbmName} closingTbmRl={form.closingTbmRl}
+            readingMode={form.readingMode}
           />
           {sheetCanSave && <Button variant="outline" onClick={() => save("draft")} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save draft</Button>}
           {sheetCanSave && <Button onClick={() => save("saved")} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save levels</Button>}
@@ -349,7 +350,7 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
           </label>
           <label className="space-y-1 text-sm"><span>Tolerance above (mm)</span><Input inputMode="decimal" value={form.toleranceAboveMm} onChange={event => setField("toleranceAboveMm", event.target.value)} disabled={!sheetCanSave} /></label>
           <label className="space-y-1 text-sm"><span>Tolerance below (mm)</span><Input inputMode="decimal" value={form.toleranceBelowMm} onChange={event => setField("toleranceBelowMm", event.target.value)} disabled={!sheetCanSave} /></label>
-          <label className="space-y-1 text-sm"><span>Allowed closing error (mm)</span><Input inputMode="decimal" value={form.allowedClosingErrorMm} onChange={event => setField("allowedClosingErrorMm", event.target.value)} disabled={!sheetCanSave} /></label>
+          {form.readingMode === "staff" && <label className="space-y-1 text-sm"><span>Allowed closing error (mm)</span><Input inputMode="decimal" value={form.allowedClosingErrorMm} onChange={event => setField("allowedClosingErrorMm", event.target.value)} disabled={!sheetCanSave} /></label>}
         </CardContent>
       </Card>
 
@@ -396,6 +397,7 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
           <Card><CardContent className="p-4">
             <ReadingsTab
               resetKey={resetKey}
+              newSheet={sheetId == null}
               rows={form.readings}
               onRowsChange={rows => setField("readings", rows)}
               mode={form.readingMode}
@@ -416,7 +418,7 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
         </TabsContent>
         <TabsContent value="results">
           <Card><CardHeader><CardTitle className="text-base">Result &amp; quantities</CardTitle></CardHeader><CardContent className="space-y-4">
-            <p className="text-sm">Closing error: {calc.closingErrorMm == null ? "—" : `${Math.round(calc.closingErrorMm)} mm`}</p>
+            {form.readingMode === "staff" && <p className="text-sm">Closing error: {calc.closingErrorMm == null ? "—" : `${Math.round(calc.closingErrorMm)} mm`}</p>}
             <ResultsTab readings={form.readings} calculation={calc} designRows={designRows} settings={settings} readingMode={form.readingMode} />
             {designQuery.isError && <p role="alert" className="text-sm text-destructive">Could not load design levels: {(designQuery.error as Error).message}</p>}
           </CardContent></Card>

@@ -425,7 +425,7 @@ export function calculateLevelSheet(input: LevelSheetCalcInput): LevelSheetCalcu
       if (distanceM == null) {
         return { ...point, rl, designLevel: null, differenceMm: null, comparison: null };
       }
-      if (!design || rl == null) {
+      if (!design) {
         return { ...point, rl, designLevel: null, differenceMm: null, comparison: null };
       }
       const width = point.side === "L" ? design.topWidthLeftM : point.side === "R" ? design.topWidthRightM : 0;
@@ -434,8 +434,8 @@ export function calculateLevelSheet(input: LevelSheetCalcInput): LevelSheetCalcu
       }
       const crossfall = point.side === "L" ? design.crossfallLeftPct : point.side === "R" ? design.crossfallRightPct : 0;
       const designLevel = design.centreLevel - crossfall * Math.abs(distanceM) / 100;
-      const differenceMm = (rl - designLevel) * 1000;
-      const comparison = differenceMm < -input.toleranceBelowMm
+      const differenceMm = rl == null ? null : (rl - designLevel) * 1000;
+      const comparison = differenceMm == null ? null : differenceMm < -input.toleranceBelowMm
         ? "Low"
         : differenceMm > input.toleranceAboveMm ? "High" : "Within";
       return { ...point, rl, designLevel, differenceMm, comparison };
@@ -469,7 +469,7 @@ export function calculateLevelSheet(input: LevelSheetCalcInput): LevelSheetCalcu
   const points = sections.flatMap(section => section.points);
   return {
     sections,
-    closingErrorMm: lastHi == null || finite(input.closingForesight) == null || finite(input.closingTbmRl ?? input.tbmRl) == null
+    closingErrorMm: input.mode !== "staff" || lastHi == null || finite(input.closingForesight) == null || finite(input.closingTbmRl ?? input.tbmRl) == null
       ? null
       : (lastHi - Number(input.closingForesight) - Number(input.closingTbmRl ?? input.tbmRl)) * 1000,
     cutVolumeCum,
@@ -527,6 +527,28 @@ export function deriveDesignRowsFromFrl(
 }
 
 export function designChainageKey(km: number) { return String(Math.fround(km)); }
+
+export function createRangeReadings(fromKm: number, toKm: number, intervalM: number, left: number[], right: number[]): ReadingRow[] {
+  if (![fromKm, toKm, intervalM].every(Number.isFinite) || toKm < fromKm || intervalM <= 0) {
+    throw new Error("Enter a valid From–To range and an interval greater than zero.");
+  }
+  if ([...left, ...right].some(value => !Number.isFinite(value) || value <= 0 || value > 1000)
+    || new Set(left).size !== left.length || new Set(right).size !== right.length || left.length + right.length > 79) {
+    throw new Error("Enter distinct positive distances on each side, with no more than 80 points including CL.");
+  }
+  const lengthM = (toKm - fromKm) * 1000;
+  const count = Math.floor(lengthM / intervalM + 1e-8) + 1;
+  if (count > 500) throw new Error("Use 500 chainages or fewer.");
+  const chainages = Array.from({ length: count }, (_, index) => Number((fromKm + index * intervalM / 1000).toFixed(9)));
+  if (toKm - chainages.at(-1)! > 1e-8) chainages.push(toKm);
+  if (chainages.length > 500) throw new Error("Use 500 chainages or fewer.");
+  const points: ReadingPoint[] = [
+    ...left.slice().sort((a, b) => b - a).map(distanceM => ({ side: "L" as const, distanceM, columnKey: `L:${distanceM}`, value: null })),
+    { side: "CL", distanceM: 0, columnKey: "CL:0", value: null },
+    ...right.slice().sort((a, b) => a - b).map(distanceM => ({ side: "R" as const, distanceM, columnKey: `R:${distanceM}`, value: null })),
+  ];
+  return chainages.map(chainageOursKm => ({ chainageOursKm, points: points.map(point => ({ ...point })) }));
+}
 
 export function repeatedDesignChainages<T extends { chainageOursKm: number }>(rows: T[]) {
   const groups = new Map<string, Array<{ row: T; index: number }>>();

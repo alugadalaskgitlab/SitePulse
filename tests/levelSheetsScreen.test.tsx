@@ -134,7 +134,7 @@ describe("Level sheets screen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enter staff readings" }));
     expect((await screen.findByRole("alert")).textContent).toContain("Enter the TBM level and back sight");
     fireEvent.change(screen.getByRole("textbox", { name: "Known TBM RL" }), { target: { value: "99" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "Back sight on TBM" }), { target: { value: "1" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Staff reading on the start TBM (BS)" }), { target: { value: "1" } });
     fireEvent.click(screen.getByRole("button", { name: "Enter staff readings" }));
     await waitFor(() => expect((screen.getByRole("textbox", { name: "Reading 1 CL 0" }) as HTMLInputElement).value).toBe("0"));
   });
@@ -157,6 +157,7 @@ describe("Level sheets screen", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Add point left of centre" }));
     const distance = screen.getByRole("textbox", { name: /L point distance/ });
     const reading = screen.getByRole("textbox", { name: "Reading 1 CL 0" });
+    fireEvent.change(screen.getByLabelText("Levels from TBM (optional)"), { target: { value: "manual" } });
     const tbm = screen.getByRole("textbox", { name: "Known TBM RL" });
     for (const box of [distance, reading, tbm]) {
       fireEvent.focus(box);

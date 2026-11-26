@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "./LevelInput";
+import { RangeRowsForm } from "./RangeRowsForm";
 import {
   calculateLevelSheet,
   convertReadingValues,
@@ -18,7 +19,8 @@ import {
 } from "@shared/levelSheets";
 
 type PointColumn = { key: string; side: "L" | "CL" | "R"; distanceM: number | null };
-export type SheetReadingRow = ReadingRow & { points: Array<ReadingPoint & { columnKey: string }> };
+export type SheetReadingRow = ReadingRow & { rowKey?: string; points: Array<ReadingPoint & { columnKey: string }> };
+const rowKey = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 type Header = { tbmName: string; tbmRl: string; initialBackSight: string; closingForeSight: string; closingTbmName?: string; closingTbmRl?: string };
 const numericText = (value: unknown) => value == null ? "" : String(value);
 const numberOrNull = (value: string) => {
@@ -36,6 +38,7 @@ const sortColumns = (columns: PointColumn[]) => columns.slice().sort((a, b) => {
 });
 function emptyRow(chainageOursKm: number, columns: PointColumn[]): SheetReadingRow {
   return {
+    rowKey: rowKey(),
     chainageOursKm,
     shift: null,
     points: columns.map(column => ({ ...column, value: null, remark: "", columnKey: column.key })),
@@ -43,7 +46,7 @@ function emptyRow(chainageOursKm: number, columns: PointColumn[]): SheetReadingR
 }
 
 export function hydrateRows(value: unknown): { columns: PointColumn[]; rows: SheetReadingRow[] } {
-  const inputRows = Array.isArray(value) ? value as ReadingRow[] : [];
+  const inputRows = Array.isArray(value) ? value as SheetReadingRow[] : [];
   const rawColumns = inputRows[0]?.points ?? [{ side: "CL" as const, distanceM: 0, value: null }];
   const seen = new Set<string>();
   let columns = rawColumns.map((point, index) => {
@@ -55,6 +58,7 @@ export function hydrateRows(value: unknown): { columns: PointColumn[]; rows: She
   if (!columns.some(column => column.side === "CL")) columns.push({ key: "centre-line", side: "CL", distanceM: 0 });
   columns = sortColumns(columns);
   const rows = inputRows.map(row => ({
+    rowKey: row.rowKey ?? rowKey(),
     chainageOursKm: Number(row.chainageOursKm),
     shift: row.shift ? { ...row.shift } : null,
     points: columns.map(column => {
@@ -69,7 +73,8 @@ export function hydrateRows(value: unknown): { columns: PointColumn[]; rows: She
   return { columns, rows: rows.length ? rows : [emptyRow(0, columns)] };
 }
 
-export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows, settings, header, onHeaderChange, toleranceAboveMm, toleranceBelowMm, allowedClosingErrorMm, resetKey, readOnly, tbms = [], onOpenTbms }: {
+export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows, settings, header, onHeaderChange, toleranceAboveMm, toleranceBelowMm, allowedClosingErrorMm, resetKey, readOnly, tbms = [], onOpenTbms, newSheet = false }: {
+  newSheet?: boolean;
   onOpenTbms?: () => void;
   tbms?: Array<{ id: number; name: string; rl: number; active: boolean; chainageOursKm?: number }>;
   rows: SheetReadingRow[];
@@ -91,6 +96,8 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
   const [selectedChainage, setSelectedChainage] = useState<number | null>(null);
   const [manualStart, setManualStart] = useState(false);
   const [manualFinish, setManualFinish] = useState(false);
+  const [pendingStaff, setPendingStaff] = useState(false);
+  const [pendingRows, setPendingRows] = useState<SheetReadingRow[] | null>(null);
   useEffect(() => { setManualStart(false); setManualFinish(false); setSelectedChainage(null); }, [resetKey]);
   useEffect(() => {
     const hydrated = hydrateRows(rows);
@@ -193,7 +200,9 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
       });
       onRowsChange(converted as SheetReadingRow[]);
       onModeChange(next);
+      setPendingStaff(false);
     } catch (error) {
+      setPendingStaff(next === "staff");
       setDuplicateMessage(error instanceof Error ? error.message : "Could not change reading mode.");
     }
   };
@@ -205,38 +214,45 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
     const active = tbms.filter(row => row.active);
     const selected = (finish ? manualFinish : manualStart) ? undefined : active.find(row => row.name === name && Number(row.rl).toFixed(3) === Number(rl).toFixed(3));
     return <div className="space-y-2">
-      <label className="block text-sm">{finish ? "Finish on TBM" : "Start from TBM"}
-        <select aria-label={finish ? "Finish on TBM" : "Start from TBM"} className="block w-full rounded border p-2" disabled={readOnly}
-          value={selected?.id ?? "manual"} onChange={event => {
+      <label className="block text-sm">{finish ? "Finish on TBM" : mode === "rl" && !pendingStaff ? "Levels from TBM (optional)" : "Start from TBM"}
+        <select aria-label={finish ? "Finish on TBM" : mode === "rl" && !pendingStaff ? "Levels from TBM (optional)" : "Start from TBM"} className="block w-full rounded border p-2" disabled={readOnly}
+          value={selected?.id ?? (manualStart || name ? "manual" : "")} onChange={event => {
             const row = active.find(row => String(row.id) === event.target.value);
-            if (finish) setManualFinish(!row); else setManualStart(!row);
+            if (finish) setManualFinish(!row); else setManualStart(event.target.value === "manual");
             if (finish) onHeaderChange({ ...header, closingTbmName: row?.name ?? "", closingTbmRl: row ? String(row.rl) : "" });
             else onHeaderChange({ ...header, tbmName: row?.name ?? "", tbmRl: row ? String(row.rl) : "",
               ...(!manualFinish && (!header.closingTbmName || header.closingTbmName === header.tbmName) ? { closingTbmName: row?.name ?? "", closingTbmRl: row ? String(row.rl) : "" } : {}) });
           }}>
-          {active.map(row => <option key={row.id} value={row.id}>{row.name.toUpperCase()} · {row.chainageOursKm == null ? "" : formatChainage(row.chainageOursKm)} · {Number(row.rl).toFixed(3)}</option>)}
+          {!finish && mode === "rl" && !pendingStaff && <option value="">No TBM recorded</option>}
+          {active.map(row => <option key={row.id} value={row.id}>{row.name.toUpperCase()} · {row.chainageOursKm == null ? "" : formatChainage(toBookChainage(row.chainageOursKm, settings.bookChainageSystem, settings.consultantOffsetM))} · {Number(row.rl).toFixed(3)}</option>)}
           <option value="manual">Type a TBM</option>
         </select>
       </label>
       {!finish && !active.length && <p className="text-sm">No TBMs saved for this site — <button type="button" className="underline" onClick={onOpenTbms}>add or import them in the TBMs tab</button></p>}
-      {!selected && <label className="block text-sm">TBM name<Input aria-label={finish ? "Finish TBM name" : "TBM name"} value={name ?? ""} disabled={readOnly}
+      {!selected && (manualStart || name || finish || mode === "staff" || pendingStaff) && <label className="block text-sm">TBM name<Input aria-label={finish ? "Finish TBM name" : "TBM name"} value={name ?? ""} disabled={readOnly}
         onChange={event => onHeaderChange({ ...header, [finish ? "closingTbmName" : "tbmName"]: event.target.value })} /></label>}
-      <label className="block text-sm">Known level (RL)<Input aria-label={finish ? "Finish TBM RL" : "Known TBM RL"} inputMode="decimal" value={selected ? Number(selected.rl).toFixed(3) : rl ?? ""} disabled={readOnly} readOnly={!!selected}
+      {(selected || manualStart || name || finish || mode === "staff" || pendingStaff) && <label className="block text-sm">Known level (RL)<Input aria-label={finish ? "Finish TBM RL" : "Known TBM RL"} inputMode="decimal" value={selected ? Number(selected.rl).toFixed(3) : rl ?? ""} disabled={readOnly} readOnly={!!selected}
         onChange={event => { if (!selected) onHeaderChange({ ...header, [finish ? "closingTbmRl" : "tbmRl"]: event.target.value }); }} /></label>
+      }
     </div>;
   };
 
   return (
     <div className="space-y-4">
-      {mode === "staff" ? <div className="space-y-3 rounded border p-3">
+      {newSheet && !readOnly && <RangeRowsForm settings={settings} onCreate={next => {
+        const hydrated = hydrateRows(next).rows;
+        if (rows.some(row => row.points.some(point => point.value != null))) setPendingRows(hydrated);
+        else { setColumns(hydrateRows(next).columns); onRowsChange(hydrated); }
+      }} />}
+      {pendingRows && <div className="rounded border p-3" role="alert">
+        Replace the current reading rows? Unsaved readings in them will be discarded.
+        <Button onClick={() => { setColumns(hydrateRows(pendingRows).columns); onRowsChange(pendingRows); setPendingRows(null); }}>Replace rows</Button>
+        <Button variant="outline" onClick={() => setPendingRows(null)}>Keep current rows</Button>
+      </div>}
+      {mode === "staff" || pendingStaff ? <div className="space-y-3 rounded border p-3">
         {tbmPicker()}
         <label className="block text-sm">Staff reading on the start TBM (BS)<Input inputMode="decimal" value={header.initialBackSight} onChange={event => onHeaderChange({ ...header, initialBackSight: event.target.value })} disabled={readOnly} /></label>
-      </div> : <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="space-y-1 text-sm"><span>TBM name</span><Input value={header.tbmName} onChange={event => onHeaderChange({ ...header, tbmName: event.target.value })} disabled={readOnly} /></label>
-        <label className="space-y-1 text-sm"><span>Known TBM RL</span><Input inputMode="decimal" value={header.tbmRl} onChange={event => onHeaderChange({ ...header, tbmRl: event.target.value })} disabled={readOnly} /></label>
-        <label className="space-y-1 text-sm"><span>Back sight on TBM</span><Input inputMode="decimal" value={header.initialBackSight} onChange={event => onHeaderChange({ ...header, initialBackSight: event.target.value })} disabled={readOnly} /></label>
-        <label className="space-y-1 text-sm"><span>Closing fore sight on TBM</span><Input inputMode="decimal" value={header.closingForeSight} onChange={event => onHeaderChange({ ...header, closingForeSight: event.target.value })} disabled={readOnly} /></label>
-      </div>}
+      </div> : <div className="rounded border p-3">{tbmPicker()}</div>}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2" role="group" aria-label="Reading mode">
@@ -294,12 +310,13 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
           <tbody>
             {rows.map((row, rowIndex) => {
               const section = calculationByChainage.get(row.chainageOursKm);
-              return <tr key={rowIndex} className="border-b align-top">
+              return <tr key={row.rowKey ?? rowIndex} className="border-b align-top">
                 <td onClick={() => setSelectedChainage(row.chainageOursKm)} className={`sticky left-0 z-10 min-w-[150px] border-r bg-background p-2 ${selectedChainage === row.chainageOursKm ? "ring-2 ring-inset ring-primary" : ""}`}>
                   <Input aria-label={`Reading chainage ${rowIndex + 1}`} className="h-8 w-[132px]" value={formatChainage(toBookChainage(row.chainageOursKm, settings.bookChainageSystem, Number(settings.consultantOffsetM)))}
                     inputMode="decimal" onChange={event => setChainage(rowIndex, event.target.value)} disabled={readOnly} />
                   <span className="mt-1 block whitespace-nowrap text-[9px] leading-tight text-muted-foreground">{formatChainagePair(row.chainageOursKm, settings.bookChainageSystem, Number(settings.consultantOffsetM))}</span>
                   {row.shift && <p className="text-[10px]">Instrument moved{section?.shiftCpRl == null ? "" : ` · Turning point level (RL) ${section.shiftCpRl.toFixed(3)}`}</p>}
+                  {!readOnly && <button type="button" className="mt-1 text-xs underline" aria-label={`Remove chainage ${rowIndex + 1}`} onClick={() => onRowsChange(rows.filter((_, index) => index !== rowIndex))}>Remove row</button>}
                 </td>
                 {orderedColumns.map(column => {
                   const point = row.points.find(item => item.columnKey === column.key);
@@ -311,9 +328,9 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
                     {point && <Input className="mt-1 h-7 w-full text-center text-[10px]" aria-label={`Remark ${rowIndex + 1} ${column.side} ${column.distanceM ?? ""}`}
                       placeholder="Remark" value={point.remark ?? ""} onChange={event => setPointRemark(rowIndex, column.key, event.target.value)} disabled={readOnly} />}
                     {calculated?.rl != null && mode === "staff" && <p className="mt-1 text-[10px]">Level (RL) {calculated.rl.toFixed(3)}</p>}
-                    {calculated?.comparison === "outside width" && <p className="mt-1 text-[10px] font-medium">Outside width</p>}
+                    {calculated?.designLevel != null ? <p className="mt-1 text-[10px]">Design {calculated.designLevel.toFixed(3)}</p>
+                      : <p className="mt-1 text-[10px]">{calculated?.comparison === "outside width" ? "Outside layer width" : "No design rows here"}</p>}
                     {calculated?.differenceMm != null && <>
-                      <p className="mt-1 text-[10px]">Design {calculated.designLevel?.toFixed(3)}</p>
                       <p className={`text-[10px] font-semibold ${calculated.comparison === "Within" ? "" : "underline"}`}>
                         {calculated.differenceMm > 0 ? "+" : ""}{Math.round(calculated.differenceMm)} mm · {calculated.comparison}
                       </p>
