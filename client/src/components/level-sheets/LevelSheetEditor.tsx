@@ -318,6 +318,7 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
       </div>
 
       <Card>
+        {form.basis === "assumed" && <p className="px-6 pt-4 font-medium">Assumed or agreed{form.readings.some(row => row.points.some(point => point.remark === "Made from design levels")) ? " — Made from design levels" : ""}</p>}
         <CardHeader className="pb-3"><CardTitle className="text-base">Level sheet details</CardTitle></CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="space-y-1 text-sm"><span>BOQ project (optional)</span>

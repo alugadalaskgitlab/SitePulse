@@ -79,7 +79,7 @@ export function BetweenSheetsTab({ siteId, siteName, sheets, settings, projects 
     <div className="grid gap-3 sm:grid-cols-2">
       {(["Lower", "Upper"] as const).map(label => <label key={label} className="text-sm">{label} sheet
         <select className="block w-full rounded border p-2" value={label === "Lower" ? lowerId : upperId} onChange={event => { (label === "Lower" ? setLowerId : setUpperId)(event.target.value); setFrom(""); setTo(""); setParams(""); }}>
-          <option value="">Choose saved sheet</option>{saved.map(row => <option value={row.id} key={row.id}>#{row.id} · {row.layerName.toUpperCase()} · {row.sheetDate}</option>)}
+          <option value="">Choose saved sheet</option>{saved.map(row => <option value={row.id} key={row.id}>#{row.id} · {row.layerName.toUpperCase()} · {row.sheetDate}{row.basis === "assumed" ? " · Assumed" : ""}</option>)}
         </select>
       </label>)}
       <label className="text-sm">BOQ project (optional)<select className="block w-full rounded border p-2" value={projectId} onChange={event => { setProjectId(event.target.value); setItemId(""); }}>

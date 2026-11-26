@@ -3,7 +3,8 @@ import React, { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { ReadingsTab, hydrateRows } from "@/components/level-sheets/ReadingsTab";
-import { calculateLevelSheet, createRangeReadings, type ReadingMode } from "@shared/levelSheets";
+import { calculateLevelSheet, createRangeReadings, assumedDesignReadings, rangeCalculation, quantitiesBetweenSheets, type ReadingMode } from "@shared/levelSheets";
+import { ResultsTab } from "@/components/level-sheets/ResultsTab";
 
 afterEach(cleanup);
 const design = [0, .01, .02].map(chainageOursKm => ({ chainageOursKm, centreLevel: 100, crossfallLeftPct: 2, crossfallRightPct: 2, topWidthLeftM: 3, topWidthRightM: 3, source: "TYPED" as const }));
@@ -50,4 +51,24 @@ it("bounds range generation and never calculates a closing check in RL mode", ()
   const calc = calculateLevelSheet({ designRows: design, readings: createRangeReadings(0, .01, 10, [], []), mode: "rl",
     tbmRl: 100, backsight: 1, closingForesight: 2, toleranceAboveMm: 10, toleranceBelowMm: 10 });
   expect(calc.closingErrorMm).toBeNull();
+});
+it("filters results and quantities to a stretch while preserving staff HI before the stretch", () => {
+  const rows = createRangeReadings(0, .02, 10, [3], [3]).map(row => ({ ...row, points: row.points.map(point => ({ ...point, value: 100.3 })) }));
+  const input = { designRows: design.map(row => ({ ...row, crossfallLeftPct: 0, crossfallRightPct: 0 })), readings: rows, mode: "rl" as const, toleranceAboveMm: 10, toleranceBelowMm: 10 };
+  const full = calculateLevelSheet(input);
+  expect(full.cutVolumeCum).toBeCloseTo(36);
+  expect(rangeCalculation(full, .01, .02).cutVolumeCum).toBeCloseTo(18);
+  render(<ResultsTab readings={hydrateRows(rows).rows} calculation={full} designRows={input.designRows} settings={{ bookChainageSystem: "ours", consultantOffsetM: 0 }} readingMode="rl" />);
+  fireEvent.change(screen.getByLabelText("Result From chainage"), { target: { value: "0+010" } });
+  expect(screen.queryByRole("button", { name: "ours 0+000 · consultant 0+000" })).toBeNull();
+  expect(screen.getByText("18.0 / 0.0 cum")).toBeTruthy();
+  const lower = { ...input, readings: rows.map(row => ({ ...row, points: row.points.map(point => ({ ...point, value: 100 })) })) };
+  expect(quantitiesBetweenSheets(lower, input, .01, .02).fillCum).toBeCloseTo(18);
+});
+it("creates exact assumed levels and only carries edge levels when explicitly chosen", () => {
+  const geometry = createRangeReadings(0, .01, 10, [5], [5]);
+  expect(() => assumedDesignReadings(geometry, design, false)).toThrow(/Outside layer width/);
+  const result = assumedDesignReadings(geometry, design, true);
+  expect(result[0].points.map(point => point.value)).toEqual([99.94, 100, 99.94]);
+  expect(result[0].points[0].remark).toBe("Made from design levels");
 });

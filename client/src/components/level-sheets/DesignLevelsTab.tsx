@@ -73,6 +73,7 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
   const importBusy = useRef(false);
   const [duplicateChoices, setDuplicateChoices] = useState<Record<string, Record<string, number | null>>>({});
   const [defaults, setDefaults] = useState<Record<string, string>>({});
+  const [confirmDefaults, setConfirmDefaults] = useState(false);
   const [newRow, setNewRow] = useState({
     chainage: "", centreLevel: "", crossfallLeftPct: "", crossfallRightPct: "",
     topWidthLeftM: "", topWidthRightM: "",
@@ -127,6 +128,14 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
     }),
     onSuccess: async () => { await refreshRows(); toast({ title: "Layer defaults saved" }); },
     onError: (error: Error) => toast({ title: "Could not save defaults", description: error.message, variant: "destructive" }),
+  });
+  const applyDefaults = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/level-sheets/design/defaults/apply", { siteId, layerName, confirm: true, expectedCount: rows.length });
+      return response.json();
+    },
+    onSuccess: async data => { setConfirmDefaults(false); await refreshRows(); toast({ title: `${data.count} design rows updated` }); },
+    onError: (error: Error) => toast({ title: "Could not apply defaults", description: error.message, variant: "destructive" }),
   });
   const addMutation = useMutation({
     mutationFn: async () => {
@@ -294,6 +303,13 @@ export function DesignLevelsTab({ siteId, layerName, settings, canCreate, canEdi
           ].map(([key, label]) => <label key={key} className="text-sm">{label}<Input aria-label={`Default ${label}`} inputMode="decimal" value={defaults[key] ?? ""} disabled={!canEdit}
             onChange={event => setDefaults(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
           {canEdit && <Button variant="outline" disabled={defaultsMutation.isPending} onClick={() => defaultsMutation.mutate()}>Save defaults</Button>}
+          {canEdit && <Button variant="outline" disabled={!designQuery.data?.defaults || !rows.length || applyDefaults.isPending} onClick={() => setConfirmDefaults(true)}>Apply to all rows of this layer</Button>}
+          {confirmDefaults && <div role="alert" className="space-y-2 rounded border p-3">
+            <p>Apply the saved defaults to {rows.length} rows of {layerName.toUpperCase()}? Levels and chainages will not change.</p>
+            <p>Cross-fall L/R: {designQuery.data?.defaults?.crossfallLeftPct}% / {designQuery.data?.defaults?.crossfallRightPct}%. Width L/R: {designQuery.data?.defaults?.topWidthLeftM} m / {designQuery.data?.defaults?.topWidthRightM} m.</p>
+            <Button disabled={applyDefaults.isPending} onClick={() => applyDefaults.mutate()}>Confirm apply</Button>
+            <Button variant="outline" disabled={applyDefaults.isPending} onClick={() => setConfirmDefaults(false)}>Cancel</Button>
+          </div>}
         </section>}
         {designQuery.isLoading && <p className="text-sm text-muted-foreground">Loading design rows…</p>}
         {designQuery.isError && <p role="alert" className="text-sm text-destructive">{(designQuery.error as Error).message}</p>}

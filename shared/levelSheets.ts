@@ -78,6 +78,7 @@ export type LevelSheetCalculation = {
 };
 
 export function levelSheetBasisLabel(sheet: { basis?: string | null; checkedByType?: string | null }) {
+  if (sheet.basis === "assumed") return "Assumed or agreed";
   if (sheet.checkedByType === "department" || sheet.checkedByType === "consultant") return "Joint (checked by department/consultant)";
   return sheet.basis === "consultant" ? "Consultant" : sheet.basis === "assumed" ? "Assumed or agreed" : "Own levels";
 }
@@ -548,6 +549,43 @@ export function createRangeReadings(fromKm: number, toKm: number, intervalM: num
     ...right.slice().sort((a, b) => a - b).map(distanceM => ({ side: "R" as const, distanceM, columnKey: `R:${distanceM}`, value: null })),
   ];
   return chainages.map(chainageOursKm => ({ chainageOursKm, points: points.map(point => ({ ...point })) }));
+}
+
+export function rangeCalculation(calculation: LevelSheetCalculation, from: number | null, to: number | null): LevelSheetCalculation {
+  const sections = calculation.sections.filter(row => (from == null || row.chainageOursKm >= from - 1e-8) && (to == null || row.chainageOursKm <= to + 1e-8));
+  let cutVolumeCum = 0, fillVolumeCum = 0, volumeSegments = 0;
+  const uncalculatedSections: number[] = [];
+  for (let index = 1; index < sections.length; index++) {
+    const a = sections[index - 1], b = sections[index], length = (b.chainageOursKm - a.chainageOursKm) * 1000;
+    if (a.cutAreaSqm == null || b.cutAreaSqm == null || a.fillAreaSqm == null || b.fillAreaSqm == null) {
+      uncalculatedSections.push(a.chainageOursKm); continue;
+    }
+    if (length <= 0) continue;
+    cutVolumeCum += (a.cutAreaSqm + b.cutAreaSqm) / 2 * length;
+    fillVolumeCum += (a.fillAreaSqm + b.fillAreaSqm) / 2 * length;
+    volumeSegments++;
+  }
+  const points = sections.flatMap(section => section.points);
+  return { ...calculation, sections, cutVolumeCum, fillVolumeCum, volumeSegments, uncalculatedSections,
+    pointsWithin: points.filter(point => point.comparison === "Within").length,
+    pointsHigh: points.filter(point => point.comparison === "High").length,
+    pointsLow: points.filter(point => point.comparison === "Low").length,
+    comparedPoints: points.filter(point => point.differenceMm != null).length };
+}
+
+export function assumedDesignReadings(rows: ReadingRow[], designRows: DesignLevelRow[], flatBeyondWidth: boolean): ReadingRow[] {
+  return rows.map(row => {
+    const design = interpolateDesignAt(designRows, row.chainageOursKm);
+    if (!design) throw new Error(`No design rows here: ${formatChainage(row.chainageOursKm)}.`);
+    return { ...row, shift: null, points: row.points.map(point => {
+      if (point.distanceM == null) throw new Error("Enter every point distance.");
+      const width = point.side === "L" ? design.topWidthLeftM : point.side === "R" ? design.topWidthRightM : 0;
+      const distance = Math.abs(point.distanceM);
+      if (distance > width + 1e-8 && !flatBeyondWidth) throw new Error("Outside layer width — choose flat edge carry or reduce the distances.");
+      const crossfall = point.side === "L" ? design.crossfallLeftPct : point.side === "R" ? design.crossfallRightPct : 0;
+      return { ...point, value: design.centreLevel - crossfall * Math.min(distance, width) / 100, remark: "Made from design levels" };
+    }) };
+  });
 }
 
 export function repeatedDesignChainages<T extends { chainageOursKm: number }>(rows: T[]) {

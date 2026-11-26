@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatChainage } from "@shared/levelSheets";
 import { DesignLevelsTab } from "./DesignLevelsTab";
+import { AssumedSheetForm } from "./AssumedSheetForm";
 
 export function SiteDesignLevelsTab({ siteId, settings, layerOptions, initialLayer, canCreate, canEdit }: {
   siteId: number; settings: { bookChainageSystem: "ours" | "consultant"; consultantOffsetM: number };
@@ -31,5 +32,6 @@ export function SiteDesignLevelsTab({ siteId, settings, layerOptions, initialLay
     {other && <label className="block text-sm">New layer name<input className="block w-full rounded border p-2" value={layer} onChange={event => setLayer(event.target.value)} /></label>}
     {!!layer.trim() && <DesignLevelsTab siteId={siteId} layerName={layer} settings={settings} canCreate={canCreate} canEdit={canEdit}
       onImported={name => { setLayer(name); setOther(false); }} />}
+    {canCreate && !!layer.trim() && <AssumedSheetForm key={`${siteId}:${layer}`} siteId={siteId} layerName={layer} settings={settings} />}
   </section>;
 }

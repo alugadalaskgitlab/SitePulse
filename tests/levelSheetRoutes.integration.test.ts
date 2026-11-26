@@ -79,6 +79,45 @@ const sheetPayload = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+it("applies saved defaults to only this layer with one old/new/count audit and a count guard", async () => {
+  const base = { siteId, centreLevel: 100, crossfallLeftPct: 1, crossfallRightPct: 1, topWidthLeftM: 0, topWidthRightM: 0, source: "EXCEL" as const };
+  await state.db.insert(schema.levelSheetDesignRows).values([
+    { ...base, layerName: "OGL", chainageOursKm: 0 }, { ...base, layerName: "OGL", chainageOursKm: .01 },
+    { ...base, layerName: "WMM", chainageOursKm: 0 },
+  ]);
+  await request(app).post("/api/level-sheets/design/defaults").send({ siteId, layerName: "OGL", crossfallLeftPct: 0, crossfallRightPct: 0, topWidthLeftM: 3.375, topWidthRightM: 3.375 }).expect(200);
+  await request(app).post("/api/level-sheets/design/defaults/apply").send({ siteId, layerName: "OGL", expectedCount: 1, confirm: true }).expect(409);
+  const applied = await request(app).post("/api/level-sheets/design/defaults/apply").send({ siteId, layerName: "OGL", expectedCount: 2, confirm: true }).expect(200);
+  expect(applied.body.count).toBe(2);
+  const rows = await state.db.select().from(schema.levelSheetDesignRows);
+  expect(rows.filter((row: any) => row.layerName === "OGL").every((row: any) => row.topWidthLeftM === 3.375 && row.centreLevel === 100 && row.crossfallLeftPct === 0)).toBe(true);
+  expect(rows.find((row: any) => row.layerName === "WMM").topWidthLeftM).toBe(0);
+  const audits = await state.db.select().from(schema.auditLogs).where(eq(schema.auditLogs.action, "design_defaults_apply"));
+  expect(audits).toHaveLength(1);
+  expect(audits[0].oldValues.rows).toHaveLength(2);
+  expect(audits[0].newValues).toMatchObject({ count: 2, values: { topWidthRightM: 3.375 } });
+});
+
+it("saves an assumed design sheet with server-derived levels, flat carry and 30 cum between sheets", async () => {
+  await state.db.insert(schema.levelSheetDesignRows).values([0, .01].map(chainageOursKm => ({
+    siteId, layerName: "GSB", chainageOursKm, centreLevel: 100, crossfallLeftPct: 0, crossfallRightPct: 0,
+    topWidthLeftM: 3, topWidthRightM: 3, source: "TYPED",
+  })));
+  const readings = [0, .01].map(chainageOursKm => ({ chainageOursKm, points: [
+    { side: "L", distanceM: 5, columnKey: "l", value: 999 },
+    { side: "CL", distanceM: 0, columnKey: "cl", value: 999 },
+    { side: "R", distanceM: 5, columnKey: "r", value: 999 },
+  ] }));
+  await request(app).post("/api/level-sheets").send(sheetPayload({ assumedFromDesign: true, readings })).expect(422);
+  const lower = await request(app).post("/api/level-sheets").send(sheetPayload({ assumedFromDesign: true, flatBeyondWidth: true, readings })).expect(201);
+  expect(lower.body).toMatchObject({ basis: "assumed", status: "saved", readingMode: "rl" });
+  expect(lower.body.readings[0].points.every((point: any) => point.value === 100 && point.remark === "Made from design levels")).toBe(true);
+  const upper = await request(app).post("/api/level-sheets").send(sheetPayload({ status: "saved", readings: readings.map(row => ({ ...row, points: row.points.map(point => ({ ...point, value: 100.3 })) })) })).expect(201);
+  const result = await request(app).get(`/api/level-sheets/quantities?lowerId=${lower.body.id}&upperId=${upper.body.id}&fromKm=0&toKm=.01`).expect(200);
+  expect(result.body.fillCum).toBeCloseTo(30, 3);
+  expect(result.body.lower.basis).toBe("Assumed or agreed");
+});
+
 beforeAll(async () => {
   pg = new PGlite();
   const dialect = new PgDialect();

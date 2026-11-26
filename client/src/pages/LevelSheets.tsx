@@ -197,7 +197,7 @@ export default function LevelSheets() {
                           <td className="p-2 whitespace-nowrap">{dateLabel(row.sheetDate)}</td>
                           <td className="p-2">{row.itemLabel ? uppercase(row.itemLabel) : "—"}</td>
                           <td className="p-2">{uppercase(row.layerName)}</td>
-                          <td className="p-2">{row.status === "saved" ? "Saved" : "Draft"}</td>
+                          <td className="p-2">{row.status === "saved" ? "Saved" : "Draft"}{row.basis === "assumed" ? " · Assumed" : ""}</td>
                           <td className="p-2">{row.staff?.length ? row.staff.map((person: any) => uppercase(person.name)).join(", ") : "—"}</td>
                           <td className="p-2">{row.checkedByType === "not_checked" ? "Not checked yet" : `${uppercase(row.checkedByType)} · ${uppercase(row.checkedByName)}`}</td>
                           <td className="p-2"><Button variant="outline" size="sm" onClick={() => { setSheetId(Number(row.id)); setNewSheet(false); }}>Open</Button></td>

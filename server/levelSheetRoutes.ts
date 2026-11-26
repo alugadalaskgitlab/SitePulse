@@ -11,6 +11,7 @@ import { storage } from "./storage";
 import { saveLevelDesignImport } from "./levelDesignImport";
 import {
   deriveDesignRowsFromFrl,
+  assumedDesignReadings,
   LEVEL_SHEET_FALLBACK_LAYERS,
   normalizeDesignImportRows,
   resolveDesignChainages,
@@ -482,6 +483,31 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
     } catch (error) { return errorResponse(res, error); }
   });
 
+  app.post("/api/level-sheets/design/defaults/apply", async (req: any, res) => {
+    if (!assertEdit(req, res, SECTION)) return;
+    try {
+      const siteId = positiveId(req.body.siteId, "site") as number;
+      const layerName = String(req.body.layerName ?? "").trim();
+      await assertSiteAllowed(req, siteId);
+      if (req.body.confirm !== true) fail("Confirm applying the defaults to all rows.");
+      const result = await database.transaction(async (tx: any) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(7603, ${siteId})`);
+        const [defaults] = await tx.select().from(levelSheetLayerDefaults).where(and(eq(levelSheetLayerDefaults.siteId, siteId), eq(levelSheetLayerDefaults.layerName, layerName)));
+        if (!defaults) fail("Save this layer's defaults first.");
+        const where = and(eq(levelSheetDesignRows.siteId, siteId), eq(levelSheetDesignRows.layerName, layerName));
+        const old = await tx.select().from(levelSheetDesignRows).where(where).for("update");
+        if (old.length !== req.body.expectedCount) fail("The layer rows changed — open the confirmation again.", 409);
+        const { crossfallLeftPct, crossfallRightPct, topWidthLeftM, topWidthRightM } = defaults;
+        const values = { crossfallLeftPct, crossfallRightPct, topWidthLeftM, topWidthRightM };
+        const updated = old.length ? await tx.update(levelSheetDesignRows).set({ ...values, updatedByUserId: req.authUser.id, updatedAt: new Date() }).where(where).returning({ id: levelSheetDesignRows.id }) : [];
+        if (updated.length !== old.length) fail("Not all layer rows were updated.", 409);
+        await audit(tx, req, siteId, "design_defaults_apply", { layerName, rows: old }, { layerName, values, count: updated.length });
+        return { count: updated.length };
+      });
+      res.json(result);
+    } catch (error) { return errorResponse(res, error); }
+  });
+
   app.get("/api/level-sheets", async (req: any, res) => {
     if (!assertView(req, res, SECTION)) return;
     try {
@@ -702,6 +728,14 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
     try {
       const payload = await validateSheetPayload(req.body);
       await assertSiteAllowed(req, payload.siteId);
+      if (req.body.assumedFromDesign === true) {
+        const rows = await database.select().from(levelSheetDesignRows).where(and(eq(levelSheetDesignRows.siteId, payload.siteId), eq(levelSheetDesignRows.layerName, payload.layerName)));
+        try { payload.readings = assumedDesignReadings(payload.readings, rows, req.body.flatBeyondWidth === true); }
+        catch (error) { fail((error as Error).message, 422); }
+        payload.basis = "assumed";
+        payload.readingMode = "rl";
+        payload.status = "saved";
+      }
       const saved = await database.transaction(async (tx: any) => {
         const [row] = await tx.insert(levelSheets).values({
           siteId: payload.siteId, boqProjectId: payload.boqProjectId, boqItemId: payload.boqItemId,

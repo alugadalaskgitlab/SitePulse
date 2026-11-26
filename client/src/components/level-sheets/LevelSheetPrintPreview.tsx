@@ -74,6 +74,7 @@ export function LevelSheetPrintPreview({ siteName, itemLabel, layerName, sheetDa
             <p>TBM: {tbmName || "—"}</p><p>Known TBM RL: {tbmRl || "—"}</p>
             {readingMode === "staff" && <p>Closing error: {closingErrorMm == null ? "—" : `${Math.round(closingErrorMm)} mm`}</p>}
             <p>Basis: {basisLabel}</p>
+            {readings.some(row => row.points.some(point => point.remark === "Made from design levels")) && <p>Made from design levels</p>}
             {readingMode === "staff" && closingTbmName && <p>Closing TBM: {upper(closingTbmName)} · RL {closingTbmRl ? Number(closingTbmRl).toFixed(3) : "—"}</p>}
           </div>
           <table className="w-full border-collapse text-xs">

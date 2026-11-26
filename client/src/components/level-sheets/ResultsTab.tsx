@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { Input } from "./LevelInput";
 import {
   formatChainagePair,
   interpolateDesignAt,
+  parseChainage, toOursChainage, rangeCalculation,
   type BookChainageSystem,
   type CalculatedPoint,
   type CalculatedSection,
@@ -84,7 +86,7 @@ function CrossSection({ section, designRows }: { section: CalculatedSection; des
   );
 }
 
-export function ResultsTab({ readings, calculation, designRows, settings, readingMode }: {
+export function ResultsTab({ readings: allReadings, calculation: fullCalculation, designRows, settings, readingMode }: {
   readings: SheetReadingRow[];
   calculation: LevelSheetCalculation;
   designRows: DesignLevelRow[];
@@ -92,7 +94,13 @@ export function ResultsTab({ readings, calculation, designRows, settings, readin
   readingMode: "rl" | "staff";
 }) {
   const [selectedChainage, setSelectedChainage] = useState<number | null>(null);
-  const sectionByChainage = useMemo(() => new Map(calculation.sections.map(section => [section.chainageOursKm, section])), [calculation.sections]);
+  const [from, setFrom] = useState(""), [to, setTo] = useState("");
+  const convert = (value: string) => { const km = parseChainage(value); return km == null ? null : toOursChainage(km, settings.bookChainageSystem, settings.consultantOffsetM); };
+  const fromKm = convert(from), toKm = convert(to);
+  const invalid = (!!from.trim() && fromKm == null) || (!!to.trim() && toKm == null) || (fromKm != null && toKm != null && fromKm > toKm);
+  const calculation = rangeCalculation(fullCalculation, invalid ? Infinity : fromKm, toKm);
+  const readings = allReadings.filter(row => calculation.sections.some(section => section.chainageOursKm === row.chainageOursKm));
+  const sectionByChainage = new Map(calculation.sections.map(section => [section.chainageOursKm, section]));
   const pointColumns = readings[0]?.points ?? [];
   const section = selectedChainage == null ? null : sectionByChainage.get(selectedChainage) ?? null;
   const chainages = readings.map(row => row.chainageOursKm);
@@ -100,6 +108,11 @@ export function ResultsTab({ readings, calculation, designRows, settings, readin
 
   return (
     <section className="space-y-4" aria-label="Results and quantities">
+      <div className="flex flex-wrap gap-3">
+        <label>From chainage<Input aria-label="Result From chainage" value={from} onChange={event => setFrom(event.target.value)} /></label>
+        <label>To chainage<Input aria-label="Result To chainage" value={to} onChange={event => setTo(event.target.value)} /></label>
+      </div>
+      {invalid && <p role="alert">Enter a valid From–To range.</p>}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded border p-3"><span className="text-xs">Points within</span><strong className="block">{calculation.pointsWithin} of {calculation.comparedPoints}</strong></div>
         <div className="rounded border p-3"><span className="text-xs">Points high / low</span><strong className="block">{calculation.pointsHigh} / {calculation.pointsLow}</strong></div>
