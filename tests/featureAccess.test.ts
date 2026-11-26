@@ -3,6 +3,7 @@ import {
   can,
   canLegacySection,
   DEFAULT_ROLE_TICKS,
+  FEATURES,
   featureForPath,
   legacyFeatureTick,
   projectFeaturePermissions,
@@ -13,6 +14,86 @@ import {
 import { EDIT_RECORD_TYPE_SECTION, emptyMatrix } from "../shared/permissions";
 
 const user: LegacyActor = { isActive: true, isAdmin: false, isOwner: false };
+
+describe("PERMS-FIX-01 site feature permissions", () => {
+  const stateFor = (personalChanges: FeatureAccessState["personalChanges"] = {}): FeatureAccessState => ({
+    rolesConfigured: true, userRoles: [], roleTicks: {}, personalChanges, legacyPermissions: emptyMatrix(),
+  });
+
+  it("lists the existing section actions without adding any role defaults", () => {
+    for (const id of ["daily_work_log", "lab_tests", "level_sheets"] as const) {
+      const feature = FEATURES.find(row => row.id === id)!;
+      expect(feature.group).toBe("site_work");
+      for (const defaults of Object.values(DEFAULT_ROLE_TICKS)) {
+        expect(Object.keys(defaults).some(key => key.startsWith(`${id}.`))).toBe(false);
+      }
+      expect(can(user, id, "view", stateFor())).toBe(false);
+      expect(can({ ...user, isOwner: true }, id, "view", stateFor())).toBe(true);
+    }
+    expect(FEATURES.find(row => row.id === "lab_tests")!.actions).toEqual(["view", "add", "edit", "cancel", "approve", "export"]);
+    expect(FEATURES.find(row => row.id === "level_sheets")!.actions).not.toContain("cancel");
+  });
+
+  it("projects daily View/Add and the independent Team tick to the exact legacy bits", () => {
+    const state = stateFor({ daily_work_log: { view: true, add: true } });
+    const legacy = emptyMatrix();
+    let projected = projectFeaturePermissions(user, legacy, state);
+    expect(projected.daily_work_log).toMatchObject({ view: true, create: true, edit: false, view_reports: false });
+    expect(canLegacySection(user, projected, "daily_work_log", "create", state)).toBe(true);
+    expect(canLegacySection(user, projected, "daily_work_log", "view_reports", state)).toBe(false);
+    state.personalChanges!.daily_work_log!.view_reports = true;
+    projected = projectFeaturePermissions(user, legacy, state);
+    expect(projected.daily_work_log.view_reports).toBe(true);
+    expect(canLegacySection(user, projected, "daily_work_log", "view_reports", state)).toBe(true);
+    state.personalChanges!.daily_work_log!.add = false;
+    expect(canLegacySection(user, legacy, "daily_work_log", "create", state)).toBe(false);
+  });
+
+  it("keeps Level sheets View separate from saving, checking and printing", () => {
+    const state = stateFor({ level_sheets: { view: true } });
+    const legacy = emptyMatrix();
+    expect(canLegacySection(user, legacy, "level_sheets", "view", state)).toBe(true);
+    for (const action of ["create", "edit", "approve", "export"]) {
+      expect(canLegacySection(user, legacy, "level_sheets", action, state)).toBe(false);
+    }
+    state.personalChanges!.level_sheets!.approve = true;
+    state.personalChanges!.level_sheets!.export = true;
+    const projected = projectFeaturePermissions(user, legacy, state);
+    expect(projected.level_sheets).toMatchObject({ view: true, create: false, edit: false, approve: true, export: true });
+    expect(canLegacySection(user, projected, "level_sheets", "approve", state)).toBe(true);
+    expect(canLegacySection(user, projected, "level_sheets", "create", state)).toBe(false);
+  });
+
+  it("enforces Tests Add, cancellation, approval and export through the same section guard", () => {
+    const state = stateFor({ lab_tests: { view: true, add: true, cancel: true, approve: true, export: true } });
+    const projected = projectFeaturePermissions(user, emptyMatrix(), state);
+    for (const action of ["view", "create", "delete", "approve", "export"]) {
+      expect(canLegacySection(user, projected, "lab_tests", action, state)).toBe(true);
+    }
+    expect(canLegacySection(user, projected, "lab_tests", "edit", state)).toBe(false);
+    state.personalChanges!.lab_tests!.add = false;
+    expect(canLegacySection(user, projected, "lab_tests", "create", state)).toBe(false);
+    expect(canLegacySection(user, emptyMatrix(), "lab_tests", "create", stateFor())).toBe(false);
+    expect(can({ ...user, isAdmin: true }, "lab_tests", "view", { rolesConfigured: false, legacyPermissions: emptyMatrix() })).toBe(false);
+  });
+
+  it("preserves legacy Tests grants without mutating any input permissions", () => {
+    const legacy = emptyMatrix();
+    legacy.lab_tests.view = true;
+    legacy.lab_tests.create = true;
+    legacy.site_dprs.notify = true;
+    const before = structuredClone(legacy);
+    const state = { ...stateFor(), legacyPermissions: legacy };
+    expect(canLegacySection(user, legacy, "lab_tests", "create", state)).toBe(true);
+    expect(projectFeaturePermissions(user, legacy, state).lab_tests.create).toBe(true);
+    expect(legacy).toEqual(before);
+    state.personalChanges = { lab_tests: { add: false } };
+    expect(canLegacySection(user, legacy, "lab_tests", "create", state)).toBe(false);
+    const unconfigured = { rolesConfigured: false, legacyPermissions: legacy };
+    expect(projectFeaturePermissions(user, legacy, unconfigured)).toBe(legacy);
+    expect(canLegacySection(user, legacy, "lab_tests", "create", unconfigured)).toBe(true);
+  });
+});
 
 describe("shared feature access", () => {
   it("keeps report viewing separate from source-feature view, with explicit legacy mappings", () => {

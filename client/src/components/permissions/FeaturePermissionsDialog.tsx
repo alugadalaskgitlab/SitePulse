@@ -32,7 +32,7 @@ type AccessData = {
 
 const ACTIONS: FeatureAction[] = [
   "view", "add", "edit", "cancel", "verify", "allocate", "technical_verify",
-  "accounts_verify", "approve", "final", "export",
+  "accounts_verify", "approve", "final", "export", "view_reports",
 ];
 
 const ACTION_LABEL: Record<FeatureAction, string> = {
@@ -47,6 +47,7 @@ const ACTION_LABEL: Record<FeatureAction, string> = {
   approve: "Approve",
   final: "Final",
   export: "Export",
+  view_reports: "Reports",
 };
 
 async function fetchAccess(userId: number): Promise<AccessData> {
@@ -135,7 +136,8 @@ function FeaturePermissionsDialogContent({
     setPersonalChanges(current => {
       const next = structuredClone(current ?? access?.personalChanges ?? {}) as FeatureTicks;
       next[featureId as keyof FeatureTicks] ??= {};
-      if (checked === defaults) delete next[featureId as keyof FeatureTicks]![action];
+      // An explicit Tests untick must override a retained pre-feature grant.
+      if (checked === defaults && !(featureId === "lab_tests" && !checked)) delete next[featureId as keyof FeatureTicks]![action];
       else next[featureId as keyof FeatureTicks]![action] = checked;
       if (!Object.keys(next[featureId as keyof FeatureTicks] ?? {}).length) delete next[featureId as keyof FeatureTicks];
       return next;
@@ -211,13 +213,13 @@ function FeaturePermissionsDialogContent({
                             className={`flex items-center gap-1 text-xs ${hasPersonalChange(feature.id, action) ? "rounded bg-amber-100 px-1 text-amber-950 dark:bg-amber-950 dark:text-amber-100" : ""}`}>
                             <input
                               type="checkbox"
-                              aria-label={`${feature.label} ${ACTION_LABEL[action]}`}
+                              aria-label={`${feature.label} ${feature.actionLabels?.[action] ?? ACTION_LABEL[action]}`}
                               data-testid={`feature-${feature.id}-${action}`}
                               disabled={feature.inactive}
                               checked={effective(feature.id, action)}
                               onChange={event => setPermission(feature.id, action, event.target.checked)}
                             />
-                            {ACTION_LABEL[action]}
+                            {feature.actionLabels?.[action] ?? ACTION_LABEL[action]}
                           </label>
                         ))}
                         </div>

@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { FeaturePermissionsDialog } from "./FeaturePermissionsDialog";
+import { canLegacySection, projectFeaturePermissions, type FeatureAccessState } from "@shared/featureAccess";
+import { emptyMatrix } from "@shared/permissions";
 
 const authState = vi.hoisted(() => ({ isOwner: true }));
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => authState }));
@@ -41,6 +43,74 @@ afterEach(() => {
 });
 
 describe("FeaturePermissionsDialog", () => {
+  it("keeps an explicit Tests untick so an older legacy Add grant cannot return", async () => {
+    let body: any;
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PUT") body = JSON.parse(String(init.body));
+      return new Response(JSON.stringify(access));
+    }));
+    const { onSaved } = renderDialog();
+    const add = await screen.findByTestId("feature-lab_tests-add");
+    fireEvent.click(add);
+    fireEvent.click(add);
+    fireEvent.click(screen.getByRole("button", { name: "Save access" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(body.personalChanges.lab_tests.add).toBe(false);
+    const legacy = emptyMatrix();
+    legacy.lab_tests.create = true;
+    expect(canLegacySection({ isActive: true }, legacy, "lab_tests", "create", {
+      rolesConfigured: true, personalChanges: body.personalChanges, legacyPermissions: legacy,
+    })).toBe(false);
+  });
+
+  it("shows and saves the three site features and special ticks without changing other access", async () => {
+    const writes: any[] = [];
+    const data = { ...access, personalChanges: { dpr: { edit: false }, masters: { view: true } } };
+    const before = structuredClone(data);
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PUT") writes.push(JSON.parse(String(init.body)));
+      return new Response(JSON.stringify(data));
+    }));
+    const { onSaved } = renderDialog();
+    for (const feature of ["daily_work_log", "lab_tests", "level_sheets"]) {
+      for (const action of ["view", "add", "edit"]) {
+        const checkbox = await screen.findByTestId(`feature-${feature}-${action}`) as HTMLInputElement;
+        expect(checkbox.checked).toBe(false);
+      }
+    }
+    expect(screen.getByLabelText("Daily work log See everyone's day")).toBeTruthy();
+    expect(screen.getByLabelText("Level sheets Record department / consultant check")).toBeTruthy();
+    expect(screen.getByLabelText("Tests Verify / approve")).toBeTruthy();
+    expect(screen.getByLabelText("Level sheets Export / print")).toBeTruthy();
+    expect(screen.queryByTestId("feature-level_sheets-cancel")).toBeNull();
+    for (const tick of ["daily_work_log-view", "daily_work_log-add", "daily_work_log-view_reports",
+      "lab_tests-view", "lab_tests-add", "lab_tests-cancel", "lab_tests-approve", "lab_tests-export",
+      "level_sheets-view", "level_sheets-approve", "level_sheets-export"]) {
+      fireEvent.click(screen.getByTestId(`feature-${tick}`));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Save access" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toEqual({
+      roleIds: [4], personalChanges: {
+        ...before.personalChanges,
+        daily_work_log: { view: true, add: true, view_reports: true },
+        lab_tests: { view: true, add: true, cancel: true, approve: true, export: true },
+        level_sheets: { view: true, approve: true, export: true },
+      },
+    });
+    const actor = { isActive: true, isOwner: false, isAdmin: false };
+    const state: FeatureAccessState = { rolesConfigured: true, userRoles: [4], roleTicks: { 4: access.roles[0].ticks }, personalChanges: writes[0].personalChanges };
+    const matrix = projectFeaturePermissions(actor, emptyMatrix(), state);
+    expect(canLegacySection(actor, matrix, "daily_work_log", "create", state)).toBe(true);
+    expect(canLegacySection(actor, matrix, "daily_work_log", "view_reports", state)).toBe(true);
+    expect(canLegacySection(actor, matrix, "lab_tests", "create", state)).toBe(true);
+    expect(canLegacySection(actor, matrix, "level_sheets", "view", state)).toBe(true);
+    expect(canLegacySection(actor, matrix, "level_sheets", "edit", state)).toBe(false);
+    expect(canLegacySection(actor, matrix, "level_sheets", "approve", state)).toBe(true);
+    expect(data).toEqual(before);
+  });
+
   it("keeps the title and actions fixed around a scrollable feature list", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(access))));
     renderDialog();

@@ -19,13 +19,14 @@ export const FEATURE_GROUPS = [
 
 export const FEATURE_ACTIONS = [
   "view", "add", "edit", "cancel", "verify", "allocate", "technical_verify",
-  "accounts_verify", "approve", "final", "export",
+  "accounts_verify", "approve", "final", "export", "view_reports",
 ] as const;
 
 export type FeatureAction = (typeof FEATURE_ACTIONS)[number];
 export type FeatureGroupId = (typeof FEATURE_GROUPS)[number]["id"];
 export type EntryScope = "own" | "team" | "all";
 export type FeatureId =
+  | "daily_work_log" | "lab_tests" | "level_sheets"
   | "dpr" | "labour_attendance" | "site_materials" | "site_requirements"
   | "requirement_allocation_material" | "requirement_allocation_equipment" | "requirement_allocation_labour"
   | "grn" | "issues_stock" | "diesel_issue" | "diesel_requirement"
@@ -42,6 +43,7 @@ export type FeatureDefinition = {
   group: FeatureGroupId;
   actions: readonly FeatureAction[];
   description?: string;
+  actionLabels?: Partial<Record<FeatureAction, string>>;
   license?: "hmp" | "rmc" | "estimating";
   inactive?: boolean;
 };
@@ -50,6 +52,9 @@ const viewAddEdit = ["view", "add", "edit"] as const;
 
 export const FEATURES: readonly FeatureDefinition[] = [
   { id: "dpr", label: "DPR", group: "site_work", actions: ["view", "add", "edit", "cancel", "verify", "approve", "export"] },
+  { id: "daily_work_log", label: "Daily work log", group: "site_work", actions: ["view", "add", "edit", "view_reports"], actionLabels: { view_reports: "See everyone's day" } },
+  { id: "lab_tests", label: "Tests", group: "site_work", actions: ["view", "add", "edit", "cancel", "approve", "export"], actionLabels: { approve: "Verify / approve" } },
+  { id: "level_sheets", label: "Level sheets", group: "site_work", actions: ["view", "add", "edit", "approve", "export"], actionLabels: { approve: "Record department / consultant check", export: "Export / print" } },
   { id: "labour_attendance", label: "Labour & attendance", group: "site_work", actions: ["view", "add", "edit", "cancel", "verify", "export"] },
   { id: "site_materials", label: "Material received at site", group: "site_work", actions: ["view", "add", "edit", "cancel", "verify", "export"] },
   { id: "site_requirements", label: "Tomorrow's plan & requirements", group: "site_work", actions: ["view", "add", "edit", "cancel", "verify", "approve"] },
@@ -255,6 +260,9 @@ export const DEFAULT_ROLE_TICKS: Record<RoleName, RoleDefault> = {
 };
 
 export const LEGACY_FEATURE_KEYS: Readonly<Record<FeatureId, readonly SectionKey[]>> = {
+  daily_work_log: ["daily_work_log"],
+  lab_tests: ["lab_tests"],
+  level_sheets: ["level_sheets"],
   dpr: ["site_dprs"],
   labour_attendance: ["site_dprs", "plant_manpower_review"],
   site_materials: ["site_materials"],
@@ -328,6 +336,7 @@ export function legacyFeatureTick(
     if (action === "edit") return row.edit;
     if (action === "cancel") return row.delete;
     if (action === "export") return row.export;
+    if (action === "view_reports") return feature === "daily_work_log" && row.view_reports;
     if (action === "technical_verify") return row.approve && section === "vendor_bills_verify";
     if (action === "accounts_verify" || action === "approve" || action === "final") {
       return row.approve && (section !== "vendor_bills_verify");
@@ -361,9 +370,14 @@ export function can(
   if (user.isOwner) return true;
   // Fund planning is deliberately separate from broad Work programme access,
   // including the legacy unconfigured-role Admin bypass.
-  if (feature === "fund_planner") {
+  if (feature === "fund_planner" || feature === "lab_tests") {
     if (!state.rolesConfigured) return legacyFeatureTick(state.legacyPermissions, feature, action);
-    let granted = (state.userRoles ?? []).some(roleId => state.roleTicks?.[roleId]?.[feature]?.[action] === true);
+    const selectedRoles = state.userRoles ?? [];
+    const hasFeatureRole = selectedRoles.some(roleId => state.roleTicks?.[roleId]?.[feature] !== undefined);
+    let granted = selectedRoles.some(roleId => state.roleTicks?.[roleId]?.[feature]?.[action] === true);
+    // Tests had explicit legacy grants before its feature row existed. Retain
+    // those until a role defines the feature or a personal tick overrides it.
+    if (feature === "lab_tests" && !hasFeatureRole) granted = legacyFeatureTick(state.legacyPermissions, feature, action);
     const personal = state.personalChanges?.[feature]?.[action];
     if (personal !== undefined) granted = personal;
     return granted;
@@ -383,9 +397,12 @@ export function can(
 }
 
 export const FEATURE_ROUTE_ALIASES: Readonly<Partial<Record<SectionKey, readonly FeatureId[]>>> = {
+  daily_work_log: ["daily_work_log"],
+  lab_tests: ["lab_tests"],
+  level_sheets: ["level_sheets"],
   dashboard: ["dpr"],
   hmp_hub: ["hmp_rmc", "plant_receipts"],
-  site_hub: ["dpr", "labour_attendance", "site_materials", "site_requirements", "requirement_allocation_material", "requirement_allocation_equipment", "requirement_allocation_labour"],
+  site_hub: ["dpr", "daily_work_log", "lab_tests", "level_sheets", "labour_attendance", "site_materials", "site_requirements", "requirement_allocation_material", "requirement_allocation_equipment", "requirement_allocation_labour"],
   equipment_hub: ["equipment_usage", "maintenance"],
   reports_hub: ["reports"],
   stores_hub: ["grn", "issues_stock", "diesel_issue", "diesel_requirement", "plant_receipts"],
@@ -481,6 +498,9 @@ export const FEATURE_ROUTE_ALIASES: Readonly<Partial<Record<SectionKey, readonly
 
 export function featureForPath(path: string): FeatureId[] {
   const p = path.toLowerCase();
+  if (/\/(api\/)?(daily-work-log|daily-work-logs|day-log)(\/|$)/.test(p)) return ["daily_work_log"];
+  if (/\/(api\/)?(lab-tests|tests)(\/|$)/.test(p)) return ["lab_tests"];
+  if (/\/(api\/)?level-sheets(\/|$)/.test(p)) return ["level_sheets"];
   if (/\/(reports|api\/reports)(\/|$)/.test(p)) return ["reports"];
   if (/\/api\/auth\/users|\/api\/access-control/.test(p)) return ["users_permissions"];
   if (/\/api\/(site-requirements|material-requirements|earthwork-arrangements)/.test(p)) return ["site_requirements"];
@@ -586,9 +606,9 @@ export function canLegacySection(
     return !!explicit?.[legacyAction];
   }
   if (section === "lab_tests") {
-    if (!user || user.isActive === false) return false;
-    if (user.isOwner) return true;
-    return !!(matrix?.lab_tests as Record<string, boolean> | undefined)?.[action];
+    return featureActionsFromLegacy(action, path).some(featureAction =>
+      can(user, "lab_tests", featureAction, { ...state, legacyPermissions: matrix ?? state.legacyPermissions }),
+    );
   }
   if (section === "fund_planner") {
     if (!user || user.isActive === false) return false;
@@ -602,7 +622,8 @@ export function canLegacySection(
   const sectionFeatures = FEATURE_ROUTE_ALIASES[section] ?? [];
   const relevantPathFeatures = pathFeatures.filter(feature => sectionFeatures.includes(feature));
   const candidates = relevantPathFeatures.length ? relevantPathFeatures : sectionFeatures;
-  const requestedActions = featureActionsFromLegacy(action, path);
+  const requestedActions: FeatureAction[] = section === "daily_work_log" && action === "view_reports"
+    ? ["view_reports"] : featureActionsFromLegacy(action, path);
   const reportOnlySections = new Set<SectionKey>([
     "plant_heating_trends", "plant_daily_reports", "plant_ldo_reconciliation",
     "plant_variance", "plant_audit", "plant_diesel_proc",
@@ -674,6 +695,7 @@ export function projectFeaturePermissions(
       row.edit ||= allowed("edit");
       row.delete ||= allowed("cancel");
       row.export ||= allowed("export");
+      if (feature === "daily_work_log") row.view_reports ||= allowed("view_reports");
       row.approve ||= allowed("approve") || allowed("verify") ||
         allowed("technical_verify") || allowed("accounts_verify") || allowed("final");
       if (feature === "reports") row.view_reports ||= allowed("view");
