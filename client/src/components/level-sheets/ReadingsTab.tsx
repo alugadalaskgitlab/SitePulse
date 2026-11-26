@@ -16,6 +16,7 @@ import {
   type ReadingMode,
   type ReadingPoint,
   type ReadingRow,
+  type CalculatedSection,
 } from "@shared/levelSheets";
 
 type PointColumn = { key: string; side: "L" | "CL" | "R"; distanceM: number | null };
@@ -73,7 +74,10 @@ export function hydrateRows(value: unknown): { columns: PointColumn[]; rows: She
   return { columns, rows: rows.length ? rows : [emptyRow(0, columns)] };
 }
 
-export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows, settings, header, onHeaderChange, toleranceAboveMm, toleranceBelowMm, allowedClosingErrorMm, resetKey, readOnly, tbms = [], onOpenTbms, newSheet = false }: {
+export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows, settings, header, onHeaderChange, toleranceAboveMm, toleranceBelowMm, allowedClosingErrorMm, resetKey, readOnly, tbms = [], onOpenTbms, newSheet = false, comparisonSections, lockGeometry = false, displayRange }: {
+  comparisonSections?: CalculatedSection[];
+  lockGeometry?: boolean;
+  displayRange?: { fromKm: number | null; toKm: number | null };
   newSheet?: boolean;
   onOpenTbms?: () => void;
   tbms?: Array<{ id: number; name: string; rl: number; active: boolean; chainageOursKm?: number }>;
@@ -216,7 +220,7 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
     return <div className="space-y-2">
       <label className="block text-sm">{finish ? "Finish on TBM" : mode === "rl" && !pendingStaff ? "Levels from TBM (optional)" : "Start from TBM"}
         <select aria-label={finish ? "Finish on TBM" : mode === "rl" && !pendingStaff ? "Levels from TBM (optional)" : "Start from TBM"} className="block w-full rounded border p-2" disabled={readOnly}
-          value={selected?.id ?? (manualStart || name ? "manual" : "")} onChange={event => {
+          value={selected?.id ?? (mode === "rl" && !pendingStaff && !finish && !manualStart && !name ? "" : "manual")} onChange={event => {
             const row = active.find(row => String(row.id) === event.target.value);
             if (finish) setManualFinish(!row); else setManualStart(event.target.value === "manual");
             if (finish) onHeaderChange({ ...header, closingTbmName: row?.name ?? "", closingTbmRl: row ? String(row.rl) : "" });
@@ -231,7 +235,7 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
       {!finish && !active.length && <p className="text-sm">No TBMs saved for this site — <button type="button" className="underline" onClick={onOpenTbms}>add or import them in the TBMs tab</button></p>}
       {!selected && (manualStart || name || finish || mode === "staff" || pendingStaff) && <label className="block text-sm">TBM name<Input aria-label={finish ? "Finish TBM name" : "TBM name"} value={name ?? ""} disabled={readOnly}
         onChange={event => onHeaderChange({ ...header, [finish ? "closingTbmName" : "tbmName"]: event.target.value })} /></label>}
-      {(selected || manualStart || name || finish || mode === "staff" || pendingStaff) && <label className="block text-sm">Known level (RL)<Input aria-label={finish ? "Finish TBM RL" : "Known TBM RL"} inputMode="decimal" value={selected ? Number(selected.rl).toFixed(3) : rl ?? ""} disabled={readOnly} readOnly={!!selected}
+      {(finish || mode === "staff" || pendingStaff || (!selected && (manualStart || name))) && <label className="block text-sm">Known level (RL)<Input aria-label={finish ? "Finish TBM RL" : "Known TBM RL"} inputMode="decimal" value={selected ? Number(selected.rl).toFixed(3) : rl ?? ""} disabled={readOnly} readOnly={!!selected}
         onChange={event => { if (!selected) onHeaderChange({ ...header, [finish ? "closingTbmRl" : "tbmRl"]: event.target.value }); }} /></label>
       }
     </div>;
@@ -256,8 +260,8 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2" role="group" aria-label="Reading mode">
-          <Button type="button" size="sm" variant={mode === "rl" ? "default" : "outline"} onClick={() => switchMode("rl")} disabled={readOnly}>Enter RLs</Button>
-          <Button type="button" size="sm" variant={mode === "staff" ? "default" : "outline"} onClick={() => switchMode("staff")} disabled={readOnly}>Enter staff readings</Button>
+          <Button type="button" size="sm" variant={mode === "rl" ? "default" : "outline"} onClick={() => switchMode("rl")} disabled={readOnly}>{comparisonSections ? "Enter their RLs" : "Enter RLs"}</Button>
+          <Button type="button" size="sm" variant={mode === "staff" ? "default" : "outline"} onClick={() => switchMode("staff")} disabled={readOnly}>{comparisonSections ? "Enter their staff readings" : "Enter staff readings"}</Button>
         </div>
         {mode === "staff" && <p className="text-xs text-muted-foreground">
           Instrument height (HI) {header.tbmRl && header.initialBackSight
@@ -272,65 +276,73 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
           <thead>
             <tr className="h-10 border-b bg-muted/30">
               <th rowSpan={2} className="sticky left-0 z-20 w-[150px] min-w-[150px] border-r bg-background p-2 text-left">Chainage</th>
-              <th colSpan={Math.max(1, leftColumns.length)} className="border-r p-1 text-center">
+              {!!leftColumns.length && <th colSpan={leftColumns.length} className="border-r p-1 text-center">
                 <div className="flex items-center justify-center gap-2">
                   <span>← Left of centre (m)</span>
                 </div>
-              </th>
+              </th>}
               <th rowSpan={2} className="w-[104px] border-r bg-muted/20 p-1 text-center"><div className="flex items-center justify-center">
-                <button type="button" aria-label="Add point left of centre" onClick={() => addColumn("L")} disabled={readOnly} className="p-1 text-xs">+L</button>
+                <button type="button" aria-label="Add point left of centre" onClick={() => addColumn("L")} disabled={readOnly || lockGeometry} className="p-1 text-xs">+L</button>
                 <span>CL</span>
-                <button type="button" aria-label="Add point right of centre" onClick={() => addColumn("R")} disabled={readOnly} className="p-1 text-xs">+R</button>
+                <button type="button" aria-label="Add point right of centre" onClick={() => addColumn("R")} disabled={readOnly || lockGeometry} className="p-1 text-xs">+R</button>
               </div></th>
-              <th colSpan={Math.max(1, rightColumns.length)} className="p-1 text-center">
+              {!!rightColumns.length && <th colSpan={rightColumns.length} className="p-1 text-center">
                 <div className="flex items-center justify-center gap-2">
                   <span>Right of centre (m) →</span>
                 </div>
-              </th>
+              </th>}
               <th rowSpan={2} className="w-[100px] border-l p-2 text-center">Section</th>
             </tr>
             <tr className="border-b bg-background">
-              {leftColumns.length ? leftColumns.map(column => <th key={column.key} className="w-[104px] min-w-[104px] border-r p-1">
+              {leftColumns.map(column => <th key={column.key} className="w-[104px] min-w-[104px] border-r p-1">
                 <div className="relative">
-                  {column.side !== "CL" && <button type="button" className="absolute -right-1 -top-1 rounded-full border bg-background p-0.5" aria-label={`Remove ${column.side} point ${column.distanceM ?? "empty"}`} onClick={() => removeColumn(column.key)} disabled={readOnly}><X className="h-3 w-3" /></button>}
+                  {column.side !== "CL" && <button type="button" className="absolute -right-1 -top-1 rounded-full border bg-background p-0.5" aria-label={`Remove ${column.side} point ${column.distanceM ?? "empty"}`} onClick={() => removeColumn(column.key)} disabled={readOnly || lockGeometry}><X className="h-3 w-3" /></button>}
                   <Input className="h-8 w-full text-center" aria-label={`${column.side} point distance ${column.key}`} value={numericText(column.distanceM)}
-                    inputMode="decimal" onChange={event => setDistance(column, event.target.value)} placeholder={column.side === "CL" ? "0" : "m"} disabled={readOnly || column.side === "CL"} />
+                    inputMode="decimal" onChange={event => setDistance(column, event.target.value)} placeholder={column.side === "CL" ? "0" : "m"} disabled={readOnly || lockGeometry || column.side === "CL"} />
                   {column.side === "CL" && <span className="block text-[10px] text-muted-foreground">centre</span>}
                 </div>
-              </th>) : <th className="w-[104px] min-w-[104px] border-r p-1" aria-hidden="true" />}
-              {rightColumns.length ? rightColumns.map(column => <th key={column.key} className="w-[104px] min-w-[104px] border-r p-1">
+              </th>)}
+              {rightColumns.map(column => <th key={column.key} className="w-[104px] min-w-[104px] border-r p-1">
                 <div className="relative">
-                  <button type="button" className="absolute -right-1 -top-1 rounded-full border bg-background p-0.5" aria-label={`Remove R point ${column.distanceM ?? "empty"}`} onClick={() => removeColumn(column.key)} disabled={readOnly}><X className="h-3 w-3" /></button>
+                  <button type="button" className="absolute -right-1 -top-1 rounded-full border bg-background p-0.5" aria-label={`Remove R point ${column.distanceM ?? "empty"}`} onClick={() => removeColumn(column.key)} disabled={readOnly || lockGeometry}><X className="h-3 w-3" /></button>
                   <Input className="h-8 w-full text-center" aria-label={`R point distance ${column.key}`} value={numericText(column.distanceM)}
-                    inputMode="decimal" onChange={event => setDistance(column, event.target.value)} placeholder="m" disabled={readOnly} />
+                    inputMode="decimal" onChange={event => setDistance(column, event.target.value)} placeholder="m" disabled={readOnly || lockGeometry} />
                 </div>
-              </th>) : <th className="w-[104px] min-w-[104px] p-1" aria-hidden="true" />}
+              </th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map((row, rowIndex) => {
+              if (displayRange && ((displayRange.fromKm != null && row.chainageOursKm < displayRange.fromKm - 1e-8) || (displayRange.toKm != null && row.chainageOursKm > displayRange.toKm + 1e-8))) return null;
               const section = calculationByChainage.get(row.chainageOursKm);
               return <tr key={row.rowKey ?? rowIndex} className="border-b align-top">
                 <td onClick={() => setSelectedChainage(row.chainageOursKm)} className={`sticky left-0 z-10 min-w-[150px] border-r bg-background p-2 ${selectedChainage === row.chainageOursKm ? "ring-2 ring-inset ring-primary" : ""}`}>
                   <Input aria-label={`Reading chainage ${rowIndex + 1}`} className="h-8 w-[132px]" value={formatChainage(toBookChainage(row.chainageOursKm, settings.bookChainageSystem, Number(settings.consultantOffsetM)))}
-                    inputMode="decimal" onChange={event => setChainage(rowIndex, event.target.value)} disabled={readOnly} />
+                    inputMode="decimal" onFocus={() => setSelectedChainage(row.chainageOursKm)} onChange={event => { if (!lockGeometry) setChainage(rowIndex, event.target.value); }} disabled={readOnly} readOnly={lockGeometry} />
                   <span className="mt-1 block whitespace-nowrap text-[9px] leading-tight text-muted-foreground">{formatChainagePair(row.chainageOursKm, settings.bookChainageSystem, Number(settings.consultantOffsetM))}</span>
                   {row.shift && <p className="text-[10px]">Instrument moved{section?.shiftCpRl == null ? "" : ` · Turning point level (RL) ${section.shiftCpRl.toFixed(3)}`}</p>}
-                  {!readOnly && <button type="button" className="mt-1 text-xs underline" aria-label={`Remove chainage ${rowIndex + 1}`} onClick={() => onRowsChange(rows.filter((_, index) => index !== rowIndex))}>Remove row</button>}
+                  {!readOnly && !lockGeometry && <button type="button" className="mt-1 text-xs underline" aria-label={`Remove chainage ${rowIndex + 1}`} onClick={() => onRowsChange(rows.filter((_, index) => index !== rowIndex))}>Remove row</button>}
                 </td>
                 {orderedColumns.map(column => {
                   const point = row.points.find(item => item.columnKey === column.key);
                   const calculated = section?.points.find(item => item.columnKey === column.key);
+                  const ourPoint = comparisonSections?.find(item => item.chainageOursKm === row.chainageOursKm)?.points.find(item => item.columnKey === column.key);
+                  const theirDifference = ourPoint?.rl == null || calculated?.rl == null ? null : (calculated.rl - ourPoint.rl) * 1000;
                   return <td key={column.key} className="w-[104px] min-w-[104px] border-r p-1">
-                    <label className="text-[10px]">{mode === "staff" ? "Staff reading" : "Level (RL)"}<Input className="h-8 w-full text-center" aria-label={`Reading ${rowIndex + 1} ${column.side} ${column.distanceM ?? ""}`} inputMode="decimal"
+                    <label className="text-[10px]">{mode === "staff" ? "Staff reading" : "Level (RL)"}<Input className="h-8 w-full text-center" aria-label={`${comparisonSections ? "Their reading" : "Reading"} ${rowIndex + 1} ${column.side} ${column.distanceM ?? ""}`} inputMode="decimal"
                       value={numericText(point?.value)} onChange={event => setPointValue(rowIndex, column.key, event.target.value)} disabled={readOnly} />
                     </label>
-                    {point && <Input className="mt-1 h-7 w-full text-center text-[10px]" aria-label={`Remark ${rowIndex + 1} ${column.side} ${column.distanceM ?? ""}`}
+                    {point && !comparisonSections && <Input className="mt-1 h-7 w-full text-center text-[10px]" aria-label={`Remark ${rowIndex + 1} ${column.side} ${column.distanceM ?? ""}`}
                       placeholder="Remark" value={point.remark ?? ""} onChange={event => setPointRemark(rowIndex, column.key, event.target.value)} disabled={readOnly} />}
                     {calculated?.rl != null && mode === "staff" && <p className="mt-1 text-[10px]">Level (RL) {calculated.rl.toFixed(3)}</p>}
                     {calculated?.designLevel != null ? <p className="mt-1 text-[10px]">Design {calculated.designLevel.toFixed(3)}</p>
                       : <p className="mt-1 text-[10px]">{calculated?.comparison === "outside width" ? "Outside layer width" : "No design rows here"}</p>}
-                    {calculated?.differenceMm != null && <>
+                    {comparisonSections && <>
+                      <p className="text-[10px]">Ours {ourPoint?.rl == null ? "—" : ourPoint.rl.toFixed(3)}</p>
+                      {calculated?.rl != null && <p className="text-[10px]">Theirs {calculated.rl.toFixed(3)}</p>}
+                      {theirDifference != null && <p className="text-[10px] font-semibold">{theirDifference > 0 ? "+" : ""}{Math.round(theirDifference)} mm</p>}
+                    </>}
+                    {!comparisonSections && calculated?.differenceMm != null && <>
                       <p className={`text-[10px] font-semibold ${calculated.comparison === "Within" ? "" : "underline"}`}>
                         {calculated.differenceMm > 0 ? "+" : ""}{Math.round(calculated.differenceMm)} mm · {calculated.comparison}
                       </p>
@@ -345,7 +357,7 @@ export function ReadingsTab({ rows, onRowsChange, mode, onModeChange, designRows
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         {mode === "staff" && <Button variant="outline" disabled={readOnly || selectedChainage == null} onClick={() => onRowsChange(rows.map(row => row.chainageOursKm === selectedChainage ? { ...row, shift: row.shift ?? { foresight: null, backsight: null } } : row))}>Moved the level instrument?</Button>}
-        <Button type="button" variant="outline" onClick={addNextChainage} disabled={readOnly}><Plus className="mr-2 h-4 w-4" /> Next chainage</Button>
+        {!lockGeometry && <Button type="button" variant="outline" onClick={addNextChainage} disabled={readOnly}><Plus className="mr-2 h-4 w-4" /> Next chainage</Button>}
       </div>
       {mode === "staff" && rows.map((row, rowIndex) => row.chainageOursKm === selectedChainage && row.shift ? <div key={rowIndex} className="space-y-2 rounded border p-3">
         <p className="text-sm">Instrument moved before {formatChainage(row.chainageOursKm)}</p>

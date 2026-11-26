@@ -79,6 +79,42 @@ const sheetPayload = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+it("reads legacy checks without rewriting them, saves staff check shifts and signatures with server actors", async () => {
+  const readings = [2.6, 2.61].map(chainageOursKm => ({ chainageOursKm, points: [{ columnKey: "cl", side: "CL", distanceM: 0, value: 101 }] }));
+  const created = await request(app).post("/api/level-sheets").send(sheetPayload({ readings })).expect(201);
+  const id = created.body.id;
+  const legacy = [{ chainageOursKm: created.body.readings[0].chainageOursKm, columnKey: "cl", checked: true, checkedRl: 101.001 }];
+  await state.db.update(schema.levelSheets).set({ checkedPoints: legacy }).where(eq(schema.levelSheets.id, id));
+  const old = await request(app).get(`/api/level-sheets/${id}`).expect(200);
+  expect(old.body.checkedPoints).toEqual(legacy);
+  expect(old.body.checkDetails).toBeNull();
+  expect((await state.db.select().from(schema.levelSheets).where(eq(schema.levelSheets.id, id)))[0].checkedPoints).toEqual(legacy);
+  const points = created.body.readings;
+  const signatures = {
+    contractor: { name: "SUNIL KUMAR", designation: "Engineer", date: "2026-11-26", imageData: "data:image/png;base64,iVBORw0KGgo=", recordedByUserId: 999, signedAt: "2000-01-01" },
+    checker: { name: "JOINT ENGINEER", designation: "AE", date: "2026-11-26", imageData: "data:image/png;base64,iVBORw0KGgo=" },
+  };
+  const grid = { mode: "staff", fromKm: points[0].chainageOursKm, toKm: points[1].chainageOursKm,
+    header: { tbmName: "START", tbmRl: "100", initialBackSight: "2", closingForeSight: "2", closingTbmName: "START", closingTbmRl: "100" },
+    readings: points.map((row: any, index: number) => ({ ...row,
+      shift: index === 1 ? { foresight: 1, backsight: 1 } : null,
+      points: row.points.map((point: any) => ({ ...point, value: index === 0 ? .998 : 1.003 })) })),
+  };
+  const payload = { checkedByType: "department", checkedByName: "JOINT ENGINEER", checkedByDesignation: "AE", checkedDate: "2026-11-26", checkDetails: { grid, signatures } };
+  const saved = await request(app).patch(`/api/level-sheets/${id}/check`).send(payload).expect(200);
+  expect(saved.body.checkedPoints.map((point: any) => point.checkedRl)).toEqual([101.002, 100.997]);
+  expect(saved.body.checkDetails.signatures.contractor).toMatchObject({ recordedByUserId: 1, recordedByName: "LEVEL SHEET OWNER" });
+  expect(saved.body.checkDetails.signatures.contractor.signedAt).not.toBe("2000-01-01");
+  const again = await request(app).get(`/api/level-sheets/${id}`).expect(200);
+  expect(again.body.checkDetails).toEqual(saved.body.checkDetails);
+  const narrowed = await request(app).patch(`/api/level-sheets/${id}/check`).send({ ...payload, checkDetails: { grid: { ...grid, fromKm: points[1].chainageOursKm }, signatures } }).expect(200);
+  expect(narrowed.body.checkedPoints).toHaveLength(1);
+  expect(narrowed.body.checkDetails.signatures.contractor.signedAt).toBe(saved.body.checkDetails.signatures.contractor.signedAt);
+  state.user = { id: 1, isOwner: false, isAdmin: false };
+  state.permissions = grants({ approve: false });
+  await request(app).patch(`/api/level-sheets/${id}/check`).send(payload).expect(403);
+});
+
 it("applies saved defaults to only this layer with one old/new/count audit and a count guard", async () => {
   const base = { siteId, centreLevel: 100, crossfallLeftPct: 1, crossfallRightPct: 1, topWidthLeftM: 0, topWidthRightM: 0, source: "EXCEL" as const };
   await state.db.insert(schema.levelSheetDesignRows).values([

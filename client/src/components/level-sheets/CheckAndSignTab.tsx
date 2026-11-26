@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AttachmentViewer } from "@/components/AttachmentViewer";
 import { Button } from "@/components/ui/button";
 import { Input } from "./LevelInput";
 import { useUpload } from "@/hooks/use-upload";
-import { formatChainagePair, type BookChainageSystem, type CalculatedSection } from "@shared/levelSheets";
-import type { SheetReadingRow } from "./ReadingsTab";
+import { checkedGridSummary, initialCheckGrid, formatChainage, parseChainage, toBookChainage, toOursChainage, levelPersonName,
+  type BookChainageSystem, type CalculatedSection, type CheckDetails, type DesignLevelRow } from "@shared/levelSheets";
+import { ReadingsTab, hydrateRows, type SheetReadingRow } from "./ReadingsTab";
+import { LevelSignaturePad } from "./LevelSignaturePad";
 
 export type CheckPointDraft = {
   chainageOursKm: number;
@@ -19,8 +21,13 @@ const upper = (value: unknown) => String(value ?? "").toLocaleUpperCase("en");
 export function CheckAndSignTab({ sheetId, canEdit, canApprove, staff, personnelIds, onPersonnelIdsChange,
   readings, sections, settings, checkedByType, checkedByName, checkedByDesignation, checkedDate,
   checkedPoints, onCheckedByTypeChange, onCheckedByNameChange, onCheckedByDesignationChange, onCheckedDateChange,
-  onCheckedPointsChange, attachment, onSaveCheck, saving,
+  onCheckedPointsChange, attachment, onSaveCheck, saving, checkDetails, onCheckDetailsChange, designRows = [], tbms = [], allowedClosingErrorMm = 10,
 }: {
+  checkDetails?: CheckDetails | null;
+  onCheckDetailsChange?: (value: CheckDetails) => void;
+  designRows?: DesignLevelRow[];
+  tbms?: Array<{ id: number; name: string; rl: number; active: boolean; chainageOursKm?: number }>;
+  allowedClosingErrorMm?: number;
   sheetId: number | null;
   canEdit: boolean;
   canApprove: boolean;
@@ -49,20 +56,21 @@ export function CheckAndSignTab({ sheetId, canEdit, canApprove, staff, personnel
   const [attachmentRemoved, setAttachmentRemoved] = useState(false);
   const [viewingAttachment, setViewingAttachment] = useState(false);
   const [error, setError] = useState("");
-  const sectionByChainage = new Map(sections.map(section => [section.chainageOursKm, section]));
-  const checkCount = new Set(checkedPoints.filter(point => point.checked).map(point => point.chainageOursKm)).size;
+  const initial = (): CheckDetails => ({ grid: initialCheckGrid(readings, checkedPoints.map(point => ({ ...point, checkedRl: point.checkedRl.trim() ? Number(point.checkedRl) : null })), checkDetails?.grid),
+    signatures: checkDetails?.signatures ?? { contractor: null, checker: null } });
+  const [details, setLocalDetails] = useState<CheckDetails>(initial);
+  const detailsRef = useRef(details);
+  useEffect(() => { const next = initial(); detailsRef.current = next; setLocalDetails(next); }, [sheetId, checkDetails, readings]);
+  const updateDetails = (value: CheckDetails) => { detailsRef.current = value; setLocalDetails(value); onCheckDetailsChange?.(value); };
+  const updateGrid = (patch: Partial<CheckDetails["grid"]>) => updateDetails({ ...detailsRef.current, grid: { ...detailsRef.current.grid, ...patch } });
+  const formatBook = (value: number | null) => value == null ? "" : formatChainage(toBookChainage(value, settings.bookChainageSystem, settings.consultantOffsetM));
+  const [fromText, setFromText] = useState(() => formatBook(details.grid.fromKm));
+  const [toText, setToText] = useState(() => formatBook(details.grid.toKm));
+  useEffect(() => { setFromText(formatBook(details.grid.fromKm)); setToText(formatBook(details.grid.toKm)); }, [sheetId, details.grid.fromKm, details.grid.toKm, settings.bookChainageSystem, settings.consultantOffsetM]);
+  const summary = checkedGridSummary(details.grid, sections);
   const statusText = checkedByType === "not_checked"
     ? "Staff levels — not checked yet"
-    : `Checked by ${checkedByType} (${upper(checkedByName) || "name not entered"}) at ${checkCount} of ${readings.length} chainages`;
-
-  const updatePoint = (chainageOursKm: number, columnKey: string, patch: Partial<CheckPointDraft>) => {
-    const key = (row: CheckPointDraft) => row.chainageOursKm === chainageOursKm && row.columnKey === columnKey;
-    const existing = checkedPoints.find(key);
-    const next = existing
-      ? checkedPoints.map(row => key(row) ? { ...row, ...patch } : row)
-      : [...checkedPoints, { chainageOursKm, columnKey, checked: false, checkedRl: "", ...patch }];
-    onCheckedPointsChange(next);
-  };
+    : `Checked by ${checkedByType} (${levelPersonName(checkedByName)}) — ${formatBook(details.grid.fromKm)} to ${formatBook(details.grid.toKm)}, ${summary.points.length} points`;
 
   const save = async () => {
     setError("");
@@ -71,14 +79,12 @@ export function CheckAndSignTab({ sheetId, canEdit, canApprove, staff, personnel
       setError("Enter the checker name and date.");
       return;
     }
-    const checkedValues = checkedPoints.map(point => ({
-      ...point,
-      checkedRl: point.checkedRl.trim() ? Number(point.checkedRl.replace(",", ".")) : null,
-    }));
-    if (checkedValues.some(point => point.checkedRl != null && !Number.isFinite(point.checkedRl))) {
-      setError("Enter a valid checked RL or leave it blank.");
+    const from = parseChainage(fromText), to = parseChainage(toText);
+    if ((fromText.trim() && from == null) || (toText.trim() && to == null) || (from != null && to != null && from > to)) {
+      setError("Enter a valid offered From–To range.");
       return;
     }
+    const checkedValues = summary.points;
     let nextAttachment: AttachmentValue | null = attachmentRemoved ? null : attachment;
     if (selectedFile) {
       const allowedType = selectedFile.type.startsWith("image/") || selectedFile.type === "application/pdf";
@@ -107,6 +113,7 @@ export function CheckAndSignTab({ sheetId, canEdit, canApprove, staff, personnel
           checked: point.checked,
           checkedRl: point.checkedRl,
         })),
+        checkDetails: details,
         attachment: nextAttachment,
       });
       setSelectedFile(null);
@@ -154,37 +161,34 @@ export function CheckAndSignTab({ sheetId, canEdit, canApprove, staff, personnel
 
       <p className="rounded border p-3 text-sm font-medium" aria-live="polite">{statusText}</p>
 
-      {checkedByType !== "not_checked" && <div className="overflow-x-auto rounded border">
-        <table className="min-w-[720px] w-full text-sm">
-          <thead><tr className="border-b text-left">
-            <th className="p-2">Chainage</th><th className="p-2">Point</th><th className="p-2">Design RL</th>
-            <th className="p-2">Checked RL</th><th className="p-2">Difference</th>
-          </tr></thead>
-          <tbody>{readings.flatMap(row => row.points.map(point => {
-            const columnKey = String(point.columnKey ?? "");
-            const draft = checkedPoints.find(item => item.chainageOursKm === row.chainageOursKm && item.columnKey === columnKey)
-              ?? { chainageOursKm: row.chainageOursKm, columnKey, checked: false, checkedRl: "" };
-            const calculated = sectionByChainage.get(row.chainageOursKm)?.points.find(item => item.columnKey === columnKey);
-            const parsedCheckedRl = draft.checkedRl.trim() ? Number(draft.checkedRl.replace(",", ".")) : null;
-            const checkedRl = parsedCheckedRl != null && Number.isFinite(parsedCheckedRl) ? parsedCheckedRl : null;
-            const differenceMm = checkedRl == null || calculated?.designLevel == null ? null : (checkedRl - calculated.designLevel) * 1000;
-            const pointName = point.side === "CL" ? "CL" : `${point.side}${point.distanceM == null ? "?" : String(point.distanceM)}`;
-            return <tr key={`${row.chainageOursKm}:${columnKey}`} className="border-b">
-              <td className="p-2 whitespace-nowrap">{formatChainagePair(row.chainageOursKm, settings.bookChainageSystem, Number(settings.consultantOffsetM))}</td>
-              <td className="p-2"><label className="flex items-center gap-2"><input type="checkbox" checked={draft.checked} disabled={!canApprove} onChange={event =>
-                updatePoint(row.chainageOursKm, columnKey, { checked: event.target.checked })} />{pointName}</label></td>
-              <td className="p-2">{calculated?.designLevel == null ? "—" : calculated.designLevel.toFixed(3)}</td>
-              <td className="p-2"><Input className="h-8 w-28" inputMode="decimal" aria-label={`Checked RL ${pointName} ${row.chainageOursKm}`}
-                value={draft.checkedRl} onChange={event => updatePoint(row.chainageOursKm, columnKey, { checkedRl: event.target.value })} disabled={!canApprove || !draft.checked} /></td>
-              <td className="p-2">{differenceMm == null ? "—" : `${differenceMm > 0 ? "+" : ""}${Math.round(differenceMm)} mm`}</td>
-            </tr>;
-          }))}</tbody>
-        </table>
-        {!canApprove && <p className="p-3 text-xs text-muted-foreground">You can view the check record but cannot change it.</p>}
-      </div>}
+      <div className="space-y-3">
+        <h3 className="text-sm font-medium">Stretch offered for checking</h3>
+        <div className="grid grid-cols-2 gap-3">
+          {(["from", "to"] as const).map(key => <label key={key}>{key === "from" ? "From" : "To"}
+            <Input aria-label={`Offered ${key} chainage`} value={key === "from" ? fromText : toText} disabled={!canApprove}
+              onChange={event => {
+                const value = event.target.value; (key === "from" ? setFromText : setToText)(value);
+                const book = parseChainage(value);
+                if (!value.trim() || book != null) updateGrid({ [key === "from" ? "fromKm" : "toKm"]: book == null ? null : toOursChainage(book, settings.bookChainageSystem, settings.consultantOffsetM) });
+              }} /></label>)}
+        </div>
+        {checkedByType !== "not_checked" && <ReadingsTab rows={hydrateRows(details.grid.readings).rows}
+          onRowsChange={rows => updateGrid({ readings: rows })} mode={details.grid.mode} onModeChange={mode => updateGrid({ mode })}
+          header={details.grid.header} onHeaderChange={header => updateGrid({ header: { ...details.grid.header, ...header } })}
+          designRows={designRows} settings={settings} tbms={tbms} resetKey={sheetId} readOnly={!canApprove || !sheetId}
+          toleranceAboveMm={0} toleranceBelowMm={0} allowedClosingErrorMm={allowedClosingErrorMm}
+          comparisonSections={sections} lockGeometry displayRange={details.grid} />}
+        <p role="status">Offered {formatBook(details.grid.fromKm)} to {formatBook(details.grid.toKm)} · checked {summary.points.length} points at {summary.chainages} chainages · largest difference {summary.largestDifferenceMm == null ? "—" : Math.round(summary.largestDifferenceMm)} mm</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {(["contractor", "checker"] as const).map(key => <LevelSignaturePad key={key}
+          title={key === "contractor" ? "For the contractor (HLC)" : "For the department / consultant"} value={details.signatures[key]}
+          disabled={!canApprove || !sheetId} onChange={value => updateDetails({ ...details, signatures: { ...details.signatures, [key]: value } })} />)}
+      </div>
 
       <div className="space-y-2 rounded border p-3">
-        <p className="font-medium">Signed sheet</p>
+        <p className="font-medium">Attach signed sheet (photo/PDF)</p>
         {attachment.objectPath && !attachmentRemoved && <div className="flex flex-wrap items-center gap-2 text-sm">
           <span>{attachment.fileName}</span>
           <Button type="button" variant="outline" size="sm" onClick={() => setViewingAttachment(true)}>View signed sheet</Button>

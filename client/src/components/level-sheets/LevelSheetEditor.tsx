@@ -20,6 +20,7 @@ import {
   formatChainagePair,
   type BookChainageSystem,
   type ReadingMode,
+  type CheckDetails,
 } from "@shared/levelSheets";
 
 type Bootstrap = {
@@ -55,6 +56,7 @@ type FormState = {
   status: "draft" | "saved";
 };
 type CheckFormState = {
+  checkDetails: CheckDetails | null;
   checkedByType: "not_checked" | "department" | "consultant";
   checkedByName: string;
   checkedByDesignation: string;
@@ -81,12 +83,14 @@ function blankForm(siteId: number, projectId: number | null, layerName: string):
 }
 function blankCheckForm(): CheckFormState {
   return {
+    checkDetails: null,
     checkedByType: "not_checked", checkedByName: "", checkedByDesignation: "", checkedDate: "",
     checkedPoints: [], attachment: { fileName: null, objectPath: null, mimeType: null, fileSize: null },
   };
 }
 function checkFormFromSheet(sheet: any): CheckFormState {
   return {
+    checkDetails: sheet?.checkDetails ?? null,
     checkedByType: ["not_checked", "department", "consultant"].includes(sheet?.checkedByType) ? sheet.checkedByType : "not_checked",
     checkedByName: String(sheet?.checkedByName ?? ""),
     checkedByDesignation: String(sheet?.checkedByDesignation ?? ""),
@@ -311,6 +315,7 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
             basisLabel={levelSheetBasisLabel({ basis: form.basis, checkedByType: checkForm.checkedByType })}
             closingTbmName={form.closingTbmName} closingTbmRl={form.closingTbmRl}
             readingMode={form.readingMode}
+            checkDetails={checkForm.checkDetails} checkedPoints={checkForm.checkedPoints}
           />
           {sheetCanSave && <Button variant="outline" onClick={() => save("draft")} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save draft</Button>}
           {sheetCanSave && <Button onClick={() => save("saved")} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save levels</Button>}
@@ -433,6 +438,8 @@ export function LevelSheetEditor({ siteId, bootstrap, sheetId, sheet, loadingShe
               checkedByType={checkForm.checkedByType} checkedByName={checkForm.checkedByName}
               checkedByDesignation={checkForm.checkedByDesignation} checkedDate={checkForm.checkedDate}
               checkedPoints={checkForm.checkedPoints}
+              checkDetails={checkForm.checkDetails} onCheckDetailsChange={value => setCheckForm(current => ({ ...current, checkDetails: value }))}
+              designRows={designRows} tbms={Array.isArray(tbmsQuery.data) ? tbmsQuery.data : []} allowedClosingErrorMm={Number(form.allowedClosingErrorMm || 0)}
               onCheckedByTypeChange={setCheckedByType}
               onCheckedByNameChange={value => setCheckForm(current => ({ ...current, checkedByName: value }))}
               onCheckedByDesignationChange={value => setCheckForm(current => ({ ...current, checkedByDesignation: value }))}

@@ -12,6 +12,8 @@ import { saveLevelDesignImport } from "./levelDesignImport";
 import {
   deriveDesignRowsFromFrl,
   assumedDesignReadings,
+  readCheckRecord, checkedGridSummary,
+  type CheckDetails, type LevelSignature,
   LEVEL_SHEET_FALLBACK_LAYERS,
   normalizeDesignImportRows,
   resolveDesignChainages,
@@ -196,6 +198,7 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
     if (!row) return null;
     return {
       ...row.sheet,
+      ...readCheckRecord(row.sheet.checkedPoints),
       siteName: row.siteName,
       projectName: row.projectName,
       itemLabel: row.sheet.boqItemId == null ? null : boqItemDisplayText({
@@ -825,7 +828,51 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
       if (!unchecked && !checkedByName) fail("Enter the checker name.");
       const checkedByDesignation = unchecked ? null : String(req.body?.checkedByDesignation ?? "").trim().slice(0, 160) || null;
       const checkedDate = unchecked ? null : validateDate(req.body?.checkedDate, "check date");
-      const rawCheckedPoints = unchecked ? [] : req.body?.checkedPoints;
+      let details: CheckDetails | null = null;
+      if (req.body.checkDetails != null) {
+        const raw = req.body.checkDetails;
+        if (!raw.grid || !["rl", "staff"].includes(raw.grid.mode)) fail("Choose a valid checking mode.");
+        const readings = validateReadings(raw.grid.readings);
+        const ownRows = current.readings as ReadingRow[];
+        if (readings.length !== ownRows.length || readings.some(row => {
+          const own = ownRows.find(item => item.chainageOursKm === row.chainageOursKm);
+          return !own || own.points.length !== row.points.length || row.points.some(point => !own.points.some(item =>
+            item.columnKey === point.columnKey && item.side === point.side && item.distanceM === point.distanceM));
+        })) fail("The check grid must use this sheet's chainages and points.", 422);
+        const fromKm = numberValue(raw.grid.fromKm, "Offered From chainage", { nullable: true, min: -1000, max: 10000 });
+        const toKm = numberValue(raw.grid.toKm, "Offered To chainage", { nullable: true, min: -1000, max: 10000 });
+        if (fromKm != null && toKm != null && fromKm > toKm) fail("Offered From chainage must not exceed To chainage.");
+        const header = Object.fromEntries(["tbmName", "tbmRl", "initialBackSight", "closingForeSight", "closingTbmName", "closingTbmRl"].map(key => {
+          const value = raw.grid.header?.[key];
+          if (key === "tbmName" || key === "closingTbmName") return [key, String(value ?? "").trim().slice(0, 120)];
+          const numeric = numberValue(value, key, { nullable: true, min: key === "tbmRl" || key === "closingTbmRl" ? -1000 : 0, max: 10000 });
+          return [key, numeric == null ? "" : String(numeric)];
+        })) as CheckDetails["grid"]["header"];
+        const signature = (value: any, old: LevelSignature | null | undefined): LevelSignature | null => {
+          if (value == null) return null;
+          const name = String(value.name ?? "").trim().slice(0, 160), designation = String(value.designation ?? "").trim().slice(0, 160);
+          const imageData = value.imageData || null;
+          if (imageData != null && (typeof imageData !== "string" || imageData.length > 350000 || !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(imageData))) fail("Choose a valid PNG signature.", 422);
+          const date = value.date ? validateDate(value.date, "signature date") : "";
+          if (imageData && (!name || !date)) fail("Enter the signer's name and date.");
+          if (old && old.imageData === imageData && old.name === name && old.designation === designation && old.date === date) return old;
+          return { name, designation, date, imageData, signedAt: imageData ? new Date().toISOString() : null,
+            recordedByUserId: req.authUser.id, recordedByName: currentUserName(req) };
+        };
+        details = { grid: { mode: raw.grid.mode, readings, fromKm, toKm, header }, signatures: {
+          contractor: signature(raw.signatures?.contractor, current.checkDetails?.signatures?.contractor),
+          checker: signature(raw.signatures?.checker, current.checkDetails?.signatures?.checker),
+        } };
+        if (!unchecked && details.grid.mode === "staff" && readings.some(row => row.points.some(point => point.value != null))) {
+          if (!header.tbmRl || !header.initialBackSight) fail("Enter the checking TBM level and back sight.");
+          let hiReady = true;
+          for (const row of readings.slice().sort((a, b) => a.chainageOursKm - b.chainageOursKm)) {
+            if (row.shift && (row.shift.foresight == null || row.shift.backsight == null)) hiReady = false;
+            if (!hiReady && row.points.some(point => point.value != null)) fail("Complete the checking instrument shift readings.");
+          }
+        }
+      }
+      const rawCheckedPoints = unchecked ? [] : details ? checkedGridSummary(details.grid, []).points : req.body?.checkedPoints;
       if (!Array.isArray(rawCheckedPoints) || rawCheckedPoints.length > MAX_READINGS * MAX_POINTS_PER_ROW) {
         fail("Check points must be a valid list.");
       }
@@ -852,7 +899,8 @@ export function registerLevelSheetRoutes(app: Express, dependencies: { db?: any;
       };
       const saved = await database.transaction(async (tx: any) => {
         const [row] = await tx.update(levelSheets).set({
-          checkedByType, checkedByName, checkedByDesignation, checkedDate, checkedPoints,
+          checkedByType, checkedByName, checkedByDesignation, checkedDate,
+          checkedPoints: details ? { version: 2, points: checkedPoints, details } as any : checkedPoints,
           ...attachment, updatedByUserId: req.authUser.id, updatedAt: new Date(),
         }).where(eq(levelSheets.id, id)).returning();
         if (!row) fail("Check details were not saved.", 409);

@@ -115,12 +115,11 @@ describe("Level sheets screen", () => {
     expect(await screen.findByText("OLD SURVEYOR · inactive")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Checked by"), { target: { value: "department" } });
     fireEvent.change(screen.getByLabelText("Checker name"), { target: { value: "Department Engineer" } });
-    fireEvent.change(screen.getByLabelText("Designation"), { target: { value: "Assistant Engineer" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: "CL" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Checked RL CL 0" }), { target: { value: "100.002" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Designation", exact: true }), { target: { value: "Assistant Engineer" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Their reading 1 CL 0" }), { target: { value: "100.002" } });
     expect(screen.getByText("+2 mm")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Save check & sign" }));
-    expect(await screen.findByText("Checked by department (DEPARTMENT ENGINEER) at 1 of 1 chainages")).toBeTruthy();
+    expect(await screen.findByText("Checked by department (Department Engineer) — 0+000 to 0+000, 1 points")).toBeTruthy();
     expect(apiRequest).toHaveBeenCalledWith("PATCH", "/api/level-sheets/11/check", expect.objectContaining({
       checkedByType: "department", checkedByName: "Department Engineer",
       checkedPoints: [{ chainageOursKm: 0, columnKey: "cl", checked: true, checkedRl: 100.002 }],

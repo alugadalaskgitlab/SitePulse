@@ -29,6 +29,60 @@ export type ReadingPoint = {
 
 export type InstrumentShift = { foresight: number | null; backsight: number | null };
 
+export type CheckPoint = { chainageOursKm: number; columnKey: string; checked: boolean; checkedRl: number | null };
+export type LevelSignature = {
+  name: string; designation: string; date: string; imageData: string | null;
+  signedAt?: string | null; recordedByUserId?: number | null; recordedByName?: string | null;
+};
+export type CheckGrid = {
+  mode: ReadingMode; fromKm: number | null; toKm: number | null; readings: ReadingRow[];
+  header: { tbmName: string; tbmRl: string; initialBackSight: string; closingForeSight: string; closingTbmName: string; closingTbmRl: string };
+};
+export type CheckDetails = { grid: CheckGrid; signatures: { contractor: LevelSignature | null; checker: LevelSignature | null } };
+
+export function readCheckRecord(value: any): { checkedPoints: CheckPoint[]; checkDetails: CheckDetails | null } {
+  return Array.isArray(value) ? { checkedPoints: value, checkDetails: null }
+    : value?.version === 2 && Array.isArray(value.points) ? { checkedPoints: value.points, checkDetails: value.details ?? null }
+    : { checkedPoints: [], checkDetails: null };
+}
+
+export function initialCheckGrid(readings: ReadingRow[], checkedPoints: CheckPoint[], saved?: CheckGrid | null): CheckGrid {
+  const chainages = readings.map(row => row.chainageOursKm);
+  return {
+    mode: saved?.mode ?? "rl", fromKm: saved?.fromKm ?? (chainages.length ? Math.min(...chainages) : null),
+    toKm: saved?.toKm ?? (chainages.length ? Math.max(...chainages) : null),
+    header: saved?.header ?? { tbmName: "", tbmRl: "", initialBackSight: "", closingForeSight: "", closingTbmName: "", closingTbmRl: "" },
+    readings: readings.map(row => ({
+      ...row, shift: saved?.readings.find(item => item.chainageOursKm === row.chainageOursKm)?.shift ?? null,
+      points: row.points.map(point => {
+        const existing = saved?.readings.find(item => item.chainageOursKm === row.chainageOursKm)?.points.find(item => item.columnKey === point.columnKey);
+        const legacy = checkedPoints.find(item => item.chainageOursKm === row.chainageOursKm && item.columnKey === point.columnKey);
+        return { ...point, value: existing ? existing.value : legacy?.checked ? legacy.checkedRl : null };
+      }),
+    })),
+  };
+}
+
+export function checkedGridSummary(grid: CheckGrid, ours: CalculatedSection[]) {
+  const calculation = calculateLevelSheet({
+    readings: grid.readings, mode: grid.mode, designRows: [], tbmRl: finite(grid.header.tbmRl),
+    backsight: finite(grid.header.initialBackSight), closingForesight: finite(grid.header.closingForeSight),
+    closingTbmRl: finite(grid.header.closingTbmRl), toleranceAboveMm: 0, toleranceBelowMm: 0,
+  });
+  const sections = rangeCalculation(calculation, grid.fromKm, grid.toKm).sections;
+  const points = sections.flatMap(section => section.points.filter(point => point.rl != null).map(point => {
+    const ourPoint = ours.find(row => row.chainageOursKm === section.chainageOursKm)?.points.find(item => item.columnKey === point.columnKey);
+    return { chainageOursKm: section.chainageOursKm, columnKey: String(point.columnKey ?? ""), checked: true,
+      checkedRl: point.rl!, oursRl: ourPoint?.rl ?? null, differenceMm: ourPoint?.rl == null ? null : (point.rl! - ourPoint.rl) * 1000 };
+  }));
+  return { points, chainages: new Set(points.map(point => point.chainageOursKm)).size,
+    largestDifferenceMm: points.reduce<number | null>((largest, point) => point.differenceMm == null ? largest : Math.max(largest ?? 0, Math.abs(point.differenceMm)), null) };
+}
+
+export function levelPersonName(name: string) {
+  return name.trim().toLocaleLowerCase("en").replace(/(^|[\s.'-])(\p{L})/gu, (_, prefix, letter) => prefix + letter.toLocaleUpperCase("en"));
+}
+
 export type ReadingRow = {
   chainageOursKm: number;
   shift?: InstrumentShift | null;
@@ -312,7 +366,7 @@ export function interpolateDesignAt(
     .slice()
     .sort((a, b) => a.chainageOursKm - b.chainageOursKm);
   if (!rows.length) return null;
-  const exact = rows.find(row => Math.abs(row.chainageOursKm - chainageOursKm) < 1e-9);
+  const exact = rows.find(row => designChainageKey(row.chainageOursKm) === designChainageKey(chainageOursKm));
   if (exact) {
     return {
       centreLevel: exact.centreLevel,
