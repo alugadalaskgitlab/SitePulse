@@ -35,6 +35,9 @@ import {
 
 type ReadingSource = "shift-log" | "heating-session" | "backfill" | "manual";
 
+const stockPositionNumber = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
 const SOURCE_LABELS: Record<ReadingSource, string> = {
   "shift-log": "Shift Log",
   "heating-session": "Heating",
@@ -157,12 +160,12 @@ export default function PlantBitumenStock() {
   const { data: stockBalances } = useQuery<{ id: number; partyId: number | null; materialId: number; balance: number; uom: string }[]>({
     queryKey: ["/api/plant-module/stock-balances"],
   });
-  const { data: packedStockPositions = [] } = useQuery<Array<{
+  const { data: packedStockPositions } = useQuery<{ rows?: Array<{
     materialId: number; materialName: string; partyId: number | null; partyName: string;
     stockUom: string; tank1Mt: number | null; tank2Mt: number | null; packedMt: number | null;
     packedCount: number; totalMt: number | null;
-  }>>({ queryKey: ["/api/plant-module/packed-stock-positions"] });
-  const bitumenPackedPositions = packedStockPositions.filter(row => /bitumen/i.test(row.materialName));
+  }>; canDecant?: boolean }>({ queryKey: ["/api/plant-module/packed-stock-positions"] });
+  const bitumenPackedPositions = (packedStockPositions?.rows ?? []).filter(row => /bitumen/i.test(row.materialName));
 
   const bitumenPartyBalances = useMemo(() => {
     if (!stockBalances || !bitumenMaterialId) return [];
@@ -691,11 +694,11 @@ export default function PlantBitumenStock() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bitumenPackedPositions.map(row => ({
       Material: row.materialName,
       Party: row.partyName,
-      "Tank 1 (MT)": row.tank1Mt,
-      "Tank 2 (MT)": row.tank2Mt,
-      "Packed count": row.packedCount,
-      "Packed (MT)": row.packedMt,
-      "Total (MT)": row.totalMt,
+      "Tank 1 (MT)": stockPositionNumber(row.tank1Mt) ?? "—",
+      "Tank 2 (MT)": stockPositionNumber(row.tank2Mt) ?? "—",
+      "Packed count": stockPositionNumber(row.packedCount) ?? "—",
+      "Packed (MT)": stockPositionNumber(row.packedMt) ?? "—",
+      "Total (MT)": stockPositionNumber(row.totalMt) ?? "—",
     }))), "Stock Positions");
     XLSX.writeFile(wb, `bitumen_dip_readings_${format(new Date(), "yyyyMMdd")}.xlsx`);
   }
@@ -772,11 +775,11 @@ export default function PlantBitumenStock() {
         head: [["Material", "Party", "Tank 1 (MT)", "Tank 2 (MT)", "Packed count", "Packed (MT)", "Total (MT)"]],
         body: bitumenPackedPositions.map(row => [
           row.materialName, row.partyName,
-          row.tank1Mt == null ? "—" : row.tank1Mt.toFixed(3),
-          row.tank2Mt == null ? "—" : row.tank2Mt.toFixed(3),
-          row.packedCount.toFixed(2),
-          row.packedMt == null ? "—" : row.packedMt.toFixed(3),
-          row.totalMt == null ? "—" : row.totalMt.toFixed(3),
+          stockPositionNumber(row.tank1Mt)?.toFixed(3) ?? "—",
+          stockPositionNumber(row.tank2Mt)?.toFixed(3) ?? "—",
+          stockPositionNumber(row.packedCount)?.toFixed(2) ?? "—",
+          stockPositionNumber(row.packedMt)?.toFixed(3) ?? "—",
+          stockPositionNumber(row.totalMt)?.toFixed(3) ?? "—",
         ]),
         styles: { fontSize: 8 },
         headStyles: { fillColor: [180, 120, 30] },
@@ -795,7 +798,7 @@ export default function PlantBitumenStock() {
       ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>Tank ${r.tankNumber}</td><td>${r.depthCm}</td><td>${r.volumeLiters.toFixed(3)}</td><td>${(r.weightKg / 1000).toFixed(3)}</td><td>${(getUsableVolume(r.depthCm) * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)}</td><td>${r.readingType}</td><td>${SOURCE_LABELS[classifyReadingSource(r)]}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table>
       ${bitumenPackedPositions.length ? `<h3>Ledger stock positions</h3><table><tr><th>Party</th><th>Tank 1 (MT)</th><th>Tank 2 (MT)</th><th>Packed count</th><th>Packed (MT)</th><th>Total (MT)</th></tr>
-      ${bitumenPackedPositions.map(row => `<tr><td>${row.partyName}</td><td>${row.tank1Mt == null ? "—" : row.tank1Mt.toFixed(3)}</td><td>${row.tank2Mt == null ? "—" : row.tank2Mt.toFixed(3)}</td><td>${row.packedCount}</td><td>${row.packedMt == null ? "—" : row.packedMt.toFixed(3)}</td><td>${row.totalMt == null ? "—" : row.totalMt.toFixed(3)}</td></tr>`).join("")}</table>` : ""}
+      ${bitumenPackedPositions.map(row => `<tr><td>${row.partyName}</td><td>${stockPositionNumber(row.tank1Mt)?.toFixed(3) ?? "—"}</td><td>${stockPositionNumber(row.tank2Mt)?.toFixed(3) ?? "—"}</td><td>${stockPositionNumber(row.packedCount) ?? "—"}</td><td>${stockPositionNumber(row.packedMt)?.toFixed(3) ?? "—"}</td><td>${stockPositionNumber(row.totalMt)?.toFixed(3) ?? "—"}</td></tr>`).join("")}</table>` : ""}
       </body></html>`;
     openPrintableHtmlOrPreview(printContent, "Bitumen dip readings", `bitumen-dip-readings-${format(new Date(), "yyyyMMdd")}.html`);
   }
@@ -941,10 +944,10 @@ export default function PlantBitumenStock() {
               <tbody>{bitumenPackedPositions.map(row => (
                 <tr className="border-b last:border-0" key={`${row.materialId}:${row.partyId ?? "common"}`}>
                   <td className="py-2 pr-3">{row.partyName}</td>
-                  <td className="py-2 pr-3 text-right">{row.tank1Mt == null ? "—" : `${row.tank1Mt.toFixed(3)} MT`}</td>
-                  <td className="py-2 pr-3 text-right">{row.tank2Mt == null ? "—" : `${row.tank2Mt.toFixed(3)} MT`}</td>
-                  <td className="py-2 pr-3 text-right">{row.packedCount.toLocaleString()} packed · {row.packedMt == null ? "—" : `${row.packedMt.toFixed(3)} MT`}</td>
-                  <td className="py-2 text-right font-semibold">{row.totalMt == null ? "—" : `${row.totalMt.toFixed(3)} MT`}</td>
+                  <td className="py-2 pr-3 text-right">{stockPositionNumber(row.tank1Mt) == null ? "—" : `${stockPositionNumber(row.tank1Mt)!.toFixed(3)} MT`}</td>
+                  <td className="py-2 pr-3 text-right">{stockPositionNumber(row.tank2Mt) == null ? "—" : `${stockPositionNumber(row.tank2Mt)!.toFixed(3)} MT`}</td>
+                  <td className="py-2 pr-3 text-right">{stockPositionNumber(row.packedCount)?.toLocaleString() ?? "—"} packed · {stockPositionNumber(row.packedMt) == null ? "—" : `${stockPositionNumber(row.packedMt)!.toFixed(3)} MT`}</td>
+                  <td className="py-2 text-right font-semibold">{stockPositionNumber(row.totalMt) == null ? "—" : `${stockPositionNumber(row.totalMt)!.toFixed(3)} MT`}</td>
                 </tr>
               ))}</tbody>
             </table>
