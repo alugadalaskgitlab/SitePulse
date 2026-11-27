@@ -22,6 +22,7 @@ import { useFeatureFlags } from "@/lib/featureFlags";
 import { normalizeWeightUnit } from "@shared/stockUnits";
 import { formatPackedUnitLabel } from "@shared/packedStock";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
+import { TankAssignmentButton } from "@/components/TankAssignmentButton";
 import { format, parseISO } from "date-fns";
 import type { LdoFlowReading, LdoDipReading, TruckDispatch, Party, MixTemplate } from "@shared/schema";
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -1221,6 +1222,7 @@ export default function PlantLdoFlowMeter() {
                 <th className="py-2 pr-3 text-right">Packed</th>
                 <th className="py-2 pr-3 text-right">Legacy / unassigned</th>
                 <th className="py-2 text-right">Total</th>
+                {isOwner && <th className="py-2 text-right">Action</th>}
               </tr></thead>
               <tbody>{(packedStockPositions?.rows ?? [])
                 .filter(row => row.materialName.trim().toUpperCase() === "LDO")
@@ -1232,6 +1234,7 @@ export default function PlantLdoFlowMeter() {
                     <td className="py-2 pr-3 text-right">{row.packedCount.toLocaleString()} {formatPackedUnitLabel(row.packedUnitName, row.packedCount)} · {(row.packedL ?? row.packed).toLocaleString()} L</td>
                     <td className="py-2 pr-3 text-right">{row.unassigned.toLocaleString()} L</td>
                     <td className="py-2 text-right font-semibold">{(row.totalL ?? row.total).toLocaleString()} L</td>
+                    {isOwner && <td className="py-2 pl-3 text-right"><TankAssignmentButton row={row} /></td>}
                   </tr>
                 ))}
               </tbody>

@@ -7,6 +7,7 @@ import { formatPackedUnitLabel, packedReceiptStockQuantity, tankPositionBalance 
 import { isMeaningfulStockDifference, isMeaningfullyNegativeStock, stockDifferenceTolerance } from "../shared/stockUnits";
 import { dispatchRefetchInterval } from "../shared/dispatchPolling";
 import * as schema from "../shared/schema";
+import { buildPlantNormActualReport } from "../server/plantNormActual";
 
 const holder = vi.hoisted(() => ({ db: null as any }));
 vi.mock("../server/db", () => ({ get db() { return holder.db; }, pool: {} }));
@@ -223,6 +224,99 @@ it("requires a tank for bulk LDO receipts", async () => {
     partyId: 7,
     isPlantCommon: 0,
   } as any)).rejects.toThrow("Bulk fuel receipts must be assigned to Tank 1 or Tank 2.");
+});
+
+describe("FIX-BIT-01 Owner tank assignments", () => {
+  async function seed(name = "LDO", amount = 6988.401, uom = "Liters", partyId: number | null = 7) {
+    await pg.query("INSERT INTO plant_materials (id,name,category,default_uom) VALUES (41,$1,$1,$2)", [name, uom]);
+    await pg.exec("INSERT INTO parties (id,name) VALUES (7,'Fixture party')");
+    await pg.query("INSERT INTO stock_balances (material_id,party_id,balance,uom) VALUES (41,$1,0,$2)", [partyId, uom]);
+    await pg.query(`INSERT INTO stock_ledger (date,party_id,material_id,transaction_type,quantity_in,quantity_out,uom,tank_number,stock_position)
+      VALUES ('2026-11-01',$1,41,'opening',$2,0,$3,NULL,NULL),
+             ('2026-11-27',$1,41,'issue',0,$2,$3,1,'tank_1')`, [partyId, amount, uom]);
+  }
+  const input = (extra = {}) => ({ date: "2026-11-27", partyId: 7, materialId: 41, amount: 6988.401, uom: "Liters", tankNumber: 1, ...extra });
+  const actor = { userId: 9, name: "Fixture Owner" };
+  async function fixedTables() {
+    const names = ["stock_balances", "material_receipts", "truck_dispatches", "bitumen_dip_readings", "ldo_dip_readings", "ldo_flow_readings"];
+    return Promise.all(names.map(async table => ({ table, rows: (await pg.query(`SELECT * FROM ${table} ORDER BY id`)).rows })));
+  }
+  it("moves 6,988.401 L to Tank 1 atomically without changing totals or physical records", async () => {
+    await seed();
+    await pg.exec(`INSERT INTO ldo_flow_readings (date,time,tank_number,meter_reading,reading_type,quantity_liters,plant_name)
+      VALUES ('2026-11-27','07:00',1,0,'stock',5000,'Main Plant'),
+             ('2026-11-27','08:00',1,100,'opening',NULL,'Main Plant'),
+             ('2026-11-27','12:00',1,0,'receipt',700,'Main Plant'),
+             ('2026-11-27','17:00',1,200,'closing',NULL,'Main Plant')`);
+    const tables = await fixedTables();
+    const statement = await storage.getPartyStatement(7, 41);
+    const summary = await storage.getLdoDailySummary("2026-11-27", "Main Plant");
+    const reconciliation = await storage.computeLdoReconciliation({ dateFrom: "2026-11-27", dateTo: "2026-11-27", plant: "Main Plant" });
+    const normReport = await buildPlantNormActualReport(storage, { from: "2026-11-27", to: "2026-11-27", plantName: "Main Plant" });
+    const asOf = await storage.getStockBalanceAsOf("2026-11-28", { materialId: 41 });
+    const result = await storage.assignUnassignedStockToTank(input(), actor);
+    expect(result.before).toEqual({ tank1: -6988.401, tank2: 0, unassigned: 6988.401, total: 0 });
+    expect(result.after).toEqual({ tank1: 0, tank2: 0, unassigned: 0, total: 0 });
+    expect((await storage.getPackedStockPositionSummary())[0]).toMatchObject(result.after);
+    expect(await fixedTables()).toEqual(tables);
+    expect(await storage.getPartyStatement(7, 41)).toEqual(statement);
+    expect(await storage.getLdoDailySummary("2026-11-27", "Main Plant")).toEqual(summary);
+    expect(await storage.computeLdoReconciliation({ dateFrom: "2026-11-27", dateTo: "2026-11-27", plant: "Main Plant" })).toEqual(reconciliation);
+    expect((await buildPlantNormActualReport(storage, { from: "2026-11-27", to: "2026-11-27", plantName: "Main Plant" })).totals).toEqual(normReport.totals);
+    const afterAsOf = (await storage.getStockBalanceAsOf("2026-11-28", { materialId: 41 }))[0];
+    expect(Number(afterAsOf.totalIn)).toBe(Number(asOf[0].totalIn));
+    expect(Number(afterAsOf.totalOut)).toBe(Number(asOf[0].totalOut));
+    const entries = (await pg.query("SELECT * FROM stock_ledger WHERE transaction_type='tank_assignment' ORDER BY id")).rows as any[];
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({ tank_number: null, stock_position: null, notes: "Old unassigned stock moved to Tank 1" });
+    expect(Number(entries[0].quantity_out)).toBe(6988.401);
+    expect(entries[1]).toMatchObject({ tank_number: 1, stock_position: "tank_1", notes: "Old unassigned stock moved to Tank 1" });
+    expect(Number(entries[1].quantity_in)).toBe(6988.401);
+    const audit = (await pg.query("SELECT * FROM audit_logs WHERE action='tank_assignment'")).rows[0] as any;
+    expect(audit).toMatchObject({ user_id: 9, user_name: "Fixture Owner", user_role: "owner" });
+    expect(audit.old_values).toMatchObject(result.before);
+    expect(audit.new_values).toMatchObject(result.after);
+  });
+  it("supports Tank 2 and a plant-common party", async () => {
+    await seed("LDO", 6988.401, "Liters", null);
+    const result = await storage.assignUnassignedStockToTank(input({ tankNumber: 2, partyId: null }), actor);
+    expect(result.after).toEqual({ tank1: -6988.401, tank2: 6988.401, unassigned: 0, total: 0 });
+  });
+  it("works for bitumen in MT", async () => {
+    await seed("BITUMEN VG-30", 6.988401, "MT");
+    const result = await storage.assignUnassignedStockToTank(input({ amount: 6.988401, uom: "MT" }), actor);
+    expect(result.after).toEqual({ tank1: 0, tank2: 0, unassigned: 0, total: 0 });
+    expect((await storage.getPackedStockPositionSummary())[0]).toMatchObject({ tank1Mt: 0, totalMt: 0, unassigned: 0 });
+  });
+  it("refuses stale amounts and repeated confirmation without adding entries or audit rows", async () => {
+    await seed();
+    await expect(storage.assignUnassignedStockToTank(input({ amount: 6000 }), actor)).rejects.toThrow("Unassigned stock changed since preview");
+    expect((await pg.query("SELECT * FROM stock_ledger")).rows).toHaveLength(2);
+    await storage.assignUnassignedStockToTank(input(), actor);
+    await expect(storage.assignUnassignedStockToTank(input(), actor)).rejects.toThrow("Unassigned stock changed since preview");
+    expect((await pg.query("SELECT * FROM stock_ledger")).rows).toHaveLength(4);
+    expect((await pg.query("SELECT * FROM audit_logs")).rows).toHaveLength(1);
+  });
+  it.each([{ tankNumber: 3 }, { amount: 0 }, { amount: Infinity }, { uom: "MT" }, { partyId: 99 }])("refuses invalid input without a move: %s", async extra => {
+    await seed();
+    await expect(storage.assignUnassignedStockToTank(input(extra), actor)).rejects.toThrow();
+    expect((await pg.query("SELECT * FROM stock_ledger")).rows).toHaveLength(2);
+  });
+  it("does not allow emulsion", async () => {
+    await seed("BITUMEN EMULSION");
+    await expect(storage.assignUnassignedStockToTank(input(), actor)).rejects.toThrow("Only LDO or bitumen");
+  });
+  it("rolls back both ledger rows if the audit cannot be written", async () => {
+    await seed();
+    await pg.exec("ALTER TABLE audit_logs ADD CONSTRAINT fixture_reject_assignment CHECK (action <> 'tank_assignment')");
+    try {
+      await expect(storage.assignUnassignedStockToTank(input(), actor)).rejects.toThrow();
+      expect((await pg.query("SELECT * FROM stock_ledger")).rows).toHaveLength(2);
+      expect((await storage.getPackedStockPositionSummary())[0]).toMatchObject({ tank1: -6988.401, unassigned: 6988.401, total: 0 });
+    } finally {
+      await pg.exec("ALTER TABLE audit_logs DROP CONSTRAINT fixture_reject_assignment");
+    }
+  });
 });
 
 describe("DIESEL-02 store receipts (real PGlite transactions)", () => {

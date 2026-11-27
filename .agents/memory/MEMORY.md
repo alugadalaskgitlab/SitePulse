@@ -19,6 +19,7 @@
 - [MoRTH SDB parser](morth-sdb-parser.md) — section order and Case I/II context change resource rows; regression-test WBM 4.9 and 12.8 before reload.
 - [Sequencer road-way earthwork veto](sequencer-trench-road-veto.md) — "trench cutting" in MoRTH 301 road-earthwork descriptions false-fires excavation_structure; 3-layer fix in workTypeRecipes.ts + programmeSequencer.ts.
 - [Stock Ledger Locking](stock-ledger-locking.md) — _adjustStockBalance helper + numeric(20,6) columns; drizzle-kit push is interactive (--force not sufficient), use direct ALTER TABLE for unblocked schema migrations.
+- [Legacy liquid tank assignment](legacy-liquid-tank-assignment.md) — unassigned fuel can offset tank deficits; reclassification is not a receipt, consumption or missing physical stock.
 - [Roads Pilot Role Templates](roads-pilot-role-templates.md) — ROLE_TEMPLATES + applyRoleTemplate() in shared/permissions.ts; Site Engineer has irn_raise but NOT purchase_indents_raise; PM has both.
 - [Publish drop trap](publish-migration-drop-trap.md) — startup ensure* DDL creates prod-only tables the publish diff wants to DROP; always push schema to the DATABASE_URL db too.
 - [Three database targets](dev-prod-db-split.md) — distinguish dev/Publish/prod; NORM-01 work is restricted to dev data and fixtures, never production or its replica.

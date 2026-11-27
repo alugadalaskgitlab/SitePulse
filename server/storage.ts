@@ -996,6 +996,7 @@ export interface IStorage {
   getStockBalanceLedgerDiscrepancies(): Promise<{ rows: Array<{ materialId: number; materialName: string; partyId: number | null; partyName: string; stockUom: string; storedBalance: number; ledgerBalance: number; difference: number; balanceIds: number[] }>; errors: string[] }>;
   matchStockBalancesToLedger(actor: { userId: number; name: string }, reason: string, confirmation: string): Promise<{ updated: number }>;
   getPackedStockPositionSummary(): Promise<Array<{ materialId: number; materialName: string; packedUnitName: string | null; partyId: number | null; partyName: string; stockUom: string; tank1: number; tank2: number; packed: number; unassigned: number; packedCount: number; total: number; totalMt: number | null; tank1L: number | null; tank2L: number | null; packedL: number | null; totalL: number | null }>>;
+  assignUnassignedStockToTank(input: import("@shared/tankAssignment").TankAssignmentInput, actor: { userId: number; name: string }): Promise<{ before: import("@shared/tankAssignment").TankAssignmentFigures; after: import("@shared/tankAssignment").TankAssignmentFigures }>;
   decantPackedStock(input: { date: string; time: string; materialId: number; partyId: number | null; packedCount: number; quantity: number; tankNumber: 1 | 2 }, actor: { userId: number; name: string }): Promise<{ movedQuantity: number; uom: string }>;
 
   // One-time data fix: insert missing LAXMI 0-qty marker rows for dispatches 49 & 50
@@ -9545,14 +9546,14 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getPackedStockPositionSummary() {
+  async getPackedStockPositionSummary(executor: any = db) {
     const [materials, partiesRows, entries] = await Promise.all([
-      db.select().from(plantMaterials),
-      db.select({ id: parties.id, name: parties.name }).from(parties),
-      db.select().from(stockLedger).where(ne(stockLedger.transactionType, "equipment_issue")),
+      executor.select().from(plantMaterials),
+      executor.select({ id: parties.id, name: parties.name }).from(parties),
+      executor.select().from(stockLedger).where(ne(stockLedger.transactionType, "equipment_issue")),
     ]);
-    const partyName = new Map(partiesRows.map(row => [Number(row.id), String(row.name)]));
-    const materialById = new Map(materials.map(row => [Number(row.id), withEffectiveMaterialDensity(row)]));
+    const partyName = new Map<number, string>(partiesRows.map((row: { id: number; name: string }) => [Number(row.id), String(row.name)]));
+    const materialById = new Map<number, ReturnType<typeof withEffectiveMaterialDensity>>(materials.map((row: PlantMaterial) => [Number(row.id), withEffectiveMaterialDensity(row)]));
     const groups = new Map<string, {
       materialId: number; materialName: string; packedUnitName: string | null; partyId: number | null; partyName: string; stockUom: string;
       tank1: number; tank2: number; packed: number; unassigned: number; packedCount: number; total: number;
@@ -9622,6 +9623,57 @@ export class DatabaseStorage implements IStorage {
         totalL: toLiters(row.total),
       };
     }).sort((a, b) => a.materialName.localeCompare(b.materialName) || a.partyName.localeCompare(b.partyName));
+  }
+
+  async assignUnassignedStockToTank(
+    input: import("@shared/tankAssignment").TankAssignmentInput,
+    actor: { userId: number; name: string },
+  ) {
+    return db.transaction(async tx => {
+      // Rare Owner action: protect the read/compare/paired insert against every
+      // ledger writer, including inserts for previously unassigned receipts.
+      await tx.execute(sql`LOCK TABLE stock_ledger IN SHARE ROW EXCLUSIVE MODE`);
+      const [material] = await tx.select({ name: plantMaterials.name, category: plantMaterials.category })
+        .from(plantMaterials).where(eq(plantMaterials.id, input.materialId)).limit(1);
+      const materialText = `${material?.category ?? ""} ${material?.name ?? ""}`;
+      if (!material || !(/^ldo$/i.test(material.name.trim()) || (/bitumen/i.test(materialText) && !/emulsion/i.test(materialText)))) {
+        throw new Error("Only LDO or bitumen unassigned stock can be moved to a tank.");
+      }
+      if (input.partyId != null) {
+        const [party] = await tx.select({ id: parties.id }).from(parties).where(eq(parties.id, input.partyId)).limit(1);
+        if (!party) throw new Error("Party not found.");
+      }
+      if ((input.tankNumber !== 1 && input.tankNumber !== 2) || !Number.isFinite(input.amount) || input.amount === 0) {
+        throw new Error("Choose Tank 1 or Tank 2 and a non-zero unassigned amount.");
+      }
+      const current = (await this.getPackedStockPositionSummary(tx))
+        .find(row => row.materialId === input.materialId && row.partyId === input.partyId);
+      if (!current || current.unassigned !== input.amount || current.stockUom !== input.uom) {
+        throw Object.assign(new Error("Unassigned stock changed since preview — open the review again."), { code: "STALE_TANK_ASSIGNMENT" });
+      }
+      const before = { tank1: current.tank1, tank2: current.tank2, unassigned: current.unassigned, total: current.total };
+      const after = {
+        tank1: roundStockQuantity(before.tank1 + (input.tankNumber === 1 ? input.amount : 0)),
+        tank2: roundStockQuantity(before.tank2 + (input.tankNumber === 2 ? input.amount : 0)),
+        unassigned: 0, total: before.total,
+      };
+      const common = {
+        date: input.date, materialId: input.materialId, partyId: input.partyId,
+        transactionType: "tank_assignment", uom: current.stockUom,
+        notes: `Old unassigned stock moved to Tank ${input.tankNumber}`,
+      };
+      await tx.insert(stockLedger).values([
+        { ...common, quantityIn: Math.max(-input.amount, 0), quantityOut: Math.max(input.amount, 0), tankNumber: null, stockPosition: null },
+        { ...common, quantityIn: Math.max(input.amount, 0), quantityOut: Math.max(-input.amount, 0), tankNumber: input.tankNumber, stockPosition: `tank_${input.tankNumber}` },
+      ]);
+      await tx.insert(auditLogs).values({
+        module: "plant_stock", transactionId: input.materialId, action: "tank_assignment",
+        userId: actor.userId, userName: actor.name, userRole: "owner",
+        oldValues: { ...before, partyId: input.partyId, uom: current.stockUom },
+        newValues: { ...after, partyId: input.partyId, uom: current.stockUom, tankNumber: input.tankNumber, amount: input.amount, date: input.date },
+      });
+      return { before, after };
+    });
   }
 
   async decantPackedStock(
@@ -9794,8 +9846,8 @@ export class DatabaseStorage implements IStorage {
       materialId: stockLedger.materialId,
       partyId: stockLedger.partyId,
       uom: stockLedger.uom,
-      totalIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
-      totalOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
+      totalIn: sql<number>`COALESCE(SUM(CASE WHEN ${stockLedger.transactionType} <> 'tank_assignment' THEN ${stockLedger.quantityIn} ELSE 0 END), 0)`,
+      totalOut: sql<number>`COALESCE(SUM(CASE WHEN ${stockLedger.transactionType} <> 'tank_assignment' THEN ${stockLedger.quantityOut} ELSE 0 END), 0)`,
       t1TotalIn: sql<number>`COALESCE(SUM(CASE WHEN ${stockLedger.tankNumber} = 1 THEN ${stockLedger.quantityIn} ELSE 0 END), 0)`,
       t1TotalOut: sql<number>`COALESCE(SUM(CASE WHEN ${stockLedger.tankNumber} = 1 THEN ${stockLedger.quantityOut} ELSE 0 END), 0)`,
       t2TotalIn: sql<number>`COALESCE(SUM(CASE WHEN ${stockLedger.tankNumber} = 2 THEN ${stockLedger.quantityIn} ELSE 0 END), 0)`,
@@ -9844,6 +9896,7 @@ export class DatabaseStorage implements IStorage {
       eq(stockLedger.partyId, partyId),
       eq(stockLedger.materialId, materialId),
       ne(stockLedger.transactionType, 'equipment_issue' as string),
+      ne(stockLedger.transactionType, "tank_assignment"),
     ];
     if (dateFrom) conditions.push(gte(stockLedger.date, dateFrom));
     if (dateTo) conditions.push(lte(stockLedger.date, dateTo));

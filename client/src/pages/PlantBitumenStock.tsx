@@ -19,6 +19,7 @@ import { openPrintableHtmlOrPreview } from "@/lib/installedApp";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
+import { TankAssignmentButton } from "@/components/TankAssignmentButton";
 import { format, parseISO } from "date-fns";
 import type { BitumenDipReading, Party, MixTemplate, TruckDispatch } from "@shared/schema";
 import { formatQty, toFiniteNumber } from "@shared/stockReconciliation";
@@ -163,7 +164,7 @@ export default function PlantBitumenStock() {
   const { data: packedStockPositions } = useQuery<{ rows?: Array<{
     materialId: number; materialName: string; partyId: number | null; partyName: string;
     stockUom: string; tank1Mt: number | null; tank2Mt: number | null; packedMt: number | null;
-    packedCount: number; totalMt: number | null;
+    packedCount: number; totalMt: number | null; tank1: number; tank2: number; unassigned: number; total: number;
   }>; canDecant?: boolean }>({ queryKey: ["/api/plant-module/packed-stock-positions"] });
   const bitumenPackedPositions = (packedStockPositions?.rows ?? []).filter(row => /bitumen/i.test(row.materialName));
 
@@ -940,14 +941,16 @@ export default function PlantBitumenStock() {
           <CardHeader className="pb-2"><CardTitle className="text-base">Bitumen stock positions from the ledger</CardTitle></CardHeader>
           <CardContent className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b text-left"><th className="py-2 pr-3">Party</th><th className="py-2 pr-3 text-right">Tank 1</th><th className="py-2 pr-3 text-right">Tank 2</th><th className="py-2 pr-3 text-right">Packed</th><th className="py-2 text-right">Total</th></tr></thead>
+              <thead><tr className="border-b text-left"><th className="py-2 pr-3">Party</th><th className="py-2 pr-3 text-right">Tank 1</th><th className="py-2 pr-3 text-right">Tank 2</th><th className="py-2 pr-3 text-right">Packed</th><th className="py-2 pr-3 text-right">Legacy / unassigned</th><th className="py-2 text-right">Total</th>{user?.isOwner && <th className="py-2 text-right">Action</th>}</tr></thead>
               <tbody>{bitumenPackedPositions.map(row => (
                 <tr className="border-b last:border-0" key={`${row.materialId}:${row.partyId ?? "common"}`}>
                   <td className="py-2 pr-3">{row.partyName}</td>
                   <td className="py-2 pr-3 text-right">{stockPositionNumber(row.tank1Mt) == null ? "—" : `${stockPositionNumber(row.tank1Mt)!.toFixed(3)} MT`}</td>
                   <td className="py-2 pr-3 text-right">{stockPositionNumber(row.tank2Mt) == null ? "—" : `${stockPositionNumber(row.tank2Mt)!.toFixed(3)} MT`}</td>
                   <td className="py-2 pr-3 text-right">{stockPositionNumber(row.packedCount)?.toLocaleString() ?? "—"} packed · {stockPositionNumber(row.packedMt) == null ? "—" : `${stockPositionNumber(row.packedMt)!.toFixed(3)} MT`}</td>
+                  <td className="py-2 pr-3 text-right">{stockPositionNumber(row.unassigned)?.toLocaleString() ?? "—"} {row.stockUom}</td>
                   <td className="py-2 text-right font-semibold">{stockPositionNumber(row.totalMt) == null ? "—" : `${stockPositionNumber(row.totalMt)!.toFixed(3)} MT`}</td>
+                  {user?.isOwner && <td className="py-2 pl-3 text-right"><TankAssignmentButton row={row} /></td>}
                 </tr>
               ))}</tbody>
             </table>

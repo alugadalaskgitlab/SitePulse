@@ -8639,6 +8639,23 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/plant-module/tank-assignments", async (req, res) => {
+    if (!req.authUser?.isOwner) return res.status(403).json({ message: "Only the Owner can move unassigned stock to a tank." });
+    const parsed = z.object({
+      date: z.string().date(), materialId: z.number().int().positive(),
+      partyId: z.number().int().positive().nullable(),
+      tankNumber: z.union([z.literal(1), z.literal(2)]),
+      amount: z.number().finite().refine(value => value !== 0),
+      uom: z.string().min(1),
+    }).strict().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Choose a valid date, party, material, tank and unassigned amount." });
+    try {
+      res.json(await storage.assignUnassignedStockToTank(parsed.data, { userId: req.authUser.id, name: currentUserName(req) }));
+    } catch (error: any) {
+      res.status(error?.code === "STALE_TANK_ASSIGNMENT" ? 409 : 400).json({ message: error?.message || "Could not move unassigned stock." });
+    }
+  });
+
   app.post("/api/plant-module/packed-stock-decants", async (req, res) => {
     if (!req.authUser) return res.status(401).json({ message: "Authentication required" });
     if (!req.authUser.isOwner && !(await hasSupplyRole(Number(req.authUser.id), "P&M In-charge"))) {

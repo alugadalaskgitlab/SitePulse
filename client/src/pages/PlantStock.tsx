@@ -860,7 +860,7 @@ export default function PlantStock() {
   const ledgerTotals = useMemo(() => {
     if (!ledgerForDisplay?.length || !materials) return { totalIn: 0, totalOut: 0, netChange: 0 };
     
-    return ledgerForDisplay.filter(e => e.transactionType !== 'opening_balance').reduce((acc, entry) => {
+    return ledgerForDisplay.filter(e => e.transactionType !== 'opening_balance' && e.transactionType !== 'tank_assignment').reduce((acc, entry) => {
       const material = materials.find(m => m.id === entry.materialId);
       const convert = (quantity: number | null) => {
         if (!quantity || !material) return 0;
@@ -905,6 +905,7 @@ export default function PlantStock() {
 
     // Use processedLedger which excludes equipment_issue entries
     processedLedger.forEach((entry) => {
+      if (entry.transactionType === "tank_assignment") return;
       const key = `${entry.materialId}-${entry.partyId ?? 0}`;
       const material = materials?.find(m => m.id === entry.materialId);
       if (!summaryMap[key]) {
@@ -994,7 +995,7 @@ export default function PlantStock() {
     }> = {};
 
     // Filter out legacy equipment_issue entries
-    const validEntries = allTimeLedger.filter(e => e.transactionType !== 'equipment_issue');
+    const validEntries = allTimeLedger.filter(e => e.transactionType !== 'equipment_issue' && e.transactionType !== 'tank_assignment');
 
     validEntries.forEach((entry) => {
       const key = `${entry.materialId}-${entry.partyId ?? 0}`;

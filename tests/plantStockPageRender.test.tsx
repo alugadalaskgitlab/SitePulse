@@ -6,12 +6,16 @@ const mocks = vi.hoisted(() => ({
   search: "",
   navigate: vi.fn(),
   isOwner: false,
+  materials: [] as any[],
+  ledger: [] as any[],
 }));
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: (options: { queryKey?: unknown[] }) => {
     const key = String(options.queryKey?.[0] ?? "");
     if (!key || key === "null") return { data: undefined, isLoading: false, refetch: vi.fn() };
+    if (key.startsWith("/api/plant-module/materials")) return { data: mocks.materials, isLoading: false, refetch: vi.fn() };
+    if (key.startsWith("/api/plant-module/stock-ledger")) return { data: mocks.ledger, isLoading: false, refetch: vi.fn() };
     if (key.includes("party-statement")) {
       return {
         data: {
@@ -70,6 +74,8 @@ describe("Plant Stock page navigation", () => {
   beforeEach(() => {
     mocks.search = "";
     mocks.isOwner = false;
+    mocks.materials = [];
+    mocks.ledger = [];
     mocks.navigate.mockClear();
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: false,
@@ -136,5 +142,26 @@ describe("Plant Stock page navigation", () => {
     expect(proceed.disabled).toBe(true);
     fireEvent.change(screen.getByTestId("input-confirm-stock-action"), { target: { value: "RECONCILE" } });
     expect(proceed.disabled).toBe(false);
+  });
+  it("excludes tank assignments from stock-summary and all-time receipt/issue totals", () => {
+    mocks.materials = [{ id: 41, name: "LDO", category: "Fuel", defaultUom: "Liters", isActive: 1 }];
+    const common = { date: "2026-11-27", materialId: 41, partyId: 7, uom: "Liters", balanceAfter: 80 };
+    mocks.ledger = [
+      { ...common, id: 1, transactionType: "receipt", quantityIn: 100, quantityOut: 0 },
+      { ...common, id: 2, transactionType: "dispatch", quantityIn: 0, quantityOut: 20 },
+      { ...common, id: 3, transactionType: "tank_assignment", quantityIn: 0, quantityOut: 50, tankNumber: null },
+      { ...common, id: 4, transactionType: "tank_assignment", quantityIn: 50, quantityOut: 0, tankNumber: 1 },
+    ];
+    const page = render(<PlantStock />);
+    expect(page.container.textContent).toContain("+100.000");
+    expect(page.container.textContent).toContain("-20.000");
+    expect(page.container.textContent).not.toContain("+150.000");
+    expect(page.container.textContent).not.toContain("-70.000");
+    const balances = screen.getByRole("tab", { name: /current balances/i });
+    fireEvent.mouseDown(balances, { button: 0 }); fireEvent.click(balances);
+    const card = screen.getByTestId("card-balance-41-7");
+    expect(card.textContent).toContain("+100.000");
+    expect(card.textContent).toContain("-20.000");
+    expect(card.textContent).toContain("80.000");
   });
 });
