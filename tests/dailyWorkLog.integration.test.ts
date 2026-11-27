@@ -89,6 +89,7 @@ beforeAll(async () => {
     schema.dprSiteActivityStaff, schema.auditLogs,
   ]) await createFixtureTable(table, dialect);
   await pg.exec(readFileSync(new URL("../migrations/0069_daily_work_log_and_visits.sql", import.meta.url), "utf8"));
+  await pg.exec(readFileSync(new URL("../migrations/0077_daily_work_plant_hr.sql", import.meta.url), "utf8"));
   state.db = drizzle(pg, { schema });
   state.storage = {
     getUserPermittedSiteIds: async () => state.permittedSiteIds,
@@ -145,6 +146,28 @@ beforeEach(() => {
 });
 
 describe("DAY-01 daily work log and visits", () => {
+  it("saves every schema work type at Plant and preserves old places", async () => {
+    for (const workType of schema.dailyWorkEntries.workType.enumValues!) {
+      const response = await request(app).post("/api/daily-work-log/entries").send({
+        workDate: today, place: "Plant", workType, details: "DAY-02 fixture only",
+      }).expect(201);
+      expect(response.body.workType).toBe(workType);
+      expect(response.body.place).toBe("Plant");
+      await request(app).delete(`/api/daily-work-log/entries/${response.body.id}`).expect(200);
+    }
+    for (const place of ["Site office", "Plant office", "Head office"]) {
+      const response = await request(app).post("/api/daily-work-log/entries").send({
+        workDate: today, place, workType: "Other", details: "Old place fixture",
+      }).expect(201);
+      await request(app).delete(`/api/daily-work-log/entries/${response.body.id}`).expect(200);
+    }
+    await request(app).post("/api/daily-work-log/entries").send({
+      workDate: today, place: "Plant", workType: "Unlisted work", details: "Rejected fixture",
+    }).expect(422);
+    // This runs before the existing audit-count test; discard only this
+    // fixture's audit rows after removing its entries.
+    await state.db.delete(schema.auditLogs);
+  });
   it("keeps the new screen and team view off in default permission matrices", () => {
     expect(Object.values(fullMatrix().daily_work_log).some(Boolean)).toBe(false);
     expect(permissionActionLabel("daily_work_log", "view_reports")).toBe("See everyone’s day");

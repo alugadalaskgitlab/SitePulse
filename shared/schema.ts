@@ -247,10 +247,12 @@ export const dailyWorkEntries = pgTable("daily_work_entries", {
   personnelId: integer("personnel_id").notNull().references(() => personnel.id),
   createdByUserId: integer("created_by_user_id").notNull().references(() => users.id),
   workDate: date("work_date").notNull(),
-  place: text("place", { enum: ["Site office", "Plant office", "Head office"] }).notNull(),
+  place: text("place", { enum: ["Site office", "Plant office", "Head office", "Plant"] }).notNull(),
   workType: text("work_type", { enum: [
     "MB entry", "RA bill preparation", "Drawings / cross sections", "Reports",
-    "Letters / correspondence", "Stores / records", "Accounts", "Purchase", "Other",
+    "Letters / correspondence", "Stores / records", "Accounts", "Purchase",
+    "Plant cleaning", "Wear and tear check", "P&M maintenance", "Breakdown repair", "Calibration", "Stock check", "Plant idle (no work)",
+    "Attendance", "Payroll", "Recruitment / joining", "Labour compliance", "Meetings", "Other",
   ] }).notNull(),
   siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
   durationMinutes: integer("duration_minutes"),
@@ -260,8 +262,8 @@ export const dailyWorkEntries = pgTable("daily_work_entries", {
 }, table => ({
   datePersonnelIdx: index("daily_work_entries_date_personnel_idx").on(table.workDate, table.personnelId),
   creatorDateIdx: index("daily_work_entries_creator_date_idx").on(table.createdByUserId, table.workDate),
-  placeCheck: check("daily_work_entries_place_check", sql`${table.place} IN ('Site office', 'Plant office', 'Head office')`),
-  workTypeCheck: check("daily_work_entries_work_type_check", sql`${table.workType} IN ('MB entry', 'RA bill preparation', 'Drawings / cross sections', 'Reports', 'Letters / correspondence', 'Stores / records', 'Accounts', 'Purchase', 'Other')`),
+  placeCheck: check("daily_work_entries_place_check", sql`${table.place} IN ('Site office', 'Plant office', 'Head office', 'Plant')`),
+  workTypeCheck: check("daily_work_entries_work_type_check", sql`${table.workType} IN ('MB entry', 'RA bill preparation', 'Drawings / cross sections', 'Reports', 'Letters / correspondence', 'Stores / records', 'Accounts', 'Purchase', 'Plant cleaning', 'Wear and tear check', 'P&M maintenance', 'Breakdown repair', 'Calibration', 'Stock check', 'Plant idle (no work)', 'Attendance', 'Payroll', 'Recruitment / joining', 'Labour compliance', 'Meetings', 'Other')`),
   durationCheck: check("daily_work_entries_duration_range", sql`${table.durationMinutes} IS NULL OR ${table.durationMinutes} BETWEEN 1 AND 1440`),
 }));
 

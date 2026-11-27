@@ -15,10 +15,12 @@ import { storage } from "./storage";
 import { assertCreate, assertDelete, assertEdit, assertView, currentUserName, hasSectionAccess } from "./auth-routes";
 
 const SECTION = "daily_work_log" as const;
-const WORK_PLACES = ["Site office", "Plant office", "Head office"] as const;
+const WORK_PLACES = ["Site office", "Plant office", "Head office", "Plant"] as const;
 const WORK_TYPES = [
   "MB entry", "RA bill preparation", "Drawings / cross sections", "Reports",
-  "Letters / correspondence", "Stores / records", "Accounts", "Purchase", "Other",
+  "Letters / correspondence", "Stores / records", "Accounts", "Purchase",
+  "Plant cleaning", "Wear and tear check", "P&M maintenance", "Breakdown repair", "Calibration", "Stock check", "Plant idle (no work)",
+  "Attendance", "Payroll", "Recruitment / joining", "Labour compliance", "Meetings", "Other",
 ] as const;
 const VISIT_PLACES = ["HLC plant", "Head office"] as const;
 const VISIT_PURPOSES = ["Inspection", "Meeting", "Audit", "Other"] as const;

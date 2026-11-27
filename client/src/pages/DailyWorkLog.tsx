@@ -40,10 +40,14 @@ type VisitDraft = {
   attachment: Visit["attachment"];
 };
 
-const WORK_PLACES = ["Site office", "Plant office", "Head office"];
-const WORK_TYPES = [
+const WORK_PLACES = ["Site office", "Plant office", "Head office", "Plant"];
+const WORK_GROUPS = [
+  { label: "Office", types: [
   "MB entry", "RA bill preparation", "Drawings / cross sections", "Reports",
-  "Letters / correspondence", "Stores / records", "Accounts", "Purchase", "Other",
+  "Letters / correspondence", "Stores / records", "Accounts", "Purchase",
+  ] },
+  { label: "Plant", types: ["Plant cleaning", "Wear and tear check", "P&M maintenance", "Breakdown repair", "Calibration", "Stock check", "Plant idle (no work)"] },
+  { label: "HR / admin", types: ["Attendance", "Payroll", "Recruitment / joining", "Labour compliance", "Meetings"] },
 ];
 const VISIT_PLACES = ["HLC plant", "Head office"];
 const VISIT_PURPOSES = ["Inspection", "Meeting", "Audit", "Other"];
@@ -341,7 +345,10 @@ export default function DailyWorkLog() {
           </label>
           <label className="grid gap-1 text-sm">Work
             <select required value={workDraft.workType} onChange={event => setWorkDraft({ ...workDraft, workType: event.target.value })} className="rounded-md border bg-background px-3 py-2">
-              {WORK_TYPES.map(value => <option key={value}>{value}</option>)}
+              {WORK_GROUPS.map(group => <optgroup key={group.label} label={group.label}>
+                {group.types.map(value => <option key={value}>{value}</option>)}
+              </optgroup>)}
+              <option>Other</option>
             </select>
           </label>
           <label className="grid gap-1 text-sm">For site <span className="text-xs text-muted-foreground">Optional</span>

@@ -76,6 +76,20 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe("Daily work log screen", () => {
+  it("groups work choices and includes Plant without removing old places", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Add work" }));
+    const form = screen.getByRole("form", { name: "Daily work entry form" });
+    const work = within(form).getByRole("combobox", { name: "Work" });
+    expect(Array.from(work.querySelectorAll("optgroup")).map(group => group.label))
+      .toEqual(["Office", "Plant", "HR / admin"]);
+    expect(within(work).getAllByRole("option")).toHaveLength(21);
+    expect(within(work).getByRole("option", { name: "P&M maintenance" })).toBeTruthy();
+    expect(within(work).getByRole("option", { name: "Payroll" })).toBeTruthy();
+    const place = within(form).getByRole("combobox", { name: "Where" });
+    expect(within(place).getAllByRole("option").map(option => option.textContent))
+      .toEqual(["Site office", "Plant office", "Head office", "Plant"]);
+  });
   it("shows a person's work entry and linked DPR activity in the team view", async () => {
     renderPage();
     await screen.findByText("Daily work log");
