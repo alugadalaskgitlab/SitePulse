@@ -1929,7 +1929,11 @@ export type MixTemplateComponent = typeof mixTemplateComponents.$inferSelect;
 export type EquipmentMasterType = typeof equipmentMaster.$inferSelect;
 export type MaterialReceipt = typeof materialReceipts.$inferSelect;
 export type TruckDispatch = typeof truckDispatches.$inferSelect;
-export type EquipmentUsage = typeof equipmentUsage.$inferSelect;
+export type EquipmentUsage = typeof equipmentUsage.$inferSelect & {
+  usageDieselIssued?: number;
+  directFillLitres?: number;
+  directFills?: DieselDirectFillView[];
+};
 export type GeneratorLog = typeof generatorLogs.$inferSelect;
 export type LdoLog = typeof ldoLogs.$inferSelect;
 export type StockBalance = typeof stockBalances.$inferSelect;
@@ -3044,6 +3048,7 @@ export const dieselRequirementItems = pgTable("diesel_requirement_items", {
   plannedQty: real("planned_qty").notNull(),
   approvedQty: real("approved_qty"),
   directFillQty: real("direct_fill_qty"),
+  directFillChoices: jsonb("direct_fill_choices").$type<Record<string, { signature: string; choice: DieselDirectFillChoice }>>(),
 });
 
 export const dieselRequirementsRelations = relations(dieselRequirements, ({ many }) => ({
@@ -3063,6 +3068,14 @@ export type InsertDieselRequirementItem = z.infer<typeof insertDieselRequirement
 
 export type DieselRequirementWithItems = DieselRequirement & {
   items: DieselRequirementItem[];
+  directFills?: DieselDirectFillView[];
+};
+export type DieselDirectFillChoice = "keep_purchase" | "keep_usage" | "different";
+export type DieselDirectFillView = {
+  requirementId: number; itemId: number; equipmentId: number; equipmentName: string;
+  date: string; quantity: number; appliedQuantity: number;
+  usageId?: number | null;
+  conflicts: { usageId: number; quantity: number; source: string; signature: string; choice?: DieselDirectFillChoice }[];
 };
 
 export const createDieselRequirementRequestSchema = insertDieselRequirementSchema.omit({ vendorId: true }).extend({

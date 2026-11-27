@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { DieselDirectFillReview } from "@/components/DieselDirectFillReview";
+import type { DieselDirectFillView } from "@shared/schema";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { DraftRestoredBanner } from "@/components/DraftRestoredBanner";
@@ -244,6 +246,13 @@ export default function PlantEquipmentUsage() {
   const { data: usage, isLoading } = useQuery<EquipmentUsage[]>({
     queryKey: ["/api/plant-module/equipment-usage"],
   });
+  const { data: directFills = [], isError: directFillError } = useQuery<DieselDirectFillView[]>({
+    queryKey: ["/api/plant-module/equipment-usage/direct-fills", equipmentId, date],
+    queryFn: async () => (await apiRequest("GET", `/api/plant-module/equipment-usage/direct-fills?equipmentId=${equipmentId}&date=${date}`)).json(),
+    enabled: !!equipmentId && !!date,
+  });
+  const directFillLitres = directFills.filter(fill => fill.usageId == null || fill.usageId === (editingUsage?.id ?? receivingUsage?.id))
+    .reduce((sum, fill) => sum + fill.appliedQuantity, 0);
   const breakdownSourceId = editingUsage?.id ?? receivingUsage?.id ?? null;
   const { data: persistedBreakdowns = [] } = useQuery<any[]>({
     queryKey: ["/api/maintenance/logs", "plant_usage", breakdownSourceId],
@@ -515,7 +524,7 @@ export default function PlantEquipmentUsage() {
     setStartTime((entry as any).startTime || "");
     setEndTime((entry as any).endTime || "");
     setOpeningDiesel((entry as any).openingDiesel ? String((entry as any).openingDiesel) : "0");
-    setDieselIssued(entry.dieselIssued ? String(entry.dieselIssued) : "");
+    setDieselIssued((entry.usageDieselIssued ?? entry.dieselIssued) ? String(entry.usageDieselIssued ?? entry.dieselIssued) : "");
     setDieselIncluded((entry as any).dieselIncluded || false);
     setDieselSource((entry as any).dieselSource ?? "");
     setFuelStation((entry as any).fuelStation ?? "");
@@ -630,6 +639,10 @@ export default function PlantEquipmentUsage() {
   };
 
   const handleSubmit = () => {
+    if (directFillError) {
+      toast({ title: "Unable to check direct fills — retry before saving.", variant: "destructive" });
+      return;
+    }
     if (Number(dieselIssued || 0) > 0 && !dieselIncluded && !dieselSource) {
       toast({ title: "Select diesel source before submitting positive diesel", variant: "destructive" });
       return;
@@ -642,8 +655,8 @@ export default function PlantEquipmentUsage() {
         ? `Equipment #${equipmentId}`
         : "Equipment";
     const dieselTankValidation = validateDieselTankBalance({
-      diesel: dieselIssued,
-      dieselSource: effectiveDieselSource,
+      diesel: String(Number(dieselIssued || 0) + directFillLitres),
+      dieselSource: effectiveDieselSource || (directFillLitres > 0 ? "direct_purchase" : ""),
       openingDiesel,
       dieselBalanceInTank,
     }, equipmentLabel);
@@ -1696,9 +1709,12 @@ export default function PlantEquipmentUsage() {
                     </div>
                   </div>
 
+                  <DieselDirectFillReview fills={directFills} editable fromUsage onResolved={(choice, usageId) => {
+                    if (choice === "keep_purchase" && editingUsage?.id === usageId) setDieselIssued("");
+                  }} />
                   {openingDiesel && dieselIssued !== undefined && expectedDiesel > 0 && (
                     <div className="p-3 bg-primary/10 rounded-md text-sm">
-                      <p>Closing Tank Balance: <strong>{(parseFloat(openingDiesel || "0") + parseFloat(dieselIssued || "0") - expectedDiesel).toFixed(3)} L</strong></p>
+                      <p>Closing Tank Balance: <strong>{(parseFloat(openingDiesel || "0") + parseFloat(dieselIssued || "0") + directFillLitres - expectedDiesel).toFixed(3)} L</strong></p>
                     </div>
                   )}
 
@@ -1730,7 +1746,7 @@ export default function PlantEquipmentUsage() {
                       </div>
                       {dieselBalanceInTank !== "" && openingDiesel !== "" && (() => {
                         const opening = parseFloat(openingDiesel || "0");
-                        const issued = parseFloat(dieselIssued || "0");
+                        const issued = parseFloat(dieselIssued || "0") + directFillLitres;
                         const balance = parseFloat(dieselBalanceInTank || "0");
                         const consumed = opening + issued - balance;
                         const avgPerHr = runtime > 0 ? consumed / runtime : null;
@@ -2138,6 +2154,7 @@ export default function PlantEquipmentUsage() {
                                     {!isDieselIncluded && !isPartialEntry(entry) && (
                                       <span>Issued: {dieselIssuedVal.toFixed(1)} L · Consumed: {consumed == null ? "—" : `${consumed.toFixed(1)} L`}</span>
                                     )}
+                                      {entry.directFills?.length ? <DieselDirectFillReview fills={entry.directFills} /> : null}
                                     {/* Efficiency */}
                                     {efficiencyValue != null && (
                                       <span className={efficiencyIsGood ? "font-medium text-green-600 dark:text-green-400" : "font-medium text-red-600 dark:text-red-400"}>

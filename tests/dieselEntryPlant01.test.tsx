@@ -16,12 +16,14 @@ const mocks = vi.hoisted(() => ({
   }] as Array<Record<string, unknown>>,
   usage: [] as Array<Record<string, unknown>>,
   incoming: [] as Array<Record<string, unknown>>,
+  directFills: [] as Array<Record<string, unknown>>,
   sites: [{ id: 1, name: "SITE A", isActive: 1 }] as Array<Record<string, unknown>>,
   empty: [] as Array<Record<string, unknown>>,
   mutationCalls: [] as Array<{ data: any }>,
 }));
 
 vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   useQuery: (options: { queryKey?: unknown[] }) => {
     const key = options.queryKey?.[0];
     if (key === "/api/plant-module/equipment") {
@@ -32,6 +34,9 @@ vi.mock("@tanstack/react-query", () => ({
     }
     if (key === "/api/plant-module/equipment-usage/incoming") {
       return { data: mocks.incoming, isLoading: false };
+    }
+    if (key === "/api/plant-module/equipment-usage/direct-fills") {
+      return { data: mocks.directFills, isLoading: false };
     }
     if (key === "/api/sites") {
       return { data: mocks.sites, isLoading: false };
@@ -140,6 +145,7 @@ describe("DIESEL01 Plant equipment usage", () => {
     window.history.replaceState({}, "", "/plant/equipment-usage");
     mocks.usage.length = 0;
     mocks.incoming.length = 0;
+    mocks.directFills.length = 0;
     mocks.mutationCalls.length = 0;
     mocks.fetch.mockResolvedValue({
       ok: true,
@@ -151,6 +157,22 @@ describe("DIESEL01 Plant equipment usage", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it("shows purchase fills read-only, includes them in tank consumption, and submits no second issue", async () => {
+    mocks.directFills.push({
+      requirementId: 42, itemId: 11, equipmentId: 1, equipmentName: "Excavator 1",
+      date: "2026-11-27", quantity: 60, appliedQuantity: 60, usageId: null, conflicts: [],
+    });
+    await openEntry();
+    expect(screen.getByText(/Filled directly: 60 L \(diesel purchase #42\)/)).toBeTruthy();
+    fillMeterReadings();
+    fireEvent.change(screen.getByTestId("input-opening-diesel"), { target: { value: "10" } });
+    fireEvent.change(screen.getByTestId("input-diesel-balance"), { target: { value: "10" } });
+    expect(screen.getByTestId("text-actual-consumption").textContent).toBe("60.000");
+    fireEvent.click(screen.getByTestId("button-save-usage"));
+    await waitFor(() => expect(mocks.mutationCalls).toHaveLength(1));
+    expect(mocks.mutationCalls[0].data.dieselIssued).toBe(0);
   });
 
   it("blocks positive plant-stock diesel when the closing tank balance is missing", async () => {

@@ -22,9 +22,9 @@ beforeAll(async () => {
   const dialect = new PgDialect();
   for (const table of [schema.dieselRequirements, schema.dieselRequirementItems, schema.equipmentMaster,
     schema.equipmentUsage, schema.materialReceipts, schema.stockLedger, schema.stockBalances,
-    schema.auditLogs, schema.plantMaterials]) {
+    schema.auditLogs, schema.plantMaterials, schema.dprs, schema.equipmentLogs]) {
     const config = getTableConfig(table);
-    const columns = config.columns.filter(column => !["filled_directly", "filled_on", "direct_fill_qty"].includes(column.name)).map(column => {
+    const columns = config.columns.filter(column => !["filled_directly", "filled_on", "direct_fill_qty", "direct_fill_choices"].includes(column.name)).map(column => {
       let sql = `"${column.name}" ${column.getSQLType()}`;
       if (column.primary) sql += " PRIMARY KEY";
       if (column.notNull) sql += " NOT NULL";
@@ -39,6 +39,7 @@ beforeAll(async () => {
     await pg.exec(`CREATE TABLE "${config.name}" (${columns.join(", ")})`);
   }
   await pg.exec(readFileSync("migrations/0078_diesel_direct_fill.sql", "utf8"));
+  await pg.exec(readFileSync("migrations/0079_diesel_direct_fill_choices.sql", "utf8"));
   holder.db = drizzle(pg, { schema });
   const { DatabaseStorage } = await import("../server/storage");
   storage = new DatabaseStorage();
@@ -47,7 +48,8 @@ beforeAll(async () => {
 }, 60000);
 afterAll(async () => { await pg?.close(); });
 beforeEach(async () => {
-  await pg.exec("TRUNCATE diesel_requirements, diesel_requirement_items, equipment_master, equipment_usage, material_receipts, stock_ledger, stock_balances, audit_logs RESTART IDENTITY");
+  await pg.exec("TRUNCATE diesel_requirements, diesel_requirement_items, equipment_master, equipment_usage, material_receipts, stock_ledger, stock_balances, audit_logs, plant_materials RESTART IDENTITY");
+  await holder.db.insert(schema.plantMaterials).values({ id: 7, name: "DIESEL", category: "Fuel", defaultUom: "Liters" });
   await holder.db.insert(schema.dieselRequirements).values({ id: 1, date: "2026-11-27", raisedBy: "Fixture", totalPlanned: 100, status: "approved" });
   await holder.db.insert(schema.dieselRequirementItems).values([
     { id: 11, requirementId: 1, equipmentId: 21, equipmentName: "Vehicle A", plannedQty: 60, approvedQty: 60 },
@@ -105,5 +107,86 @@ describe("direct purchase vehicle fills, real transactional schema", () => {
     await storage.updateDieselPurchase(1, { qtyPurchased: 100, supplier: "Fixture" }, actor);
     expect(await ledger()).toEqual([]);
     expect(await balance()).toBe(500);
+  });
+  it("shows direct litres read-only once per vehicle/date without a second issue", async () => {
+    await storage.updateDieselPurchase(1, purchase, actor);
+    await storage.createEquipmentUsage({ date: "2026-11-27", equipmentId: 21, dieselIssued: 0, openingDiesel: 10, openingReading: 0, closingReading: 5 });
+    await storage.createEquipmentUsage({ date: "2026-11-27", equipmentId: 21, dieselIssued: 0, openingDiesel: 0 });
+    const rows = await storage.getEquipmentUsage({ equipmentId: 21 });
+    expect(rows.reduce((sum: number, row: any) => sum + row.dieselIssued, 0)).toBe(60);
+    const first = rows.find((row: any) => row.directFillLitres > 0);
+    expect(first).toMatchObject({ usageDieselIssued: 0, dieselIssued: 60, closingDiesel: 70 });
+    expect(await ledger()).toHaveLength(2);
+    expect(await balance()).toBe(500);
+  });
+  it.each(["plant_stock", "direct_purchase"])("suggests without modifying an existing %s usage fill", async source => {
+    const usage = await storage.createEquipmentUsage({ date: "2026-11-27", equipmentId: 21, dieselIssued: 60, dieselSource: source });
+    const oldLedger = await ledger();
+    const oldBalance = await balance();
+    const row = await storage.updateDieselPurchase(1, purchase, actor);
+    const fill = row.directFills.find((fill: any) => fill.itemId === 11);
+    expect(fill.conflicts[0]).toMatchObject({ usageId: usage.id, quantity: 60, source });
+    expect(fill.conflicts[0].choice).toBeUndefined();
+    expect(fill.appliedQuantity).toBe(0);
+    expect(await balance()).toBe(oldBalance);
+    expect((await ledger()).filter((row: any) => row.referenceId === usage.id)).toEqual(oldLedger);
+    expect((await storage.getEquipmentUsageById(usage.id)).usageDieselIssued).toBe(60);
+  });
+  it.each(["plant_stock", "direct_purchase"])("keep purchase reverses only the actual %s usage ledger", async source => {
+    const usage = await storage.createEquipmentUsage({ date: "2026-11-27", equipmentId: 21, dieselIssued: 60, dieselSource: source });
+    await storage.updateDieselPurchase(1, purchase, actor);
+    const fill = (await storage.getDieselDirectFills(21, "2026-11-27"))[0];
+    await storage.resolveDieselDirectFill(1, 11, usage.id, fill.conflicts[0].signature, "keep_purchase", actor);
+    const row = await storage.getEquipmentUsageById(usage.id);
+    expect(row).toMatchObject({ dieselIssued: 60, usageDieselIssued: 0, directFillLitres: 60 });
+    expect((await ledger()).every((row: any) => row.transactionType === "diesel_direct_fill")).toBe(true);
+    expect(await balance()).toBe(500);
+  });
+  it.each(["keep_usage", "different"] as const)("%s keeps usage and gives the intended ledger and stock", async choice => {
+    const usage = await storage.createEquipmentUsage({ date: "2026-11-27", equipmentId: 21, dieselIssued: 60, dieselSource: "plant_stock" });
+    await storage.updateDieselPurchase(1, purchase, actor);
+    const fill = (await storage.getDieselDirectFills(21, "2026-11-27"))[0];
+    await storage.resolveDieselDirectFill(1, 11, usage.id, fill.conflicts[0].signature, choice, actor);
+    const row = await storage.getEquipmentUsageById(usage.id);
+    expect(row.usageDieselIssued).toBe(60);
+    expect(row.dieselIssued).toBe(choice === "different" ? 120 : 60);
+    expect(await balance()).toBe(440);
+    const updated = (await storage.getDieselDirectFills(21, "2026-11-27"))[0];
+    expect(updated.conflicts[0].choice).toBe(choice);
+    expect(updated.appliedQuantity).toBe(choice === "different" ? 60 : 0);
+  });
+  it("refuses a stale choice without changing usage or stock", async () => {
+    const usage = await storage.createEquipmentUsage({ date: "2026-11-27", equipmentId: 21, dieselIssued: 60, dieselSource: "plant_stock" });
+    await storage.updateDieselPurchase(1, purchase, actor);
+    const fill = (await storage.getDieselDirectFills(21, "2026-11-27"))[0];
+    await storage.updateEquipmentUsage(usage.id, { dieselIssued: 55 });
+    await expect(storage.resolveDieselDirectFill(1, 11, usage.id, fill.conflicts[0].signature, "keep_purchase", actor)).rejects.toThrow("changed");
+    expect(await balance()).toBe(445);
+    expect((await storage.getEquipmentUsageById(usage.id)).usageDieselIssued).toBe(55);
+  });
+  it("rolls back a usage reversal if its replacement direct-fill ledger fails", async () => {
+    const usage = await storage.createEquipmentUsage({ date: "2026-11-27", equipmentId: 21, dieselIssued: 60, dieselSource: "plant_stock" });
+    await storage.updateDieselPurchase(1, purchase, actor);
+    const fill = (await storage.getDieselDirectFills(21, "2026-11-27"))[0];
+    const before = await ledger();
+    (storage.resolveCanonicalDieselMaterial as any).mockResolvedValueOnce(undefined);
+    await expect(storage.resolveDieselDirectFill(1, 11, usage.id, fill.conflicts[0].signature, "keep_purchase", actor)).rejects.toThrow("Configure");
+    expect(await ledger()).toEqual(before);
+    expect(await balance()).toBe(440);
+    expect((await storage.getEquipmentUsageById(usage.id)).usageDieselIssued).toBe(60);
+  });
+  it("does not suggest or alter contractor-provided diesel", async () => {
+    await storage.createEquipmentUsage({ date: "2026-11-27", equipmentId: 21, dieselIssued: 60, dieselSource: "contractor", dieselIncluded: true });
+    const row = await storage.updateDieselPurchase(1, purchase, actor);
+    expect(row.directFills.find((fill: any) => fill.itemId === 11).conflicts).toEqual([]);
+    expect(await balance()).toBe(500);
+  });
+  it("includes direct issues in daily and per-vehicle diesel reports exactly once", async () => {
+    await storage.updateDieselPurchase(1, purchase, actor);
+    await storage.createEquipmentUsage({ date: "2026-11-27", equipmentId: 21, dieselIssued: 0 });
+    const daily = await storage.getDieselComparisonReport("2026-11-27", "2026-11-27");
+    expect(daily[0].totalActualIssued).toBe(100);
+    const sources = await storage.getDieselComparisonEquipmentSources("2026-11-27", "2026-11-27");
+    expect(sources.usage.reduce((sum: number, row: any) => sum + Number(row.dieselIssued || 0), 0)).toBe(100);
   });
 });

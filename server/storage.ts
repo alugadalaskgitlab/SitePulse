@@ -1677,6 +1677,8 @@ export interface IStorage {
   // Daily Diesel Requirements
   getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]>;
   getDieselRequirement(id: number): Promise<DieselRequirementWithItems | undefined>;
+  getDieselDirectFills(equipmentId: number, date: string): Promise<import("@shared/schema").DieselDirectFillView[]>;
+  resolveDieselDirectFill(id: number, itemId: number, usageId: number, signature: string, choice: import("@shared/schema").DieselDirectFillChoice, actor: { id?: number; name: string }): Promise<void>;
   createDieselRequirement(data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems>;
   approveDieselRequirement(id: number, approvedItems: { itemId: number; approvedQty: number }[], approvedBy: string): Promise<DieselRequirementWithItems | undefined>;
   rejectDieselRequirement(id: number, reason: string, rejectedBy: string): Promise<DieselRequirementWithItems | undefined>;
@@ -7465,9 +7467,31 @@ export class DatabaseStorage implements IStorage {
     if (filters?.dateFrom) conditions.push(gte(equipmentUsage.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(equipmentUsage.date, filters.dateTo));
     
-    return db.select().from(equipmentUsage)
+    const rows = await db.select().from(equipmentUsage)
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(equipmentUsage.date));
+    return this.withDieselDirectFills(rows);
+  }
+
+  private async withDieselDirectFills(rows: EquipmentUsage[], executor: any = db): Promise<EquipmentUsage[]> {
+    // One physical fill belongs to the first non-shifting usage row of that day,
+    // even when a caller requested only a subset of usage rows.
+    const result: EquipmentUsage[] = [];
+    if (!rows.length) return result;
+    const allFills = await this.readDieselDirectFills(executor);
+    for (const row of rows) {
+      const fills = allFills.filter(fill => fill.equipmentId === row.equipmentId && fill.date === row.date);
+      if (!fills.length) { result.push(row); continue; }
+      const directFillLitres = fills.filter(fill => fill.usageId === row.id).reduce((sum, fill) => sum + fill.appliedQuantity, 0);
+      result.push({
+        ...row, usageDieselIssued: row.dieselIssued || 0, directFills: fills, directFillLitres,
+        dieselIssued: (row.dieselIssued || 0) + directFillLitres,
+        // A physically confirmed closing is authoritative; never add to it.
+        closingDiesel: row.dieselBalanceInTank != null ? row.closingDiesel : (row.closingDiesel ?? 0) + directFillLitres,
+        variance: row.variance == null ? null : row.variance + directFillLitres,
+      });
+    }
+    return result;
   }
 
   async getFleetEquipmentStatus(
@@ -7664,12 +7688,13 @@ export class DatabaseStorage implements IStorage {
     const usageCondition = linkedConditions.length
       ? or(isNull(equipmentUsage.dprId), ...linkedConditions)
       : isNull(equipmentUsage.dprId);
-    const [loadedUsages, masters] = await Promise.all([
+    const [rawLoadedUsages, masters] = await Promise.all([
       queryDb.select().from(equipmentUsage).where(usageCondition),
       executor
         ? queryDb.select().from(equipmentMaster).where(isNotNull(equipmentMaster.id))
         : this.getEquipmentMaster(true),
     ]);
+    const loadedUsages = await this.withDieselDirectFills(rawLoadedUsages, queryDb);
     // Site-restricted callers may see only usages explicitly attached to their
     // visible DPR/log set. Standalone plant rows have no site grant to verify.
     const linkedUsageIdSet = new Set(linkedUsageIds);
@@ -7806,7 +7831,7 @@ export class DatabaseStorage implements IStorage {
       .from(equipmentUsage)
       .where(eq(equipmentUsage.id, id))
       .limit(1);
-    return row;
+    return row ? (await this.withDieselDirectFills([row]))[0] : undefined;
   }
 
   async createEquipmentUsage(usage: InsertEquipmentUsage): Promise<EquipmentUsage> {
@@ -22762,6 +22787,10 @@ export class DatabaseStorage implements IStorage {
     if (filters?.status) {
       filtered = filtered.filter(r => r.status === filters.status);
     }
+    if (filtered.some(row => row.filledDirectly)) {
+      const fills = await this.readDieselDirectFills(db);
+      return filtered.map(row => row.filledDirectly ? { ...row, directFills: fills.filter(fill => fill.requirementId === row.id) } : row);
+    }
     return filtered;
   }
 
@@ -22770,7 +22799,7 @@ export class DatabaseStorage implements IStorage {
       where: eq(dieselRequirements.id, id),
       with: { items: true },
     });
-    return result as DieselRequirementWithItems | undefined;
+    return result?.filledDirectly ? { ...result, directFills: await this.readDieselDirectFills(db, { requirementId: id }) } : result as DieselRequirementWithItems | undefined;
   }
 
   async createDieselRequirement(data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems> {
@@ -22910,7 +22939,73 @@ export class DatabaseStorage implements IStorage {
       await this.syncDieselDirectFill(tx, id, actor);
     }
     const [result] = await tx.select().from(dieselRequirements).where(eq(dieselRequirements.id, id));
-    return { ...result, items: await tx.select().from(dieselRequirementItems).where(eq(dieselRequirementItems.requirementId, id)) };
+    return { ...result, items: await tx.select().from(dieselRequirementItems).where(eq(dieselRequirementItems.requirementId, id)), directFills: await this.readDieselDirectFills(tx, { requirementId: id }) };
+    });
+  }
+
+  private async readDieselDirectFills(tx: any, filter?: { requirementId?: number; equipmentId?: number; date?: string }): Promise<import("@shared/schema").DieselDirectFillView[]> {
+    const conditions = [eq(dieselRequirements.filledDirectly, true), eq(dieselRequirements.status, "purchased"), gt(dieselRequirementItems.directFillQty, 0)];
+    if (filter?.requirementId) conditions.push(eq(dieselRequirements.id, filter.requirementId));
+    if (filter?.equipmentId) conditions.push(eq(dieselRequirementItems.equipmentId, filter.equipmentId));
+    if (filter?.date) conditions.push(eq(dieselRequirements.filledOn, filter.date));
+    const items = await tx.select({ item: dieselRequirementItems, date: dieselRequirements.filledOn })
+      .from(dieselRequirementItems).innerJoin(dieselRequirements, eq(dieselRequirements.id, dieselRequirementItems.requirementId)).where(and(...conditions));
+    const views: import("@shared/schema").DieselDirectFillView[] = [];
+    for (const { item, date } of items) {
+      if (item.equipmentId == null || !date) continue;
+      const usages = await tx.select().from(equipmentUsage).where(and(
+        eq(equipmentUsage.equipmentId, item.equipmentId), eq(equipmentUsage.date, date),
+        gt(equipmentUsage.dieselIssued, 0), sql`COALESCE(${equipmentUsage.dieselIncluded}, false) = false`,
+        inArray(equipmentUsage.dieselSource, ["plant_stock", "direct_purchase"]),
+      )).orderBy(asc(equipmentUsage.id));
+      const entries = await tx.select({ quantity: stockLedger.quantityIn }).from(stockLedger).where(and(
+        eq(stockLedger.transactionType, "diesel_direct_fill"), eq(stockLedger.referenceId, item.id),
+      ));
+      const [first] = await tx.select({ id: equipmentUsage.id }).from(equipmentUsage).where(and(
+        eq(equipmentUsage.equipmentId, item.equipmentId), eq(equipmentUsage.date, date),
+        sql`COALESCE(${equipmentUsage.entryType}, '') <> 'shifting'`,
+      )).orderBy(asc(equipmentUsage.id)).limit(1);
+      views.push({
+        requirementId: item.requirementId, itemId: item.id, equipmentId: item.equipmentId,
+        equipmentName: item.equipmentName, date, quantity: item.directFillQty, usageId: first?.id ?? null,
+        appliedQuantity: entries.reduce((sum: number, entry: any) => sum + Number(entry.quantity || 0), 0),
+        conflicts: usages.map((usage: any) => {
+          // A changed quantity/source/date invalidates an earlier decision.
+          const signature = JSON.stringify([usage.id, usage.date, usage.equipmentId, usage.dieselIssued, usage.dieselSource, item.directFillQty, date]);
+          const saved = item.directFillChoices?.[String(usage.id)];
+          return { usageId: usage.id, quantity: usage.dieselIssued, source: usage.dieselSource,
+            signature, ...(saved?.signature === signature ? { choice: saved.choice } : {}) };
+        }),
+      });
+    }
+    return views;
+  }
+
+  async getDieselDirectFills(equipmentId: number, date: string) {
+    return this.readDieselDirectFills(db, { equipmentId, date });
+  }
+
+  async resolveDieselDirectFill(id: number, itemId: number, usageId: number, signature: string, choice: import("@shared/schema").DieselDirectFillChoice, actor: { id?: number; name: string }): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.select().from(dieselRequirements).where(eq(dieselRequirements.id, id)).for("update");
+      const [item] = await tx.select().from(dieselRequirementItems).where(and(eq(dieselRequirementItems.id, itemId), eq(dieselRequirementItems.requirementId, id))).for("update");
+      if (!item?.equipmentId) throw Object.assign(new Error("Direct fill not found."), { code: "BAD_REQUEST" });
+      await tx.select().from(equipmentUsage).where(eq(equipmentUsage.id, usageId)).for("update");
+      const fill = (await this.readDieselDirectFills(tx, { requirementId: id })).find(fill => fill.itemId === itemId);
+      const conflict = fill?.conflicts.find(conflict => conflict.usageId === usageId);
+      if (!conflict || conflict.signature !== signature) throw Object.assign(new Error("Diesel entries changed — open the review again."), { code: "BAD_REQUEST" });
+      if (!["keep_purchase", "keep_usage", "different"].includes(choice)) throw Object.assign(new Error("Choose how to record these fills."), { code: "BAD_REQUEST" });
+      if (choice === "keep_purchase") {
+        await this._updateEquipmentUsageTxn(usageId, { dieselIssued: 0 }, tx);
+      }
+      await tx.update(dieselRequirementItems).set({ directFillChoices: {
+        ...(item.directFillChoices || {}), [String(usageId)]: { signature, choice },
+      } }).where(eq(dieselRequirementItems.id, itemId));
+      await this.syncDieselDirectFill(tx, id, actor);
+      await this.logAudit({
+        module: "diesel_requirements", transactionId: id, action: "direct_fill_choice",
+        userId: actor.id, userName: actor.name, oldValues: conflict, newValues: { itemId, usageId, choice },
+      }, tx);
     });
   }
 
@@ -22931,6 +23026,8 @@ export class DatabaseStorage implements IStorage {
       if (!material || partyId == null) throw Object.assign(new Error("Configure the company party and DIESEL/HSD material before recording a direct fill."), { code: "BAD_REQUEST" });
       for (const item of items) {
         if (!(item.directFillQty > 0)) continue;
+        const fill = (await this.readDieselDirectFills(tx, { requirementId: id })).find(fill => fill.itemId === item.id);
+        if (fill?.conflicts.some(conflict => !conflict.choice || conflict.choice === "keep_usage")) continue;
         const [entry] = await tx.insert(stockLedger).values({
           date: requirement.filledOn,
           materialId: material.id, partyId,
@@ -23141,6 +23238,12 @@ export class DatabaseStorage implements IStorage {
     const usage = await db.select({
       date: equipmentUsage.date, equipmentId: equipmentUsage.equipmentId, dieselIssued: equipmentUsage.dieselIssued,
     }).from(equipmentUsage).where(and(gte(equipmentUsage.date, dateFrom), lte(equipmentUsage.date, dateTo)));
+    const directFills = await this.readDieselDirectFills(db);
+    for (const fill of directFills) {
+      if (fill.date >= dateFrom && fill.date <= dateTo && fill.appliedQuantity > 0) {
+        usage.push({ date: fill.date, equipmentId: fill.equipmentId, dieselIssued: fill.appliedQuantity });
+      }
+    }
     const logs = await db.select({
       date: dprs.date, equipmentId: equipmentLogs.equipmentId, machine: equipmentLogs.machine, diesel: equipmentLogs.diesel,
     }).from(equipmentLogs).innerJoin(dprs, eq(dprs.id, equipmentLogs.dprId)).where(and(
@@ -23183,6 +23286,13 @@ export class DatabaseStorage implements IStorage {
     ));
 
     const dateMap = new Map<string, { totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }>();
+    for (const fill of await this.readDieselDirectFills(db)) {
+      if (fill.date >= dateFrom && fill.date <= dateTo && fill.appliedQuantity > 0) {
+        const previous = dateMap.get(fill.date) || { totalPlanned: 0, totalApproved: 0, totalPurchased: 0, totalActualIssued: 0 };
+        previous.totalActualIssued += fill.appliedQuantity;
+        dateMap.set(fill.date, previous);
+      }
+    }
 
     for (const req of requirements) {
       const existing = dateMap.get(req.date) || { totalPlanned: 0, totalApproved: 0, totalPurchased: 0, totalActualIssued: 0 };

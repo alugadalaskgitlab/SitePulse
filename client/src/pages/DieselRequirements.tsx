@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
+import { DieselDirectFillReview, directFillStatus } from "@/components/DieselDirectFillReview";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -766,7 +767,8 @@ export default function DieselRequirements() {
       queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements/summary"] });
       if (selectedId) queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements", selectedId] });
       toast({ title: "Purchase details updated" });
-      setView("list");
+      setView(vars.purchaseData?.filledDirectly ? "detail" : "list");
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage"] });
       // 06M-C: purchase does NOT add stock — prompt for the physical receipt.
       if (!vars.purchaseData?.filledDirectly && vars.purchaseData?.qtyPurchased > 0) {
         setPostPurchase({ id: vars.id, qty: vars.purchaseData.qtyPurchased, supplier: vars.purchaseData.supplier || "" });
@@ -1409,7 +1411,7 @@ export default function DieselRequirements() {
                           </div>
                           <div className="relative flex flex-col items-end gap-1">
                             {getStatusBadge(req.status)}
-                            {req.status === "purchased" && (req.filledDirectly ? <Badge variant="outline">Filled directly — received and issued</Badge> : receiptStatusBadge(receiptStatusMap?.[req.id]))}
+                            {req.status === "purchased" && (req.filledDirectly ? <Badge variant="outline">{directFillStatus(req.directFills)}</Badge> : receiptStatusBadge(receiptStatusMap?.[req.id]))}
                             {((req as any).paymentStatus || "pending") === "paid" && (
                               <Badge
                                 variant="outline"
@@ -1751,8 +1753,9 @@ export default function DieselRequirements() {
               {selectedRequirement.status === "purchased" && (
                 <>
                   <DieselPurchaseSummary requirement={selectedRequirement} />
+                  {selectedRequirement.filledDirectly && <DieselDirectFillReview fills={selectedRequirement.directFills} editable={canEdit} />}
                   {/* 06M-C: Purchased ≠ Received — physical receipt tracking */}
-                  {selectedRequirement.filledDirectly ? <p>Filled directly — received and issued</p> : selectedRequirement.qtyPurchased ? (
+                  {selectedRequirement.filledDirectly ? <p>{directFillStatus(selectedRequirement.directFills)}</p> : selectedRequirement.qtyPurchased ? (
                     <DieselReceiptPanel
                       state={receiptStatusMap?.[selectedRequirement.id] ?? {
                         purchasedQty: selectedRequirement.qtyPurchased,

@@ -73,6 +73,31 @@ beforeAll(async () => {
 });
 
 describe("06M diesel purchase-update payment details", () => {
+  it("accepts the explicit direct-fill purchase payload and authenticated actor", async () => {
+    const res = await request(app).patch("/api/diesel-requirements/42/purchase-update").send({
+      qtyPurchased: 100, filledDirectly: true, filledOn: "2026-11-27",
+      directFills: [{ itemId: 11, quantity: 60 }, { itemId: 12, quantity: 40 }],
+    });
+    expect(res.status).toBe(200);
+    const call = storage.updateDieselPurchase.mock.calls.at(-1);
+    expect(call[1]).toMatchObject({ filledDirectly: true, directFills: [{ itemId: 11, quantity: 60 }, { itemId: 12, quantity: 40 }] });
+    expect(call[2]).toMatchObject({ id: 9 });
+  });
+  it("passes a deliberately selected duplicate decision to storage", async () => {
+    const res = await request(app).post("/api/diesel-requirements/42/direct-fill-choice").send({
+      itemId: 11, usageId: 7, signature: "fixture", choice: "keep_purchase",
+    });
+    expect(res.status).toBe(200);
+    expect(storage.resolveDieselDirectFill).toHaveBeenLastCalledWith(42, 11, 7, "fixture", "keep_purchase", expect.objectContaining({ id: 9 }));
+  });
+  it("rejects a missing decision and surfaces a stale review", async () => {
+    const bad = await request(app).post("/api/diesel-requirements/42/direct-fill-choice").send({ itemId: 11, usageId: 7, signature: "fixture" });
+    expect(bad.status).toBe(400);
+    storage.resolveDieselDirectFill.mockRejectedValueOnce(Object.assign(new Error("Diesel entries changed — open the review again."), { code: "BAD_REQUEST" }));
+    const stale = await request(app).post("/api/diesel-requirements/42/direct-fill-choice").send({ itemId: 11, usageId: 7, signature: "fixture", choice: "different" });
+    expect(stale.status).toBe(400);
+    expect(stale.body.message).toContain("changed");
+  });
   it("A/G: existing purchase fields still accepted, status flow untouched by route", async () => {
     const res = await request(app)
       .patch("/api/diesel-requirements/42/purchase-update")

@@ -7879,6 +7879,42 @@ export async function registerRoutes(
   });
 
   // Equipment Usage
+  app.get("/api/plant-module/equipment-usage/direct-fills", async (req, res) => {
+    if (!assertView(req, res, "plant_equipment")) return;
+    try {
+      const input = z.object({ equipmentId: z.coerce.number().int().positive(), date: z.string().date() }).parse(req.query);
+      const fills = await storage.getDieselDirectFills(input.equipmentId, input.date);
+      const requirements = (await Promise.all(fills.map(fill => storage.getDieselRequirement(fill.requirementId)))).filter(Boolean);
+      const visible = await visibleDieselRequirements(req, requirements);
+      const ids = new Set(visible.map(row => row.id));
+      res.json(fills.filter(fill => ids.has(fill.requirementId)));
+    } catch (error) {
+      res.status(error instanceof z.ZodError ? 400 : 500).json({ message: error instanceof z.ZodError ? error.errors[0].message : "Unable to load direct fills." });
+    }
+  });
+
+  app.post("/api/diesel-requirements/:id/direct-fill-choice", async (req, res) => {
+    try {
+      const input = z.object({
+        itemId: z.number().int().positive(), usageId: z.number().int().positive(), signature: z.string(),
+        choice: z.enum(["keep_purchase", "keep_usage", "different"]), fromUsage: z.boolean().optional(),
+      }).parse(req.body);
+      if (input.fromUsage) {
+        if (!assertEdit(req, res, "plant_equipment")) return;
+      } else if (!assertFeatureAction(req, res, "diesel_requirement", "edit")) return;
+      if (input.choice === "keep_purchase" && !assertEdit(req, res, "plant_equipment")) return;
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      if (!(await assertDieselRecordRead(req, res, id))) return;
+      await storage.resolveDieselDirectFill(id, input.itemId, input.usageId, input.signature, input.choice, {
+        id: (req as any).authUser?.id, name: currentUserName(req),
+      });
+      res.json({ success: true });
+    } catch (error: any) {
+      const invalid = error instanceof z.ZodError || error?.code === "BAD_REQUEST";
+      res.status(invalid ? 400 : 500).json({ message: invalid ? error.errors?.[0]?.message || error.message : "Unable to save the diesel choice." });
+    }
+  });
+
   app.get("/api/plant-module/equipment-usage", async (req, res) => {
     try {
       const filters = {

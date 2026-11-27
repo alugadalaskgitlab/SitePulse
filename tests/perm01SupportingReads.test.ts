@@ -168,7 +168,7 @@ describe("PERM-01 supporting read HTTP routes with real guards", () => {
     const updated = await request(app).put("/api/diesel-requirements/1").send(dieselInput);
     expect(updated.status, JSON.stringify(updated.body)).toBe(200);
     expect(updated.body).toMatchObject({ id: 1, date: dieselInput.date, items: dieselInput.items });
-    expect(storage.updateDieselRequirement).toHaveBeenCalledWith(1, expect.objectContaining(dieselInput));
+    expect(storage.updateDieselRequirement).toHaveBeenCalledWith(1, expect.objectContaining(dieselInput), { id: 51, name: "Test Raiser" });
   });
 
   it("exposes the shared company account selector to diesel editors, not to raisers without edit", async () => {
