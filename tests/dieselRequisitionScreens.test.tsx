@@ -43,7 +43,7 @@ vi.mock("@tanstack/react-query", () => ({
   },
   useMutation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
-afterEach(() => { cleanup(); fx.search = ""; localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); fx.search = ""; fx.requirement.status = "approved"; localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks(); });
 
 describe("DIESEL-02 requisition screen fixtures (no database)", () => {
   it("renders the same number on list and purchase update", () => {
@@ -65,5 +65,39 @@ describe("DIESEL-02 requisition screen fixtures (no database)", () => {
     const rows = XLSX.utils.sheet_to_json(book.Sheets.Requirements, { header: 1 });
     expect((rows[0] as string[])[0]).toBe("Requisition no.");
     expect((rows[1] as string[])[0]).toBe("DSL-REQ/26-27/0095");
+  });
+  it("shows read-only facts and equipment quantities before the purchase fields", () => {
+    render(<DieselRequirements />);
+    fireEvent.click(screen.getByTestId("card-requirement-95"));
+    expect(screen.getByTestId("text-detail-raised-by").textContent).toBe("Engineer");
+    expect(screen.getByText("Owner")).toBeTruthy();
+    expect(screen.getByTestId("text-detail-location").textContent).toBeTruthy();
+    expect(screen.getByTestId("text-equip-name-1").textContent).toBe("Vehicle A");
+    expect(screen.getByTestId("text-approved-qty-1").textContent).toBe("60");
+    expect(screen.getByTestId("text-approval-total").textContent).toBe("60 L");
+    expect(screen.getByText("Haulage")).toBeTruthy();
+    expect(screen.getByText("6 hrs")).toBeTruthy();
+    expect(screen.getByText(/10 L\/hr/)).toBeTruthy();
+    expect(screen.queryByTestId("input-approve-qty-1")).toBeNull();
+    expect(screen.getByTestId("table-equipment-detail").compareDocumentPosition(screen.getByTestId("input-purchase-qty")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+  it("prefills approved direct litres and leaves missing approved litres empty", () => {
+    render(<DieselRequirements />);
+    fireEvent.click(screen.getByTestId("card-requirement-95"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Filled directly into the vehicle at the pump" }));
+    expect((screen.getByLabelText("Vehicle A (L)") as HTMLInputElement).value).toBe("60");
+    expect((screen.getByLabelText("Vehicle B (L)") as HTMLInputElement).value).toBe("");
+  });
+  it("retains the existing pending approval inputs and maximum quantities", () => {
+    fx.requirement.status = "pending";
+    render(<DieselRequirements />);
+    fireEvent.click(screen.getByTestId("card-requirement-95"));
+    const input = screen.getByTestId("input-approve-qty-1") as HTMLInputElement;
+    expect(input.value).toBe("60");
+    fireEvent.change(input, { target: { value: "100" } });
+    expect(input.value).toBe("60");
+    fireEvent.change(input, { target: { value: "40" } });
+    expect(input.value).toBe("40");
+    expect(screen.getByText("Reduced from 60")).toBeTruthy();
   });
 });

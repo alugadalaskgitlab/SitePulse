@@ -60,6 +60,62 @@ interface ApprovalItem {
   approvedQty: number;
 }
 
+function RequirementFacts({ requirement, raisedFrom, dateText }: { requirement: DieselRequirementWithItems; raisedFrom: string; dateText: string }) {
+  return <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div><p className="text-[12px] font-semibold text-muted-foreground uppercase">DATE</p><p className="font-semibold mt-1" data-testid="text-detail-date">{dateText}</p></div>
+    <div><p className="text-[12px] font-semibold text-muted-foreground uppercase">RAISED BY</p><p className="font-semibold mt-1" data-testid="text-detail-raised-by">{requirement.raisedBy}</p></div>
+    <div><p className="text-[12px] font-semibold text-muted-foreground uppercase">RAISED FROM</p><p className="font-semibold mt-1" data-testid="text-detail-location">{raisedFrom}</p></div>
+    <div><p className="text-[12px] font-semibold text-muted-foreground uppercase">APPROVED BY</p><p className="font-semibold mt-1">{requirement.approvedBy || "\u2014"}</p></div>
+    <div><p className="text-[12px] font-semibold text-muted-foreground uppercase">EQUIPMENT</p><p className="font-semibold mt-1">{requirement.items?.length || 0} ITEMS</p></div>
+    <div><p className="text-[12px] font-semibold text-muted-foreground uppercase">TOTAL REQUIRED</p><p className="font-semibold mt-1 text-amber-600" data-testid="text-detail-total">{Math.round(requirement.totalPlanned)} L</p></div>
+    <div><p className="text-[12px] font-semibold text-muted-foreground uppercase">STATUS</p><p className="font-semibold mt-1">{requirement.status.toUpperCase()}</p></div>
+  </div>;
+}
+
+function RequirementEquipmentTable({ requirement, approvalItems, canApprove, onApprovalChange }: {
+  requirement: DieselRequirementWithItems; approvalItems?: ApprovalItem[]; canApprove?: boolean;
+  onApprovalChange?: (id: number, quantity: number) => void;
+}) {
+  const approving = requirement.status === "pending" && !!onApprovalChange;
+  const showApproved = approving || requirement.status === "approved" || requirement.status === "purchased";
+  return <CardContent className="p-0 overflow-x-auto">
+    <table className="w-full text-sm" data-testid="table-equipment-detail">
+      <thead><tr className="border-b">
+        {["#", "EQUIPMENT / DG", "PURPOSE", "HRS / KM", "NORM", "PLANNED (L)", ...(showApproved ? [approving ? "APPROVE (L)" : "APPROVED (L)"] : [])].map((label, index) =>
+          <th key={label} className={`${index >= 5 ? "text-right" : "text-left"} text-[12px] font-bold text-muted-foreground uppercase p-2`}>{label}</th>)}
+      </tr></thead>
+      <tbody>{requirement.items?.map((item, index) => {
+        const approvalItem = approvalItems?.find(row => row.itemId === item.id);
+        const isReduced = approvalItem && approvalItem.approvedQty < item.plannedQty;
+        return <tr key={item.id} className="border-b last:border-b-0">
+          <td className="p-2 text-muted-foreground">{index + 1}</td>
+          <td className="p-2 font-semibold" data-testid={`text-equip-name-${item.id}`}>{item.equipmentName}</td>
+          <td className="p-2">{item.purpose || "\u2014"}</td>
+          <td className="p-2">{item.estHours != null ? `${item.estHours} ${item.normType === "distance" ? "km" : "hrs"}` : "\u2014"}</td>
+          <td className="p-2">{item.norm != null ? <span>{item.norm} {item.normType === "distance" ? "L/km" : "L/hr"}
+            {item.normType === "distance" && item.norm > 0 && <span className="text-[12px] text-blue-600 ml-1">({(1 / item.norm).toFixed(2)} km/L)</span>}
+          </span> : "\u2014"}</td>
+          <td className="p-2 text-right text-muted-foreground">{Math.round(item.plannedQty)}</td>
+          {approving ? <td className="p-2 text-right">
+            <Input type="number" className={`w-20 text-center inline-block font-bold ${isReduced ? "border-amber-400 text-amber-600 bg-amber-50 dark:bg-amber-900/20" : "border-green-300 text-green-600 bg-green-50 dark:bg-green-900/20"}`}
+              value={approvalItem?.approvedQty ?? item.plannedQty} disabled={!canApprove} min={0} max={item.plannedQty}
+              onChange={event => onApprovalChange!(item.id, Math.min(parseFloat(event.target.value) || 0, item.plannedQty))}
+              data-testid={`input-approve-qty-${item.id}`} />
+            {isReduced && <p className="text-[12px] text-amber-600 font-semibold mt-1">Reduced from {Math.round(item.plannedQty)}</p>}
+          </td> : showApproved ? <td className="p-2 text-right font-bold text-green-600" data-testid={`text-approved-qty-${item.id}`}>{item.approvedQty != null ? Math.round(item.approvedQty) : "\u2014"}</td> : null}
+        </tr>;
+      })}</tbody>
+      <tfoot><tr className="bg-amber-50 dark:bg-amber-900/10 border-t-2 border-amber-500">
+        <td colSpan={5} className="p-3 text-right font-bold">TOTAL PLANNED</td>
+        <td className="p-3 text-right text-muted-foreground font-bold">{Math.round(requirement.totalPlanned)} L</td>
+        {showApproved && <td className="p-3 text-right font-extrabold text-green-600 text-lg" data-testid="text-approval-total">
+          {approving ? `${Math.round((approvalItems ?? []).reduce((sum, item) => sum + (item.approvedQty || 0), 0))} L` : requirement.totalApproved != null ? `${Math.round(requirement.totalApproved)} L` : "\u2014"}
+        </td>}
+      </tr></tfoot>
+    </table>
+  </CardContent>;
+}
+
 function StatusSteps({ status }: { status: string }) {
   const steps = [
     { key: "raised", label: "RAISED" },
@@ -961,7 +1017,7 @@ export default function DieselRequirements() {
   const openPurchaseForm = (req: DieselRequirementWithItems) => {
     setFilledDirectly(!!req.filledDirectly);
     setFilledOn(req.filledOn || req.purchasedAt?.slice(0, 10) || format(new Date(), "yyyy-MM-dd"));
-    setDirectFills(Object.fromEntries(req.items.filter(item => equipment?.some(eq => eq.id === item.equipmentId && eq.ownership === "owned")).map(item => [item.id, String(item.directFillQty ?? item.approvedQty ?? 0)])));
+    setDirectFills(Object.fromEntries(req.items.filter(item => equipment?.some(eq => eq.id === item.equipmentId && eq.ownership === "owned")).map(item => [item.id, item.directFillQty != null ? String(item.directFillQty) : item.approvedQty != null ? String(item.approvedQty) : ""])));
     setSelectedId(req.id);
     setPurchaseQty(req.qtyPurchased ? String(req.qtyPurchased) : "");
     setPurchaseSupplier(req.supplier || "");
@@ -1725,30 +1781,8 @@ export default function DieselRequirements() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    <div>
-                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">DATE</p>
-                      <p className="font-semibold mt-1" data-testid="text-detail-date">{formatDate(selectedRequirement.date)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">RAISED BY</p>
-                      <p className="font-semibold mt-1" data-testid="text-detail-raised-by">{selectedRequirement.raisedBy}</p>
-                    </div>
-                    <div>
-                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">RAISED FROM</p>
-                      <p className="font-semibold mt-1" data-testid="text-detail-location">
-                        {locationLabel({ siteId: (selectedRequirement as any).siteId ?? null, raisedFrom: (selectedRequirement as any).raisedFrom ?? null }, sitesList)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">EQUIPMENT</p>
-                      <p className="font-semibold mt-1">{selectedRequirement.items?.length || 0} ITEMS</p>
-                    </div>
-                    <div>
-                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">TOTAL REQUIRED</p>
-                      <p className="font-semibold mt-1 text-amber-600" data-testid="text-detail-total">{Math.round(selectedRequirement.totalPlanned)} L</p>
-                    </div>
-                  </div>
+                  <RequirementFacts requirement={selectedRequirement} dateText={formatDate(selectedRequirement.date)}
+                    raisedFrom={locationLabel({ siteId: selectedRequirement.siteId ?? null, raisedFrom: selectedRequirement.raisedFrom ?? null }, sitesList)} />
                   {selectedRequirement.remarks && (
                     <div>
                       <p className="text-[12px] font-semibold text-muted-foreground uppercase">REMARKS</p>
@@ -1824,98 +1858,8 @@ export default function DieselRequirements() {
                     <p className="text-xs text-muted-foreground">Admin can reduce diesel qty per equipment</p>
                   )}
                 </CardHeader>
-                <CardContent className="p-0 overflow-x-auto">
-                  <table className="w-full text-sm" data-testid="table-equipment-detail">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2">#</th>
-                        <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2">EQUIPMENT / DG</th>
-                        <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2">PURPOSE</th>
-                        <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2">HRS / KM</th>
-                        <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2">NORM</th>
-                        <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">PLANNED (L)</th>
-                        {(selectedRequirement.status === "pending" || selectedRequirement.status === "approved" || selectedRequirement.status === "purchased") && (
-                          <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">
-                            {selectedRequirement.status === "pending" ? "APPROVE (L)" : "APPROVED (L)"}
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedRequirement.items?.map((item, i) => {
-                        const approvalItem = approvalItems.find((a) => a.itemId === item.id);
-                        const isReduced = approvalItem && approvalItem.approvedQty < item.plannedQty;
-                        return (
-                          <tr key={item.id} className="border-b last:border-b-0">
-                            <td className="p-2 text-muted-foreground">{i + 1}</td>
-                            <td className="p-2 font-semibold" data-testid={`text-equip-name-${item.id}`}>{item.equipmentName}</td>
-                            <td className="p-2">{item.purpose || "\u2014"}</td>
-                            <td className="p-2">
-                              {item.estHours != null
-                                ? `${item.estHours} ${(item as any).normType === "distance" ? "km" : "hrs"}`
-                                : "\u2014"}
-                            </td>
-                            <td className="p-2">
-                              {item.norm != null ? (
-                                <span>
-                                  {item.norm} {(item as any).normType === "distance" ? "L/km" : "L/hr"}
-                                  {(item as any).normType === "distance" && item.norm > 0 && (
-                                    <span className="text-[12px] text-blue-600 ml-1">({(1/item.norm).toFixed(2)} km/L)</span>
-                                  )}
-                                </span>
-                              ) : "\u2014"}
-                            </td>
-                            <td className="p-2 text-right text-muted-foreground">{Math.round(item.plannedQty)}</td>
-                            {selectedRequirement.status === "pending" ? (
-                              <td className="p-2 text-right">
-                                <Input
-                                  type="number"
-                                  className={`w-20 text-center inline-block font-bold ${isReduced ? "border-amber-400 text-amber-600 bg-amber-50 dark:bg-amber-900/20" : "border-green-300 text-green-600 bg-green-50 dark:bg-green-900/20"}`}
-                                  value={approvalItem?.approvedQty ?? item.plannedQty}
-                                  disabled={!canApprove}
-                                  min={0}
-                                  max={item.plannedQty}
-                                  onChange={(e) => {
-                                    const val = Math.min(parseFloat(e.target.value) || 0, item.plannedQty);
-                                    setApprovalItems(
-                                      approvalItems.map((a) => a.itemId === item.id ? { ...a, approvedQty: val } : a)
-                                    );
-                                  }}
-                                  data-testid={`input-approve-qty-${item.id}`}
-                                />
-                                {isReduced && (
-                                  <p className="text-[12px] text-amber-600 font-semibold mt-1">Reduced from {Math.round(item.plannedQty)}</p>
-                                )}
-                              </td>
-                            ) : (selectedRequirement.status === "approved" || selectedRequirement.status === "purchased") ? (
-                              <td className="p-2 text-right font-bold text-green-600" data-testid={`text-approved-qty-${item.id}`}>
-                                {item.approvedQty != null ? Math.round(item.approvedQty) : "\u2014"}
-                              </td>
-                            ) : null}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-amber-50 dark:bg-amber-900/10 border-t-2 border-amber-500">
-                        <td colSpan={5} className="p-3 text-right font-bold">TOTAL PLANNED</td>
-                        <td className="p-3 text-right text-muted-foreground font-bold">
-                          {Math.round(selectedRequirement.totalPlanned)} L
-                        </td>
-                        {(selectedRequirement.status === "pending" || selectedRequirement.status === "approved" || selectedRequirement.status === "purchased") && (
-                          <td className="p-3 text-right font-extrabold text-green-600 text-lg" data-testid="text-approval-total">
-                            {selectedRequirement.status === "pending"
-                              ? `${Math.round(approvalTotal)} L`
-                              : selectedRequirement.totalApproved != null
-                                ? `${Math.round(selectedRequirement.totalApproved)} L`
-                                : "\u2014"
-                            }
-                          </td>
-                        )}
-                      </tr>
-                    </tfoot>
-                  </table>
-                </CardContent>
+                <RequirementEquipmentTable requirement={selectedRequirement} approvalItems={approvalItems} canApprove={canApprove}
+                  onApprovalChange={(id, approvedQty) => setApprovalItems(approvalItems.map(row => row.itemId === id ? { ...row, approvedQty } : row))} />
 
                 {selectedRequirement.status === "pending" && canApprove && (
                   <div className="flex justify-between items-center gap-4 p-4 border-t bg-muted/30 flex-wrap">
@@ -2004,29 +1948,18 @@ export default function DieselRequirements() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">TOTAL PLANNED</p>
-                      <p className="font-semibold mt-1 text-amber-600">{Math.round(selectedRequirement.totalPlanned)} L</p>
-                    </div>
-                    <div>
-                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">RAISED BY</p>
-                      <p className="font-semibold mt-1">{selectedRequirement.raisedBy}</p>
-                    </div>
-                    <div>
-                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">APPROVED BY</p>
-                      <p className="font-semibold mt-1">{selectedRequirement.approvedBy || "\u2014"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">STATUS</p>
-                      <p className="font-semibold mt-1 text-green-600">{selectedRequirement.status.toUpperCase()}</p>
-                    </div>
-                  </div>
+                  <RequirementFacts requirement={selectedRequirement} dateText={formatDate(selectedRequirement.date)}
+                    raisedFrom={locationLabel({ siteId: selectedRequirement.siteId ?? null, raisedFrom: selectedRequirement.raisedFrom ?? null }, sitesList)} />
                   <div>
                     <p className="text-[12px] font-bold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
                     <StatusSteps status={selectedRequirement.status} />
                   </div>
                 </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle className="text-base">EQUIPMENT BREAKDOWN</CardTitle></CardHeader>
+                <RequirementEquipmentTable requirement={selectedRequirement} />
               </Card>
 
               <Card>
