@@ -560,11 +560,12 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className={`${step === 3 ? "max-w-5xl" : "max-w-lg"} max-h-[90dvh] overflow-y-auto`}>
+      <DialogContent className={`${step === 3 ? "max-w-5xl" : "max-w-lg"} flex max-h-[calc(100dvh-1rem)] flex-col overflow-hidden`}>
         <DialogHeader>
           <DialogTitle>Create user — {steps[step]}</DialogTitle>
           <DialogDescription>Choose a starting role, assign sites, then confirm the account setup.</DialogDescription>
         </DialogHeader>
+        <div className="min-h-0 overflow-y-auto">
         <div className="flex items-center gap-1 mb-1">
           {steps.map((s, i) => (
             <div key={s} className={`h-1.5 flex-1 rounded ${i <= step ? "bg-primary" : "bg-muted"}`} data-testid={`wizard-step-${i}`} />
@@ -737,7 +738,8 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
           <PermissionReview matrix={creationProposal.matrix} privileged={isAdmin} />
           {canAdjust && onAdvanced && createdId !== null && <Button variant="outline" onClick={() => onAdvanced(createdId)} data-testid="button-wizard-advanced">Open advanced permissions</Button>}
         </div>}
-        <DialogFooter className="gap-2">
+        </div>
+        <DialogFooter className="shrink-0 gap-2">
           {step > 0 && step < 4 && (
             <Button variant="outline" onClick={() => setStep(step - 1)} disabled={busy || (failedUserId !== null && step !== 3)} data-testid="button-wizard-back">Back</Button>
           )}
@@ -904,11 +906,11 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
 
   return (
     <Dialog open={true} onOpenChange={(v) => !v && leave(onClose)}>
-      <DialogContent>
+      <DialogContent className="flex max-h-[calc(100dvh-1rem)] flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Edit person — {target.fullName}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="min-h-0 space-y-3 overflow-y-auto" data-testid="edit-person-scroll-area">
           <div className="flex flex-wrap gap-2">
             {onPermissions && canManageFeatureAccess &&
               <Button size="sm" variant="outline" onClick={() => leave(onPermissions)} data-testid="button-edit-role">Feature permissions</Button>}
@@ -1028,7 +1030,7 @@ export function EditUserDialog({ userId, users, onClose, onPermissions }: { user
               </>}
           </section>
         </div>
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => leave(onClose)} data-testid="button-edit-cancel">Cancel</Button>
           <Button
             onClick={() => save.mutate()}
@@ -1323,7 +1325,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
   if (permsQ.isLoading) {
     return (
       <Dialog open={true} onOpenChange={(v) => !v && onClose()}>
-        <DialogContent className="max-w-5xl">
+        <DialogContent className="max-w-5xl max-h-[calc(100dvh-1rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Loading permissions</DialogTitle>
             <DialogDescription>Loading this user's section permissions.</DialogDescription>
@@ -1334,7 +1336,7 @@ export function PermissionsDialog({ userId, users, onClose }: { userId: number; 
     );
   }
   if (permsQ.isError) return <Dialog open onOpenChange={(v) => !v && onClose()}>
-    <DialogContent><DialogHeader><DialogTitle>Permissions could not be loaded</DialogTitle><DialogDescription>No permissions have been changed. Retry to load the existing matrix.</DialogDescription></DialogHeader>
+    <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto"><DialogHeader><DialogTitle>Permissions could not be loaded</DialogTitle><DialogDescription>No permissions have been changed. Retry to load the existing matrix.</DialogDescription></DialogHeader>
       <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button><Button onClick={() => permsQ.refetch()}>Retry</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
@@ -1676,14 +1678,14 @@ function PasswordResetDialog({ userId, users, onClose }: { userId: number; users
 
   return (
     <Dialog open={true} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
+      <DialogContent className="flex max-h-[calc(100dvh-1rem)] flex-col overflow-hidden">
         <DialogHeader><DialogTitle>Reset password — {target?.fullName}</DialogTitle></DialogHeader>
-        <div className="space-y-3">
+        <div className="min-h-0 space-y-3 overflow-y-auto">
           <Label>New password</Label>
           <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} data-testid="input-reset-pw" />
           <p className="text-sm text-muted-foreground">Minimum 8 characters. Share with the user; they cannot change it themselves.</p>
         </div>
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={() => reset.mutate()} disabled={pw.length < 8 || reset.isPending} data-testid="button-confirm-reset-pw">
             {reset.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
