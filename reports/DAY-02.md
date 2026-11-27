@@ -22,3 +22,13 @@ ALTER TABLE daily_work_entries ADD CONSTRAINT daily_work_entries_place_check
   CHECK (place IN ('Site office', 'Plant office', 'Head office', 'Plant'));
 COMMIT;
 ```
+
+## Part 3
+- Added the four labels in the requested order. Existing `strict`/`sticky` keys and the 5-minute new-user default are unchanged; the new keys are `strict_30` and `strict_60`.
+- The server and client use the same idle-minute lookup. Device approval remains required; neither database has a CHECK involving `users.session_policy`, so no session-policy migration was needed.
+- Focused tests: **44 passed in 4 files**. Server tests cover 20/31 and 50/61 idle minutes, existing 5-minute/30-day expiry and device approval; client tests exercise each policy's idle ping. `npm run build`: **passed**.
+- Development restarted successfully: read-only startup readiness **ready: true**, **2,558 columns checked**. No existing user setting, role or permission was changed; no RMC code or switches were touched.
+
+## Final check
+- Full suite ran **once**: **6,149 passed, 0 failed, 3 skipped**; **518 files passed, 2 skipped** (328.08 seconds).
+- No production access, browser checks, screenshots, whole-project TypeScript check or publish.

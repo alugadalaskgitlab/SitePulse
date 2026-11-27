@@ -793,8 +793,20 @@ export const EDIT_RECORD_TYPE_SECTION: Record<string, SectionKey> = {
   equipment_usage: "plant_equipment",
 };
 
-export const SESSION_POLICIES = ["strict", "sticky"] as const;
+export const SESSION_POLICIES = ["strict", "strict_30", "strict_60", "sticky"] as const;
 export type SessionPolicy = (typeof SESSION_POLICIES)[number];
+export const SESSION_POLICY_LABELS: Record<SessionPolicy, string> = {
+  strict: "Log out after 5 minutes idle",
+  strict_30: "Log out after 30 minutes idle",
+  strict_60: "Log out after 1 hour idle",
+  sticky: "Stay logged in for 30 days",
+};
+export function sessionIdleMinutes(policy: SessionPolicy): number | null {
+  if (policy === "strict") return STRICT_IDLE_MINUTES;
+  if (policy === "strict_30") return 30;
+  if (policy === "strict_60") return 60;
+  return null;
+}
 
 // Session-policy timing constants (minutes / days).
 export const STRICT_IDLE_MINUTES = 5;

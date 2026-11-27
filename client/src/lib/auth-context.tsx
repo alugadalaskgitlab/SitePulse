@@ -13,7 +13,8 @@ import { bindDprEntryModeUser } from "@/lib/dprEntryMode";
 import { bindWorkspaceModeUser } from "@/lib/workspaceMode";
 import { can as canFeature, canLegacySection, projectFeaturePermissions, type FeatureAccessState, type FeatureAction, type FeatureId } from "@shared/featureAccess";
 import {
-  STRICT_IDLE_MINUTES,
+  sessionIdleMinutes,
+  type SessionPolicy,
   type PermissionMatrix,
   type SectionKey,
   type Action,
@@ -38,7 +39,7 @@ export type AuthUser = {
   // role labels.
   isFieldEngineer: boolean;
   personnelId?: number | null;
-  sessionPolicy: "strict" | "sticky";
+  sessionPolicy: SessionPolicy;
   canManagePermissions: boolean;
   permissionManagerScope: "full" | "partial" | null;
   reportsToUserId?: number | null;
@@ -119,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     bindWorkspaceModeUser(meQuery.data?.user?.id ?? null);
   }, [meQuery.data?.user?.id]);
 
-  // Track activity for the strict (5-minute idle) policy.
+  // Track activity for the idle-logout policies.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const bump = () => {
@@ -132,17 +133,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Strict-policy idle ping: every minute, if the user has been inactive for
-  // STRICT_IDLE_MINUTES we ping /me. The server's session row stamps lastSeenAt
+  // Idle-policy ping: every minute, after the selected idle time, ping /me.
+  // The server's session row stamps lastSeenAt
   // on each ping; long inactivity then expires the cookie naturally on next
   // request. We force a refetch so the UI flips to /login.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const u = meQuery.data?.user;
-    if (!u || u.sessionPolicy !== "strict") return;
+    if (!u) return;
+    const idleMinutes = sessionIdleMinutes(u.sessionPolicy);
+    if (idleMinutes === null) return;
     const interval = window.setInterval(() => {
       const idleMs = Date.now() - lastActivityRef.current;
-      if (idleMs >= STRICT_IDLE_MINUTES * 60 * 1000) {
+      if (idleMs >= idleMinutes * 60 * 1000) {
         // Force re-validation; if the server has expired us we'll get a 401.
         meQuery.refetch();
       }

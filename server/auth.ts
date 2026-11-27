@@ -34,7 +34,7 @@ import {
   emptyMatrix,
   fullMatrix,
   type SessionPolicy,
-  STRICT_IDLE_MINUTES,
+  sessionIdleMinutes,
   STICKY_MAX_AGE_DAYS,
   DEVICE_COOKIE_DAYS,
   SESSION_COOKIE_NAME,
@@ -518,8 +518,9 @@ export async function lookupSessionFromCookie(cookieHeader: string | undefined):
   const lastActivityMs = sess.lastActivityAt.getTime();
   const loginMs = sess.loginAt.getTime();
   const policy = u.sessionPolicy as SessionPolicy;
-  if (policy === "strict") {
-    if (now - lastActivityMs > STRICT_IDLE_MINUTES * 60 * 1000) return { kind: "expired" };
+  const idleMinutes = sessionIdleMinutes(policy);
+  if (idleMinutes !== null) {
+    if (now - lastActivityMs > idleMinutes * 60 * 1000) return { kind: "expired" };
   } else {
     if (now - loginMs > STICKY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000) return { kind: "expired" };
   }

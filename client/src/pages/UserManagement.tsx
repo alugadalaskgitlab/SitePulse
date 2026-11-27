@@ -27,6 +27,8 @@ import {
   type SectionKey,
   type Action,
   type SessionPolicy,
+  SESSION_POLICIES,
+  SESSION_POLICY_LABELS,
 } from "@shared/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -387,12 +389,11 @@ function UserRow({
       </td>
       <td className="py-2 pr-4">
         <Select value={user.sessionPolicy} onValueChange={(v) => patch.mutate({ sessionPolicy: v as SessionPolicy })}>
-          <SelectTrigger className="w-28 h-8" data-testid={`select-session-${user.id}`}>
+          <SelectTrigger className="w-64 h-8" data-testid={`select-session-${user.id}`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="strict">Strict (5m)</SelectItem>
-            <SelectItem value="sticky">Sticky (30d)</SelectItem>
+            {SESSION_POLICIES.map(policy => <SelectItem key={policy} value={policy}>{SESSION_POLICY_LABELS[policy]}</SelectItem>)}
           </SelectContent>
         </Select>
       </td>
@@ -602,8 +603,7 @@ export function CreateUserDialog({ open, onClose, onAdvanced }: { open: boolean;
               <Select value={policy} onValueChange={(v) => setPolicy(v as SessionPolicy)}>
                 <SelectTrigger data-testid="select-new-policy"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="strict">Strict — 5 min idle, tab close ends session</SelectItem>
-                  <SelectItem value="sticky">Sticky — 30 days max, tab close ends session</SelectItem>
+                  {SESSION_POLICIES.map(policy => <SelectItem key={policy} value={policy}>{SESSION_POLICY_LABELS[policy]}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
