@@ -1680,12 +1680,12 @@ export interface IStorage {
   createDieselRequirement(data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems>;
   approveDieselRequirement(id: number, approvedItems: { itemId: number; approvedQty: number }[], approvedBy: string): Promise<DieselRequirementWithItems | undefined>;
   rejectDieselRequirement(id: number, reason: string, rejectedBy: string): Promise<DieselRequirementWithItems | undefined>;
-  updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string | null; vendorId?: number | null; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string; paymentMode?: string; paidBy?: string }): Promise<DieselRequirementWithItems | undefined>;
+  updateDieselPurchase(id: number, purchaseData: Parameters<DatabaseStorage["updateDieselPurchase"]>[1], actor?: { id?: number; name: string }): Promise<DieselRequirementWithItems | undefined>;
   updateDieselPaymentStatus(id: number, data: { paymentStatus?: "paid"; paymentMode?: string; paidBy?: string; paymentAccountKey?: string | null }, actor: string): Promise<DieselRequirementWithItems | undefined>;
   getDieselComparisonReport(dateFrom: string, dateTo: string): Promise<{ date: string; totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }[]>;
   getDieselComparisonEquipmentSources(dateFrom: string, dateTo: string): Promise<Omit<import("./dieselComparisonEquipment").ComparisonInput, "dateWise">>;
-  updateDieselRequirement(id: number, data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems | undefined>;
-  deleteDieselRequirement(id: number): Promise<boolean>;
+  updateDieselRequirement(id: number, data: CreateDieselRequirementRequest, actor?: { id?: number; name: string }): Promise<DieselRequirementWithItems | undefined>;
+  deleteDieselRequirement(id: number, actor?: { id?: number; name: string }): Promise<boolean>;
   getRecentDieselItemIds(limit?: number): Promise<number[]>;
 
   // Vendor Bills
@@ -6604,13 +6604,15 @@ export class DatabaseStorage implements IStorage {
     requirementId: number,
   ): Promise<{ id: number; status: string; qty_purchased: number | string | null } | undefined> {
     const requirementResult = await tx.execute(sql`
-      SELECT id, status, qty_purchased
+    SELECT id, status, qty_purchased, filled_directly
       FROM diesel_requirements
       WHERE id = ${requirementId}
       LIMIT 1
       FOR UPDATE
     `);
-    return requirementResult.rows?.[0] as { id: number; status: string; qty_purchased: number | string | null } | undefined;
+    const row = requirementResult.rows?.[0];
+    if (row?.filled_directly) throw Object.assign(new Error("Filled directly — received and issued. Do not record a store receipt for this purchase."), { code: "BAD_REQUEST" });
+    return row as { id: number; status: string; qty_purchased: number | string | null } | undefined;
   }
 
   async createMaterialReceipt(receipt: InsertMaterialReceipt): Promise<MaterialReceipt> {
@@ -22856,26 +22858,95 @@ export class DatabaseStorage implements IStorage {
     return result as DieselRequirementWithItems | undefined;
   }
 
-  async updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string | null; vendorId?: number | null; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string; paymentMode?: string; paidBy?: string }): Promise<DieselRequirementWithItems | undefined> {
-    const existing = await this.getDieselRequirement(id);
+  async updateDieselPurchase(id: number, purchaseData: { qtyPurchased?: number; supplier?: string | null; vendorId?: number | null; billNo?: string; rate?: number; amount?: number; purchasedAt?: string; purchaseRemarks?: string; paymentMode?: string; paidBy?: string; filledDirectly?: boolean; filledOn?: string; directFills?: { itemId: number; quantity: number }[] }, actor?: { id?: number; name: string }): Promise<DieselRequirementWithItems | undefined> {
+    return db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(dieselRequirements).where(eq(dieselRequirements.id, id)).for("update");
     if (!existing) return undefined;
-
-    const updates: any = { ...purchaseData };
+    const items = await tx.select().from(dieselRequirementItems).where(eq(dieselRequirementItems.requirementId, id));
+    const { directFills, ...header } = purchaseData;
+    const updates: any = { ...header };
     if (updates.supplier !== undefined) updates.supplier = updates.supplier?.trim() || null;
     if (updates.billNo) updates.billNo = updates.billNo.toUpperCase();
     if (updates.purchaseRemarks) updates.purchaseRemarks = updates.purchaseRemarks.toUpperCase();
     if (!updates.purchasedAt) updates.purchasedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
     updates.status = "purchased";
 
-    await db.update(dieselRequirements)
+    if (updates.filledDirectly ?? existing.filledDirectly) {
+      const fills = directFills ?? items.map(item => ({ itemId: item.id, quantity: item.directFillQty || 0 }));
+      const bad = (message: string) => { throw Object.assign(new Error(message), { code: "BAD_REQUEST" }); };
+      if (new Set(fills.map(fill => fill.itemId)).size !== fills.length ||
+          fills.some(fill => !items.some(item => item.id === fill.itemId) || !Number.isFinite(fill.quantity) || fill.quantity < 0)) {
+        bad("Choose each requirement vehicle once and enter valid litres.");
+      }
+      const quantity = updates.qtyPurchased ?? existing.qtyPurchased;
+      if (!(quantity > 0) || Math.abs(fills.reduce((sum, fill) => sum + fill.quantity, 0) - quantity) > 0.000001) {
+        bad("Vehicle litres must add up exactly to the litres bought.");
+      }
+      updates.filledOn = updates.filledOn || existing.filledOn || updates.purchasedAt.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(updates.filledOn) || Number.isNaN(Date.parse(updates.filledOn))) bad("Choose a valid Filled on date.");
+      // A physical store receipt cannot also become an automatic vehicle fill.
+      const receipts = await tx.select({ id: materialReceipts.id }).from(materialReceipts).where(and(
+        eq(materialReceipts.linkedDieselRequirementId, id),
+        sql`COALESCE(${materialReceipts.isCancelled}, false) = false`,
+        sql`COALESCE(${materialReceipts.isDeleted}, false) = false`,
+      ));
+      if (receipts.length) bad("This purchase already has a store receipt. It cannot also be filled directly.");
+      for (const item of items) {
+        const quantity = fills.find(fill => fill.itemId === item.id)?.quantity || 0;
+        if (quantity > 0) {
+          const [equipment] = item.equipmentId == null ? [] : await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, item.equipmentId));
+          if (!equipment || equipment.ownership !== "owned") bad("Direct fills are for own equipment only.");
+        }
+        await tx.update(dieselRequirementItems).set({ directFillQty: quantity }).where(eq(dieselRequirementItems.id, item.id));
+      }
+    } else if (existing.filledDirectly || purchaseData.filledDirectly === false) {
+      updates.filledOn = null;
+      await tx.update(dieselRequirementItems).set({ directFillQty: null }).where(eq(dieselRequirementItems.requirementId, id));
+    }
+    await tx.update(dieselRequirements)
       .set(updates)
       .where(eq(dieselRequirements.id, id));
-
-    const result = await db.query.dieselRequirements.findFirst({
-      where: eq(dieselRequirements.id, id),
-      with: { items: true },
+    if (existing.filledDirectly || updates.filledDirectly) {
+      await this.syncDieselDirectFill(tx, id, actor);
+    }
+    const [result] = await tx.select().from(dieselRequirements).where(eq(dieselRequirements.id, id));
+    return { ...result, items: await tx.select().from(dieselRequirementItems).where(eq(dieselRequirementItems.requirementId, id)) };
     });
-    return result as DieselRequirementWithItems | undefined;
+  }
+
+  private async syncDieselDirectFill(tx: any, id: number, actor?: { id?: number; name: string }) {
+    const [requirement] = await tx.select().from(dieselRequirements).where(eq(dieselRequirements.id, id));
+    const items = await tx.select().from(dieselRequirementItems).where(eq(dieselRequirementItems.requirementId, id));
+    const ids = items.map((item: any) => item.id);
+    const before = ids.length ? await tx.select().from(stockLedger).where(and(
+      eq(stockLedger.transactionType, "diesel_direct_fill"), inArray(stockLedger.referenceId, ids),
+    )) : [];
+    if (ids.length) await tx.delete(stockLedger).where(and(
+      eq(stockLedger.transactionType, "diesel_direct_fill"), inArray(stockLedger.referenceId, ids),
+    ));
+    const after = [];
+    if (requirement.filledDirectly && requirement.status === "purchased") {
+      const material = await this.resolveCanonicalDieselMaterial(tx);
+      const partyId = await this.getOwnCompanyPartyId(tx);
+      if (!material || partyId == null) throw Object.assign(new Error("Configure the company party and DIESEL/HSD material before recording a direct fill."), { code: "BAD_REQUEST" });
+      for (const item of items) {
+        if (!(item.directFillQty > 0)) continue;
+        const [entry] = await tx.insert(stockLedger).values({
+          date: requirement.filledOn,
+          materialId: material.id, partyId,
+          transactionType: "diesel_direct_fill", referenceId: item.id,
+          quantityIn: item.directFillQty, quantityOut: item.directFillQty,
+          balanceAfter: null, uom: "Liters",
+          notes: `Filled directly at ${requirement.supplier || "supplier"}, bill ${requirement.billNo || "—"} — ${item.equipmentName}`,
+        }).returning();
+        after.push(entry);
+      }
+    }
+    await this.logAudit({
+      module: "diesel_requirements", transactionId: id, action: "direct_fill",
+      userId: actor?.id, userName: actor?.name || "User",
+      oldValues: before, newValues: after,
+    }, tx);
   }
 
   // 06M-F §4/§6: explicit payment-status action. Touches ONLY
@@ -22951,11 +23022,13 @@ export class DatabaseStorage implements IStorage {
     return result as DieselRequirementWithItems | undefined;
   }
 
-  async updateDieselRequirement(id: number, data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems | undefined> {
+  async updateDieselRequirement(id: number, data: CreateDieselRequirementRequest, actor?: { id?: number; name: string }): Promise<DieselRequirementWithItems | undefined> {
     const existing = await this.getDieselRequirement(id);
     if (!existing) return undefined;
 
     return await db.transaction(async (tx) => {
+      const [locked] = await tx.select().from(dieselRequirements).where(eq(dieselRequirements.id, id)).for("update");
+      if (!locked) return undefined;
       const updateFields: any = {
         date: data.date,
         raisedBy: data.raisedBy.toUpperCase(),
@@ -22984,6 +23057,10 @@ export class DatabaseStorage implements IStorage {
         .set(updateFields)
         .where(eq(dieselRequirements.id, id));
 
+      if (locked.filledDirectly) {
+        await tx.update(dieselRequirements).set({ filledDirectly: false, filledOn: null }).where(eq(dieselRequirements.id, id));
+        await this.syncDieselDirectFill(tx, id, actor);
+      }
       await tx.delete(dieselRequirementItems).where(eq(dieselRequirementItems.requirementId, id));
 
       let items: DieselRequirementItem[] = [];
@@ -23007,11 +23084,16 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async deleteDieselRequirement(id: number): Promise<boolean> {
+  async deleteDieselRequirement(id: number, actor?: { id?: number; name: string }): Promise<boolean> {
     const existing = await this.getDieselRequirement(id);
     if (!existing) return false;
 
     await db.transaction(async (tx) => {
+      const [locked] = await tx.select().from(dieselRequirements).where(eq(dieselRequirements.id, id)).for("update");
+      if (locked?.filledDirectly) {
+        await tx.update(dieselRequirements).set({ filledDirectly: false, filledOn: null }).where(eq(dieselRequirements.id, id));
+        await this.syncDieselDirectFill(tx, id, actor);
+      }
       await tx.delete(dieselRequirementItems).where(eq(dieselRequirementItems.requirementId, id));
       await tx.delete(dieselRequirements).where(eq(dieselRequirements.id, id));
     });

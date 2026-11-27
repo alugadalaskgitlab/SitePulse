@@ -39,6 +39,7 @@ describePostgres("FIX 1 linked diesel receipt concurrency", () => {
         id serial PRIMARY KEY,
         status text NOT NULL,
         qty_purchased real
+        ,filled_directly boolean DEFAULT false
       );
       CREATE TABLE "${schemaName}".plant_materials (
         id serial PRIMARY KEY,

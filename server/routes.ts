@@ -6674,6 +6674,9 @@ export async function registerRoutes(
     }
 
     const linkedReq = await storage.getDieselRequirement(effectiveLink);
+    if (linkedReq?.filledDirectly) {
+      return { status: 400, body: { message: "Filled directly — received and issued. Do not record a store receipt for this purchase." } };
+    }
     if (!linkedReq || linkedReq.status !== "purchased" || !(linkedReq as any).qtyPurchased) {
       return { status: 400, body: { message: "Linked diesel requirement not found or not a completed purchase" } };
     }
@@ -14185,6 +14188,7 @@ export async function registerRoutes(
         const state = computeDieselReceiptState((dr as any).qtyPurchased, linked);
         result[dr.id] = {
           ...state,
+          ...(dr.filledDirectly ? { receivedQty: dr.qtyPurchased || 0, pendingQty: 0, status: "fully_received", directFill: true } : {}),
           receipts: linked.map((r: any) => ({
             id: r.id,
             date: r.date,
@@ -14347,6 +14351,9 @@ export async function registerRoutes(
         rate: z.number().optional(),
         amount: z.number().optional(),
         purchasedAt: z.string().optional(),
+        filledDirectly: z.boolean().optional(),
+        filledOn: z.string().date().optional(),
+        directFills: z.array(z.object({ itemId: z.number().int().positive(), quantity: z.number().finite().nonnegative() })).optional(),
         purchaseRemarks: z.string().optional(),
         // Batch 06M: PI-style payment details (same option values as PI).
         paymentMode: z.enum(["cash", "credit", "advance", "upi", "cheque", "rtgs"]).optional(),
@@ -14364,13 +14371,13 @@ export async function registerRoutes(
         }
         purchaseData.supplier = masterVendor.name;
       }
-      const requirement = await storage.updateDieselPurchase(id, purchaseData);
+      const requirement = await storage.updateDieselPurchase(id, purchaseData, { id: (req as any).authUser?.id, name: currentUserName(req) });
       if (!requirement) {
         return res.status(404).json({ message: "Diesel requirement not found" });
       }
       // 06M-C: purchase completion does NOT add stock — notify the users who
       // hold Material Receipt authority that a physical receipt is pending.
-      if (purchaseData.qtyPurchased !== undefined && purchaseData.qtyPurchased > 0) {
+      if (!requirement.filledDirectly && purchaseData.qtyPurchased !== undefined && purchaseData.qtyPurchased > 0) {
         const supplier = purchaseData.supplier || (requirement as any).supplier || "";
         sendPushToSection(
           "plant_materials",
@@ -14385,6 +14392,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: err.errors[0].message });
       }
       console.error("Error updating diesel purchase:", err);
+      if ((err as any)?.code === "BAD_REQUEST") return res.status(400).json({ message: (err as Error).message });
       res.status(500).json({ message: "Failed to update diesel purchase" });
     }
   });
@@ -14476,7 +14484,7 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ message: "Diesel requirement not found" });
 
       const validatedData = createDieselRequirementRequestSchema.parse(data);
-      const requirement = await storage.updateDieselRequirement(id, validatedData);
+      const requirement = await storage.updateDieselRequirement(id, validatedData, { id: (req as any).authUser?.id, name: currentUserName(req) });
       if (!requirement) return res.status(404).json({ message: "Diesel requirement not found" });
 
       res.json(requirement);
@@ -14492,7 +14500,7 @@ export async function registerRoutes(
     try {
       if (!assertFeatureAction(req, res, "diesel_requirement", "cancel")) return;
       const id = Number(req.params.id);
-      const deleted = await storage.deleteDieselRequirement(id);
+      const deleted = await storage.deleteDieselRequirement(id, { id: (req as any).authUser?.id, name: currentUserName(req) });
       if (!deleted) return res.status(404).json({ message: "Diesel requirement not found" });
       res.json({ success: true });
     } catch (err: any) {

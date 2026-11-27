@@ -1395,6 +1395,8 @@ export const stockLedger = pgTable("stock_ledger", {
   packedCountOut: real("packed_count_out"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
+  dieselDirectFillItemIdx: uniqueIndex("stock_ledger_diesel_direct_fill_item_idx")
+    .on(table.referenceId).where(sql`${table.transactionType} = 'diesel_direct_fill'`),
   dateIdx: index("stock_ledger_date_idx").on(table.date),
   dateMaterialPartyIdx: index("stock_ledger_date_material_party_idx").on(table.date, table.materialId, table.partyId),
   // Unique partial index — prevents duplicate dispatch ledger rows for the same
@@ -2997,6 +2999,8 @@ export const dieselRequirements = pgTable("diesel_requirements", {
   approvedAt: text("approved_at"),
   rejectionReason: text("rejection_reason"),
   qtyPurchased: real("qty_purchased"),
+  filledDirectly: boolean("filled_directly").default(false),
+  filledOn: date("filled_on"),
   supplier: text("supplier"),
   vendorId: integer("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
   billNo: text("bill_no"),
@@ -3039,6 +3043,7 @@ export const dieselRequirementItems = pgTable("diesel_requirement_items", {
   normType: text("norm_type").default("hourly"),
   plannedQty: real("planned_qty").notNull(),
   approvedQty: real("approved_qty"),
+  directFillQty: real("direct_fill_qty"),
 });
 
 export const dieselRequirementsRelations = relations(dieselRequirements, ({ many }) => ({

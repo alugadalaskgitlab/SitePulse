@@ -543,6 +543,9 @@ export default function DieselRequirements() {
   const canDelete = featureCan("diesel_requirement", "cancel");
 
   const [purchaseQty, setPurchaseQty] = useState("");
+  const [filledDirectly, setFilledDirectly] = useState(false);
+  const [filledOn, setFilledOn] = useState("");
+  const [directFills, setDirectFills] = useState<Record<number, string>>({});
   const [purchaseSupplier, setPurchaseSupplier] = useState("");
   const [purchaseVendorId, setPurchaseVendorId] = useState<number | null>(null);
   const [closeSupplierMatch, setCloseSupplierMatch] = useState<DieselSupplierSuggestion | null>(null);
@@ -765,7 +768,7 @@ export default function DieselRequirements() {
       toast({ title: "Purchase details updated" });
       setView("list");
       // 06M-C: purchase does NOT add stock — prompt for the physical receipt.
-      if (vars.purchaseData?.qtyPurchased > 0) {
+      if (!vars.purchaseData?.filledDirectly && vars.purchaseData?.qtyPurchased > 0) {
         setPostPurchase({ id: vars.id, qty: vars.purchaseData.qtyPurchased, supplier: vars.purchaseData.supplier || "" });
       }
     },
@@ -953,6 +956,9 @@ export default function DieselRequirements() {
   // approved requirement opens for purchase AND when a purchased one is
   // reopened to edit its details retrospectively.
   const openPurchaseForm = (req: DieselRequirementWithItems) => {
+    setFilledDirectly(!!req.filledDirectly);
+    setFilledOn(req.filledOn || req.purchasedAt?.slice(0, 10) || format(new Date(), "yyyy-MM-dd"));
+    setDirectFills(Object.fromEntries(req.items.filter(item => equipment?.some(eq => eq.id === item.equipmentId && eq.ownership === "owned")).map(item => [item.id, String(item.directFillQty ?? item.approvedQty ?? 0)])));
     setSelectedId(req.id);
     setPurchaseQty(req.qtyPurchased ? String(req.qtyPurchased) : "");
     setPurchaseSupplier(req.supplier || "");
@@ -1036,12 +1042,18 @@ export default function DieselRequirements() {
   const savePurchaseWithSupplier = (supplierName: string, vendorId: number | null) => {
     if (!selectedId) return;
     const qty = parseFloat(purchaseQty);
+    if (filledDirectly && (!(qty > 0) || Math.abs(Object.values(directFills).reduce((sum, value) => sum + Number(value || 0), 0) - qty) > 0.000001)) {
+      toast({ title: "Vehicle litres must add up exactly to the litres bought.", variant: "destructive" });
+      return;
+    }
     const rate = parseFloat(purchaseRate);
     const computedAmount = qty && rate ? Math.round(qty * rate * 100) / 100 : parseFloat(purchaseAmount) || undefined;
     purchaseMutation.mutate({
       id: selectedId,
       purchaseData: {
         qtyPurchased: qty || undefined,
+        filledDirectly,
+        ...(filledDirectly ? { filledOn: filledOn || purchasedAt?.slice(0, 10) || format(new Date(), "yyyy-MM-dd"), directFills: Object.entries(directFills).map(([itemId, quantity]) => ({ itemId: Number(itemId), quantity: Number(quantity || 0) })) } : {}),
         supplier: supplierName.trim() || null,
         vendorId,
         billNo: purchaseBillNo.toUpperCase() || undefined,
@@ -1397,7 +1409,7 @@ export default function DieselRequirements() {
                           </div>
                           <div className="relative flex flex-col items-end gap-1">
                             {getStatusBadge(req.status)}
-                            {req.status === "purchased" && receiptStatusBadge(receiptStatusMap?.[req.id])}
+                            {req.status === "purchased" && (req.filledDirectly ? <Badge variant="outline">Filled directly — received and issued</Badge> : receiptStatusBadge(receiptStatusMap?.[req.id]))}
                             {((req as any).paymentStatus || "pending") === "paid" && (
                               <Badge
                                 variant="outline"
@@ -1740,7 +1752,7 @@ export default function DieselRequirements() {
                 <>
                   <DieselPurchaseSummary requirement={selectedRequirement} />
                   {/* 06M-C: Purchased ≠ Received — physical receipt tracking */}
-                  {selectedRequirement.qtyPurchased ? (
+                  {selectedRequirement.filledDirectly ? <p>Filled directly — received and issued</p> : selectedRequirement.qtyPurchased ? (
                     <DieselReceiptPanel
                       state={receiptStatusMap?.[selectedRequirement.id] ?? {
                         purchasedQty: selectedRequirement.qtyPurchased,
@@ -2001,6 +2013,18 @@ export default function DieselRequirements() {
                   <CardTitle className="text-base">UPDATE PURCHASE DETAILS</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={filledDirectly} onChange={event => setFilledDirectly(event.target.checked)} />
+                    Filled directly into the vehicle at the pump
+                  </label>
+                  {filledDirectly && <div className="space-y-3">
+                    <label>Filled on<Input type="date" value={filledOn} onChange={event => setFilledOn(event.target.value)} /></label>
+                    {selectedRequirement.items.filter(item => equipment?.some(eq => eq.id === item.equipmentId && eq.ownership === "owned")).map(item => <label className="block" key={item.id}>
+                      {item.equipmentName} (L)
+                      <Input type="number" min="0" step="any" value={directFills[item.id] ?? ""} onChange={event => setDirectFills(values => ({ ...values, [item.id]: event.target.value }))} />
+                    </label>)}
+                    <p>Total {Object.values(directFills).reduce((sum, value) => sum + Number(value || 0), 0)} L of {purchaseQty || 0} L</p>
+                  </div>}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <Label className="text-sm">QTY PURCHASED (LITERS)</Label>
