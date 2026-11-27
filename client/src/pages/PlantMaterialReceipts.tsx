@@ -465,6 +465,12 @@ export default function PlantMaterialReceipts() {
     return m?.name || "";
   }, [materials, materialId]);
   const isSelectedDiesel = /^(diesel|hsd)$/i.test(selectedMaterialName.trim());
+  useEffect(() => {
+    if (!isSelectedDiesel) return;
+    setReceiveAsPacked(false);
+    setActualNetWeightKg("");
+    setUom("Liters");
+  }, [isSelectedDiesel]);
   const canRecordStandaloneDiesel = featureCan("plant_receipts", "add") || featureCan("diesel_issue", "edit");
   const { data: dieselRequirements = [], isLoading: dieselRequirementsLoading } = useQuery<any[]>({
     queryKey: ["/api/diesel-requirements"],
@@ -917,13 +923,14 @@ export default function PlantMaterialReceipts() {
     }
     
     const selectedMaterial = materials?.find(m => m.id === parseInt(materialId));
-    if (receiveAsPacked) {
+    const packed = receiveAsPacked && !isSelectedDiesel;
+    if (packed) {
       if (!selectedMaterial?.packedUnitName) {
         toast({ title: "Packed unit not configured", description: "Set Barrel or Drum in Material Master before recording this packed receipt.", variant: "destructive" });
         return;
       }
       if (linkedDieselRequirementId != null) {
-        toast({ title: "Linked Diesel receipts use Liters", description: "Record this purchased Diesel receipt in Liters and select its receiving tank.", variant: "destructive" });
+        toast({ title: "Linked Diesel receipts use Liters", description: "Record this purchased Diesel receipt in Liters into store stock.", variant: "destructive" });
         return;
       }
       const hasStandard = Number(selectedMaterial.packedUnitNetWeightKg) > 0 || Number(selectedMaterial.packedUnitVolumeLiters) > 0;
@@ -936,12 +943,12 @@ export default function PlantMaterialReceipts() {
         return;
       }
     }
-    const tankManagedMaterial = selectedMaterial && /bitumen|emulsion|ldo|diesel|hsd/i.test(`${selectedMaterial.category ?? ""} ${selectedMaterial.name ?? ""}`);
-    if (tankManagedMaterial && !receiveAsPacked && tankNumber !== "1" && tankNumber !== "2") {
+    const tankManagedMaterial = !isSelectedDiesel && selectedMaterial && /bitumen|emulsion|ldo|diesel|hsd/i.test(`${selectedMaterial.category ?? ""} ${selectedMaterial.name ?? ""}`);
+    if (tankManagedMaterial && !packed && tankNumber !== "1" && tankNumber !== "2") {
       toast({ title: "Receiving tank required", description: "Bulk fuel deliveries must be assigned to Tank 1 or Tank 2. Use the packed-unit option for barrels or drums.", variant: "destructive" });
       return;
     }
-    const receiptUom = receiveAsPacked && selectedMaterial?.packedUnitName ? selectedMaterial.packedUnitName : uom;
+    const receiptUom = isSelectedDiesel ? "Liters" : packed && selectedMaterial?.packedUnitName ? selectedMaterial.packedUnitName : uom;
     submittedSummaryRef.current = { date: materialReceiptTransactionDate(invoiceDate, date), quantity, uom: receiptUom };
     const isTankMaterial = selectedMaterial && /bitumen|emulsion|ldo|diesel|hsd/i.test(`${selectedMaterial.category ?? ""} ${selectedMaterial.name ?? ""}`);
     
@@ -959,9 +966,9 @@ export default function PlantMaterialReceipts() {
         materialId: parseInt(materialId),
         quantity: parseFloat(quantity),
         uom: receiptUom,
-        packedCount: receiveAsPacked ? parseFloat(quantity) : null,
-        packedUnitName: receiveAsPacked ? selectedMaterial?.packedUnitName ?? null : null,
-        actualNetWeightKg: receiveAsPacked && actualNetWeightKg.trim() ? Number(actualNetWeightKg) : null,
+        packedCount: packed ? parseFloat(quantity) : null,
+        packedUnitName: packed ? selectedMaterial?.packedUnitName ?? null : null,
+        actualNetWeightKg: packed && actualNetWeightKg.trim() ? Number(actualNetWeightKg) : null,
         supplier,
         transporter,
         vehicleNumber,
@@ -971,7 +978,7 @@ export default function PlantMaterialReceipts() {
         invoiceNo: invoiceNo || null,
         invoiceDate: effectiveInvoiceDate,
         indentRef: linkedDieselRequirementId != null ? null : (indentRef || null),
-        tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
+        tankNumber: isSelectedDiesel ? (editingReceipt.materialId === parseInt(materialId) ? editingReceipt.tankNumber ?? null : null) : (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
         ...((editingReceipt as any).documentStatus === "submitted" && editPermissionRequestId !== null
           ? { editPermissionRequestId }
           : {}),
@@ -989,9 +996,9 @@ export default function PlantMaterialReceipts() {
         materialId: parseInt(materialId),
         quantity: parseFloat(quantity),
         uom: receiptUom,
-        packedCount: receiveAsPacked ? parseFloat(quantity) : null,
-        packedUnitName: receiveAsPacked ? selectedMaterial?.packedUnitName ?? null : null,
-        actualNetWeightKg: receiveAsPacked && actualNetWeightKg.trim() ? Number(actualNetWeightKg) : null,
+        packedCount: packed ? parseFloat(quantity) : null,
+        packedUnitName: packed ? selectedMaterial?.packedUnitName ?? null : null,
+        actualNetWeightKg: packed && actualNetWeightKg.trim() ? Number(actualNetWeightKg) : null,
         supplier,
         transporter,
         vehicleNumber,
@@ -1001,7 +1008,7 @@ export default function PlantMaterialReceipts() {
         invoiceNo: invoiceNo || null,
         invoiceDate: effectiveInvoiceDate,
         indentRef: linkedDieselRequirementId != null ? null : (isSelectedPartyNonPurchase ? null : (indentRef || null)),
-        tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
+        tankNumber: (!isSelectedDiesel && isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
         // 06M-C: purchase↔receipt audit linkage (never inferred, only deep-linked)
         linkedDieselRequirementId: linkedDieselRequirementId ?? null,
         dieselExceptionReason: dieselExceptionReason.trim() || null,
@@ -1508,7 +1515,7 @@ export default function PlantMaterialReceipts() {
               {(() => {
                 const selectedMat = materials?.find(m => m.id === parseInt(materialId));
                 const isFuel = selectedMat && /bitumen|emulsion|ldo|diesel|hsd/i.test(`${selectedMat.category ?? ""} ${selectedMat.name ?? ""}`);
-                const showTank = !!isFuel;
+                const showTank = !!isFuel && !isSelectedDiesel;
                 if (!showTank) return null;
                 return (
                   <div>
@@ -1547,11 +1554,11 @@ export default function PlantMaterialReceipts() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>{receiveAsPacked ? `Packed unit count (${materials?.find(m => m.id === Number(materialId))?.packedUnitName || "unit"})` : "Quantity"}</Label>
+                  <Label>{receiveAsPacked && !isSelectedDiesel ? `Packed unit count (${materials?.find(m => m.id === Number(materialId))?.packedUnitName || "unit"})` : "Quantity"}</Label>
                   <Input type="number" step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0.00" data-testid="input-quantity" />
                 </div>
                 <div>
-                  {receiveAsPacked ? (
+                  {receiveAsPacked && !isSelectedDiesel ? (
                     <>
                       <Label>UOM</Label>
                       <div className="h-10 rounded-md border bg-muted px-3 py-2 text-sm" data-testid="text-packed-receipt-uom">{materials?.find(m => m.id === Number(materialId))?.packedUnitName}</div>
@@ -1559,7 +1566,7 @@ export default function PlantMaterialReceipts() {
                   ) : (
                     <>
                       <Label>UOM{linkedDieselRequirementId != null && <span className="text-muted-foreground text-sm"> (canonical Liters)</span>}</Label>
-                      <Select value={uom} onValueChange={setUom} disabled={linkedDieselRequirementId != null}>
+                      <Select value={uom} onValueChange={setUom} disabled={isSelectedDiesel}>
                         <SelectTrigger data-testid="select-uom" aria-describedby={linkedDieselRequirementId != null ? "diesel-canonical-source" : undefined}>
                           <SelectValue />
                         </SelectTrigger>
@@ -1575,7 +1582,7 @@ export default function PlantMaterialReceipts() {
               </div>
               {(() => {
                 const packedMaterial = materials?.find(material => material.id === Number(materialId));
-                if (!packedMaterial) return null;
+                if (!packedMaterial || isSelectedDiesel) return null;
                 const isKnownFuel = /bitumen|emulsion|ldo|diesel|hsd/i.test(`${packedMaterial.category ?? ""} ${packedMaterial.name}`);
                 if (!packedMaterial.packedUnitName && !isKnownFuel) return null;
                 const packedCount = Number(quantity) || 0;
@@ -1637,9 +1644,6 @@ export default function PlantMaterialReceipts() {
                       <p className="text-xs text-amber-700">
                         {isKnownFuel ? "Set barrel weight in Material Master before receiving this material in barrels or drums." : "Complete the packed-unit profile in Material Master."}
                       </p>
-                    )}
-                    {linkedDieselRequirementId != null && (
-                      <p className="text-xs text-muted-foreground">Linked Diesel purchases must be received in Liters and assigned to a tank.</p>
                     )}
                   </div>
                 );

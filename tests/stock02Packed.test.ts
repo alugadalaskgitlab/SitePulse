@@ -225,6 +225,70 @@ it("requires a tank for bulk LDO receipts", async () => {
   } as any)).rejects.toThrow("Bulk fuel receipts must be assigned to Tank 1 or Tank 2.");
 });
 
+describe("DIESEL-02 store receipts (real PGlite transactions)", () => {
+  it.each(["DIESEL", "HSD"])("receives %s in Liters without a tank or packed stock", async name => {
+    await pg.exec(`INSERT INTO plant_materials (id, name, category, default_uom) VALUES (41, '${name}', 'Diesel', 'Liters')`);
+    const receipt = await storage.createMaterialReceipt({
+      date: "2026-11-27", materialId: 41, quantity: 100, uom: "Liters",
+      receiptNo: "DSL-STORE-FIXTURE", partyId: 7, isPlantCommon: 0,
+    });
+    expect(receipt.tankNumber).toBeNull();
+    const [ledger] = (await pg.query("SELECT quantity_in, tank_number, stock_position FROM stock_ledger WHERE reference_id=$1", [receipt.id])).rows as any[];
+    expect(Number(ledger.quantity_in)).toBe(100);
+    expect(ledger.tank_number).toBeNull();
+    expect(ledger.stock_position).toBeNull();
+    expect((await pg.query("SELECT * FROM ldo_flow_readings")).rows).toHaveLength(0);
+    const corrected = await storage.updateMaterialReceipt(receipt.id, { supplier: "Fixture correction" });
+    expect(corrected.tankNumber).toBeNull();
+  });
+
+  it("saves a linked diesel purchase receipt without a tank and preserves its purchase link", async () => {
+    await pg.exec(`
+      INSERT INTO plant_materials (id, name, category, default_uom) VALUES (41, 'DIESEL', 'Diesel', 'Liters');
+      INSERT INTO diesel_requirements (id, date, raised_by, total_planned, status, qty_purchased, filled_directly)
+        VALUES (9095, '2026-11-27', 'Fixture', 200, 'purchased', 200, false);
+    `);
+    try {
+      const receipt = await storage.createMaterialReceipt({
+        date: "2026-11-27", materialId: 41, quantity: 100, uom: "Liters",
+        receiptNo: "DSL-LINKED-FIXTURE", partyId: 7, isPlantCommon: 0, linkedDieselRequirementId: 9095,
+      });
+      expect(receipt.tankNumber).toBeNull();
+      expect(receipt.linkedDieselRequirementId).toBe(9095);
+      const [balance] = (await pg.query("SELECT balance FROM stock_balances WHERE material_id=41 AND party_id=7")).rows as any[];
+      expect(Number(balance.balance)).toBe(100);
+    } finally {
+      await pg.exec("DELETE FROM diesel_requirements WHERE id=9095");
+    }
+  });
+
+  it("ignores a tank supplied on a new diesel receipt", async () => {
+    await pg.exec(`INSERT INTO plant_materials (id, name, category, default_uom) VALUES (41, 'DIESEL', 'Diesel', 'Liters')`);
+    const receipt = await storage.createMaterialReceipt({
+      date: "2026-11-27", materialId: 41, quantity: 100, uom: "Liters", tankNumber: 1,
+      receiptNo: "DSL-NO-TANK-FIXTURE", partyId: 7, isPlantCommon: 0,
+    });
+    expect(receipt.tankNumber).toBeNull();
+    expect((await pg.query("SELECT * FROM ldo_flow_readings")).rows).toHaveLength(0);
+  });
+
+  it("does not convert a diesel receipt into packed stock", async () => {
+    await pg.exec(`INSERT INTO plant_materials (id, name, category, default_uom, packed_unit_name, packed_unit_volume_liters) VALUES (41, 'DIESEL', 'Diesel', 'Liters', 'Barrel', 200)`);
+    await expect(storage.createMaterialReceipt({
+      date: "2026-11-27", materialId: 41, quantity: 2, uom: "Barrel",
+      packedCount: 2, packedUnitName: "Barrel", receiptNo: "DSL-PACKED-FIXTURE", partyId: 7, isPlantCommon: 0,
+    })).rejects.toThrow("Diesel/HSD receipts must be received in Liters into store stock.");
+  });
+
+  it.each(["BITUMEN", "EMULSION", "LDO"])("still requires a tank for bulk %s", async name => {
+    await pg.exec(`INSERT INTO plant_materials (id, name, category, default_uom) VALUES (41, '${name}', '${name}', 'Liters')`);
+    await expect(storage.createMaterialReceipt({
+      date: "2026-11-27", materialId: 41, quantity: 100, uom: "Liters",
+      receiptNo: "BULK-FIXTURE", partyId: 7, isPlantCommon: 0,
+    })).rejects.toThrow("Bulk fuel receipts must be assigned to Tank 1 or Tank 2.");
+  });
+});
+
 it("keeps packed LDO separate when the physical tank correction is posted", async () => {
   await pg.exec(`
     INSERT INTO parties (id, name) VALUES (7, 'Synthetic party');

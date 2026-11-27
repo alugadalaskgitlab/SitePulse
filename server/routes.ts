@@ -6648,6 +6648,16 @@ export async function registerRoutes(
       return null;
     }
 
+    // New Diesel/HSD receipts go to store stock. Corrections retain the tank
+    // recorded on an existing receipt, rather than rewriting historical facts.
+    input.tankNumber = existing?.materialId === materialId ? existing.tankNumber : null;
+    if (input.packedCount != null) {
+      return { status: 400, body: { message: "Diesel/HSD receipts must be received in Liters into store stock." } };
+    }
+    if ((!existing || input.uom !== undefined) && (input.uom ?? "").trim().toLowerCase() !== "liters") {
+      return { status: 400, body: { code: "LINKED_DIESEL_UOM_INVALID", message: "Diesel/HSD receipts must use UOM Liters" } };
+    }
+
     if (effectiveLink == null) {
       // Historical unlinked Diesel/HSD rows predate the exception field. An
       // ordinary correction must leave them distinguishable as legacy rows:

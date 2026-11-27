@@ -5,9 +5,15 @@ description: Purchased ≠ Received for Daily Diesel purchases; linked Material 
 
 # Diesel purchase → Material Receipt linkage (06M-C)
 
-**Rule:** a Daily Diesel Requirement purchase NEVER adds plant stock. Stock enters only through its explicitly linked physical receipt. Purchased/Received/Pending/Variance and receipt progress are ALWAYS derived, never stored. Purchase evidence remains purchase-owned and is reused in receipt context by reference, never copied.
+**Rule:** an ordinary store-stock Daily Diesel Requirement purchase never adds plant stock. Stock enters only through its explicitly linked physical receipt. Explicit pump direct-fills are a separate receipt-and-immediate-issue flow, not another store receipt. Purchased/Received/Pending/Variance and receipt progress are always derived, never stored. Purchase evidence remains purchase-owned and is reused in receipt context by reference, never copied.
 
 **Why:** anti-pilferage — Purchased is the purchaser's claim, Received is an independent physical confirmation; storing receivedQty would go stale on receipt cancel/edit.
+
+**Rule:** Diesel/HSD is received in Liters into store stock, with no receiving tank or packed/barrel flow. Keep historical recorded tank numbers unchanged. Bitumen, LDO and emulsion retain their separate tank and packed-stock rules.
+
+**Why:** the Owner explicitly distinguished Diesel/HSD store receipts from the plant's other fuel receipts.
+
+**How to apply:** do not reintroduce the generic bulk-fuel tank requirement or barrel prompts for Diesel/HSD when changing receipt validation or forms.
 
 Stock-balance locking alone does not protect the linked purchase's receipt limit. Serialize the remaining-purchased-quantity check and physical receipt/stock write against the linked requirement in one transaction.
 

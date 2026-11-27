@@ -107,6 +107,34 @@ const R = (id: number, quantity: number, extra: any = {}) => ({
   finalSubmittedBy: null, linkedDieselRequirementId: 77, ...extra,
 });
 
+describe("DIESEL-02 diesel receipt tank handling", () => {
+  it("accepts a linked purchase receipt without a tank and passes none to storage", async () => {
+    const previous = fx.linkedReceipts;
+    fx.linkedReceipts = [];
+    try {
+      const { storage } = await import("../server/storage");
+      const response = await request(app).post("/api/plant-module/material-receipts").send({
+        date: "2026-11-27", materialId: 12, quantity: 100, uom: "Liters",
+        linkedDieselRequirementId: 77, partyId: null, isPlantCommon: 1,
+      });
+      expect(response.status).toBe(201);
+      expect((storage.createMaterialReceipt as any).mock.calls.at(-1)[0].tankNumber).toBeNull();
+    } finally { fx.linkedReceipts = previous; }
+  });
+  it("keeps the recorded tank on a historical diesel receipt correction", async () => {
+    const previous = fx.receipt;
+    fx.receipt = { ...previous, tankNumber: 2 };
+    try {
+      const { storage } = await import("../server/storage");
+      const response = await request(app).put("/api/plant-module/material-receipts/501").send({
+        supplier: "Corrected supplier", tankNumber: null,
+      });
+      expect(response.status).toBe(200);
+      expect((storage.updateMaterialReceipt as any).mock.calls.at(-1)[1].tankNumber).toBe(2);
+    } finally { fx.receipt = previous; }
+  });
+});
+
 describe("PERM-02 standalone diesel permission matrix", () => {
   for (const [label, grant, allowed] of [
     ["A granular-only", { diesel_req_raise: { edit: true } }, true],

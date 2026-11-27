@@ -6633,7 +6633,13 @@ export class DatabaseStorage implements IStorage {
         .where(eq(plantMaterials.id, receipt.materialId)).limit(1);
       const material = storedMaterial ? withEffectiveMaterialDensity(storedMaterial) : undefined;
       if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
-      const tankManaged = /bitumen|emulsion|ldo|diesel|hsd/i.test(`${material.category ?? ""} ${material.name}`);
+      const diesel = /^(diesel|hsd)$/i.test(material.name.trim());
+      // Diesel is received into store stock, not a plant fuel tank.
+      if (diesel) {
+        if (receipt.packedCount != null) throw new Error("Diesel/HSD receipts must be received in Liters into store stock.");
+        receipt = { ...receipt, tankNumber: null };
+      }
+      const tankManaged = !diesel && /bitumen|emulsion|ldo|diesel|hsd/i.test(`${material.category ?? ""} ${material.name}`);
       if (receipt.packedCount != null && receipt.tankNumber != null) {
         throw new Error("Packed barrels or drums must remain in packed stock; decant them into a tank separately.");
       }
@@ -6642,7 +6648,7 @@ export class DatabaseStorage implements IStorage {
       }
       if (receipt.linkedDieselRequirementId != null) {
         if (receipt.packedCount != null || !/^(liters?|litres?|l)$/i.test(receipt.uom.trim())) {
-          throw new Error("Linked Diesel purchases must be received in Liters and assigned to a tank.");
+          throw new Error("Linked Diesel purchases must be received in Liters.");
         }
         await this._assertDieselReceiptWithinPurchasedQuantity(
           tx,
