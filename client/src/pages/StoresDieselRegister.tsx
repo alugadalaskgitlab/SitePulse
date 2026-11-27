@@ -4,6 +4,7 @@ import { ChevronDown, ExternalLink, FileText, Fuel, ReceiptText } from "lucide-r
 import { useLocation } from "wouter";
 import { HubShell } from "@/components/HubShell";
 import { DieselDirectFillReview, directFillStatus } from "@/components/DieselDirectFillReview";
+import { dieselRequisitionNo } from "@shared/dieselRequisitionNo";
 import { InstalledDocumentLink } from "@/components/InstalledDocumentLink";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -84,7 +85,7 @@ function RequirementRow({
         <div className="flex flex-wrap items-center gap-3">
           <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
           <div className="flex-1 min-w-[180px]">
-            <p className="font-semibold text-slate-800">Diesel requirement #{requirement.id}</p>
+            <p className="font-semibold text-slate-800">{dieselRequisitionNo(requirement)}</p>
             <p className="text-sm text-slate-500">{requirement.date} · {locationLabel(requirement, sites)}</p>
           </div>
           <Badge variant="outline" className={dieselRegisterStatusClass(deriveDieselRegisterStatus(requirement.status, receipt))}>{status}</Badge>
@@ -93,7 +94,7 @@ function RequirementRow({
       </button>
       {open && (
         <div className="border-t border-slate-100 p-4 space-y-4">
-          {requirement.filledDirectly && <DieselDirectFillReview fills={requirement.directFills} />}
+          {requirement.filledDirectly && <DieselDirectFillReview fills={requirement.directFills} requirement={requirement} />}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
             <div><p className="text-xs uppercase text-slate-500">Requirement date</p><p className="font-medium">{requirement.date}</p></div>
             <div><p className="text-xs uppercase text-slate-500">Location</p><p className="font-medium">{locationLabel(requirement, sites)}</p></div>

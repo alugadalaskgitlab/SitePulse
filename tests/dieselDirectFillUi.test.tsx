@@ -12,7 +12,7 @@ vi.mock("../client/src/hooks/use-toast", () => ({ useToast: () => ({ toast: mock
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 const fill: DieselDirectFillView = {
   requirementId: 1, itemId: 11, equipmentId: 21, equipmentName: "Vehicle A",
-  date: "2026-11-27", quantity: 60, appliedQuantity: 0,
+  requirementDate: "2026-03-31", date: "2026-11-27", quantity: 60, appliedQuantity: 0,
   conflicts: [{ usageId: 3, quantity: 60, source: "plant_stock", signature: "fixture-signature" }],
 };
 function show(fills: DieselDirectFillView[], editable = true) {
@@ -40,7 +40,7 @@ describe("direct-fill status and explicit choices", () => {
   });
   it("shows applied litres as read-only and no unresolved choices", () => {
     show([{ ...fill, appliedQuantity: 60, conflicts: [] }]);
-    expect(screen.getByText(/Filled directly: 60 L \(diesel purchase #1\)/)).toBeTruthy();
+    expect(screen.getByText(/Filled directly: 60 L \(diesel purchase DSL-REQ\/25-26\/0001\)/)).toBeTruthy();
     expect(screen.queryAllByRole("textbox")).toHaveLength(0);
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
@@ -49,5 +49,11 @@ describe("direct-fill status and explicit choices", () => {
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     expect(directFillStatus([{ ...fill, conflicts: [{ ...fill.conflicts[0], choice: "keep_usage" }] }])).toBe("Issued through vehicle entry");
     expect(directFillStatus([{ ...fill, conflicts: [{ ...fill.conflicts[0], choice: "different" }] }])).toBe("Filled directly — received and issued");
+  });
+  it("uses the requirement date, not the fill date, for pending-choice numbers", () => {
+    show([fill]);
+    expect(screen.getByText(/diesel purchase DSL-REQ\/25-26\/0001/)).toBeTruthy();
+    expect(screen.getByText(/Needs your choice/)).toBeTruthy();
+    expect(screen.queryByText(/DSL-REQ\/26-27/)).toBeNull();
   });
 });

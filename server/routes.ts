@@ -7886,8 +7886,10 @@ export async function registerRoutes(
       const fills = await storage.getDieselDirectFills(input.equipmentId, input.date);
       const requirements = (await Promise.all(fills.map(fill => storage.getDieselRequirement(fill.requirementId)))).filter(Boolean);
       const visible = await visibleDieselRequirements(req, requirements);
-      const ids = new Set(visible.map(row => row.id));
-      res.json(fills.filter(fill => ids.has(fill.requirementId)));
+      const dates = new Map(visible.map(row => [row.id, row.date]));
+      res.json(fills.filter(fill => dates.has(fill.requirementId)).map(fill => ({
+        ...fill, requirementDate: dates.get(fill.requirementId),
+      })));
     } catch (error) {
       res.status(error instanceof z.ZodError ? 400 : 500).json({ message: error instanceof z.ZodError ? error.errors[0].message : "Unable to load direct fills." });
     }
@@ -7923,7 +7925,12 @@ export async function registerRoutes(
         dateTo: req.query.dateTo as string | undefined,
       };
       const usage = await storage.getEquipmentUsage(filters);
-      res.json(usage);
+      const requirementIds = [...new Set(usage.flatMap(row => (row.directFills ?? []).map(fill => fill.requirementId)))];
+      const requirements = await Promise.all(requirementIds.map(id => storage.getDieselRequirement(id)));
+      const dates = new Map(requirements.filter(Boolean).map(row => [row!.id, row!.date]));
+      res.json(usage.map(row => row.directFills?.length ? {
+        ...row, directFills: row.directFills.map(fill => ({ ...fill, requirementDate: dates.get(fill.requirementId) })),
+      } : row));
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch equipment usage" });
     }

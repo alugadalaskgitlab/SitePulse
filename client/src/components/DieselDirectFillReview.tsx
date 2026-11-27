@@ -3,6 +3,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import type { DieselDirectFillView, DieselDirectFillChoice } from "@shared/schema";
+import { dieselRequisitionNo } from "@shared/dieselRequisitionNo";
 
 export function directFillStatus(fills: DieselDirectFillView[] = []) {
   if (fills.some(fill => fill.conflicts.some(conflict => !conflict.choice))) return "Needs your choice";
@@ -10,8 +11,9 @@ export function directFillStatus(fills: DieselDirectFillView[] = []) {
   return "Filled directly — received and issued";
 }
 
-export function DieselDirectFillReview({ fills = [], editable = false, fromUsage = false, onResolved }: {
+export function DieselDirectFillReview({ fills = [], editable = false, fromUsage = false, onResolved, requirement }: {
   fills?: DieselDirectFillView[]; editable?: boolean; fromUsage?: boolean;
+  requirement?: { id: number; date: string };
   onResolved?: (choice: DieselDirectFillChoice, usageId: number) => void;
 }) {
   const client = useQueryClient();
@@ -32,7 +34,7 @@ export function DieselDirectFillReview({ fills = [], editable = false, fromUsage
     onError: (error: Error) => toast({ title: "Diesel choice not saved", description: error.message, variant: "destructive" }),
   });
   return <div className="space-y-3">{fills.map(fill => <div className="rounded border p-3 space-y-2" key={fill.itemId}>
-    <p>{fill.equipmentName}: Filled directly: {fill.appliedQuantity} L (diesel purchase #{fill.requirementId})</p>
+    <p>{fill.equipmentName}: Filled directly: {fill.appliedQuantity} L (diesel purchase {requirement ? dieselRequisitionNo(requirement) : fill.requirementDate ? dieselRequisitionNo({ id: fill.requirementId, date: fill.requirementDate }) : "number unavailable"})</p>
     <p className="text-sm">{fill.date} · {fill.quantity} L purchased · {directFillStatus([fill])}</p>
     {fill.usageId != null && <p className="text-sm">Counted on vehicle entry #{fill.usageId}</p>}
     {fill.conflicts.filter(conflict => !conflict.choice).map(conflict => <div key={conflict.usageId} className="space-y-2">

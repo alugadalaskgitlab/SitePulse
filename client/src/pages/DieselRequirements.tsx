@@ -29,6 +29,7 @@ import type { Attachment } from "@shared/schema";
 import { computeEquipmentUsage } from "@shared/equipmentUsage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import * as XLSX from "xlsx";
+import { dieselRequisitionNo } from "@shared/dieselRequisitionNo";
 import { DailyDieselReport } from "@/components/DailyDieselReport";
 import { DieselSupplierPicker } from "@/components/DieselSupplierPicker";
 import {
@@ -1254,6 +1255,23 @@ export default function DieselRequirements() {
                 <Button variant="outline" size="sm" onClick={() => setView("daily-report")} data-testid="button-daily-report">DAILY REPORT</Button>
               ) : null}
               {featureCan("diesel_requirement", "export") && (
+                <Button variant="outline" size="sm" data-testid="button-export-requirements" onClick={() => {
+                  const rows = (requirements ?? []).map(requirement => ({
+                    "Requisition no.": dieselRequisitionNo(requirement),
+                    Date: requirement.date,
+                    "Raised by": requirement.raisedBy,
+                    Status: requirement.status,
+                    "Planned L": requirement.totalPlanned,
+                    "Approved L": requirement.totalApproved,
+                    "Purchased L": requirement.qtyPurchased,
+                  }));
+                  const book = XLSX.utils.book_new();
+                  const sheet = XLSX.utils.json_to_sheet(rows, { header: ["Requisition no.", "Date", "Raised by", "Status", "Planned L", "Approved L", "Purchased L"] });
+                  XLSX.utils.book_append_sheet(book, sheet, "Requirements");
+                  XLSX.writeFile(book, "diesel-requirements.xlsx");
+                }}>Export requirements</Button>
+              )}
+              {featureCan("diesel_requirement", "export") && (
                 <Button variant="outline" size="sm" onClick={() => { setView("report"); setReportGenerated(false); }} data-testid="button-comparison-report">
                   COMPARISON REPORT
                 </Button>
@@ -1379,7 +1397,7 @@ export default function DieselRequirements() {
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-bold text-sm" data-testid={`text-date-${req.id}`}>
-                              {formatDate(req.date)} {isToday && "(TODAY)"}
+                              {dieselRequisitionNo(req)} · {formatDate(req.date)} {isToday && "(TODAY)"}
                             </p>
                             {(() => {
                               const loc = locationLabel({ siteId: (req as any).siteId ?? null, raisedFrom: (req as any).raisedFrom ?? null }, sitesList);
@@ -1661,7 +1679,7 @@ export default function DieselRequirements() {
               <ChevronLeft className="w-5 h-5" />
             </Button>
             <h2 className="text-xl font-bold" data-testid="text-detail-title">
-              {selectedRequirement?.status === "pending" ? "APPROVAL" : "REQUIREMENT DETAILS"}
+              {selectedRequirement?.status === "pending" ? "APPROVAL" : "REQUIREMENT DETAILS"} {selectedRequirement && `— ${dieselRequisitionNo(selectedRequirement)}`}
             </h2>
           </div>
 
@@ -1671,7 +1689,7 @@ export default function DieselRequirements() {
             <>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
-                  <CardTitle className="text-base">{formatDate(selectedRequirement.date)} — DIESEL REQUIREMENT</CardTitle>
+                  <CardTitle className="text-base">{dieselRequisitionNo(selectedRequirement)} · {formatDate(selectedRequirement.date)} — DIESEL REQUIREMENT</CardTitle>
                   <div className="flex items-center gap-2 flex-wrap">
                     {(selectedRequirement.status === "purchased" || selectedRequirement.status === "rejected") && (
                       <EditPermissionButton
@@ -1753,7 +1771,7 @@ export default function DieselRequirements() {
               {selectedRequirement.status === "purchased" && (
                 <>
                   <DieselPurchaseSummary requirement={selectedRequirement} />
-                  {selectedRequirement.filledDirectly && <DieselDirectFillReview fills={selectedRequirement.directFills} editable={canEdit} />}
+                  {selectedRequirement.filledDirectly && <DieselDirectFillReview fills={selectedRequirement.directFills} editable={canEdit} requirement={selectedRequirement} />}
                   {/* 06M-C: Purchased ≠ Received — physical receipt tracking */}
                   {selectedRequirement.filledDirectly ? <p>{directFillStatus(selectedRequirement.directFills)}</p> : selectedRequirement.qtyPurchased ? (
                     <DieselReceiptPanel
@@ -1948,7 +1966,7 @@ export default function DieselRequirements() {
               <ChevronLeft className="w-5 h-5" />
             </Button>
             <h2 className="text-xl font-bold" data-testid="text-update-title">
-              PURCHASE UPDATE {selectedRequirement ? `\u2014 ${formatDate(selectedRequirement.date)}` : ""}
+              PURCHASE UPDATE {selectedRequirement ? `\u2014 ${dieselRequisitionNo(selectedRequirement)} · ${formatDate(selectedRequirement.date)}` : ""}
             </h2>
           </div>
 
@@ -1958,7 +1976,7 @@ export default function DieselRequirements() {
             <>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
-                  <CardTitle className="text-base">{formatDate(selectedRequirement.date)} — DIESEL REQUIREMENT</CardTitle>
+                  <CardTitle className="text-base">{dieselRequisitionNo(selectedRequirement)} · {formatDate(selectedRequirement.date)} — DIESEL REQUIREMENT</CardTitle>
                   <div className="flex items-center gap-2 flex-wrap">
                     {canEdit && (
                       <Button

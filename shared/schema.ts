@@ -3073,6 +3073,7 @@ export type DieselRequirementWithItems = DieselRequirement & {
 export type DieselDirectFillChoice = "keep_purchase" | "keep_usage" | "different";
 export type DieselDirectFillView = {
   requirementId: number; itemId: number; equipmentId: number; equipmentName: string;
+  requirementDate?: string;
   date: string; quantity: number; appliedQuantity: number;
   usageId?: number | null;
   conflicts: { usageId: number; quantity: number; source: string; signature: string; choice?: DieselDirectFillChoice }[];

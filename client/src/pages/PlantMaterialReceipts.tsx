@@ -27,6 +27,7 @@ import { VendorMasterNamePicker } from "@/components/VendorMasterNamePicker";
 import type { ExistingTripVendor } from "@/components/trip-role-utils";
 import { useUpload } from "@/hooks/use-upload";
 import * as XLSX from "xlsx";
+import { dieselRequisitionNo } from "@shared/dieselRequisitionNo";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -1662,7 +1663,7 @@ export default function PlantMaterialReceipts() {
                         </SelectItem>
                         {purchasedDieselRequirements.map((requirement) => (
                           <SelectItem key={requirement.id} value={String(requirement.id)}>
-                            #{requirement.id} · {requirement.date} · Purchased {requirement.qtyPurchased} L
+                            {dieselRequisitionNo(requirement)} · {requirement.date} · Purchased {requirement.qtyPurchased} L
                           </SelectItem>
                         ))}
                       </SelectContent>

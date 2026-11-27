@@ -162,10 +162,10 @@ describe("DIESEL01 Plant equipment usage", () => {
   it("shows purchase fills read-only, includes them in tank consumption, and submits no second issue", async () => {
     mocks.directFills.push({
       requirementId: 42, itemId: 11, equipmentId: 1, equipmentName: "Excavator 1",
-      date: "2026-11-27", quantity: 60, appliedQuantity: 60, usageId: null, conflicts: [],
+      requirementDate: "2026-11-22", date: "2026-11-27", quantity: 60, appliedQuantity: 60, usageId: null, conflicts: [],
     });
     await openEntry();
-    expect(screen.getByText(/Filled directly: 60 L \(diesel purchase #42\)/)).toBeTruthy();
+    expect(screen.getByText(/Filled directly: 60 L \(diesel purchase DSL-REQ\/26-27\/0042\)/)).toBeTruthy();
     fillMeterReadings();
     fireEvent.change(screen.getByTestId("input-opening-diesel"), { target: { value: "10" } });
     fireEvent.change(screen.getByTestId("input-diesel-balance"), { target: { value: "10" } });
