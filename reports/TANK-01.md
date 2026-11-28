@@ -16,7 +16,24 @@ Focused checks: **72 passed across 4 files**; build passed. Old button/preview t
 
 ## Part 3 — tables and exports
 
-Not yet completed.
+HMP Material Stock, the Bitumen tracker and the LDO tracker now use Material | Party | Tank 1 | Tank 2 | Barrels | Not in a tank | Total, plus the Owner-only action. Quantity cells contain only figures and units; barrels show count and quantity. All-zero rows are hidden unless Show all is ticked. One short book-stock note is shown.
+
+PDF, print and Excel use the same columns, formatting and visible rows. Focused checks: **32 passed across 5 files**; build passed. The earlier export assertions were updated for the requested seven-column layout with units.
+
+Small supporting files: `shared/tankAssignment.ts` holds the shared conversion/display helpers; `client/src/components/TankStockPositions.tsx` keeps the three tables identical. No unrelated refactoring.
+
+## Final checks
+
+Full suite ran **once**, using a disposable PostgreSQL database with the development schema and test fixtures: **6,311 passed, 1 failed, 3 existing skips**. All **537 discovered files** were accounted for.
+
+The one failure was an old assertion in `dprBreakdownPersistence1430.test.ts` requiring Delete for equipment attachments. It now requires the deliberately agreed Edit permission and still checks the source-record scope, specifically inside the delete route. Focused rerun: **10 passed**. No app code changed after the full run.
+
+**Combined verified result: 6,312 passed, 0 remaining failures, 3 existing skips** (two opt-in labour/PostgreSQL checks and the opt-in billing fixture server). The full suite was not repeated.
+
+The development app restarted cleanly: read-only startup readiness passed (2,570 columns checked).
+Signed-in screens were checked by render tests, not in a signed-in browser.
+
+No migration, production database access, real-record changes, ledger rebuild or publish. No real receipts, dispatches, readings, bills, payments or `stock_balances` were changed.
 
 <details>
 <summary>Earlier TANK-02 supporting-file notes</summary>

@@ -20,9 +20,9 @@ import { openPrintableHtmlOrPreview } from "@/lib/installedApp";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { normalizeWeightUnit } from "@shared/stockUnits";
-import { formatPackedUnitLabel } from "@shared/packedStock";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
-import { TankAssignmentButton } from "@/components/TankAssignmentButton";
+import { TankStockPositions } from "@/components/TankStockPositions";
+import { TANK_STOCK_HEADERS, TANK_STOCK_NOTE, tankStockCells, tankStockExportRows, tankStockPrintTable, visibleTankStockRows } from "@shared/tankAssignment";
 import { TankBookStock } from "@/components/TankBookStock";
 import { format, parseISO } from "date-fns";
 import type { LdoFlowReading, LdoDipReading, TruckDispatch, Party, MixTemplate } from "@shared/schema";
@@ -227,6 +227,9 @@ export default function PlantLdoFlowMeter() {
   const { data: packedStockPositions } = useQuery<{
     rows: Array<{ materialId: number; materialName: string; packedUnitName: string | null; partyId: number | null; partyName: string; stockUom: string; tank1: number; tank2: number; packed: number; unassigned: number; packedCount: number; total: number; tank1L: number | null; tank2L: number | null; packedL: number | null; totalL: number | null }>;
   }>({ queryKey: ["/api/plant-module/packed-stock-positions"] });
+  const [showAllTankPositions, setShowAllTankPositions] = useState(false);
+  const ldoPackedPositions = (packedStockPositions?.rows ?? []).filter(row => row.materialName.trim().toUpperCase() === "LDO");
+  const visibleLdoPositions = visibleTankStockRows(ldoPackedPositions, showAllTankPositions);
 
   const balanceToL = (balance: number, uom: string) => {
     const u = normalizeWeightUnit(uom).toUpperCase();
@@ -1085,6 +1088,7 @@ export default function PlantLdoFlowMeter() {
     }));
     const ws2 = XLSX.utils.json_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, ws2, "Daily Summary");
+    if (visibleLdoPositions.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tankStockExportRows(visibleLdoPositions)), "Stock Positions");
 
     XLSX.writeFile(wb, `ldo_flow_readings_${format(new Date(), "yyyyMMdd")}.xlsx`);
   }
@@ -1112,6 +1116,10 @@ export default function PlantLdoFlowMeter() {
       startY: 28,
       styles: { fontSize: 9 },
     });
+    if (visibleLdoPositions.length) {
+      doc.addPage(); doc.text(TANK_STOCK_NOTE, 14, 15);
+      autoTable(doc, { head: [TANK_STOCK_HEADERS], body: visibleLdoPositions.map(tankStockCells), startY: 24, styles: { fontSize: 9 } });
+    }
     doc.save(`ldo_flow_readings_${format(new Date(), "yyyyMMdd")}.pdf`);
   }
 
@@ -1122,7 +1130,7 @@ export default function PlantLdoFlowMeter() {
       <body><div class="header"><h2>LDO Flow Meter Readings - ${companyShortName} Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
       <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Dryer Src</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Source</th><th>Notes</th></tr>
       ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← LDO tank 1 (small vertical)" : ""}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${getReadingSourceLabel(r)}</td><td>${r.notes || ""}</td></tr>`).join("")}
-      </table></body></html>`;
+      </table>${tankStockPrintTable(visibleLdoPositions)}</body></html>`;
     openPrintableHtmlOrPreview(printContent, "LDO flow meter readings", `ldo-flow-readings-${format(new Date(), "yyyyMMdd")}.html`);
   }
 
@@ -1226,34 +1234,9 @@ export default function PlantLdoFlowMeter() {
         <Card data-testid="ldo-packed-stock-summary">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">LDO tank and packed stock</CardTitle>
-            <p className="text-sm text-muted-foreground">Packed LDO is available for supply orders; plant use draws only from tanks.</p>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="border-b text-left">
-                <th className="py-2 pr-3">Party</th>
-                <th className="py-2 pr-3 text-right">{materialTankLabel("LDO", 1)}</th>
-                <th className="py-2 pr-3 text-right">{materialTankLabel("LDO", 2)}</th>
-                <th className="py-2 pr-3 text-right">Packed</th>
-                <th className="py-2 pr-3 text-right">Legacy / unassigned</th>
-                <th className="py-2 text-right">Total</th>
-                {isOwner && <th className="py-2 text-right">Action</th>}
-              </tr></thead>
-              <tbody>{(packedStockPositions?.rows ?? [])
-                .filter(row => row.materialName.trim().toUpperCase() === "LDO")
-                .map(row => (
-                  <tr key={`${row.materialId}:${row.partyId ?? "common"}`} className="border-b last:border-0">
-                    <td className="py-2 pr-3">{row.partyName}</td>
-                    <td className="py-2 pr-3 text-right">{materialTankLabel("LDO", 1)}: {(row.tank1L ?? row.tank1).toLocaleString()} L</td>
-                    <td className="py-2 pr-3 text-right">{materialTankLabel("LDO", 2)}: {(row.tank2L ?? row.tank2).toLocaleString()} L</td>
-                    <td className="py-2 pr-3 text-right">{row.packedCount.toLocaleString()} {formatPackedUnitLabel(row.packedUnitName, row.packedCount)} · {(row.packedL ?? row.packed).toLocaleString()} L</td>
-                    <td className="py-2 pr-3 text-right">{row.unassigned.toLocaleString()} L</td>
-                    <td className="py-2 text-right font-semibold">{(row.totalL ?? row.total).toLocaleString()} L</td>
-                    {isOwner && <td className="py-2 pl-3 text-right"><TankAssignmentButton row={row} /></td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <TankStockPositions rows={ldoPackedPositions} owner={isOwner} showAll={showAllTankPositions} onShowAllChange={setShowAllTankPositions} />
           </CardContent>
         </Card>
       )}

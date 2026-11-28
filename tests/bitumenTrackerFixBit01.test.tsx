@@ -57,8 +57,8 @@ describe("FIX-BIT-01 packed stock response", () => {
     fireEvent.click(screen.getByTestId("button-export-excel"));
     const book = fx.writeFile.mock.calls[0][0];
     expect(XLSX.utils.sheet_to_json(book.Sheets["Stock Positions"])).toEqual([{
-      Material: "BITUMEN VG-30", Party: "Fixture party", "Tank 1 (MT)": 1, "Tank 2 (MT)": 2,
-      "Packed count": 20, "Packed (MT)": 3, "Total (MT)": 6,
+      Material: "BITUMEN VG-30", Party: "Fixture party", "Tank 1": "1.000 MT", "Tank 2": "2.000 MT",
+      Barrels: "20 (3.000 MT)", "Not in a tank": "—", Total: "6.000 MT",
     }]);
   });
   it.each([{ rows: [], canDecant: true }, {}, undefined])("renders safely when rows are empty or missing (%s)", positions => {
@@ -77,8 +77,18 @@ describe("FIX-BIT-01 packed stock response", () => {
     fireEvent.click(screen.getByTestId("button-export-excel"));
     const book = fx.writeFile.mock.calls[0][0];
     expect(XLSX.utils.sheet_to_json(book.Sheets["Stock Positions"])[0]).toMatchObject({
-      "Tank 1 (MT)": "—", "Tank 2 (MT)": "—", "Packed count": "—", "Packed (MT)": "—", "Total (MT)": "—",
+      "Tank 1": "—", "Tank 2": "—", Barrels: "—", "Not in a tank": "—", Total: "—",
     });
+  });
+  it("exports LDO positions with the same quantity-only layout", () => {
+    fx.positions = { rows: [{ materialId:1,materialName:"LDO",partyId:7,partyName:"Fixture party",stockUom:"Liters",
+      tank1:4500,tank2:0,packed:2000,packedCount:10,unassigned:0,total:6500 }], canDecant:false };
+    render(<PlantLdoFlowMeter />);
+    fireEvent.click(screen.getByTestId("button-export-excel"));
+    const book = fx.writeFile.mock.calls[0][0];
+    expect(XLSX.utils.sheet_to_json(book.Sheets["Stock Positions"])).toEqual([{
+      Material:"LDO",Party:"Fixture party","Tank 1":"4,500 L","Tank 2":"0 L",Barrels:"10 (2,000 L)","Not in a tank":"0 L",Total:"6,500 L",
+    }]);
   });
   it.each(["BITUMEN", "LDO"])("places the Owner action on a non-zero %s tracker row", materialName => {
     fx.owner = true;

@@ -88,7 +88,11 @@ describe("Task #1430 DPR breakdown persistence wiring", () => {
       routes.indexOf("// ============================================", routes.indexOf('app.delete("/api/attachments/:id"')),
     );
     expect(attachmentMutations).toContain('assertCreateOrEdit(req, res, "plant_equipment")');
-    expect(attachmentMutations).toContain('assertDelete(req, res, "plant_equipment")');
+    // TANK-01 deliberately permits source-record editors to remove evidence.
+    const attachmentDeletion = attachmentMutations.slice(attachmentMutations.indexOf('app.delete("/api/attachments/:id"'));
+    expect(attachmentDeletion).toContain('assertEdit(req, res, "plant_equipment")');
+    expect(attachmentDeletion).not.toContain('assertDelete(req, res, "plant_equipment")');
+    expect(attachmentDeletion).toContain("assertMaintenanceRecordAccess(req, res, attachment.linkedRecordId, true)");
     expect(routes).toContain("getEquipmentHealthSummary(await visibleMaintenanceLogIds(req))");
     expect(routes).toContain("getOpenBreakdownCount(await visibleMaintenanceLogIds(req))");
     expect(storage).toContain("visibleMaintenanceLogIds.length === 0");

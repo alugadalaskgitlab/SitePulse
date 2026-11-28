@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const mocks = vi.hoisted(() => ({
   search: "",
@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   isOwner: false,
   materials: [] as any[],
   ledger: [] as any[],
+  positions: [] as any[],
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -16,6 +17,7 @@ vi.mock("@tanstack/react-query", () => ({
     if (!key || key === "null") return { data: undefined, isLoading: false, refetch: vi.fn() };
     if (key.startsWith("/api/plant-module/materials")) return { data: mocks.materials, isLoading: false, refetch: vi.fn() };
     if (key.startsWith("/api/plant-module/stock-ledger")) return { data: mocks.ledger, isLoading: false, refetch: vi.fn() };
+    if (key === "/api/plant-module/packed-stock-positions") return { data: { rows: mocks.positions, canDecant: false }, isLoading: false, refetch: vi.fn() };
     if (key.includes("party-statement")) {
       return {
         data: {
@@ -71,11 +73,22 @@ vi.mock("@/lib/queryClient", () => ({ apiRequest: vi.fn(), queryClient: { invali
 import PlantStock from "../client/src/pages/PlantStock";
 
 describe("Plant Stock page navigation", () => {
+  it("shows the same tidy positions table and Owner correction action", () => {
+    mocks.isOwner = true;
+    mocks.positions = [{ materialId:41,materialName:"BITUMEN VG-30",partyId:7,partyName:"Fixture party",stockUom:"MT",
+      tank1:26.198,tank2:0,packed:3.775,packedCount:25,unassigned:0,total:29.973 }];
+    render(<PlantStock />);
+    const table = within(screen.getByTestId("tank-stock-positions"));
+    expect(table.getAllByRole("columnheader").map(header => header.textContent)).toEqual(["Material","Party","Tank 1","Tank 2","Barrels","Not in a tank","Total","Owner action"]);
+    expect(table.getByText("25 (3.775 MT)")).toBeTruthy();
+    expect(table.getByRole("button",{ name:"Correct tank stock" })).toBeTruthy();
+  });
   beforeEach(() => {
     mocks.search = "";
     mocks.isOwner = false;
     mocks.materials = [];
     mocks.ledger = [];
+    mocks.positions = [];
     mocks.navigate.mockClear();
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: false,
