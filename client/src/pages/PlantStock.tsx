@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { TankAssignmentButton } from "@/components/TankAssignmentButton";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1720,6 +1721,7 @@ export default function PlantStock() {
                   <th className="py-2 pr-3">Material</th><th className="py-2 pr-3">Party</th>
                   <th className="py-2 pr-3 text-right">Tank position 1</th><th className="py-2 pr-3 text-right">Tank position 2</th>
                   <th className="py-2 pr-3 text-right">Packed (count + stock)</th><th className="py-2 pr-3 text-right">Legacy / unassigned</th><th className="py-2 text-right">Total</th>
+                  {isOwner && <th className="py-2 text-right">Action</th>}
                 </tr></thead>
                 <tbody>{packedPositionRows.map(row => (
                   <tr className="border-b last:border-0" key={`${row.materialId}:${row.partyId ?? "common"}`}>
@@ -1732,6 +1734,7 @@ export default function PlantStock() {
                     </td>
                     <td className="py-2 pr-3 text-right">{row.stockUom.toLowerCase().startsWith("lit") ? `${row.unassigned.toLocaleString()} L` : `${row.unassigned.toLocaleString()} ${row.stockUom}`}</td>
                     <td className="py-2 text-right font-semibold">{row.stockUom.toLowerCase().startsWith("lit") ? `${(row.totalL ?? row.total).toLocaleString()} L` : row.totalMt == null ? `${row.total.toLocaleString()} ${row.stockUom}` : `${row.totalMt.toFixed(3)} MT`}</td>
+                    {isOwner && <td className="py-2 pl-3"><TankAssignmentButton row={row} /></td>}
                   </tr>
                 ))}</tbody>
               </table>

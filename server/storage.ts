@@ -9607,6 +9607,10 @@ export class DatabaseStorage implements IStorage {
         } catch { return null; }
       };
       const unassigned = roundStockQuantity(row.total - row.tank1 - row.tank2 - row.packed);
+      const unitFactor = (unit: string) => {
+        try { return convertStockQuantity(1, row.stockUom, unit, Number(materialById.get(row.materialId)?.bulkDensity) || null); }
+        catch { return null; }
+      };
       return {
         ...row,
         tank1: roundStockQuantity(row.tank1),
@@ -9623,6 +9627,8 @@ export class DatabaseStorage implements IStorage {
         tank2L: toLiters(row.tank2),
         packedL: toLiters(row.packed),
         totalL: toLiters(row.total),
+        mtPerStockUnit: unitFactor("MT"),
+        litersPerStockUnit: unitFactor("Liters"),
       };
     }).sort((a, b) => a.materialName.localeCompare(b.materialName) || a.partyName.localeCompare(b.partyName));
   }
@@ -9645,34 +9651,51 @@ export class DatabaseStorage implements IStorage {
         const [party] = await tx.select({ id: parties.id }).from(parties).where(eq(parties.id, input.partyId)).limit(1);
         if (!party) throw new Error("Party not found.");
       }
-      if ((input.tankNumber !== 1 && input.tankNumber !== 2) || !Number.isFinite(input.amount) || input.amount === 0) {
+      const correction = "preview" in input;
+      if (!correction && ((input.tankNumber !== 1 && input.tankNumber !== 2) || !Number.isFinite(input.amount) || input.amount === 0)) {
         throw new Error("Choose Tank 1 or Tank 2 and a non-zero unassigned amount.");
       }
       const current = (await this.getPackedStockPositionSummary(tx))
         .find(row => row.materialId === input.materialId && row.partyId === input.partyId);
-      if (!current || current.unassigned !== input.amount || current.stockUom !== input.uom) {
-        throw Object.assign(new Error("Unassigned stock changed since preview — open the review again."), { code: "STALE_TANK_ASSIGNMENT" });
+      if (!current || current.stockUom !== input.uom || (correction
+        ? (["tank1", "tank2", "packed", "packedCount", "unassigned", "total"] as const).some(key => current[key] !== input.preview[key])
+        : current.unassigned !== input.amount)) {
+        throw Object.assign(new Error(correction ? "Stock figures changed since preview — open the review again." : "Unassigned stock changed since preview — open the review again."), { code: "STALE_TANK_ASSIGNMENT" });
       }
       const before = { tank1: current.tank1, tank2: current.tank2, unassigned: current.unassigned, total: current.total };
       const after = {
-        tank1: roundStockQuantity(before.tank1 + (input.tankNumber === 1 ? input.amount : 0)),
-        tank2: roundStockQuantity(before.tank2 + (input.tankNumber === 2 ? input.amount : 0)),
+        tank1: roundStockQuantity(correction ? input.actualTank1 : before.tank1 + (input.tankNumber === 1 ? input.amount : 0)),
+        tank2: roundStockQuantity(correction ? input.actualTank2 : before.tank2 + (input.tankNumber === 2 ? input.amount : 0)),
         unassigned: 0, total: before.total,
       };
+      if (correction && (![after.tank1, after.tank2].every(value => Number.isFinite(value) && value >= 0) ||
+        roundStockQuantity(after.tank1 + after.tank2 + current.packed - before.total) !== 0)) {
+        throw new Error("Tank 1 + Tank 2 + barrels must equal total. Record a physical stock correction separately.");
+      }
       const common = {
         date: input.date, materialId: input.materialId, partyId: input.partyId,
         transactionType: "tank_assignment", uom: current.stockUom,
-        notes: `Old unassigned stock moved to Tank ${input.tankNumber}`,
+        notes: correction ? "Owner-reviewed tank stock position correction; total unchanged" : `Old unassigned stock moved to Tank ${input.tankNumber}`,
       };
-      await tx.insert(stockLedger).values([
+      const entries = correction ? ([
+        { delta: roundStockQuantity(after.tank1 - before.tank1), tankNumber: 1, stockPosition: "tank_1" },
+        { delta: roundStockQuantity(after.tank2 - before.tank2), tankNumber: 2, stockPosition: "tank_2" },
+        { delta: roundStockQuantity(-before.unassigned), tankNumber: null, stockPosition: null },
+      ].filter(row => row.delta !== 0).map(row => ({
+        ...common, quantityIn: Math.max(row.delta, 0), quantityOut: Math.max(-row.delta, 0), tankNumber: row.tankNumber, stockPosition: row.stockPosition,
+      }))) : [
         { ...common, quantityIn: Math.max(-input.amount, 0), quantityOut: Math.max(input.amount, 0), tankNumber: null, stockPosition: null },
         { ...common, quantityIn: Math.max(input.amount, 0), quantityOut: Math.max(-input.amount, 0), tankNumber: input.tankNumber, stockPosition: `tank_${input.tankNumber}` },
-      ]);
+      ];
+      if (correction && roundStockQuantity(entries.reduce((sum, row) => sum + row.quantityIn - row.quantityOut, 0)) !== 0) {
+        throw new Error("Position correction must leave the party total unchanged.");
+      }
+      if (entries.length) await tx.insert(stockLedger).values(entries);
       await tx.insert(auditLogs).values({
         module: "plant_stock", transactionId: input.materialId, action: "tank_assignment",
         userId: actor.userId, userName: actor.name, userRole: "owner",
-        oldValues: { ...before, partyId: input.partyId, uom: current.stockUom },
-        newValues: { ...after, partyId: input.partyId, uom: current.stockUom, tankNumber: input.tankNumber, amount: input.amount, date: input.date },
+        oldValues: { ...before, ...(correction ? { packed: current.packed, packedCount: current.packedCount } : {}), partyId: input.partyId, uom: current.stockUom },
+        newValues: { ...after, ...(correction ? { packed: current.packed, packedCount: current.packedCount } : { tankNumber: input.tankNumber, amount: input.amount }), partyId: input.partyId, uom: current.stockUom, date: input.date },
       });
       return { before, after };
     });

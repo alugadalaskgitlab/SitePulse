@@ -88,6 +88,6 @@ describe("FIX-BIT-01 packed stock response", () => {
       tank1Mt: -1, tank2Mt: 0, packedMt: 0, packedCount: 0, packed: 0, totalMt: 0,
     }], canDecant: true };
     render(materialName === "LDO" ? <PlantLdoFlowMeter /> : <PlantBitumenStock />);
-    expect(screen.getByRole("button", { name: "Move to tank" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Correct tank stock" })).toBeTruthy();
   });
 });

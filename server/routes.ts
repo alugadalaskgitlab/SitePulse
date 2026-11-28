@@ -8674,14 +8674,21 @@ export async function registerRoutes(
   });
 
   app.post("/api/plant-module/tank-assignments", async (req, res) => {
-    if (!req.authUser?.isOwner) return res.status(403).json({ message: "Only the Owner can move unassigned stock to a tank." });
-    const parsed = z.object({
+    if (!req.authUser?.isOwner) return res.status(403).json({ message: "Only the Owner can correct tank stock." });
+    const parsed = z.union([z.object({
       date: z.string().date(), materialId: z.number().int().positive(),
       partyId: z.number().int().positive().nullable(),
       tankNumber: z.union([z.literal(1), z.literal(2)]),
       amount: z.number().finite().refine(value => value !== 0),
       uom: z.string().min(1),
-    }).strict().safeParse(req.body);
+    }).strict(), z.object({
+      date: z.string().date(), materialId: z.number().int().positive(), partyId: z.number().int().positive().nullable(), uom: z.string().min(1),
+      actualTank1: z.number().finite().nonnegative(), actualTank2: z.number().finite().nonnegative(),
+      preview: z.object({
+        tank1: z.number().finite(), tank2: z.number().finite(), packed: z.number().finite(),
+        packedCount: z.number().finite(), unassigned: z.number().finite(), total: z.number().finite(),
+      }).strict(),
+    }).strict()]).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Choose a valid date, party, material, tank and unassigned amount." });
     try {
       res.json(await storage.assignUnassignedStockToTank(parsed.data, { userId: req.authUser.id, name: currentUserName(req) }));

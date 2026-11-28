@@ -6,7 +6,15 @@ Owners or users with Edit on the source record can remove shared files after one
 
 Focused checks: **69 passed across 5 files** after updating the old gallery expectation that linked files never have a bin (deliberately changed by this batch). Build passed. Fixtures only; no migration or real-data changes.
 
-## Parts 2 and 3
+## Part 2 — correct tank stock
+
+One Owner action now reviews Tank 1, Tank 2, read-only barrels, not-in-a-tank and total before saving. Bitumen inputs use MT; LDO uses litres. Mismatched totals are blocked with a short/excess message. A changed preview is refused.
+
+One transaction writes only total-neutral `tank_assignment` entries and before/after audit. Fixtures passed for 16.590 / −9.410 / 1.435 → 0 / 8.615, −11.245 / 12.680 / −1.435 → 0 / 0, and LDO −6,988.401 / +6,988.401 → 0. Barrels, `stock_balances`, party statements, reconciliation and norm-vs-actual remain unchanged.
+
+Focused checks: **72 passed across 4 files**; build passed. Old button/preview tests were updated for the deliberately replaced action. Legacy API requests retain their existing handling.
+
+## Part 3 — tables and exports
 
 Not yet completed.
 

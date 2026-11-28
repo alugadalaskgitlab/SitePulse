@@ -29,6 +29,14 @@ beforeAll(async () => {
 });
 beforeEach(() => { fx.owner = true; fx.assign.mockReset().mockResolvedValue({ before: {}, after: {} }); });
 describe("FIX-BIT-01 tank assignment route", () => {
+  const correction = { date: "2026-11-27", materialId: 41, partyId: 7, uom: "MT", actualTank1: 0, actualTank2: 8.615,
+    preview: { tank1: 16.59, tank2: -9.41, packed: 0, packedCount: 0, unassigned: 1.435, total: 8.615 } };
+  it("accepts a complete correction preview and rejects a non-Owner", async () => {
+    expect((await request(app).post("/api/plant-module/tank-assignments").send(correction)).status).toBe(200);
+    expect(fx.assign).toHaveBeenCalledWith(correction, { userId: 9, name: "Fixture Owner" });
+    fx.owner = false;
+    expect((await request(app).post("/api/plant-module/tank-assignments").send(correction)).status).toBe(403);
+  });
   it("queues no work for a non-Owner, including an Administrator", async () => {
     fx.owner = false;
     expect((await request(app).post("/api/plant-module/tank-assignments").send(body)).status).toBe(403);
