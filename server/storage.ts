@@ -1580,7 +1580,7 @@ export interface IStorage {
   getAttachments(moduleType: string, linkedRecordId: number): Promise<Attachment[]>;
   getAttachmentCounts(moduleType: string, linkedRecordIds: number[], docTypes?: string[]): Promise<Record<number, number>>;
   linkDieselPurchaseEvidenceToMaterialReceipt(dieselRequirementId: number, materialReceiptId: number, linkedBy: number): Promise<number>;
-  deleteAttachment(id: number): Promise<boolean>;
+  deleteAttachment(id: number, options: AttachmentDeletionOptions): Promise<boolean>;
   hasPersonnelUsageHistory(id: number): Promise<boolean>;
 
   // Activity Personnel
@@ -2626,9 +2626,11 @@ function execDmlRowCount(result: unknown, context = "db.execute DML"): number {
   );
 }
 
+export type AttachmentPlace = { moduleType: string; linkedRecordId: number; label: string };
+export type AttachmentDeletionOptions = { confirmShared?: boolean; actor: { userId: number; userName: string; userRole: string } };
 export class AttachmentReferenceError extends Error {
-  constructor() {
-    super("Referenced evidence cannot be deleted from a target record. Remove the reference instead.");
+  constructor(public places: AttachmentPlace[] = []) {
+    super("This file is also shown on other records. Confirm deletion from all places.");
     this.name = "AttachmentReferenceError";
   }
 }
@@ -17013,26 +17015,38 @@ export class DatabaseStorage implements IStorage {
       new Date(b.uploadedAt ?? 0).getTime() - new Date(a.uploadedAt ?? 0).getTime());
   }
 
-  async deleteAttachment(id: number): Promise<boolean> {
-    const [attachment] = await db.select({
-      id: attachments.id,
-      moduleType: attachments.moduleType,
-      linkedRecordId: attachments.linkedRecordId,
-    }).from(attachments).where(eq(attachments.id, id)).limit(1);
-    if (!attachment) return false;
-    const [junctionReference] = await db.select({ id: attachmentLinks.id })
-      .from(attachmentLinks).where(eq(attachmentLinks.attachmentId, id)).limit(1);
-    const [historicalDieselReference] = attachment.moduleType === "diesel_purchase"
-      ? await db.select({ id: materialReceipts.id })
-        .from(materialReceipts)
-        .where(eq(materialReceipts.linkedDieselRequirementId, attachment.linkedRecordId))
-        .limit(1)
-      : [];
-    if (junctionReference || historicalDieselReference) {
-      throw new AttachmentReferenceError();
-    }
-    const result = await db.delete(attachments).where(eq(attachments.id, id)).returning();
-    return result.length > 0;
+  async deleteAttachment(id: number, options: AttachmentDeletionOptions): Promise<boolean> {
+    if (!options?.actor?.userId) throw new Error("An authenticated actor is required to delete a file.");
+    return db.transaction(async tx => {
+      const [attachment] = await tx.select().from(attachments).where(eq(attachments.id, id)).for("update");
+      if (!attachment) return false;
+      const links = await tx.select().from(attachmentLinks).where(eq(attachmentLinks.attachmentId, id));
+      const historical = attachment.moduleType === "diesel_purchase"
+        ? await tx.select({ id: materialReceipts.id, receiptNo: materialReceipts.receiptNo }).from(materialReceipts)
+          .where(eq(materialReceipts.linkedDieselRequirementId, attachment.linkedRecordId)) : [];
+      const places = new Map<string, AttachmentPlace>();
+      const add = async (moduleType: string, linkedRecordId: number, receiptNo?: string | null) => {
+        if (moduleType === attachment.moduleType && linkedRecordId === attachment.linkedRecordId) return;
+        if ((moduleType === "material_receipt" || moduleType === "hmp_rmc_stock_receipt") && !receiptNo) {
+          const [receipt] = await tx.select({ receiptNo: materialReceipts.receiptNo }).from(materialReceipts).where(eq(materialReceipts.id, linkedRecordId));
+          receiptNo = receipt?.receiptNo;
+        }
+        const type = /material_receipt|hmp_rmc_stock_receipt/.test(moduleType) ? "Receipt" : moduleType.replace(/_/g, " ");
+        places.set(`${moduleType}:${linkedRecordId}`, { moduleType, linkedRecordId, label: `${type} ${receiptNo || `#${linkedRecordId}`}` });
+      };
+      for (const link of links) await add(link.targetModuleType, link.targetLinkedRecordId);
+      for (const receipt of historical) await add("material_receipt", receipt.id, receipt.receiptNo);
+      const otherPlaces = [...places.values()];
+      if (otherPlaces.length && !options.confirmShared) throw new AttachmentReferenceError(otherPlaces);
+      await tx.delete(attachmentLinks).where(eq(attachmentLinks.attachmentId, id));
+      await tx.delete(attachments).where(eq(attachments.id, id));
+      await tx.insert(auditLogs).values({
+        module: "attachments", transactionId: id, action: "attachment_removed", ...options.actor, createdAt: new Date(),
+        oldValues: { attachmentId: id, fileName: attachment.fileName, moduleType: attachment.moduleType, linkedRecordId: attachment.linkedRecordId, otherPlaces },
+        newValues: null,
+      });
+      return true;
+    });
   }
 
   async getAttachmentCounts(moduleType: string, linkedRecordIds: number[], docTypes?: string[]): Promise<Record<number, number>> {

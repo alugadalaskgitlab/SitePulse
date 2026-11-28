@@ -1,3 +1,18 @@
+# TANK-01
+
+## Part 1 — confirmed file deletion
+
+Owners or users with Edit on the source record can remove shared files after one confirmation listing other records (including legacy diesel receipts). File, links and the deletion audit are changed in one transaction. The audit records actor/time, filename, source and other places. Receipts and other business records are untouched; errors shown to users are plain text.
+
+Focused checks: **69 passed across 5 files** after updating the old gallery expectation that linked files never have a bin (deliberately changed by this batch). Build passed. Fixtures only; no migration or real-data changes.
+
+## Parts 2 and 3
+
+Not yet completed.
+
+<details>
+<summary>Earlier TANK-02 supporting-file notes</summary>
+
 # TANK-02 — supporting changes
 
 This file records the extra files/sections permitted by the Owner. Batch results are in `reports/TANK-02.md`.
@@ -44,3 +59,5 @@ The shared helper gained tank selection and safe deep-link support. Tracker chan
 | `.agents/memory/MEMORY.md`, `.agents/memory/tank-alert-storage.md`, `.agents/memory/test-suite-verification.md` | Retain the separate-store decision, native-constraint fixture rule and disposable database-name requirement. |
 
 The existing order-only CHECK remains unchanged. Both development databases received only migration 0080; exact SQL and readiness results are in `reports/TANK-02.md`.
+
+</details>

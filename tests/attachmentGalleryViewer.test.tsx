@@ -153,7 +153,7 @@ describe("shared attachment gallery viewer", () => {
     await waitFor(() => expect(window.history.state).toEqual({ fixture: "attachment-grid" }));
   });
 
-  it("keeps the Linked badge, uploader/date caption, and delete behavior unchanged", () => {
+  it("keeps the Linked badge and captions while allowing editors to request confirmed shared deletion", () => {
     renderGrid([
       attachment({ id: 19, isLinked: true }),
       attachment({ id: 20, isLinked: false }),
@@ -161,7 +161,7 @@ describe("shared attachment gallery viewer", () => {
 
     expect(screen.getByText("Linked")).toBeInTheDocument();
     expect(screen.getAllByTestId(/text-attachment-meta-/)).toHaveLength(2);
-    expect(screen.queryByTestId("button-delete-attachment-19")).not.toBeInTheDocument();
+    expect(screen.getByTestId("button-delete-attachment-19")).toBeInTheDocument();
     expect(screen.getByTestId("button-delete-attachment-20")).toBeInTheDocument();
   });
 });

@@ -98,6 +98,44 @@ describe("STOCK-02 packed stock conversions", () => {
   });
 });
 
+describe("TANK-01 confirmed attachment deletion", () => {
+  const actor = { userId: 9, userName: "Fixture Owner", userRole: "owner" };
+  async function file(shared = false, legacy = false) {
+    await pg.exec("TRUNCATE attachments, attachment_links");
+    await pg.exec(`INSERT INTO attachments(id,module_type,linked_record_id,file_name,object_path)
+      VALUES (99,'diesel_purchase',501,'wrong-file.pdf','/objects/fixture.pdf')`);
+    if (shared) await pg.exec("INSERT INTO attachment_links(id,attachment_id,target_module_type,target_linked_record_id) VALUES (1,99,'material_receipt',202)");
+    if (shared || legacy) await pg.exec(`INSERT INTO material_receipts(id,linked_diesel_requirement_id,receipt_no)
+      VALUES (202,501,'RECV/DSL/26-27/0066')`);
+  }
+  it("deletes an unshared file and audits actor, timestamp, name and source", async () => {
+    await file(); expect(await storage.deleteAttachment(99, { actor })).toBe(true);
+    expect((await pg.query("SELECT * FROM attachments")).rows).toHaveLength(0);
+    const audit = (await pg.query("SELECT * FROM audit_logs WHERE module='attachments'")).rows[0] as any;
+    expect(audit.user_id).toBe(9); expect(audit.created_at).toBeTruthy();
+    expect(audit.old_values).toMatchObject({ fileName: "wrong-file.pdf", moduleType: "diesel_purchase", linkedRecordId: 501, otherPlaces: [] });
+  });
+  it("returns the numbered shared receipt, then removes the file and every link atomically", async () => {
+    await file(true);
+    await expect(storage.deleteAttachment(99, { actor })).rejects.toMatchObject({
+      places: [{ moduleType: "material_receipt", linkedRecordId: 202, label: "Receipt RECV/DSL/26-27/0066" }],
+    });
+    expect((await pg.query("SELECT * FROM attachments")).rows).toHaveLength(1);
+    expect((await pg.query("SELECT * FROM audit_logs")).rows).toHaveLength(0);
+    await storage.deleteAttachment(99, { actor, confirmShared: true });
+    expect((await pg.query("SELECT * FROM attachments")).rows).toHaveLength(0);
+    expect((await pg.query("SELECT * FROM attachment_links")).rows).toHaveLength(0);
+    expect((await pg.query("SELECT * FROM material_receipts")).rows).toHaveLength(1);
+    const audit = (await pg.query("SELECT old_values FROM audit_logs")).rows[0] as any;
+    expect(audit.old_values.otherPlaces).toHaveLength(1);
+  });
+  it("also confirms legacy diesel receipt references with no junction row", async () => {
+    await file(false, true);
+    await expect(storage.deleteAttachment(99, { actor })).rejects.toMatchObject({ places: [expect.objectContaining({ linkedRecordId: 202 })] });
+    expect(await storage.deleteAttachment(99, { actor, confirmShared: true })).toBe(true);
+  });
+});
+
 describe("STOCK-02 dispatch refresh cadence", () => {
   it("polls every 10 seconds while a visible dispatch is waiting", () => {
     expect(dispatchRefetchInterval({

@@ -6,6 +6,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Attachment, AttachmentModuleType } from "@shared/schema";
 import { AttachmentViewer, getSafeAttachmentObjectPath } from "@/components/AttachmentViewer";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 
 interface AttachmentGalleryProps {
   moduleType: AttachmentModuleType;
@@ -88,33 +89,51 @@ export function AttachmentGrid({
   className?: string;
 }) {
   const { toast } = useToast();
-  const { sectionCan } = useAuth();
-  const hasDeletePermission = (() => {
-    switch (moduleType) {
-      case "diesel_purchase": return sectionCan("site_diesel", "delete") || sectionCan("diesel_req_raise", "delete");
-      case "dpr_progress": case "dpr_material": return sectionCan("site_dprs", "delete");
-      case "material_receipt": case "hmp_rmc_stock_receipt": return sectionCan("plant_materials", "delete");
-      case "site_purchase": case "site_material_trip": return sectionCan("site_materials", "delete");
-      case "irn": return sectionCan("irn_raise", "delete");
-      case "pi": case "pi_purchaser_action": return sectionCan("purchase_indents_raise", "delete");
-      case "store_grn": return sectionCan("stores_inventory", "delete");
-      case "vendor_bill": return sectionCan("vendor_bills_raise", "delete");
-      case "plant_production": return sectionCan("plant_production", "delete");
+  const { sectionCan, user } = useAuth();
+  const canRemove = (type: string) => {
+    if (user?.isOwner) return true;
+    switch (type) {
+      case "site": return sectionCan("sites_plants_manage", "edit") || sectionCan("admin_settings", "edit");
+      case "diesel_purchase": return sectionCan("site_diesel", "edit") || sectionCan("diesel_req_raise", "edit");
+      case "dpr_progress": case "dpr_material": return sectionCan("site_dprs", "edit");
+      case "material_receipt": case "hmp_rmc_stock_receipt": return sectionCan("plant_materials", "edit");
+      case "site_purchase": case "site_material_trip": return sectionCan("site_materials", "edit");
+      case "irn": return sectionCan("irn_raise", "edit");
+      case "pi": case "pi_purchaser_action": return sectionCan("purchase_indents_raise", "edit");
+      case "store_grn": return sectionCan("stores_inventory", "edit");
+      case "vendor_bill": return sectionCan("vendor_bills_raise", "edit");
+      case "plant_production": return sectionCan("plant_production", "edit");
       case "equipment_breakdown": case "equipment_maintenance": case "equipment_fuel_proof":
-        return sectionCan("plant_equipment", "delete");
-      case "quality_test": return sectionCan("rmc_cube_tests", "delete");
+        return sectionCan("plant_equipment", "edit");
+      case "quality_test": return sectionCan("rmc_cube_tests", "edit");
+      case "plant_supply_order": case "plant_supply_order_mix_version": return sectionCan("plant_supply_orders", "edit");
       default: return false;
     }
-  })();
+  };
   const [selectedAttachment, setSelectedAttachment] = useState<Attachment | null>(null);
+  const [sharedDelete, setSharedDelete] = useState<{ id: number; places: string[] } | null>(null);
   const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/attachments/${id}`);
+    mutationFn: async ({ id, confirmShared = false }: { id: number; confirmShared?: boolean }) => {
+      try {
+        await apiRequest("DELETE", `/api/attachments/${id}${confirmShared ? "?confirmShared=true" : ""}`);
+      } catch (failure: any) {
+        const text = String(failure?.message || "");
+        let body: any;
+        try { body = JSON.parse(text.replace(/^\d{3}:\s*/, "")); } catch {}
+        throw Object.assign(new Error(typeof body?.message === "string" ? body.message :
+          /[{}<>]/.test(text) ? "Could not delete the file." : text.replace(/^\d{3}:\s*/, "") || "Could not delete the file."),
+          { id, code: body?.code, places: body?.places });
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/attachments", moduleType, linkedRecordId] });
+      setSharedDelete(null);
+      queryClient.invalidateQueries({ predicate: query => typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/attachments") });
     },
     onError: (err: any) => {
+      if (err.code === "ATTACHMENT_REFERENCED" && Array.isArray(err.places)) {
+        setSharedDelete({ id: err.id, places: err.places.map((place: any) => place.label || `${place.moduleType} #${place.linkedRecordId}`) });
+        return;
+      }
       toast({ title: "Failed to delete attachment", description: err?.message, variant: "destructive" });
     },
   });
@@ -169,11 +188,11 @@ export function AttachmentGrid({
                 Linked
               </span>
             )}
-            {allowDelete && hasDeletePermission && !att.isLinked && (
+            {allowDelete && canRemove((att as any).referenceModuleType || att.moduleType || moduleType) && (
               <button
                 type="button"
                 className="absolute top-1 right-1 bg-background/90 rounded-full p-1 opacity-80 hover:opacity-100"
-                onClick={() => deleteMutation.mutate(att.id)}
+                onClick={() => deleteMutation.mutate({ id: att.id })}
                 disabled={deleteMutation.isPending}
                 data-testid={`button-delete-attachment-${att.id}`}
               >
@@ -187,6 +206,20 @@ export function AttachmentGrid({
         attachment={selectedAttachment}
         onClose={() => setSelectedAttachment(null)}
       />
+      <AlertDialog open={sharedDelete != null} onOpenChange={open => { if (!open) setSharedDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>Delete shared file?</AlertDialogTitle>
+            <AlertDialogDescription>This file is also shown on {sharedDelete?.places.join(", ")}. Delete it from all of them?</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={deleteMutation.isPending} onClick={event => {
+              event.preventDefault();
+              if (sharedDelete) deleteMutation.mutate({ id: sharedDelete.id, confirmShared: true });
+            }}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

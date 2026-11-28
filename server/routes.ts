@@ -2434,30 +2434,27 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const attachment = await storage.getAttachment(id);
       if (!attachment) return res.status(404).json({ message: "Attachment not found" });
-      // Evidence removal uses the underlying module's explicitly delegated Delete.
-      let allowed = false;
-      switch (attachment.moduleType) {
+      let allowed = !!req.authUser.isOwner;
+      if (!allowed) switch (attachment.moduleType) {
         case "site": allowed = await assertSiteAttachmentAccess(req, res, attachment.linkedRecordId, true); break;
-        case "diesel_purchase": allowed = assertDeleteEither(req, res, "site_diesel", "diesel_req_raise"); break;
-        case "dpr_progress": case "dpr_material": allowed = assertDelete(req, res, "site_dprs"); break;
-        case "material_receipt": case "hmp_rmc_stock_receipt": allowed = assertDelete(req, res, "plant_materials"); break;
-        case "site_purchase": case "site_material_trip": allowed = assertDelete(req, res, "site_materials"); break;
-        case "irn": allowed = assertDelete(req, res, "irn_raise"); break;
-        case "pi": case "pi_purchaser_action": allowed = assertDelete(req, res, "purchase_indents_raise"); break;
-        case "store_grn": allowed = assertDelete(req, res, "stores_inventory"); break;
-        case "vendor_bill": allowed = assertDelete(req, res, "vendor_bills_raise"); break;
-        case "plant_production": allowed = assertDelete(req, res, "plant_production"); break;
+        case "diesel_purchase": allowed = assertEditEither(req, res, "site_diesel", "diesel_req_raise"); break;
+        case "dpr_progress": case "dpr_material": allowed = assertEdit(req, res, "site_dprs"); break;
+        case "material_receipt": case "hmp_rmc_stock_receipt": allowed = assertEdit(req, res, "plant_materials"); break;
+        case "site_purchase": case "site_material_trip": allowed = assertEdit(req, res, "site_materials"); break;
+        case "irn": allowed = assertEdit(req, res, "irn_raise"); break;
+        case "pi": case "pi_purchaser_action": allowed = assertEdit(req, res, "purchase_indents_raise"); break;
+        case "store_grn": allowed = assertEdit(req, res, "stores_inventory"); break;
+        case "vendor_bill": allowed = assertEdit(req, res, "vendor_bills_raise"); break;
+        case "plant_production": allowed = assertEdit(req, res, "plant_production"); break;
         case "equipment_breakdown": case "equipment_maintenance": case "equipment_fuel_proof":
-          allowed = assertDelete(req, res, "plant_equipment"); break;
-        case "quality_test": allowed = assertDelete(req, res, "rmc_cube_tests"); break;
+          allowed = assertEdit(req, res, "plant_equipment"); break;
+        case "quality_test": allowed = assertEdit(req, res, "rmc_cube_tests"); break;
         case "plant_supply_order": {
-          if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can remove order files." });
-          allowed = assertDelete(req, res, "plant_supply_orders");
+          allowed = assertEdit(req, res, "plant_supply_orders");
           break;
         }
         case "plant_supply_order_mix_version": {
-          if (!req.authUser.isOwner) return res.status(403).json({ message: "Only the Owner can remove order files." });
-          allowed = assertDelete(req, res, "plant_supply_orders");
+          allowed = assertEdit(req, res, "plant_supply_orders");
           break;
         }
         default: return res.status(403).json({ error: "unmapped_attachment_permission" });
@@ -2477,7 +2474,10 @@ export async function registerRoutes(
       if (attachment.moduleType === "equipment_breakdown") {
         if (!(await assertMaintenanceRecordAccess(req, res, attachment.linkedRecordId, true))) return;
       }
-      const deleted = await storage.deleteAttachment(id);
+      const deleted = await storage.deleteAttachment(id, {
+        confirmShared: req.query.confirmShared === "true",
+        actor: { userId: req.authUser.id, userName: currentUserName(req), userRole: req.authUser.isOwner ? "owner" : req.authUser.isAdmin ? "admin" : "granted_user" },
+      });
       if (!deleted) return res.status(404).json({ message: "Attachment not found" });
       if (attachment.moduleType === "site") {
         await storage.logAudit({
@@ -2506,7 +2506,7 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (err) {
       if (err instanceof AttachmentReferenceError) {
-        return res.status(409).json({ message: err.message, code: "ATTACHMENT_REFERENCED" });
+        return res.status(409).json({ message: err.message, code: "ATTACHMENT_REFERENCED", places: err.places });
       }
       res.status(500).json({ message: "Failed to delete attachment" });
     }
