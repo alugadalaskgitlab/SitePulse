@@ -13,6 +13,9 @@ export interface EquipmentTankBalancePatch {
 }
 
 interface EquipmentTankBalanceInputsProps {
+  date?: string;
+  site?: string;
+  isNew?: boolean;
   equipment?: (EquipmentTankDipSettings & { id?: number }) | null;
   openingDipCm?: number | null;
   closingDipCm?: number | null;
@@ -37,6 +40,7 @@ const finite = (value: unknown): value is number =>
  * users can record zero and the confirmation checkbox independently.
  */
 export function EquipmentTankBalanceInputs({
+  date, site, isNew,
   equipment, openingDipCm, closingDipCm,
   index,
   requireConfirmationForConsumption = false,
@@ -71,6 +75,7 @@ export function EquipmentTankBalanceInputs({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <EquipmentTankDipInput equipment={equipment ?? null} kind="opening" cm={openingDipCm} litres={openingDiesel}
+            date={date} site={site} isNew={isNew}
             onChange={(cm, litres) => onChange({ openingDipCm: cm, openingDiesel: litres })} testId={`input-opening-diesel-${index}`}>
           <Label>Opening diesel tank (L)</Label>
           <Input
@@ -85,6 +90,7 @@ export function EquipmentTankBalanceInputs({
         </div>
         <div>
           <EquipmentTankDipInput equipment={equipment ?? null} kind="closing" cm={closingDipCm} litres={dieselBalanceInTank}
+            openingCm={openingDipCm} runningHours={runtime}
             openingLitres={openingDiesel} issuedLitres={dieselIssued}
             onChange={(cm, litres) => onChange({ closingDipCm: cm, dieselBalanceInTank: litres })} testId={`input-diesel-balance-${index}`}>
           <Label>Diesel balance in tank (L)</Label>

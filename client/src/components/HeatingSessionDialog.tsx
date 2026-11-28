@@ -819,6 +819,7 @@ export function HeatingSessionDialog({
                     </div>
                     <div>
                       <EquipmentTankDipInput equipmentId={selectedGeneratorEquipmentId} kind="closing" cm={form.dgClosingDipCm}
+                        openingCm={form.dgOpeningDipCm} runningHours={dgHoursUsed ?? 0}
                         litres={form.dgClosingDiesel === "" ? null : Number(form.dgClosingDiesel)}
                         openingLitres={form.dgOpeningDiesel === "" ? null : Number(form.dgOpeningDiesel)} issuedLitres={Number(form.dgIssuedDiesel || 0)}
                         onChange={(cm, litres) => setForm(prev => ({ ...prev, dgClosingDipCm: cm, dgClosingDiesel: litres == null ? "" : String(litres) }))}

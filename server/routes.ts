@@ -80,7 +80,7 @@ import { equipmentVendorIdentities, EQUIPMENT_VENDOR_LINK, ownerNameKey } from "
 import { buildEquipmentVendorOptions } from "./equipmentVendorOptions";
 import { equipmentHireTermsError } from "@shared/equipmentMasterRules";
 import { equipmentTankDipSettingsSchema } from "@shared/equipmentTankDip";
-import { lastEquipmentDieselDip } from "./equipmentTankDip";
+import { lastEquipmentDieselDip, useEquipmentFillingRate } from "./equipmentTankDip";
 import { equipmentMaster as hireIdentityEquipment } from "@shared/schema";
 import { vendors as billingIdentityVendors } from "@shared/schema";
 import { siteMaterialTrips } from "@shared/schema";
@@ -6496,6 +6496,21 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.issues.map(issue => issue.message).join("; ") });
       res.status(500).json({ message: "Failed to create equipment" });
+    }
+  });
+
+  app.patch("/api/plant-module/equipment/:id/dip-calibration", requireAuth, async (req, res) => {
+    try {
+      if (!req.authUser?.isOwner) return res.status(403).json({ message: "Only the Owner can use this figure." });
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const saved = await db.transaction(tx => useEquipmentFillingRate(tx, id, req.body, {
+        id: req.authUser!.id, fullName: currentUserName(req), isOwner: true,
+      }));
+      res.json(saved);
+    } catch (error: any) {
+      res.status(error instanceof z.ZodError ? 400 : error.status ?? 500).json({
+        message: error instanceof z.ZodError ? error.issues.map((issue: any) => issue.message).join("; ") : error.message,
+      });
     }
   });
 

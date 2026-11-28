@@ -8282,7 +8282,8 @@ export class DatabaseStorage implements IStorage {
       // Get equipment to calculate expected diesel
       const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, usage.equipmentId)).limit(1);
       usage = applyEquipmentDip(usage, equipment);
-      Object.assign(normalisedUsage, usage);
+      if (usage.openingDipCm != null) normalisedUsage.openingDiesel = usage.openingDiesel;
+      if (usage.closingDipCm != null) normalisedUsage.dieselBalanceInTank = usage.dieselBalanceInTank;
       
       const isShifting = (usage.entryType || "").toLowerCase() === "shifting";
       
@@ -8813,7 +8814,8 @@ export class DatabaseStorage implements IStorage {
       const equipmentId = usage.equipmentId ?? existing.equipmentId;
       const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, equipmentId)).limit(1);
       usage = applyEquipmentDip(usage, equipment);
-      Object.assign(normalisedUsage, usage);
+      if (usage.openingDipCm != null) normalisedUsage.openingDiesel = usage.openingDiesel;
+      if (usage.closingDipCm != null) normalisedUsage.dieselBalanceInTank = usage.dieselBalanceInTank;
       
       const entryType = usage.entryType ?? existing.entryType ?? "time_meter";
       const isShifting = entryType.toLowerCase() === "shifting";

@@ -37,5 +37,26 @@ Approved supporting files outside the named pages:
 - `client/src/components/DprEquipmentCompact.tsx` and `EquipmentTankBalanceInputs.tsx`: the two existing DPR equipment editors.
 - `client/src/pages/SiteEntry.tsx` and `SiteEdit.tsx`: pass master settings and restore centimetres; clear hidden dip evidence with contractor tank fields.
 - Part 1's `DieselTankDipSettings.tsx` and `EquipmentMasterCreateDialog.tsx`: shared master fields and the existing create dialog.
+- `tests/dgDip01Master.test.tsx`, `dgDip01Input.test.tsx`, `dgDip01Persistence.test.ts`, `dgDip01Forms.test.tsx` and `dgDip01Filling.test.tsx`: focused master, input, real-database, form-save and Owner checks.
+- `.agents/memory/equipment-opening-continuity.md`: retain the Owner's historical-reading safety rule for future work.
 
 Generator logs now also offer the existing Generator Master choices, so a configured machine can be selected rather than only the two old hard-coded names. No existing generator name is renamed.
+
+## Part 3 — Filling check
+
+A zero-runtime filling entry, or a ticked “Filling check”, shows issued litres ÷ dip rise alongside the current master figure. Only the Owner sees “Use this figure”; the server also enforces Owner access. The master update and before/after audit are one transaction. It does not update entries, diesel issued, stock or ledgers.
+
+Final focused verification: 122 tests passed across 11 files, combining the initial run with focused reruns of two corrected test fixtures. The new tests exercise all four entry forms, 100 L ÷ 8 cm = 12.5 L/cm, Owner/non-Owner controls, real database audit persistence and unchanged old entries. `npm run build` passed after each part.
+
+Development startup passed the unchanged read-only readiness check: `ready: true`, 2,581 columns checked. Both development databases were independently checked for all 11 nullable `real` columns, with no defaults.
+
+Signed-in UI was verified through render tests, not a signed-in browser. No real equipment entries or temporary users were created. No production database access, backfills, data repairs, startup writes, stock/ledger changes or publishing.
+
+## Full suite — run once
+
+The single full run accounted for all **542 files**: **6,317 passed, 14 failed, 3 existing skips**. The failures were:
+- `dpr314Correction.test.ts`: 10; empty new dip fields changed legacy hydration payloads.
+- `dprCorrections.integration.test.ts`: 2; the same hydration issue.
+- `equipmentUsageCombinedUpdate06XHF4.test.ts`: 2; merging converted fields overwrote normalized timestamps.
+
+Fixed the application, not these tests: legacy hydration omits absent dip fields, and save normalization merges only converted diesel values, retaining timestamp normalization. Focused rerun: **104 passed across nine files**, including every failed test and the new dip tests. Final build passed. **Combined verified result: 6,331 passed, 0 remaining failures, 3 unchanged skips.** The full suite was not run a second time. The skips remain the two opt-in labour PostgreSQL checks and the opt-in VB23B HTTP fixture.

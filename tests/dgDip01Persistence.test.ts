@@ -3,7 +3,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 import { drizzle } from "drizzle-orm/pglite";
 import { applyEquipmentDip } from "@shared/equipmentTankDip";
-import { lastEquipmentDieselDip } from "../server/equipmentTankDip";
+import { lastEquipmentDieselDip, useEquipmentFillingRate } from "../server/equipmentTankDip";
 
 const pg = new PGlite();
 const db = drizzle(pg);
@@ -20,6 +20,9 @@ beforeAll(async () => {
       dpr_status text, is_deleted boolean DEFAULT false, is_superseded boolean DEFAULT false);
     CREATE TABLE bitumen_heating_sessions (id serial PRIMARY KEY, dg_mode text, dg_generator_name text, dg_opening_diesel real,
       dg_closing_diesel real, date date, created_at timestamp DEFAULT now(), plant_name text);
+    CREATE TABLE audit_logs (id serial PRIMARY KEY, module text NOT NULL, transaction_id integer NOT NULL,
+      action text NOT NULL, user_id integer, user_name text NOT NULL, user_role text, reason text,
+      old_values jsonb, new_values jsonb, stock_impact text, created_at timestamp DEFAULT now());
     INSERT INTO equipment_usage (opening_diesel, closing_diesel, diesel_issued) VALUES (100, 75, 10);
   `);
   await pg.exec(readFileSync("migrations/0081_equipment_tank_dip.sql", "utf8"));
@@ -70,4 +73,20 @@ it("resolves actual closing dips across sources, with date, permission and edit 
   expect(await lastEquipmentDieselDip(db, { ...base, plant: undefined, site: "Fixture site", permittedSites: ["Fixture site"] }))
     .toEqual({ cm: 43, litres: 537.5, date: "2026-11-28" });
   expect(await lastEquipmentDieselDip(db, { ...base, plant: undefined, site: "Fixture site", permittedSites: [] })).toBeNull();
+});
+
+it("Owner filling check updates only calibration and atomically records old/new values", async () => {
+  await pg.exec("INSERT INTO equipment_master (id,name,dip_liters_per_cm,dead_stock_depth_cm,tank_capacity_liters) VALUES (991,'Fixture DG',10,4,600)");
+  const reading = { issuedLitres: 100, openingDipCm: 20, closingDipCm: 28 };
+  await expect(useEquipmentFillingRate(db, 991, reading, { id: 1, fullName: "Fixture", isOwner: false }))
+    .rejects.toMatchObject({ status: 403 });
+  expect((await pg.query("SELECT dip_liters_per_cm FROM equipment_master WHERE id=991")).rows).toEqual([{ dip_liters_per_cm: 10 }]);
+  const beforeEntries = await pg.query("SELECT * FROM equipment_usage ORDER BY id");
+  const result = await db.transaction(tx => useEquipmentFillingRate(tx, 991, reading, { id: 1, fullName: "Fixture Owner", isOwner: true }));
+  expect(result).toEqual({ id: 991, dipLitersPerCm: 12.5 });
+  expect((await pg.query("SELECT old_values,new_values,user_role FROM audit_logs")).rows)
+    .toEqual([{ old_values: { dipLitersPerCm: 10 }, new_values: { dipLitersPerCm: 12.5, fillingCheck: reading }, user_role: "owner" }]);
+  expect((await pg.query("SELECT dead_stock_depth_cm,tank_capacity_liters FROM equipment_master WHERE id=991")).rows)
+    .toEqual([{ dead_stock_depth_cm: 4, tank_capacity_liters: 600 }]);
+  expect(await pg.query("SELECT * FROM equipment_usage ORDER BY id")).toEqual(beforeEntries);
 });

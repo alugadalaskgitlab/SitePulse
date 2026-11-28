@@ -32,3 +32,17 @@ export function applyEquipmentDip<T extends Record<string, any>>(
   }
   return result as T;
 }
+
+export const equipmentFillingCheckSchema = z.object({
+  issuedLitres: z.number().finite().positive(),
+  openingDipCm: z.number().finite().nonnegative(),
+  closingDipCm: z.number().finite().nonnegative(),
+}).strict().refine(value => value.closingDipCm > value.openingDipCm, {
+  message: "The closing dip must be above the opening dip for a filling check.",
+});
+
+export function equipmentFillingRate(value: unknown): number {
+  const reading = equipmentFillingCheckSchema.parse(value);
+  const rate = reading.issuedLitres / (reading.closingDipCm - reading.openingDipCm);
+  return z.number().finite().positive().parse(rate);
+}

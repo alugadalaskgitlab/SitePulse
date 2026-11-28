@@ -1749,6 +1749,7 @@ export default function PlantEquipmentUsage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <EquipmentTankDipInput equipment={selectedEquipment} kind="closing" cm={closingDipCm}
+                            openingCm={openingDipCm} runningHours={runtime}
                             litres={dieselBalanceInTank === "" ? null : Number(dieselBalanceInTank)}
                             openingLitres={openingDiesel === "" ? null : Number(openingDiesel)} issuedLitres={Number(dieselIssued || 0) + directFillLitres}
                             onChange={(cm, litres) => { setClosingDipCm(cm); setDieselBalanceInTank(litres == null ? "" : String(litres)); }}

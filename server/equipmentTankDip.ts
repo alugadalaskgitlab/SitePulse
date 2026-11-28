@@ -1,4 +1,26 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { equipmentMaster, auditLogs } from "@shared/schema";
+import { equipmentFillingRate } from "@shared/equipmentTankDip";
+
+export async function useEquipmentFillingRate(tx: any, id: number, reading: unknown, actor: {
+  id: number; fullName: string; isOwner: boolean;
+}) {
+  if (!actor.isOwner) throw Object.assign(new Error("Only the Owner can use this figure."), { status: 403 });
+  const rate = equipmentFillingRate(reading);
+  const [before] = await tx.select({ id: equipmentMaster.id, dipLitersPerCm: equipmentMaster.dipLitersPerCm })
+    .from(equipmentMaster).where(eq(equipmentMaster.id, id)).for("update");
+  if (!before) throw Object.assign(new Error("Equipment not found"), { status: 404 });
+  const [saved] = await tx.update(equipmentMaster).set({ dipLitersPerCm: rate }).where(eq(equipmentMaster.id, id))
+    .returning({ id: equipmentMaster.id, dipLitersPerCm: equipmentMaster.dipLitersPerCm });
+  if (!saved) throw new Error("Equipment calibration was not updated.");
+  await tx.insert(auditLogs).values({
+    module: "equipment_master", transactionId: id, action: "DIP_CALIBRATION",
+    userId: actor.id, userName: actor.fullName, userRole: "owner",
+    reason: "Owner used the filling-check figure", oldValues: { dipLitersPerCm: before.dipLitersPerCm },
+    newValues: { dipLitersPerCm: saved.dipLitersPerCm, fillingCheck: reading },
+  });
+  return saved;
+}
 
 /** Read-only physical dip continuity; never infer a dip from a calculated closing. */
 export async function lastEquipmentDieselDip(executor: any, input: {

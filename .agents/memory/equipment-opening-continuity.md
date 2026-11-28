@@ -12,3 +12,11 @@ description: Canonical cross-source resolver for latest prior valid closing read
 - SiteEdit: only rows added in the edit session (`isNew`, client-only flag stripped from payload) auto-resolve; stored rows are NEVER recalculated on load; changing equipment on an existing row with a stored opening requires window.confirm. SiteEdit's classic payload has no plantUsageId → open-usage linkage not applicable there.
 - Plant page gotcha: `userModifiedOpening` was historically set only by the opening-DIESEL input; the opening METER input must set it too or async prefill overwrites typed readings.
 - Diesel previousBalance endpoint/logic is untouched by all of this — meter continuity and diesel carry-forward are separate systems.
+
+## Optional centimetre diesel dips
+
+Machines without “Litres per cm” set keep their existing litres controls and save behavior. Calibration updates must not backfill dip readings or recalculate stored historical entries, diesel issued, stock or ledger records.
+
+**Why:** The Owner requested optional dip capture while protecting existing operational and financial evidence.
+
+**How to apply:** Keep measured centimetres distinct from calculated balances. A filling-check action updates only the master calibration with an audit; historical readings remain unchanged.

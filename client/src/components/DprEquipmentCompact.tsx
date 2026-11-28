@@ -217,6 +217,13 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
     readingContinuityAppliedFor.current = null;
   }, [row.equipmentId]);
 
+  const dipEquipmentId = useRef(row.equipmentId);
+  useEffect(() => {
+    if (dipEquipmentId.current === row.equipmentId) return;
+    dipEquipmentId.current = row.equipmentId;
+    if (row.openingDipCm != null || row.closingDipCm != null) onChange?.({ openingDipCm: null, closingDipCm: null });
+  }, [row.equipmentId, row.openingDipCm, row.closingDipCm, onChange]);
+
   useEffect(() => {
     let cancelled = false;
     if (historicalCorrection || !editable || !onChange || row.plantUsageId != null || row.openingReading != null || row.equipmentId == null || !beforeDate || !site) return;
@@ -429,6 +436,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
              <div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Opening tank (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.openingDiesel ?? ""} onChange={e => setNumber("openingDiesel", e.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-opening-tank-${index}`} /></div>
             </EquipmentTankDipInput>
             <EquipmentTankDipInput equipment={equipment ?? null} equipmentId={row.equipmentId} kind="closing"
+              openingCm={row.openingDipCm} runningHours={preview.runtime}
               cm={row.closingDipCm} litres={row.dieselBalanceInTank} openingLitres={row.openingDiesel} issuedLitres={row.diesel}
               testId={`equipment-compact-closing-tank-${index}`}
               onChange={(cm, litres) => { closingTankEdited.current = true; onChange?.({ closingDipCm: cm, dieselBalanceInTank: litres }); }}>

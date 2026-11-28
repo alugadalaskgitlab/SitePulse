@@ -414,6 +414,7 @@ export default function PlantGeneratorLogs() {
                 </div>
                 <div>
                   <EquipmentTankDipInput equipmentName={generatorName} kind="closing" cm={closingDipCm}
+                    openingCm={openingDipCm} runningHours={Number(hoursRun || calculatedHoursDisplay || 0)}
                     litres={closingDiesel === "" ? null : Number(closingDiesel)}
                     openingLitres={openingDiesel === "" ? null : Number(openingDiesel)} issuedLitres={Number(dieselIssued || 0)}
                     onChange={(cm, litres) => { setClosingDipCm(cm); setClosingDiesel(litres == null ? "" : String(litres)); }}

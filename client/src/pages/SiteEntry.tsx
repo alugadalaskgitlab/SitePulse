@@ -206,8 +206,8 @@ const contractorDieselTankFieldsCleared = (row: EquipmentEntry): EquipmentEntry 
     ? {
         ...row,
         openingDiesel: null,
-        openingDipCm: null,
-        closingDipCm: null,
+        ...(row.openingDipCm !== undefined ? { openingDipCm: null } : {}),
+        ...(row.closingDipCm !== undefined ? { closingDipCm: null } : {}),
         dieselBalanceInTank: null,
         dieselBalanceConfirmed: null,
       }
@@ -3616,6 +3616,7 @@ export default function SiteEntry({ sectionEditor }: { sectionEditor?: DprSectio
                 <div><Label className="text-sm">No. of Trips</Label><Input type="number" step="1" value={entry.numberOfTrips ?? ""}
                   data-testid={`input-equipment-water-trips-${idx}`} onChange={e => setEquipment(rows => rows.map((row, i) => i === idx ? { ...row, numberOfTrips: e.target.value ? parseInt(e.target.value) : null } : row))} /></div></>}
               {entry.dieselSource === "plant_stock" && <EquipmentTankBalanceInputs
+                date={header.date} site={header.site} isNew={entry.persistedId == null && entry.openingDiesel == null}
                 equipment={selectedEquipForRow} openingDipCm={entry.openingDipCm} closingDipCm={entry.closingDipCm}
                 requireConfirmationForConsumption={!!sectionEditor}
                 index={idx} openingDiesel={entry.openingDiesel} dieselBalanceInTank={entry.dieselBalanceInTank}

@@ -8,6 +8,7 @@ import { EquipmentTankDipInput } from "@/components/EquipmentTankDipInput";
 import { Input } from "@/components/ui/input";
 import { DprEquipmentCompact } from "@/components/DprEquipmentCompact";
 import { EquipmentTankBalanceInputs } from "@/components/EquipmentTankBalanceInputs";
+vi.mock("@/lib/auth-context", () => ({ useAuth: () => ({ isOwner: false }) }));
 
 const equipment = { id: 991, dipLitersPerCm: 12.5, deadStockDepthCm: 4, tankCapacityLiters: 500 };
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
