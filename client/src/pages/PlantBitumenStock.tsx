@@ -25,8 +25,6 @@ import { TankBookStock } from "@/components/TankBookStock";
 import { TrackerConsumption } from "@/components/TrackerConsumption";
 import { format, parseISO } from "date-fns";
 import type { BitumenDipReading, Party, MixTemplate, TruckDispatch } from "@shared/schema";
-import { formatQty, toFiniteNumber } from "@shared/stockReconciliation";
-import { calculateHlcBitumenCorrectionTarget } from "@shared/plantNormVsActual";
 import {
   BITUMEN_DIP_CHART,
   BITUMEN_DENSITY_KG_PER_LITER,
@@ -106,12 +104,6 @@ export default function PlantBitumenStock() {
   const [reconSite, setReconSite] = useState("all");
 
 
-  const [corrTank1MT, setCorrTank1MT] = useState("");
-  const [corrTank2MT, setCorrTank2MT] = useState("");
-  const [corrPartyId, setCorrPartyId] = useState<string>("");
-  const [corrDate, setCorrDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [corrNotes, setCorrNotes] = useState("");
-  const [showCorrForm, setShowCorrForm] = useState(false);
 
   const [tankNumber, setTankNumber] = useState(sp.get("tank") === "2" ? "2" : "1");
   const [depthCm, setDepthCm] = useState("");
@@ -187,43 +179,6 @@ export default function PlantBitumenStock() {
     if (!stockBalances || !bitumenMaterialId) return [];
     return stockBalances.filter(b => b.materialId === bitumenMaterialId);
   }, [stockBalances, bitumenMaterialId]);
-
-  // pg NUMERIC arrives as strings — normalise before summing. Any malformed
-  // balance makes the book total null (rendered "—"), never a wrong sum.
-  const bitumenBookStockMT = useMemo(() => {
-    return bitumenPartyBalances.reduce<number | null>((s, b) => {
-      if (s === null) return null;
-      const q = toFiniteNumber(b.balance);
-      return q === null ? null : s + q;
-    }, 0);
-  }, [bitumenPartyBalances]);
-
-  const selectedPartyBalance = useMemo(() => {
-    if (!corrPartyId) return null;
-    const b = bitumenPartyBalances.find(b => String(b.partyId) === corrPartyId);
-    return b ? toFiniteNumber(b.balance) : null;
-  }, [bitumenPartyBalances, corrPartyId]);
-
-  const correctionMutation = useMutation({
-    mutationFn: async (data: { materialId: number; partyId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }) => {
-      const res = await apiRequest("POST", "/api/plant-module/stock-correction", data);
-      return res.json();
-    },
-    onSuccess: (result: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
-      const adjNum = toFiniteNumber(result.adjustment);
-      const sign = adjNum !== null && adjNum >= 0 ? "+" : "";
-      toast({ title: "Stock correction posted", description: `Adjustment: ${sign}${formatQty(result.adjustment, 3)} MT. Book stock now ${formatQty(result.newBalance, 3)} MT.` });
-      setShowCorrForm(false);
-      setCorrTank1MT("");
-      setCorrTank2MT("");
-      setCorrNotes("");
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
-  });
 
   const bitumenReceipts = useMemo(() => {
     if (!allReceipts || !bitumenMaterialId) return [];

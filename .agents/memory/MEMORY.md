@@ -113,7 +113,7 @@
 - [Vendor-bill correction safety](vendor-bill-correction-safety.md) — review before production corrections or publishing; preserve financial history and avoid backfills, new permission keys, or sequence resets.
 - [Vendor financial visibility](vendor-financial-visibility.md) — Owner-only default; Administrators need explicit grants; financial site scope and recorded-only TDS preserve evidence.
 - [Vendor master identity](vendor-master-identity.md) — review-first links remain separate from name matching; name changes invalidate associations independently by role.
-- [Diesel comparison attribution](diesel-comparison-attribution.md) — never invent equipment purchase splits; keep purchase-gap warnings report-only.
+- [Fuel comparison attribution](diesel-comparison-attribution.md) — no invented equipment purchase or shared-tank party splits; individual-party dip actual/difference stay blank.
 - [Condensed DPR mockup review](dpr-mockup-review.md) — reviewed readiness/Fix/tank interactions stay stable; visual approval is not production-integration approval.
 - [DPR daily received totals](dpr-daily-received-totals.md) — secondary BOQ totals require complete same-unit conversions, never a convertible subset of the day's receipts.
 - [Vendor group action placement](vendor-group-action-placement.md) — approved separation preserves toggle geometry and collapsed-state removal availability.

@@ -14,3 +14,11 @@ Daily reporting defines Logged Work as the presence of a usage/DPR equipment ent
 **Why:** This was the requested signal, independent of diesel amount. Since issued diesel comes from those same entries, “Issued but not logged” is not normally reachable from current sources. Do not invent real examples or change the signal to make the flag appear.
 
 **How to apply:** Preserve the agreed first-match status priority. Explain absent real-data examples separately from synthetic status-branch tests.
+
+## Shared-tank party filters
+
+On Bitumen and LDO trackers, show measured dip actual and difference only for **All parties**. Leave them blank when an individual party is selected; production and norm can still be filtered.
+
+**Why:** The Owner approved this explicitly because tank dips do not establish a party's consumption. Allocating measured consumption would invent evidence and introduce an unapproved formula.
+
+**How to apply:** Keep this rule consistent in the table and exports. Never compare one party's norm against the whole tank's measured use.

@@ -82,6 +82,7 @@ describe("Plant Stock page navigation", () => {
     expect(table.getAllByRole("columnheader").map(header => header.textContent)).toEqual(["Material","Party","Tank 1","Tank 2","Barrels","Not in a tank","Total","Owner action"]);
     expect(table.getByText("25 (3.775 MT)")).toBeTruthy();
     expect(table.getByRole("button",{ name:"Correct tank stock" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Physical stock correction" })).toBeTruthy();
   });
   beforeEach(() => {
     mocks.search = "";
@@ -142,6 +143,7 @@ describe("Plant Stock page navigation", () => {
     mocks.isOwner = false;
     const nonOwner = render(<PlantStock />);
     expect(nonOwner.queryByTestId("advanced-owner-section")).toBeNull();
+    expect(nonOwner.queryByRole("button", { name: "Physical stock correction" })).toBeNull();
     nonOwner.unmount();
 
     mocks.isOwner = true;

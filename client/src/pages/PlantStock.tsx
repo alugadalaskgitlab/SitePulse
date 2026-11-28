@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { TankStockPositions } from "@/components/TankStockPositions";
+import { PhysicalStockCorrectionButton } from "@/components/PhysicalStockCorrectionDialog";
 import { TANK_STOCK_HEADERS, TANK_STOCK_NOTE, tankStockCells, tankStockExportRows, tankStockPrintTable, visibleTankStockRows } from "@shared/tankAssignment";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1667,12 +1668,14 @@ export default function PlantStock() {
         </div>
       </div>
 
-      {packedPositionRows.length > 0 && (
+      {(packedPositionRows.length > 0 || isOwner) && (
       <Card data-testid="packed-stock-position-summary">
           <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
             <div>
               <CardTitle>Tank and packed stock</CardTitle>
             </div>
+            <div className="flex flex-wrap gap-2">
+            <PhysicalStockCorrectionButton />
             {packedStockQuery.data?.canDecant && (
               <Button size="sm" onClick={() => {
                 setDecantMaterialId("");
@@ -1683,6 +1686,7 @@ export default function PlantStock() {
                 setDecantOpen(true);
               }} data-testid="button-open-stock-decant">Decant</Button>
             )}
+            </div>
           </CardHeader>
           <CardContent>
             <TankStockPositions rows={packedPositionRows} owner={isOwner} showAll={showAllTankPositions} onShowAllChange={setShowAllTankPositions} />

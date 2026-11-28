@@ -38,7 +38,8 @@ export function TrackerConsumption({ kind, days, meterDays = [], dispatches = []
     }
     const dips = new Map(days.map(d => [d.date, d.actual]));
     const meters = new Map(meterDays.map(d => [d.date, d.dryer]));
-    return [...new Set([...production.keys(), ...dips.keys(), ...meters.keys()])]
+    const dates = party === "all" ? [...new Set([...production.keys(), ...dips.keys(), ...meters.keys()])] : [...production.keys()];
+    return dates
       .filter(date => (!from || date >= from) && (!to || date <= to))
       .sort((a, b) => b.localeCompare(a))
       .map(date => {

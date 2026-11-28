@@ -24,14 +24,13 @@ import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
 import { TankStockPositions } from "@/components/TankStockPositions";
 import { TANK_STOCK_HEADERS, TANK_STOCK_NOTE, tankStockCells, tankStockExportRows, tankStockPrintTable, visibleTankStockRows } from "@shared/tankAssignment";
 import { TankBookStock } from "@/components/TankBookStock";
+import { TrackerConsumption } from "@/components/TrackerConsumption";
 import { format, parseISO } from "date-fns";
 import type { LdoFlowReading, LdoDipReading, TruckDispatch, Party, MixTemplate } from "@shared/schema";
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoVolumeAtDepth, getLdoMaxDepth, getLdoDeadStockDepth, getLdoDeadStockVolume, getLdoUsableVolume } from "@shared/ldo-dip-chart";
 import { materialTankLabel } from "@shared/materialMasterFields";
 import { computeTankStock } from "@/lib/ldoStock";
-import { LdoUsableStockStrip } from "@/components/LdoUsableStockStrip";
-import { PlantNormActualPeriodSummary } from "@/components/PlantNormActualSummary";
 
 const TANK_LABELS: Record<number, string> = { 1: "Boiler Meter", 2: "Dryer Meter" };
 
@@ -148,12 +147,6 @@ export default function PlantLdoFlowMeter() {
   const setReconSite = (v: string) => setPersistedFilters((f) => ({ ...f, reconSite: v }));
   const setOfficialMethod = (v: "dip" | "flowmeter") => setPersistedFilters((f) => ({ ...f, officialMethod: v }));
 
-  const [ldoCorrTank1L, setLdoCorrTank1L] = useState("");
-  const [ldoCorrTank2L, setLdoCorrTank2L] = useState("");
-  const [ldoCorrPartyId, setLdoCorrPartyId] = useState<string>("");
-  const [ldoCorrDate, setLdoCorrDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [ldoCorrNotes, setLdoCorrNotes] = useState("");
-  const [showLdoCorrForm, setShowLdoCorrForm] = useState(false);
 
   const [tankNumber, setTankNumber] = useState("1");
   const [meterReading, setMeterReading] = useState("");
@@ -256,39 +249,6 @@ export default function PlantLdoFlowMeter() {
       if (row.tank1L != null && row.tank2L != null) return sum + row.tank1L + row.tank2L;
       return sum + balanceToL(row.tank1 + row.tank2, row.stockUom);
     }, 0);
-
-  const ldoSelectedPartyBalanceL = useMemo(() => {
-    if (!ldoCorrPartyId) return null;
-    return (packedStockPositions?.rows ?? [])
-      .filter(row => row.materialName.trim().toUpperCase() === "LDO" && String(row.partyId) === ldoCorrPartyId)
-      .reduce((sum, row) => {
-        if (row.tank1L != null && row.tank2L != null) return sum + row.tank1L + row.tank2L;
-        return sum + balanceToL(row.tank1 + row.tank2, row.stockUom);
-      }, 0);
-  }, [ldoCorrPartyId, packedStockPositions]);
-
-  const ldoCorrectionMutation = useMutation({
-    mutationFn: async (data: { materialId: number; partyId: number; physicalQty: number; tank1L: number; tank2L: number; uom: string; date: string; notes: string; correctedBy: string }) => {
-      const res = await apiRequest("POST", "/api/plant-module/stock-correction", data);
-      return res.json();
-    },
-    onSuccess: (result: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/packed-stock-positions"] });
-      const adjL = balanceToL(Number(result.adjustment || 0), result.uom || "MT");
-      const sign = adjL >= 0 ? "+" : "";
-      const newL = balanceToL(Number(result.newBalance || 0), result.uom || "MT");
-      toast({ title: "LDO stock correction posted", description: `Adjustment: ${sign}${adjL.toFixed(0)} L. Book stock now ${newL.toFixed(0)} L.` });
-      setShowLdoCorrForm(false);
-      setLdoCorrTank1L("");
-      setLdoCorrTank2L("");
-      setLdoCorrNotes("");
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
-  });
 
   const { data: allReceipts } = useQuery<{ id: number; date: string; materialId: number; quantity: number; uom: string; tankNumber?: number | null }[]>({
     queryKey: ["/api/plant-module/material-receipts"],
@@ -395,26 +355,15 @@ export default function PlantLdoFlowMeter() {
     })[0];
   }, [readings]);
 
-  const dailySummary = useMemo(() => {
+  const allMeterDays = useMemo(() => {
     if (!readings) return [];
-    // Apply only the date filters here. Tank / source / dryer-src filters are
-    // intentionally excluded — the Daily Summary combines both meters per day
-    // and scoping it by tank or source would produce misleading totals.
-    const dateFiltered = readings.filter(r => {
-      if (filterDateFrom && r.date < filterDateFrom) return false;
-      if (filterDateTo && r.date > filterDateTo) return false;
-      return true;
-    });
     const grouped: Record<string, { date: string; entries: LdoFlowReading[] }> = {};
-    for (const r of dateFiltered) {
+    for (const r of readings) {
       if (!grouped[r.date]) grouped[r.date] = { date: r.date, entries: [] };
       grouped[r.date].entries.push(r);
     }
     const sorted = Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date));
-    // When no date filter is active limit to the 15 most-recent days so the
-    // UI table stays manageable; when a date range is active show all days.
-    const limited = (filterDateFrom || filterDateTo) ? sorted : sorted.slice(0, 15);
-    return limited.map(day => {
+    return sorted.map(day => {
         // Per-meter daily report: this section is intentionally still
         // grouped by physical meter (tank 1 = boiler-meter, tank 2 =
         // dryer-meter). The per-meter consumption numbers feed the
@@ -457,7 +406,12 @@ export default function PlantLdoFlowMeter() {
           totalConsumptionKg: totalL > 0 ? Math.round(totalL * LDO_DENSITY_KG_PER_LITER) : null,
         };
       });
-  }, [readings, filterDateFrom, filterDateTo, ldoReceiptsByDate]);
+  }, [readings, ldoReceiptsByDate]);
+  // Keep the existing history export and combined-card period unchanged.
+  const dailySummary = useMemo(() => {
+    const days = allMeterDays.filter(day => (!filterDateFrom || day.date >= filterDateFrom) && (!filterDateTo || day.date <= filterDateTo));
+    return filterDateFrom || filterDateTo ? days : days.slice(0, 15);
+  }, [allMeterDays, filterDateFrom, filterDateTo]);
 
   const totalConsumptionBothTanks = dailySummary.reduce((s, d) => s + d.totalConsumption, 0);
 
@@ -577,7 +531,7 @@ export default function PlantLdoFlowMeter() {
       grouped[r.date].push(r);
     }
 
-    const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a)).slice(0, 10);
+    const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
     return dates.map(date => {
       const entries = grouped[date];
@@ -1180,6 +1134,7 @@ export default function PlantLdoFlowMeter() {
         <h1 className="text-2xl font-bold flex-1" data-testid="text-page-title">
           LDO Flow Meter Tracker — <span data-testid="text-active-plant">{urlPlant}</span>
         </h1>
+        <TankBookStock kind="ldo" plantName={urlPlant} defaultPlantName={defaultPlantName} settingsOnly />
         {plantOptions.length > 1 && (
           <select
             value={urlPlant}
@@ -1206,43 +1161,7 @@ export default function PlantLdoFlowMeter() {
           </Button>
         </Link>
       </div>
-      <PlantNormActualPeriodSummary
-        from={filterDateFrom || (new Date(Date.now() - 9 * 86_400_000)).toISOString().slice(0, 10)}
-        to={filterDateTo || new Date().toISOString().slice(0, 10)}
-        plantName={urlPlant}
-      />
-
-      {/* Header strip — shows DIP-BASED usable stock (physical measurement).
-          Flow-meter stock is shown inside each tank panel below as a reference.
-          latestDipTank1/2 are the most-recent dip readings sorted by date+time. */}
-      <LdoUsableStockStrip
-        tank1L={latestDipTank1 ? getLdoUsableVolume(1, latestDipTank1.depthCm) : null}
-        tank2L={latestDipTank2 ? getLdoUsableVolume(2, latestDipTank2.depthCm) : null}
-        tank1AsOf={latestDipTank1 ? { date: latestDipTank1.date, time: latestDipTank1.time || undefined } : undefined}
-        tank2AsOf={latestDipTank2 ? { date: latestDipTank2.date, time: latestDipTank2.time || undefined } : undefined}
-      />
-
-      <TankBookStock kind="ldo" plantName={urlPlant} defaultPlantName={defaultPlantName} positions={packedStockPositions?.rows} readings={dipReadings} />
-      <NegativeBalanceBanner
-        balances={ldoPartyBalances}
-        parties={parties}
-        material="LDO"
-        testid="banner-negative-ldo"
-      />
-
-      {(packedStockPositions?.rows ?? []).some(row => row.materialName.trim().toUpperCase() === "LDO") && (
-        <Card data-testid="ldo-packed-stock-summary">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">LDO tank and packed stock</CardTitle>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <TankStockPositions rows={ldoPackedPositions} owner={isOwner} showAll={showAllTankPositions} onShowAllChange={setShowAllTankPositions} />
-          </CardContent>
-        </Card>
-      )}
-
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="ldo-tanks">
         {[1, 2].map(tankNum => {
           const latestDip = tankNum === 1 ? latestDipTank1 : latestDipTank2;
           const latestFlow = tankNum === 1 ? latestTank1 : latestTank2;
@@ -1385,632 +1304,20 @@ export default function PlantLdoFlowMeter() {
         </Card>
       </div>
 
-      {canViewNormActual && <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-blue-600" />
-            <CardTitle className="text-base font-semibold">LDO Reconciliation</CardTitle>
-          </div>
-          <p className="text-base text-muted-foreground mt-1">
-            Compare theoretical consumption (from mix template LDO norms) vs actual consumption (per dispatch variance) and physical stock (dip readings)
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex gap-2 flex-wrap items-end">
-            <div>
-              <Label className="text-base">From date</Label>
-              <Input type="date" value={reconDateFrom} onChange={e => setReconDateFrom(e.target.value)} className="w-40" data-testid="input-ldo-recon-date-from" />
-            </div>
-            <div>
-              <Label className="text-base">To date</Label>
-              <Input type="date" value={reconDateTo} onChange={e => setReconDateTo(e.target.value)} className="w-40" data-testid="input-ldo-recon-date-to" />
-            </div>
-            <div>
-              <Label className="text-base">Party</Label>
-              <Select value={reconPartyId} onValueChange={setReconPartyId}>
-                <SelectTrigger className="w-44" data-testid="select-ldo-recon-party">
-                  <SelectValue placeholder="All Parties" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Parties</SelectItem>
-                  {parties?.map(p => (
-                    <SelectItem key={p.id} value={String(p.id)} className="entity-name">{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-base">Mix template</Label>
-              <Select value={reconMixTemplateId} onValueChange={setReconMixTemplateId}>
-                <SelectTrigger className="w-44" data-testid="select-ldo-recon-mix">
-                  <SelectValue placeholder="All Mixes" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Mixes</SelectItem>
-                  {mixTemplates?.map(t => (
-                    <SelectItem key={t.id} value={String(t.id)} className="entity-name">{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-base">Site / Location</Label>
-              <Select value={reconSite} onValueChange={setReconSite}>
-                <SelectTrigger className="w-44" data-testid="select-ldo-recon-site">
-                  <SelectValue placeholder="All Sites" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Sites</SelectItem>
-                  {deliveryLocations.map(loc => (
-                    <SelectItem key={loc} value={loc}>{loc}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {(reconDateFrom || reconDateTo || reconPartyId !== "all" || reconMixTemplateId !== "all" || reconSite !== "all") && (
-              <Button variant="outline" size="sm" onClick={() => { setReconDateFrom(""); setReconDateTo(""); setReconPartyId("all"); setReconMixTemplateId("all"); setReconSite("all"); }} data-testid="button-ldo-clear-recon-filters">
-                Clear Filters
-              </Button>
-            )}
-          </div>
-
-          {reconciliationData && reconciliationData.dispatchCount > 0 ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                <Card className="bg-muted/30">
-                  <CardContent className="p-4 space-y-1">
-                    <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
-                      Total Production
-                      <span title="Total mix dispatched in the selected period" className="cursor-help"><Info className="w-4 h-4" /></span>
-                    </div>
-                    <div className="text-2xl font-bold" data-testid="text-ldo-recon-production">{reconciliationData.totalLoadMT.toFixed(3)} MT</div>
-                    <div className="text-base text-muted-foreground">{reconciliationData.dispatchCount} dispatches</div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-muted/30">
-                  <CardContent className="p-4 space-y-1">
-                    <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
-                      Theoretical LDO
-                      <span title="LDO that should have been consumed as per mix template norms" className="cursor-help"><Info className="w-4 h-4" /></span>
-                    </div>
-                    <div className="text-2xl font-bold" data-testid="text-ldo-recon-theoretical">{reconciliationData.totalTheoreticalL.toFixed(0)} L</div>
-                    <div className="text-base text-muted-foreground">As per mix template</div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-muted/30">
-                  <CardContent className="p-4 space-y-1">
-                    <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
-                      Actual LDO Used
-                      <span title="LDO actually consumed as per the variance % entered during dispatch" className="cursor-help"><Info className="w-4 h-4" /></span>
-                    </div>
-                    <div className="text-2xl font-bold" data-testid="text-ldo-recon-actual">{reconciliationData.totalActualL.toFixed(0)} L</div>
-                    <div className="text-base text-muted-foreground">As per dispatch variance</div>
-                  </CardContent>
-                </Card>
-
-                <Card className={`${reconciliationData.ldoSavedL >= 0 ? "bg-green-50 dark:bg-green-950/30" : "bg-red-50 dark:bg-red-950/30"}`}>
-                  <CardContent className="p-4 space-y-1">
-                    <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
-                      {reconciliationData.ldoSavedL >= 0 ? "LDO Saved" : "LDO Excess"}
-                      <span title="Difference between theoretical and actual. Positive = saved (used less than template), Negative = excess (used more than template)" className="cursor-help"><Info className="w-4 h-4" /></span>
-                    </div>
-                    <div className={`text-2xl font-bold flex items-center gap-1 ${reconciliationData.ldoSavedL >= 0 ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`} data-testid="text-ldo-recon-saved">
-                      {reconciliationData.ldoSavedL >= 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
-                      {Math.abs(reconciliationData.ldoSavedL).toFixed(0)} L
-                    </div>
-                    <div className="text-base text-muted-foreground">
-                      {reconciliationData.savingsPercent >= 0 ? "Savings" : "Excess"}: {Math.abs(reconciliationData.savingsPercent).toFixed(1)}% of theoretical
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Card className="bg-blue-50/50 dark:bg-blue-950/20">
-                  <CardContent className="p-4 space-y-1">
-                    <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
-                      LDO Received (Receipts)
-                      <span title="Total LDO received from material receipts" className="cursor-help"><Info className="w-4 h-4" /></span>
-                    </div>
-                    {(reconDateFrom || reconDateTo) ? (
-                      <>
-                        <div className="text-2xl font-bold" data-testid="text-ldo-recon-receipts">{reconciliationData.totalReceiptsL.toFixed(0)} L</div>
-                        {(reconciliationData.tank1ReceiptsL > 0 || reconciliationData.tank2ReceiptsL > 0) && (
-                          <div className="text-base text-muted-foreground">
-                            Boiler: {reconciliationData.tank1ReceiptsL.toFixed(0)} L | Dryer: {reconciliationData.tank2ReceiptsL.toFixed(0)} L
-                          </div>
-                        )}
-                        <div className="text-base text-muted-foreground">
-                          {reconDateFrom || "start"} to {reconDateTo || "now"}
-                        </div>
-                        <div className="text-base text-muted-foreground border-t pt-1 mt-1">
-                          All-time total: <span className="font-semibold text-foreground">{allTimeLdoReceiptsL.toFixed(0)} L</span>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-2xl font-bold" data-testid="text-ldo-recon-receipts">{allTimeLdoReceiptsL.toFixed(0)} L</div>
-                        {(reconciliationData.tank1ReceiptsL > 0 || reconciliationData.tank2ReceiptsL > 0) && (
-                          <div className="text-base text-muted-foreground">
-                            Boiler: {reconciliationData.tank1ReceiptsL.toFixed(0)} L | Dryer: {reconciliationData.tank2ReceiptsL.toFixed(0)} L
-                          </div>
-                        )}
-                        <div className="text-base text-muted-foreground">All time</div>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-amber-50/50 dark:bg-amber-950/20">
-                  <CardContent className="p-4 space-y-1">
-                    <div className="text-base font-medium text-muted-foreground flex items-center gap-1">
-                      Physical Stock (Dip Reading)
-                      <span title="Physical LDO stock in tanks as measured by the latest dip reading per tank" className="cursor-help"><Info className="w-4 h-4" /></span>
-                    </div>
-                    {reconciliationData.latestDipReading ? (
-                      <>
-                        <div className="text-2xl font-bold" data-testid="text-ldo-recon-physical-stock">{reconciliationData.latestDipReading.totalL.toFixed(0)} L</div>
-                        <div className="text-base font-semibold text-foreground">
-                          Usable: {reconciliationData.latestDipReading.totalUsableL.toFixed(0)} L
-                        </div>
-                        <div className="text-base text-muted-foreground mt-1">
-                          Boiler Meter: {reconciliationData.latestDipReading.tank1L.toFixed(0)} L (usable: {reconciliationData.latestDipReading.tank1UsableL.toFixed(0)} L)
-                          {reconciliationData.latestDipReading.tank1Date ? ` — ${reconciliationData.latestDipReading.tank1Date}` : ""}
-                        </div>
-                        <div className="text-base text-muted-foreground">
-                          Dryer Meter: {reconciliationData.latestDipReading.tank2L.toFixed(0)} L (usable: {reconciliationData.latestDipReading.tank2UsableL.toFixed(0)} L)
-                          {reconciliationData.latestDipReading.tank2Date ? ` — ${reconciliationData.latestDipReading.tank2Date}` : ""}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-base text-muted-foreground">No dip readings available</div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="text-base text-muted-foreground bg-muted/30 p-4 rounded-md space-y-1">
-                <div className="font-semibold">How to read this:</div>
-                <div><strong>Theoretical</strong> = What the mix template says should have been consumed (template LDO norm x load weight)</div>
-                <div><strong>Actual</strong> = What was actually consumed based on the variance % entered during each dispatch</div>
-                <div><strong>Saved/Excess</strong> = Theoretical minus Actual. Positive means less LDO was used than the template requires (savings). Negative means more was used (excess).</div>
-                <div><strong>Physical Stock</strong> = The actual quantity in tanks measured by dip readings. Use this as a periodic cross-check against calculated stock.</div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-4 text-muted-foreground text-base">
-              {reconciliationData?.dispatchCount === 0 ? "No dispatches found for selected filters" : "Loading dispatch data..."}
-            </div>
-          )}
-        </CardContent>
-      </Card>}
-
-      {dipDailySummary.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Daily Consumption Summary (Dip-Based, Last 10 days)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
-                <thead className="sticky top-0 z-10 bg-background">
-                  <tr>
-                    <th rowSpan={2} className="text-left p-2 border border-border align-bottom">Date</th>
-                    <th colSpan={4} className="text-center p-2 border border-border bg-blue-100 dark:bg-blue-900 font-semibold">Boiler meter</th>
-                    <th colSpan={4} className="text-center p-2 border border-border bg-amber-100 dark:bg-amber-900 font-semibold">Dryer meter</th>
-                    <th rowSpan={2} className="text-right p-2 border border-border align-bottom">Mat. Rcpt (L)</th>
-                    <th rowSpan={2} className="text-right p-2 border border-border align-bottom font-bold">Total consumed (L)</th>
-                  </tr>
-                  <tr>
-                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50">Opening</th>
-                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50">Closing</th>
-                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50">Dip rcpt</th>
-                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50 font-semibold">Consumed</th>
-                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50">Opening</th>
-                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50">Closing</th>
-                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50">Dip rcpt</th>
-                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50 font-semibold">Consumed</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dipDailySummary.map(day => (
-                    <tr key={day.date} data-testid={`row-ldo-dip-daily-${day.date}`}>
-                      <td className="p-2 border border-border">{day.date}</td>
-                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30">{day.t1Opening ? day.t1Opening.volumeLiters.toFixed(0) : "-"}</td>
-                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30">{day.t1Closing ? day.t1Closing.volumeLiters.toFixed(0) : "-"}</td>
-                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30">{day.t1ReceiptVol ? day.t1ReceiptVol.toFixed(0) : "-"}</td>
-                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30 font-medium">{day.t1Consumption !== null ? day.t1Consumption.toFixed(0) : "-"}</td>
-                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30">{day.t2Opening ? day.t2Opening.volumeLiters.toFixed(0) : "-"}</td>
-                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30">{day.t2Closing ? day.t2Closing.volumeLiters.toFixed(0) : "-"}</td>
-                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30">{day.t2ReceiptVol ? day.t2ReceiptVol.toFixed(0) : "-"}</td>
-                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30 font-medium">{day.t2Consumption !== null ? day.t2Consumption.toFixed(0) : "-"}</td>
-                      <td className="p-2 text-right border border-border text-muted-foreground">{day.materialReceiptL ? day.materialReceiptL.toFixed(0) : "-"}</td>
-                      <td className="p-2 text-right border border-border font-bold">{day.totalConsumed ? day.totalConsumed.toFixed(0) : "-"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {dailySummary.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Meter readings — daily LDO consumption</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">Meter readings per day (opening → closing delta). The dip-based actual comparison above follows the plant log summary.</p>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
-                <thead className="sticky top-0 z-10 bg-background">
-                  <tr>
-                    <th rowSpan={2} className="text-left p-2 border border-border align-bottom">Date</th>
-                    <th colSpan={3} className="text-center p-2 border border-border bg-blue-100 dark:bg-blue-900 font-semibold">Boiler meter</th>
-                    <th colSpan={3} className="text-center p-2 border border-border bg-amber-100 dark:bg-amber-900 font-semibold">Dryer meter</th>
-                    <th rowSpan={2} className="text-right p-2 border border-border align-bottom">Mat. Rcpt (L)</th>
-                    <th rowSpan={2} className="text-right p-2 border border-border align-bottom font-bold">Total (L)</th>
-                  </tr>
-                  <tr>
-                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50">Opening</th>
-                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50">Closing</th>
-                    <th className="text-right p-2 border border-border bg-blue-50 dark:bg-blue-900/50 font-semibold">Consumed</th>
-                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50">Opening</th>
-                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50">Closing</th>
-                    <th className="text-right p-2 border border-border bg-amber-50 dark:bg-amber-900/50 font-semibold">Consumed</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dailySummary.map(day => (
-                    <tr key={day.date} data-testid={`row-daily-${day.date}`}>
-                      <td className="p-2 border border-border">{day.date}</td>
-                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30">{day.t1Opening?.meterReading?.toFixed(3) ?? "-"}</td>
-                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30">{day.t1Closing?.meterReading?.toFixed(3) ?? "-"}</td>
-                      <td className="p-2 text-right border border-border bg-blue-50/50 dark:bg-blue-950/30 font-medium">{day.t1Consumption !== null ? day.t1Consumption.toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30">{day.t2Opening?.meterReading?.toFixed(3) ?? "-"}</td>
-                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30">{day.t2Closing?.meterReading?.toFixed(3) ?? "-"}</td>
-                      <td className="p-2 text-right border border-border bg-amber-50/50 dark:bg-amber-950/30 font-medium">{day.t2Consumption !== null ? day.t2Consumption.toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right border border-border text-muted-foreground">{day.materialReceiptL ? day.materialReceiptL.toFixed(3) : "-"}</td>
-                      <td className="p-2 text-right border border-border font-bold">{day.totalConsumption ? day.totalConsumption.toFixed(3) : "-"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── LDO Physical Stock Correction Card ── */}
-      {isAdmin && ldoMaterialId && (
-        <Card className="border-blue-200 dark:border-blue-800">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <Scale className="w-5 h-5 text-blue-600" />
-                <CardTitle className="text-base font-semibold">Book vs Physical LDO Stock Correction</CardTitle>
-              </div>
-              {!showLdoCorrForm && (
-                <Button size="sm" variant="outline" onClick={() => {
-                  if (!ldoCorrPartyId && ldoPartyBalances.length > 0) setLdoCorrPartyId(String(ldoPartyBalances[0].partyId));
-                  if (!ldoCorrTank1L) setLdoCorrTank1L(String(Math.round(latestDipTank1?.volumeLiters || 0)));
-                  if (!ldoCorrTank2L) setLdoCorrTank2L(String(Math.round(latestDipTank2?.volumeLiters || 0)));
-                  setShowLdoCorrForm(true);
-                }} data-testid="button-show-ldo-correction-form">
-                  Post Correction
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Summary grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              <div className="bg-muted/50 rounded-lg p-3">
-                <div className="text-muted-foreground text-sm mb-1">Total book stock (all parties, including packed)</div>
-                <div className={`font-bold text-lg ${ldoBookStockL < 0 ? "text-red-600" : "text-foreground"}`}>
-                  {ldoBookStockL.toFixed(0)} L
-                </div>
-                <div className="text-xs text-muted-foreground">Packed: {ldoPackedStockL.toFixed(0)} L</div>
-                <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
-                  {ldoPartyBalances.map(b => (
-                    <div key={b.id} className="flex justify-between gap-2">
-                      <span>{parties?.find(p => p.id === b.partyId)?.name ?? `Party ${b.partyId}`}:</span>
-                      <span className={balanceToL(b.balance, b.uom) < 0 ? "text-red-500" : ""}>{balanceToL(b.balance, b.uom).toFixed(0)} L</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
-                <div className="text-muted-foreground text-sm mb-1">Physical Stock (Dip)</div>
-                <div className="font-bold text-lg text-amber-700 dark:text-amber-400">
-                  {latestDipTank1 || latestDipTank2
-                    ? `${((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)).toFixed(0)} L`
-                    : "No dip readings"}
-                </div>
-                <div className="text-sm text-muted-foreground">Boiler: {(latestDipTank1?.volumeLiters || 0).toFixed(0)} L</div>
-                <div className="text-sm text-muted-foreground">Dryer: {(latestDipTank2?.volumeLiters || 0).toFixed(0)} L</div>
-              </div>
-              <div className="bg-muted/50 rounded-lg p-3 col-span-2">
-                <div className="text-muted-foreground text-sm mb-1">Difference (physical tanks − tank book stock)</div>
-                {(latestDipTank1 || latestDipTank2) ? (() => {
-                  const physL = (latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0);
-                  const diff = physL - ldoTankBookStockL;
-                  return (
-                    <div className={`font-bold text-lg ${diff > 0 ? "text-green-600" : diff < 0 ? "text-red-600" : "text-foreground"}`}>
-                      {diff > 0 ? "+" : ""}{diff.toFixed(0)} L
-                      <span className="text-sm font-normal ml-2 text-muted-foreground">
-                        {diff > 0 ? "Surplus" : diff < 0 ? "Deficit — check receipts/consumption" : "Balanced"}
-                      </span>
-                    </div>
-                  );
-                })() : <div className="text-muted-foreground">—</div>}
-                <div className="text-sm text-muted-foreground mt-1">Packed stock is excluded from tank readings and remains in packed stock when tank corrections are posted.</div>
-              </div>
-            </div>
-
-            {showLdoCorrForm && (
-              <div className="border rounded-lg p-4 space-y-4 bg-blue-50/50 dark:bg-blue-950/20">
-                <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Post Physical LDO Stock Correction</p>
-
-                {/* Party + date */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-sm">Party to Correct</Label>
-                    <Select value={ldoCorrPartyId} onValueChange={id => setLdoCorrPartyId(id)}>
-                      <SelectTrigger data-testid="select-ldo-corr-party">
-                        <SelectValue placeholder="Select party" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {parties?.map(p => (
-                          <SelectItem key={p.id} value={String(p.id)}>
-                            {p.name}
-                            {ldoPartyBalances.find(b => b.partyId === p.id) !== undefined &&
-                              ` (${balanceToL(ldoPartyBalances.find(b => b.partyId === p.id)?.balance ?? 0, ldoPartyBalances.find(b => b.partyId === p.id)?.uom ?? "L").toFixed(0)} L)`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {ldoCorrPartyId && ldoSelectedPartyBalanceL !== null && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Current tank book stock: <span className={ldoSelectedPartyBalanceL < 0 ? "text-red-500 font-medium" : "font-medium"}>{ldoSelectedPartyBalanceL.toFixed(0)} L</span>
-                        {" · "}Packed stock: <span className="font-medium">
-                          {((packedStockPositions?.rows ?? [])
-                            .filter(row => row.materialName.trim().toUpperCase() === "LDO" && String(row.partyId) === ldoCorrPartyId)
-                            .reduce((sum, row) => sum + (row.packedL ?? (row.stockUom.toLowerCase().startsWith("lit") ? row.packed : 0)), 0)).toFixed(0)} L
-                        </span>
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <Label className="text-sm">As on Date</Label>
-                    <Input type="date" value={ldoCorrDate} onChange={e => setLdoCorrDate(e.target.value)} data-testid="input-ldo-corr-date" />
-                  </div>
-                </div>
-
-                {/* Per-tank inputs */}
-                <div>
-                  <Label className="text-sm mb-2 block">Physical stock from dip readings (liters)</Label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
-                    <div>
-                      <Label className="text-sm text-muted-foreground">Boiler meter</Label>
-                      <Input
-                        type="number" step="1" min="0"
-                        value={ldoCorrTank1L}
-                        onChange={e => setLdoCorrTank1L(e.target.value)}
-                        placeholder={String(Math.round(latestDipTank1?.volumeLiters || 0))}
-                        data-testid="input-ldo-corr-tank1-l"
-                      />
-                      <p className="text-sm text-muted-foreground mt-1">Dip: {(latestDipTank1?.volumeLiters || 0).toFixed(0)} L</p>
-                    </div>
-                    <div>
-                      <Label className="text-sm text-muted-foreground">Dryer meter</Label>
-                      <Input
-                        type="number" step="1" min="0"
-                        value={ldoCorrTank2L}
-                        onChange={e => setLdoCorrTank2L(e.target.value)}
-                        placeholder={String(Math.round(latestDipTank2?.volumeLiters || 0))}
-                        data-testid="input-ldo-corr-tank2-l"
-                      />
-                      <p className="text-sm text-muted-foreground mt-1">Dip: {(latestDipTank2?.volumeLiters || 0).toFixed(0)} L</p>
-                    </div>
-                    <div className="bg-muted/50 rounded-lg p-2 text-center">
-                      <div className="text-sm text-muted-foreground">Total Physical</div>
-                      <div className="font-bold text-base">
-                        {ldoCorrTank1L || ldoCorrTank2L
-                          ? ((parseFloat(ldoCorrTank1L) || 0) + (parseFloat(ldoCorrTank2L) || 0)).toFixed(0)
-                          : "—"} L
-                      </div>
-                    </div>
-                    {ldoCorrPartyId && ldoSelectedPartyBalanceL !== null && (ldoCorrTank1L || ldoCorrTank2L) && (
-                      <div className={`rounded-lg p-2 text-center ${
-                        ((parseFloat(ldoCorrTank1L) || 0) + (parseFloat(ldoCorrTank2L) || 0)) - ldoSelectedPartyBalanceL > 0
-                          ? "bg-green-50 dark:bg-green-900/20"
-                          : "bg-red-50 dark:bg-red-900/20"
-                      }`}>
-                        <div className="text-sm text-muted-foreground">Adjustment</div>
-                        <div className={`font-bold text-base ${
-                          ((parseFloat(ldoCorrTank1L) || 0) + (parseFloat(ldoCorrTank2L) || 0)) - ldoSelectedPartyBalanceL > 0
-                            ? "text-green-700 dark:text-green-400"
-                            : "text-red-700 dark:text-red-400"
-                        }`}>
-                          {(() => {
-                            const total = (parseFloat(ldoCorrTank1L) || 0) + (parseFloat(ldoCorrTank2L) || 0);
-                            const adj = total - ldoSelectedPartyBalanceL;
-                            return `${adj > 0 ? "+" : ""}${adj.toFixed(0)} L`;
-                          })()}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="text-sm">Notes (optional)</Label>
-                  <Input value={ldoCorrNotes} onChange={e => setLdoCorrNotes(e.target.value)} placeholder="e.g. Weekly dip reconciliation — Boiler: 1500L, Dryer: 1000L" data-testid="input-ldo-corr-notes" />
-                </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    disabled={!ldoCorrPartyId || (!ldoCorrTank1L && !ldoCorrTank2L) || ldoCorrectionMutation.isPending}
-                    onClick={() => {
-                      if (!ldoMaterialId || !ldoCorrPartyId) return;
-                      const t1L = parseFloat(ldoCorrTank1L) || 0;
-                      const t2L = parseFloat(ldoCorrTank2L) || 0;
-                      const selectedPackedL = (packedStockPositions?.rows ?? [])
-                        .filter(row => row.materialName.trim().toUpperCase() === "LDO" && String(row.partyId) === ldoCorrPartyId)
-                        .reduce((sum, row) => sum + (row.packedL ?? (row.stockUom.toLowerCase().startsWith("lit") ? row.packed : 0)), 0);
-                      const totalL = t1L + t2L + selectedPackedL;
-                      const totalMT = totalL * LDO_DENSITY_KG_PER_LITER / 1000;
-                      const partyName = parties?.find(p => String(p.id) === ldoCorrPartyId)?.name || `Party ${ldoCorrPartyId}`;
-                      ldoCorrectionMutation.mutate({
-                        materialId: ldoMaterialId,
-                        partyId: parseInt(ldoCorrPartyId),
-                        physicalQty: totalMT,
-                        tank1L: t1L,
-                        tank2L: t2L,
-                        uom: "MT",
-                        date: ldoCorrDate,
-                        notes: ldoCorrNotes || `LDO dip reconciliation — Boiler: ${t1L.toFixed(0)} L, Dryer: ${t2L.toFixed(0)} L (${partyName})`,
-                        correctedBy: "admin",
-                      });
-                    }}
-                    data-testid="button-post-ldo-correction"
-                  >
-                    {ldoCorrectionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Post Correction"}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setShowLdoCorrForm(false); setLdoCorrTank1L(""); setLdoCorrTank2L(""); setLdoCorrNotes(""); }}>
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {canViewNormActual && varianceData.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <CardTitle className="text-sm font-medium">LDO Consumption Variance Analysis</CardTitle>
-              <div className="flex items-center gap-1.5 text-sm">
-                <span className="text-muted-foreground">Actual source:</span>
-                <button
-                  data-testid="button-ldo-official-dip"
-                  onClick={() => setOfficialMethod("dip")}
-                  className={`px-2 py-0.5 rounded border text-sm font-medium transition-colors ${officialMethod === "dip" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
-                >
-                  Dip Reading
-                </button>
-                <button
-                  data-testid="button-ldo-official-flowmeter"
-                  onClick={() => setOfficialMethod("flowmeter")}
-                  className={`px-2 py-0.5 rounded border text-sm font-medium transition-colors ${officialMethod === "flowmeter" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
-                >
-                  Flow Meter
-                </button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-background">
-                  <tr className="border-b">
-                    <th className="text-left p-2">Date</th>
-                    <th className="text-right p-2">Production (MT)</th>
-                    <th className="text-right p-2">Norm (L)</th>
-                    <th className="text-right p-2">{officialMethod === "dip" ? "LDO tank 1 (small vertical) dip (L)" : "Actual boiler (L)"}</th>
-                    <th className="text-right p-2">{officialMethod === "dip" ? "LDO tank 2 (big horizontal) dip (L)" : "Actual dryer (L)"}</th>
-                    <th className="text-right p-2">Actual total (L)</th>
-                    <th className="text-right p-2">L/Ton</th>
-                    <th className="text-right p-2">Variance (L)</th>
-                    <th className="text-right p-2">Variance %</th>
-                    <th className="text-center p-2">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {varianceData.map(row => {
-                    const lPerTon = row.production > 0 ? row.actualTotal / row.production : null;
-                    const normPerTon = row.production > 0 ? row.theoretical / row.production : null;
-                    return (
-                    <tr key={row.date} className="border-b" data-testid={`row-ldo-variance-${row.date}`}>
-                      <td className="p-2">{row.date}</td>
-                      <td className="p-2 text-right">{row.production.toFixed(1)}</td>
-                      <td className="p-2 text-right">{row.theoretical.toFixed(1)}</td>
-                      <td className="p-2 text-right">{row.actualT1 !== null ? row.actualT1.toFixed(1) : "-"}</td>
-                      <td className="p-2 text-right">{row.actualT2 !== null ? row.actualT2.toFixed(1) : "-"}</td>
-                      <td className="p-2 text-right font-bold">{row.actualTotal.toFixed(1)}</td>
-                      <td className={`p-2 text-right font-semibold ${lPerTon && normPerTon ? (lPerTon > normPerTon ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400") : ""}`}>
-                        {lPerTon !== null ? lPerTon.toFixed(2) : "-"}
-                        {normPerTon !== null && <span className="text-sm text-muted-foreground ml-0.5">/{normPerTon.toFixed(1)}</span>}
-                      </td>
-                      <td className={`p-2 text-right font-bold ${row.variance < 0 ? "text-green-600 dark:text-green-400" : row.variance > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                        {row.variance.toFixed(1)}
-                      </td>
-                      <td className={`p-2 text-right ${row.variance < 0 ? "text-green-600 dark:text-green-400" : row.variance > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                        {row.variancePercent !== null ? `${row.variancePercent}%` : "-"}
-                      </td>
-                      <td className="p-2 text-center" data-testid={`text-ldo-variance-status-${row.date}`}>
-                        {row.status === "SAVING" && <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 no-default-hover-elevate no-default-active-elevate">SAVING</Badge>}
-                        {row.status === "LOSS" && <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 no-default-hover-elevate no-default-active-elevate">LOSS</Badge>}
-                        {row.status === "OK" && <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">OK</Badge>}
-                      </td>
-                    </tr>
-                    );
-                  })}
-                  {(() => {
-                    const totProd = varianceData.reduce((s, r) => s + r.production, 0);
-                    const totTheo = varianceData.reduce((s, r) => s + r.theoretical, 0);
-                    const totT1 = varianceData.reduce((s, r) => s + (r.actualT1 || 0), 0);
-                    const totT2 = varianceData.reduce((s, r) => s + (r.actualT2 || 0), 0);
-                    const totActual = varianceData.reduce((s, r) => s + r.actualTotal, 0);
-                    const totVar = totActual - totTheo;
-                    const totVarPct = totTheo > 0 ? Math.round((totVar / totTheo) * 1000) / 10 : null;
-                    const totLPerTon = totProd > 0 ? totActual / totProd : null;
-                    const totNormPerTon = totProd > 0 ? totTheo / totProd : null;
-                    const totStatus: "SAVING" | "LOSS" | "OK" = totTheo === 0 ? "OK" : totVar < 0 ? "SAVING" : totVar > 0 ? "LOSS" : "OK";
-                    return (
-                      <tr className="border-t-2 font-bold">
-                        <td className="p-2">Total</td>
-                        <td className="p-2 text-right">{totProd.toFixed(1)}</td>
-                        <td className="p-2 text-right">{totTheo.toFixed(1)}</td>
-                        <td className="p-2 text-right">{totT1.toFixed(1)}</td>
-                        <td className="p-2 text-right">{totT2.toFixed(1)}</td>
-                        <td className="p-2 text-right">{totActual.toFixed(1)}</td>
-                        <td className={`p-2 text-right ${totLPerTon && totNormPerTon ? (totLPerTon > totNormPerTon ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400") : ""}`}>
-                          {totLPerTon !== null ? totLPerTon.toFixed(2) : "-"}
-                          {totNormPerTon !== null && <span className="text-sm text-muted-foreground ml-0.5">/{totNormPerTon.toFixed(1)}</span>}
-                        </td>
-                        <td className={`p-2 text-right ${totVar < 0 ? "text-green-600 dark:text-green-400" : totVar > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                          {totVar.toFixed(1)}
-                        </td>
-                        <td className={`p-2 text-right ${totVar < 0 ? "text-green-600 dark:text-green-400" : totVar > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                          {totVarPct !== null ? `${totVarPct}%` : "-"}
-                        </td>
-                        <td className="p-2 text-center">
-                          {totStatus === "SAVING" && <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 no-default-hover-elevate no-default-active-elevate">SAVING</Badge>}
-                          {totStatus === "LOSS" && <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 no-default-hover-elevate no-default-active-elevate">LOSS</Badge>}
-                          {totStatus === "OK" && <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">OK</Badge>}
-                        </td>
-                      </tr>
-                    );
-                  })()}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <Card data-testid="ldo-packed-stock-summary">
+        <CardHeader className="pb-2"><CardTitle className="text-base">Whose LDO</CardTitle></CardHeader>
+        <CardContent><TankStockPositions rows={ldoPackedPositions} owner={false} showAll={showAllTankPositions} onShowAllChange={setShowAllTankPositions} /></CardContent>
+      </Card>
+      <NegativeBalanceBanner balances={ldoPartyBalances} parties={parties} material="LDO" testid="banner-negative-ldo" />
+      <TrackerConsumption kind="ldo" days={dipDailySummary.map(day => ({
+        date: day.date, actual: day.totalConsumed,
+      }))} meterDays={allMeterDays.map(day => ({ date: day.date, dryer: day.t2Consumption }))}
+        dispatches={dispatches} parties={parties} canViewNormActual={canViewNormActual} canExport={canExport} />
 
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <CardTitle className="text-sm font-medium">Dip Reading History</CardTitle>
+              <CardTitle className="text-sm font-medium">Dip readings</CardTitle>
               <div className="flex gap-2 flex-wrap items-center">
                 <Select value={dipFilterSource} onValueChange={setDipFilterSource}>
                   <SelectTrigger className="w-48" data-testid="select-dip-filter-source">
@@ -2170,7 +1477,7 @@ export default function PlantLdoFlowMeter() {
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <CardTitle className="text-sm font-medium">All Flow Readings</CardTitle>
+            <CardTitle className="text-sm font-medium">Flow meter readings</CardTitle>
             {canExport && (
               <div className="flex gap-2 flex-wrap">
                 {canExport && <><Button variant="outline" size="sm" onClick={() => exportExcel()} data-testid="button-export-excel">
