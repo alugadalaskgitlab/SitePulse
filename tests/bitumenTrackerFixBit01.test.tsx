@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import * as XLSX from "xlsx";
 import PlantBitumenStock from "../client/src/pages/PlantBitumenStock";
 import PlantLdoFlowMeter from "../client/src/pages/PlantLdoFlowMeter";
@@ -32,7 +32,17 @@ vi.mock("@tanstack/react-query", () => ({
   }),
   useMutation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
-afterEach(() => { cleanup(); fx.owner = false; vi.clearAllMocks(); });
+afterEach(() => { cleanup(); window.history.replaceState(null, "", "/"); fx.owner = false; vi.clearAllMocks(); });
+
+it.each([["bitumen", PlantBitumenStock], ["LDO", PlantLdoFlowMeter]] as const)("TANK-02 opens the %s dip entry when an alert arrives on the already mounted tracker", (name, Page) => {
+  fx.positions = { rows: [] }; render(<Page />);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  act(() => { window.history.pushState(null, "", "/?plant=Main%20Plant&dipEntry=1&tank=2&readingType=opening&dipDate=2026-11-28"); });
+  const dialog = screen.getByRole("dialog");
+  expect(dialog.textContent).toContain(name === "LDO" ? "Dryer Meter" : "Tank 2");
+  expect((dialog.querySelector('input[type="date"]') as HTMLInputElement).value).toBe("2026-11-28");
+  expect(window.location.search).not.toContain("dipEntry");
+});
 
 describe("FIX-BIT-01 packed stock response", () => {
   it("renders the real rows envelope and MT positions, not raw stock-unit quantities", () => {

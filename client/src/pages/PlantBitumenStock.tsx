@@ -121,6 +121,19 @@ export default function PlantBitumenStock() {
   const [readingTime, setReadingTime] = useState(format(new Date(), "HH:mm"));
   const [notes, setNotes] = useState("");
 
+  useEffect(() => {
+    const entry = new URLSearchParams(searchString || window.location.search);
+    if (entry.get("dipEntry") !== "1") return;
+    const tank = entry.get("tank"), type = entry.get("readingType"), date = entry.get("dipDate");
+    ["dipEntry", "tank", "readingType", "dipDate"].forEach(key => entry.delete(key));
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${entry.size ? `?${entry}` : ""}${window.location.hash}`);
+    if (dialogOpen) return; // Never discard an already open editor.
+    setEditingReading(null); setTankNumber(tank === "2" ? "2" : "1");
+    setReadingType(type === "opening" ? "opening" : "adhoc");
+    setReadingDate(date || format(new Date(), "yyyy-MM-dd"));
+    setReadingTime(format(new Date(), "HH:mm")); setDepthCm(""); setNotes(""); setDialogOpen(true);
+  }, [searchString]);
+
   const { data: readings, isLoading } = useQuery<BitumenDipReading[]>({
     queryKey: ["/api/plant-module/bitumen-dip-readings", { plantName: urlPlant }],
     queryFn: async () => {

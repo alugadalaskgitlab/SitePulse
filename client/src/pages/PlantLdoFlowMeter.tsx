@@ -174,6 +174,19 @@ export default function PlantLdoFlowMeter() {
   const [dipDepthCm, setDipDepthCm] = useState("");
   const [dipNotes, setDipNotes] = useState("");
 
+  useEffect(() => {
+    const entry = new URLSearchParams(searchString || window.location.search);
+    if (entry.get("dipEntry") !== "1") return;
+    const tank = entry.get("tank"), type = entry.get("readingType"), date = entry.get("dipDate");
+    ["dipEntry", "tank", "readingType", "dipDate"].forEach(key => entry.delete(key));
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${entry.size ? `?${entry}` : ""}${window.location.hash}`);
+    if (dipDialogOpen) return;
+    setDipEditingReading(null); setDipTankNumber(tank === "2" ? "2" : "1");
+    setDipReadingType(type === "adhoc" ? "adhoc" : "opening");
+    setDipDate(date || format(new Date(), "yyyy-MM-dd"));
+    setDipTime(format(new Date(), "HH:mm")); setDipDepthCm(""); setDipNotes(""); setDipDialogOpen(true);
+  }, [searchString]);
+
   const { data: readings, isLoading } = useQuery<LdoFlowReading[]>({
     queryKey: ["/api/plant-module/ldo-flow-readings", { plantName: urlPlant }],
     queryFn: async () => {

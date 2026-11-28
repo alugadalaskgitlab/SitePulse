@@ -215,7 +215,7 @@ import { canonicalizeUnit } from "@shared/boqNormalise";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendPushToUser, sendTestPush } from "./push";
 import { preserveDipWatchConfig } from "@shared/tankBookStock";
-import { notifyPlantLogStart } from "./tankDipNotifications";
+import { notifyPlantLogStart, notifyTankAfterReceipt, getTankDipAlerts, countUnreadTankDipAlerts, markTankDipAlertsRead, deleteTankDipAlert } from "./tankDipNotifications";
 import {
   activeSupplyOrderAlertLines,
   changeSupplyOrderMix,
@@ -5671,6 +5671,33 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/tank-dip-alert-notifications", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Sign in required." });
+    res.json(await getTankDipAlerts(req.authUser.id));
+  });
+  app.get("/api/tank-dip-alert-notifications/unread-count", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Sign in required." });
+    res.json({ count: await countUnreadTankDipAlerts(req.authUser.id) });
+  });
+  app.patch("/api/tank-dip-alert-notifications/read-all", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Sign in required." });
+    await markTankDipAlertsRead(req.authUser.id); res.json({ success: true });
+  });
+  app.patch("/api/tank-dip-alert-notifications/:id/read", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Sign in required." });
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ message: "Invalid notification." });
+    const rows = await markTankDipAlertsRead(req.authUser.id, id);
+    res.status(rows.length ? 200 : 404).json({ success: !!rows.length });
+  });
+  app.delete("/api/tank-dip-alert-notifications/:id", async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ message: "Sign in required." });
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ message: "Invalid notification." });
+    const rows = await deleteTankDipAlert(req.authUser.id, id);
+    res.status(rows.length ? 200 : 404).json({ success: !!rows.length });
+  });
+
   app.get("/api/plant-supply-alert-notifications", async (req, res) => {
     const userId = Number(req.authUser?.id ?? 0);
     if (!userId) return res.status(401).json({ message: "Sign in required." });
@@ -6836,6 +6863,11 @@ export async function registerRoutes(
         input.uom = "Liters";
       }
       const receipt = await storage.createMaterialReceipt(input);
+      void notifyTankAfterReceipt({
+        eventId: `receipt:${receipt.id}`, materialId: receipt.materialId,
+        tankNumber: receipt.tankNumber, packedCount: receipt.packedCount,
+        plantName: receipt.plantName, date: receipt.invoiceDate || receipt.date, actorUserId: req.authUser!.id,
+      }).catch(error => console.warn("[TankDip] After-receipt alert failed:", error?.message || error));
       // A linked diesel receipt reuses qualifying purchase evidence rather than
       // duplicating files.  This is deliberately after successful receipt/stock
       // creation; a failed receipt can never acquire links.
@@ -8675,10 +8707,15 @@ export async function registerRoutes(
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Enter a valid date/time, material, packed count, quantity and tank." });
     try {
-      res.status(201).json(await storage.decantPackedStock(parsed.data, {
+      const result = await storage.decantPackedStock(parsed.data, {
         userId: req.authUser.id,
         name: currentUserName(req),
-      }));
+      });
+      void notifyTankAfterReceipt({
+        materialId: parsed.data.materialId, tankNumber: parsed.data.tankNumber,
+        date: parsed.data.date, actorUserId: req.authUser.id,
+      }).catch(error => console.warn("[TankDip] After-decant alert failed:", error?.message || error));
+      res.status(201).json(result);
     } catch (err: any) {
       res.status(400).json({ message: err?.message || "Could not decant packed stock" });
     }

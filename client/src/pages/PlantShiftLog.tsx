@@ -1550,7 +1550,7 @@ export default function PlantShiftLog() {
 
   return (
     <>
-    {viewMode === "edit" && !isLoading && !existing && canEditPlantDay && tankReviewKey !== `${plantName}:${date}` &&
+    {viewMode === "edit" && !!date && !!plantName && !isLoading && !existing && canEditPlantDay && tankReviewKey !== `${plantName}:${date}` &&
       <ConfirmTankStock key={`${plantName}:${date}`} date={date} plantName={plantName} onComplete={dips => {
         tankReviewDoneRef.current = `${plantName}:${date}`;
         setTankReviewKey(`${plantName}:${date}`);

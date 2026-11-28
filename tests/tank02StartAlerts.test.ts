@@ -20,6 +20,9 @@ function fixture(bitumen: TankDipRow[] = [], ldo: TankDipRow[] = []) {
     readings: async kind => kind === "bitumen" ? bitumen : ldo,
     recipients: vi.fn(async () => [1, 3]),
     deliver,
+    plants: async () => [{ ...settings, plantName: "Plant A" }],
+    idleWithoutProduction: async () => false,
+    supervisors: async () => [3],
   };
   return { service: createTankDipNotifications(deps), deps, deliver };
 }

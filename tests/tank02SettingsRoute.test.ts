@@ -3,7 +3,8 @@ import { createServer } from "node:http";
 import request from "supertest";
 import { beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_DIP_WATCH } from "../shared/tankBookStock";
-const fx = vi.hoisted(() => ({ owner: true, current: null as any, save: vi.fn() }));
+const fx = vi.hoisted(() => ({ owner: true, current: null as any, save: vi.fn(), decant: vi.fn(), after: vi.fn() }));
+vi.mock("../server/tankDipNotifications", () => ({ notifyPlantLogStart: vi.fn().mockResolvedValue(undefined), notifyTankAfterReceipt: fx.after }));
 vi.mock("../server/auth", async original => {
   const actual = await original<typeof import("../server/auth")>();
   const auth = (req: any, _res: any, next: any) => {
@@ -15,7 +16,7 @@ vi.mock("../server/auth", async original => {
 vi.mock("../server/storage", async original => ({
   ...await original<typeof import("../server/storage")>(),
   storage: new Proxy({}, { get: (_target, key) => key === "getPlantSettings" ? vi.fn(async () => fx.current) :
-    key === "upsertPlantSettings" ? fx.save : vi.fn().mockResolvedValue([]) }),
+    key === "upsertPlantSettings" ? fx.save : key === "decantPackedStock" ? fx.decant : vi.fn().mockResolvedValue([]) }),
 }));
 vi.mock("../server/push", () => ({ sendPushToAll: vi.fn(), sendPushToSection: vi.fn(), sendPushToRaiser: vi.fn(), sendPushToAudience: vi.fn(), sendPushToUser: vi.fn(), initPush: vi.fn() }));
 let app: express.Express;
@@ -23,7 +24,25 @@ beforeAll(async () => {
   const { registerRoutes } = await import("../server/routes");
   app = express(); app.use(express.json()); await registerRoutes(createServer(app), app);
 });
-beforeEach(() => { fx.owner = true; fx.current = null; fx.save.mockReset().mockImplementation(async row => row); });
+beforeEach(() => {
+  fx.owner = true; fx.current = null; fx.save.mockReset().mockImplementation(async row => row);
+  fx.decant.mockReset(); fx.after.mockReset().mockResolvedValue(undefined);
+});
+it("requests an after-dip only after the real decant route has saved successfully", async () => {
+  const body = { date: "2026-11-28", time: "09:00", materialId: 41, partyId: null, packedCount: 6, quantity: 1200, tankNumber: 1 };
+  fx.decant.mockResolvedValue({ movedQuantity: 1200, uom: "L" });
+  const response = await request(app).post("/api/plant-module/packed-stock-decants").send(body);
+  expect(response.status).toBe(201);
+  expect(response.body).toEqual({ movedQuantity: 1200, uom: "L" });
+  expect(fx.after).toHaveBeenCalledWith({ materialId: 41, tankNumber: 1, date: "2026-11-28", actorUserId: 9 });
+});
+it("does not request an after-dip when decant saving fails", async () => {
+  fx.decant.mockRejectedValue(new Error("Not enough packed stock"));
+  const response = await request(app).post("/api/plant-module/packed-stock-decants").send({
+    date: "2026-11-28", time: "09:00", materialId: 41, partyId: null, packedCount: 6, quantity: 1200, tankNumber: 1,
+  });
+  expect(response.status).toBe(400); expect(fx.after).not.toHaveBeenCalled();
+});
 it("refuses non-Owners even if they are Administrators", async () => {
   fx.owner = false;
   expect((await request(app).patch("/api/plant-module/plant-settings/Plant%20A/dip-watch").send(DEFAULT_DIP_WATCH)).status).toBe(403);

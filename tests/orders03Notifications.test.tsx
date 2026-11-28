@@ -27,6 +27,28 @@ afterEach(() => {
 });
 
 describe("ORDERS-03 supply notifications", () => {
+  it("TANK-02 opens a private tank alert and marks only that tank notification read", async () => {
+    mocks.apiRequest.mockClear(); mocks.navigate.mockClear();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    for (const source of ["/api/notifications", "/api/plant-supply-alert-notifications", "/api/tank-dip-alert-notifications"]) {
+      client.setQueryData([source], []);
+      client.setQueryData([`${source}/unread-count`], { count: 0 });
+    }
+    client.setQueryData(["/api/tank-dip-alert-notifications"], [{
+      id: 12, alertType: "tank_dip:ldo:2:opening:Plant%20A:2026-11-28",
+      title: "Opening tank dip reminder", message: "Enter today's dip readings: LDO tank 2",
+      isRead: false, createdAt: "2026-11-28T02:30:00.000Z",
+    }]);
+    mocks.apiRequest.mockResolvedValue(new Response("{}", { status: 200 }));
+    Object.defineProperty(window, "location", { configurable: true, value: { assign: mocks.navigate } });
+    render(<QueryClientProvider client={client}><AdminNotifications /></QueryClientProvider>);
+    fireEvent.click(screen.getByTestId("button-notifications"));
+    fireEvent.click(await screen.findByTestId("button-expand-notification-tank-12"));
+    fireEvent.click(await screen.findByTestId("button-open-order-notification-tank-12"));
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith("PATCH", "/api/tank-dip-alert-notifications/12/read"));
+    expect(mocks.navigate.mock.calls[0][0]).toContain("/plant/ldo-flow-meter?plant=Plant+A&dipEntry=1&tank=2");
+    expect(mocks.apiRequest).not.toHaveBeenCalledWith("PATCH", "/api/plant-supply-alert-notifications/12/read");
+  });
   it("links order alerts to the selected order and morning summaries to HMP material status", () => {
     expect(plantSupplyNotificationHref({ source: "supply", alertType: "exhausted", orderId: 42 }))
       .toBe("/plant/supply-orders?orderId=42&section=material-status#order-material-status");

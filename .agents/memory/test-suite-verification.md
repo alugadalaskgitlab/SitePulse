@@ -5,6 +5,12 @@ description: Avoid misleading full-suite comparisons and setup-related skips in 
 
 Use `--maxWorkers` without `--minWorkers` for bounded runs on Vitest 4.
 
+Give the disposable native database the name `sitelog_dev`, while keeping its host/port isolated and overriding every integration-test URL.
+
+**Why:** A real-PostgreSQL test uses that database name as a safety guard. A differently named local clone fails setup and misleadingly increases skipped-case totals.
+
+**How to apply:** Keep the name guard intact; correct the disposable environment, then rerun only setup-blocked files when a single whole-suite run was requested.
+
 Route every PostgreSQL integration-test URL to a disposable native server for
 whole-suite comparisons; a schema-only development copy is sufficient.
 

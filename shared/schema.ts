@@ -1212,6 +1212,20 @@ export const plantSupplyAlertDeliveries = pgTable("plant_supply_alert_deliveries
   recipientCreatedIdx: index("plant_supply_alert_deliveries_recipient_created_idx").on(table.recipientUserId, table.createdAt),
 }));
 
+export const tankDipAlertDeliveries = pgTable("tank_dip_alert_deliveries", {
+  id: serial("id").primaryKey(),
+  dedupeKey: text("dedupe_key").notNull(),
+  recipientUserId: integer("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  alertType: text("alert_type").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, table => ({
+  recipientDedupeUq: uniqueIndex("tank_dip_alert_deliveries_dedupe_user_uq").on(table.dedupeKey, table.recipientUserId),
+  recipientCreatedIdx: index("tank_dip_alert_deliveries_recipient_created_idx").on(table.recipientUserId, table.createdAt),
+}));
+
 export const dispatchProOutbox = pgTable("dispatchpro_outbox", {
   id: serial("id").primaryKey(),
   dispatchId: integer("dispatch_id").notNull(),

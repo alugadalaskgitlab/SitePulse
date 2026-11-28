@@ -22,14 +22,14 @@ interface Notification {
   message: string;
   isRead: number | boolean;
   createdAt: string;
-  source?: "global" | "supply";
+  source?: "global" | "supply" | "tank";
   alertType?: string;
   orderId?: number | null;
 }
 
 export function plantSupplyNotificationHref(notification: Pick<Notification, "source" | "alertType" | "orderId">) {
+  if (notification.source === "tank") return tankDipAlertHref(notification.alertType || "");
   if (notification.source !== "supply") return null;
-  if (notification.alertType?.startsWith("tank_dip:")) return tankDipAlertHref(notification.alertType);
   if (notification.alertType === "morning_summary") return "/plant/hub#hmp-open-order-material-alerts";
   return notification.orderId
     ? `/plant/supply-orders?orderId=${notification.orderId}&section=material-status#order-material-status`
@@ -87,6 +87,12 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
     queryKey: ["/api/plant-supply-alert-notifications/unread-count"],
     refetchInterval: 30000,
   });
+  const { data: tankNotifications = [] } = useQuery<any[]>({
+    queryKey: ["/api/tank-dip-alert-notifications"], refetchInterval: 30000,
+  });
+  const { data: tankUnreadData } = useQuery<{ count: number }>({
+    queryKey: ["/api/tank-dip-alert-notifications/unread-count"], refetchInterval: 30000,
+  });
   const notifications = useMemo(() => [
     ...globalNotifications.map(row => ({ ...row, source: "global" as const })),
     ...supplyNotifications.map(row => ({
@@ -94,8 +100,9 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
       type: row.alertType === "borrowed" || row.alertType === "exhausted" ? "warning" : "info",
       source: "supply" as const,
     })),
-  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [globalNotifications, supplyNotifications]);
-  const unreadCount = (globalUnreadData?.count || 0) + (supplyUnreadData?.count || 0);
+    ...tankNotifications.map(row => ({ ...row, type: "info", source: "tank" as const })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [globalNotifications, supplyNotifications, tankNotifications]);
+  const unreadCount = (globalUnreadData?.count || 0) + (supplyUnreadData?.count || 0) + (tankUnreadData?.count || 0);
 
   useEffect(() => {
     if (unreadCount > prevUnreadCount.current && prevUnreadCount.current !== 0) {
@@ -108,7 +115,7 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
     mutationFn: async (notification: Notification) => {
       await apiRequest(
         "PATCH",
-        notification.source === "supply"
+        notification.source === "tank" ? `/api/tank-dip-alert-notifications/${notification.id}/read` : notification.source === "supply"
           ? `/api/plant-supply-alert-notifications/${notification.id}/read`
           : `/api/notifications/${notification.id}/read`,
       );
@@ -118,6 +125,8 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
       queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-supply-alert-notifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-supply-alert-notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tank-dip-alert-notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tank-dip-alert-notifications/unread-count"] });
     },
   });
 
@@ -126,6 +135,7 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
       await Promise.all([
         apiRequest("PATCH", "/api/notifications/read-all"),
         apiRequest("PATCH", "/api/plant-supply-alert-notifications/read-all"),
+        apiRequest("PATCH", "/api/tank-dip-alert-notifications/read-all"),
       ]);
     },
     onSuccess: () => {
@@ -133,6 +143,8 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
       queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-supply-alert-notifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-supply-alert-notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tank-dip-alert-notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tank-dip-alert-notifications/unread-count"] });
     },
   });
 
@@ -140,7 +152,7 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
     mutationFn: async (notification: Notification) => {
       await apiRequest(
         "DELETE",
-        notification.source === "supply"
+        notification.source === "tank" ? `/api/tank-dip-alert-notifications/${notification.id}` : notification.source === "supply"
           ? `/api/plant-supply-alert-notifications/${notification.id}`
           : `/api/notifications/${notification.id}`,
       );
@@ -150,6 +162,8 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
       queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-supply-alert-notifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-supply-alert-notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tank-dip-alert-notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tank-dip-alert-notifications/unread-count"] });
     },
   });
 
@@ -240,7 +254,7 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
             <div className="divide-y">
               {notifications.map((notification) => (
                 (() => {
-                  const notificationKey = notification.source === "supply" ? `supply-${notification.id}` : String(notification.id);
+                  const notificationKey = notification.source === "tank" ? `tank-${notification.id}` : notification.source === "supply" ? `supply-${notification.id}` : String(notification.id);
                   const expanded = expandedNotificationKey === notificationKey;
                   const openHref = notificationHref(notification);
                   return (

@@ -9,6 +9,7 @@ import { pool } from "./db";
 import { verifyStartupReadiness } from "./startupReadiness";
 import { startDispatchProOutboxWorker } from "./dispatchProOutbox";
 import { runPlantSupplyMorningSummary } from "./plantSupplyOrderService";
+import { startTankDipReminders } from "./tankDipNotifications";
 
 const app = express();
 const httpServer = createServer(app);
@@ -87,6 +88,7 @@ app.use((req, res, next) => {
   });
   startStaleGrnNotifications();
   startPlantSupplyMorningSummary();
+  startTankDipReminders();
 })().catch(async error => {
   console.error("Startup stopped without automatic repair:", error);
   await pool.end();

@@ -26,3 +26,21 @@ The two tracker pages were already in the original allowed list. No storage, sch
 | `tests/stock02Packed.test.ts` | Reuse its real PGlite fixture to prove opening dips persist without stock posting. |
 
 The shared helper gained tank selection and safe deep-link support. Tracker changes only initialise the existing entry dialogs from those links. The shift-log start changes prevent skipped previous-closing defaults becoming false opening confirmations. No storage implementation was changed.
+
+## Part 3 — approved supporting changes
+
+| Extra file or section | Why needed |
+| --- | --- |
+| `server/tankDipNotifications.ts` | Scheduled reminders, idle-day checks and exact linked-supervisor lookup for after-dip alerts. |
+| `server/routes.ts` — receipt/decant success hooks | Request after-dip alerts only after successful saves, without changing saved records or stock calculations. |
+| `server/index.ts` | Start the timer without immediate delivery; disabled in the development/test workflow. |
+| `tests/tank02Reminders.test.ts`, `tests/tank02NotificationPersistence.test.ts` (new) | India-time schedule, recipients, stop/idle rules and real database CHECK/deduplication coverage. |
+| `tests/bitumenTrackerFixBit01.test.tsx` | Verify alert links open the entry on an already mounted tracker. |
+| `tests/tank02SettingsRoute.test.ts` | Verify successful/failed decant routes trigger or suppress the after-dip hook. |
+| `shared/schema.ts`, `migrations/0080_tank_dip_alert_deliveries.sql` | The Owner explicitly approved one separate tank-alert tracking table and indexes on both dev databases. Existing tables were not changed. |
+| `client/src/components/AdminNotifications.tsx` | Separate tank source, private read-state/counts and correct links, without changing order alerts. |
+| `server/routes.ts` — tank-alert notification endpoints | Authenticated recipient-only list/count/read/delete operations for the new table. |
+| `tests/orders03Notifications.test.tsx` | Verify the tank bell action marks only its own notification read and opens the dip entry; existing order tests remain. |
+| `.agents/memory/MEMORY.md`, `.agents/memory/tank-alert-storage.md`, `.agents/memory/test-suite-verification.md` | Retain the separate-store decision, native-constraint fixture rule and disposable database-name requirement. |
+
+The existing order-only CHECK remains unchanged. Both development databases received only migration 0080; exact SQL and readiness results are in `reports/TANK-02.md`.
