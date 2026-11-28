@@ -79,6 +79,7 @@ import { confirmTripPartyIdentities, tripIdentityLinksInput } from "./tripIdenti
 import { equipmentVendorIdentities, EQUIPMENT_VENDOR_LINK, ownerNameKey } from "./equipmentVendorIdentity";
 import { buildEquipmentVendorOptions } from "./equipmentVendorOptions";
 import { equipmentHireTermsError } from "@shared/equipmentMasterRules";
+import { equipmentTankDipSettingsSchema } from "@shared/equipmentTankDip";
 import { equipmentMaster as hireIdentityEquipment } from "@shared/schema";
 import { vendors as billingIdentityVendors } from "@shared/schema";
 import { siteMaterialTrips } from "@shared/schema";
@@ -451,11 +452,14 @@ const equipmentMasterCreateBodySchema = insertEquipmentMasterSchema
     tallyCostCentreName: true,
     meterType: true,
     consumptionNorm: true,
+    dipLitersPerCm: true,
+    deadStockDepthCm: true,
+    tankCapacityLiters: true,
     plantName: true,
     standardOutputs: true,
     outputEfficiency: true,
   })
-  .extend({ vendorId: z.number().int().positive().optional() })
+  .extend({ vendorId: z.number().int().positive().optional(), ...equipmentTankDipSettingsSchema.shape })
   .strict();
 
 const truckDispatchCreateBodySchema = insertTruckDispatchSchema
@@ -6497,6 +6501,8 @@ export async function registerRoutes(
       if (!assertEdit(req, res, "master_equipment")) return;
       const id = z.coerce.number().int().positive().parse(req.params.id);
       const updates = { ...req.body };
+      const dipSettings = equipmentTankDipSettingsSchema.safeParse(updates);
+      if (!dipSettings.success) return res.status(400).json({ message: dipSettings.error.issues.map(issue => issue.message).join("; ") });
       let selectedVendorId: number | undefined;
       if (Object.prototype.hasOwnProperty.call(updates, "vendorId")) {
         selectedVendorId = z.number().int().positive().parse(updates.vendorId);

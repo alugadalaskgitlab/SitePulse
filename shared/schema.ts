@@ -547,6 +547,8 @@ export const equipmentLogs = pgTable("equipment_logs", {
   // historical tank balances from diesel issued or norms.
   openingDiesel: real("opening_diesel"),
   dieselBalanceInTank: real("diesel_balance_in_tank"),
+  openingDipCm: real("opening_dip_cm"),
+  closingDipCm: real("closing_dip_cm"),
   dieselBalanceConfirmed: boolean("diesel_balance_confirmed"),
   task: text("task"), // e.g., "Rolling WMM", "Watering shoulders"
   // Optional link to equipment master for unified reporting
@@ -909,6 +911,9 @@ export const equipmentMaster = pgTable("equipment_master", {
   hireMonthlyDivisor: real("hire_monthly_divisor"), // required when type is custom
   meterType: text("meter_type").notNull(), // hour_meter, odometer
   consumptionNorm: real("consumption_norm"), // Liters/hour OR liters/km
+  dipLitersPerCm: real("dip_liters_per_cm"),
+  deadStockDepthCm: real("dead_stock_depth_cm"),
+  tankCapacityLiters: real("tank_capacity_liters"),
   plantName: text("plant_name"), // nullable; references plant_settings.plant_name; null = shared/unassigned
   isActive: integer("is_active").default(1),
   // Planning/productivity fields (used by Work Programme auto-duration)
@@ -1257,6 +1262,8 @@ export const dispatchProOutbox = pgTable("dispatchpro_outbox", {
 
 // Equipment Usage Entry (with meter readings and diesel tank tracking)
 export const equipmentUsage = pgTable("equipment_usage", {
+  openingDipCm: real("opening_dip_cm"),
+  closingDipCm: real("closing_dip_cm"),
   id: serial("id").primaryKey(),
   date: date("date").notNull(),
   equipmentId: integer("equipment_id").notNull(),
@@ -1342,6 +1349,8 @@ export const equipmentUsage = pgTable("equipment_usage", {
 
 // Generator Diesel Tracking
 export const generatorLogs = pgTable("generator_logs", {
+  openingDipCm: real("opening_dip_cm"),
+  closingDipCm: real("closing_dip_cm"),
   id: serial("id").primaryKey(),
   date: date("date").notNull(),
   generatorName: text("generator_name").notNull(), // "600 KVA", "40-30 KVA"
@@ -2415,6 +2424,8 @@ export const bitumenHeatingSessions = pgTable("bitumen_heating_sessions", {
   dgOpeningHourMeter: real("dg_opening_hour_meter"),
   dgClosingHourMeter: real("dg_closing_hour_meter"),
   dgOpeningDiesel: real("dg_opening_diesel"),
+  dgOpeningDipCm: real("dg_opening_dip_cm"),
+  dgClosingDipCm: real("dg_closing_dip_cm"),
   dgIssuedDiesel: real("dg_issued_diesel"),
   dgClosingDiesel: real("dg_closing_diesel"),
   dgDieselConsumed: real("dg_diesel_consumed"),

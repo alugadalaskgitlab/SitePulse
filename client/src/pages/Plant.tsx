@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
+import { DieselTankDipSettings } from "@/components/DieselTankDipSettings";
+import type { EquipmentTankDipSettings } from "@shared/equipmentTankDip";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch } from "wouter";
@@ -4877,6 +4879,7 @@ export function EquipmentMasterSection() {
   const [monthlyDivisorCustom, setMonthlyDivisorCustom] = useState("");
   const [meterType, setMeterType] = useState("hour_meter");
   const [consumptionNorm, setConsumptionNorm] = useState("");
+  const [tankDipSettings, setTankDipSettings] = useState<EquipmentTankDipSettings>({});
   const [plantNameField, setPlantNameField] = useState(""); // form: assigned plant
   const [filterPlantName, setFilterPlantName] = useState("all"); // list filter
   const [showInactive, setShowInactive] = useState(false);
@@ -4994,6 +4997,7 @@ export function EquipmentMasterSection() {
     setMonthlyDivisorCustom("");
     setMeterType("hour_meter");
     setConsumptionNorm("");
+    setTankDipSettings({});
     setPlantNameField("");
     setStandardOutputsMap({});
     setOutputEfficiency("75");
@@ -5020,6 +5024,11 @@ export function EquipmentMasterSection() {
     setMonthlyDivisorCustom((equip as any).hireMonthlyDivisor != null ? String((equip as any).hireMonthlyDivisor) : "");
     setMeterType(equip.meterType);
     setConsumptionNorm(equip.consumptionNorm?.toString() || "");
+    setTankDipSettings({
+      dipLitersPerCm: equip.dipLitersPerCm,
+      deadStockDepthCm: equip.deadStockDepthCm,
+      tankCapacityLiters: equip.tankCapacityLiters,
+    });
     setPlantNameField((equip as any).plantName || "");
     const stdOutputs = (equip as any).standardOutputs as Array<{ unit: string; outputPerHr: number }> | null | undefined;
     const map: Record<string, string> = {};
@@ -5065,6 +5074,7 @@ export function EquipmentMasterSection() {
       } : {}),
       meterType,
       consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined,
+      ...tankDipSettings,
       plantName: plantNameField || null,
       standardOutputs: stdOutputsArr.length > 0 ? stdOutputsArr : null,
       outputEfficiency: outputEfficiency ? parseFloat(outputEfficiency) : null,
@@ -5249,6 +5259,8 @@ export function EquipmentMasterSection() {
                   data-testid="input-consumption-norm"
                 />
               </div>
+              {(!editingEquipment?.fuelType || editingEquipment.fuelType.toLowerCase() === "diesel") &&
+                <DieselTankDipSettings value={tankDipSettings} onChange={setTankDipSettings} />}
               <div>
                 <Label>Plant <span className="text-muted-foreground text-sm">(leave blank if shared across plants)</span></Label>
                 <Select value={plantNameField || "__none__"} onValueChange={v => setPlantNameField(v === "__none__" ? "" : v)}>
