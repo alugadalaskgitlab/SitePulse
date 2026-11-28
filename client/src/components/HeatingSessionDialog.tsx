@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { EquipmentTankDipInput } from "@/components/EquipmentTankDipInput";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -62,6 +63,8 @@ function emptyForm(date: string, plantName: string) {
     dgOpeningHourMeter: "",
     dgClosingHourMeter: "",
     dgOpeningDiesel: "",
+    dgOpeningDipCm: null as number | null,
+    dgClosingDipCm: null as number | null,
     dgIssuedDiesel: "",
     dgClosingDiesel: "",
     generatorLogId: null as number | null,
@@ -121,6 +124,8 @@ function sessionToForm(s: BitumenHeatingSession): FormState {
     dgOpeningHourMeter: s.dgOpeningHourMeter?.toString() || "",
     dgClosingHourMeter: s.dgClosingHourMeter?.toString() || "",
     dgOpeningDiesel: s.dgOpeningDiesel?.toString() || "",
+    dgOpeningDipCm: s.dgOpeningDipCm ?? null,
+    dgClosingDipCm: s.dgClosingDipCm ?? null,
     dgIssuedDiesel: s.dgIssuedDiesel?.toString() || "",
     dgClosingDiesel: s.dgClosingDiesel?.toString() || "",
     generatorLogId: s.generatorLogId,
@@ -362,7 +367,7 @@ export function HeatingSessionDialog({
   const dgConsumed = (() => {
     const o = parseFloat(form.dgOpeningDiesel), c = parseFloat(form.dgClosingDiesel), iss = parseFloat(form.dgIssuedDiesel) || 0;
     if (isNaN(o) || isNaN(c)) return null;
-    return Math.max(0, o + iss - c);
+    return form.dgOpeningDipCm != null || form.dgClosingDipCm != null ? o + iss - c : Math.max(0, o + iss - c);
   })();
   const dgLPerHr = (dgConsumed != null && dgHoursUsed && dgHoursUsed > 0) ? dgConsumed / dgHoursUsed : null;
 
@@ -407,6 +412,8 @@ export function HeatingSessionDialog({
       dgOpeningHourMeter: form.dgMode === "inline" ? dgOpenHM : null,
       dgClosingHourMeter: form.dgMode === "inline" ? dgCloseHM : null,
       dgOpeningDiesel: form.dgMode === "inline" ? numOrNull(form.dgOpeningDiesel) : null,
+      dgOpeningDipCm: form.dgMode === "inline" ? form.dgOpeningDipCm : null,
+      dgClosingDipCm: form.dgMode === "inline" ? form.dgClosingDipCm : null,
       dgIssuedDiesel: form.dgMode === "inline" ? numOrNull(form.dgIssuedDiesel) : null,
       dgClosingDiesel: form.dgMode === "inline" ? numOrNull(form.dgClosingDiesel) : null,
       generatorLogId: form.dgMode === "link"
@@ -773,6 +780,8 @@ export function HeatingSessionDialog({
                             setNewGenNameInput("");
                             setNewGenDialogOpen(true);
                           } else {
+                            setField("dgOpeningDipCm", null);
+                            setField("dgClosingDipCm", null);
                             setField("dgGeneratorName", v);
                           }
                         }}
@@ -793,9 +802,15 @@ export function HeatingSessionDialog({
                     <div><Label>DG started at</Label><Input type="time" value={form.dgStartTime} onChange={e => setField("dgStartTime", e.target.value)} data-testid="input-dg-start" /></div>
                     <div><Label>DG stopped at</Label><Input type="time" value={form.dgEndTime} onChange={e => setField("dgEndTime", e.target.value)} data-testid="input-dg-end" /></div>
                     <div>
+                      <EquipmentTankDipInput equipmentId={selectedGeneratorEquipmentId} kind="opening" cm={form.dgOpeningDipCm}
+                        litres={form.dgOpeningDiesel === "" ? null : Number(form.dgOpeningDiesel)} date={form.date} plantName={form.plantName}
+                        isNew={!form.id} excludeSource="heating" excludeId={form.id}
+                        onChange={(cm, litres) => setForm(prev => ({ ...prev, dgOpeningDipCm: cm, dgOpeningDiesel: litres == null ? "" : String(litres) }))}
+                        testId="input-dg-open">
                       <Label>Diesel in tank — opening (L)</Label>
                       <Input type="number" step="0.1" value={form.dgOpeningDiesel} onChange={e => setField("dgOpeningDiesel", e.target.value)} data-testid="input-dg-open" />
                       <p className="text-sm text-muted-foreground mt-1">Check dipstick before starting</p>
+                      </EquipmentTankDipInput>
                     </div>
                     <div>
                       <Label>Diesel added to tank (L)</Label>
@@ -803,9 +818,15 @@ export function HeatingSessionDialog({
                       <p className="text-sm text-muted-foreground mt-1">Leave blank if nothing was added</p>
                     </div>
                     <div>
+                      <EquipmentTankDipInput equipmentId={selectedGeneratorEquipmentId} kind="closing" cm={form.dgClosingDipCm}
+                        litres={form.dgClosingDiesel === "" ? null : Number(form.dgClosingDiesel)}
+                        openingLitres={form.dgOpeningDiesel === "" ? null : Number(form.dgOpeningDiesel)} issuedLitres={Number(form.dgIssuedDiesel || 0)}
+                        onChange={(cm, litres) => setForm(prev => ({ ...prev, dgClosingDipCm: cm, dgClosingDiesel: litres == null ? "" : String(litres) }))}
+                        testId="input-dg-close">
                       <Label>Diesel in tank — closing (L)</Label>
                       <Input type="number" step="0.1" value={form.dgClosingDiesel} onChange={e => setField("dgClosingDiesel", e.target.value)} data-testid="input-dg-close" />
                       <p className="text-sm text-muted-foreground mt-1">Check dipstick after stopping</p>
+                      </EquipmentTankDipInput>
                     </div>
                     <div>
                       <Label>Diesel used (L)</Label>

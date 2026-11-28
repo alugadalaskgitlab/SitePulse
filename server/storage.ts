@@ -1,4 +1,5 @@
 import { lookupTripBoqQuantity } from "../shared/tripQuantityDisplay";
+import { applyEquipmentDip } from "@shared/equipmentTankDip";
 import {
   calculateFuelMetrics,
   calculateGeneratorLitresPerHour,
@@ -5172,6 +5173,8 @@ export class DatabaseStorage implements IStorage {
             dieselNorm: e.dieselNorm,
             expectedDiesel: e.expectedDiesel,
             openingDiesel: e.openingDiesel,
+            openingDipCm: e.openingDipCm,
+            closingDipCm: e.closingDipCm,
             dieselBalanceInTank: e.dieselBalanceInTank,
             dieselBalanceConfirmed: e.dieselBalanceConfirmed,
             entryType: (e as any).entryType ?? "time_meter",
@@ -8015,7 +8018,7 @@ export class DatabaseStorage implements IStorage {
     const boqById = new Map(boqRows.map((row: any) => [Number(row.id), row]));
     const barById = new Map(barRows.map((row: any) => [Number(row.id), row]));
     return rows.map((rawInput: any) => {
-      const input = normalizeEquipmentStatusFields(rawInput);
+      const input = normalizeEquipmentStatusFields(applyEquipmentDip(rawInput, masterById.get(Number(rawInput.equipmentId))));
       // General is an explicit user decision, not a fallback for missing links.
       // Reject contradictory child assignments rather than silently erase them.
       if (input.resourceScope === "general") {
@@ -8278,6 +8281,8 @@ export class DatabaseStorage implements IStorage {
 
       // Get equipment to calculate expected diesel
       const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, usage.equipmentId)).limit(1);
+      usage = applyEquipmentDip(usage, equipment);
+      Object.assign(normalisedUsage, usage);
       
       const isShifting = (usage.entryType || "").toLowerCase() === "shifting";
       
@@ -8656,6 +8661,8 @@ export class DatabaseStorage implements IStorage {
         tripDistance: log.tripDistance ?? undefined,
         tripBasedEntry: log.entryType === "trip_based",
         openingDiesel: log.openingDiesel ?? undefined,
+        openingDipCm: log.openingDipCm ?? undefined,
+        closingDipCm: log.closingDipCm ?? undefined,
         dieselBalanceInTank: log.dieselBalanceInTank ?? undefined,
         dieselBalanceConfirmed: log.dieselBalanceConfirmed ?? undefined,
         // A verified physical closing is informational and must not post
@@ -8805,6 +8812,8 @@ export class DatabaseStorage implements IStorage {
 
       const equipmentId = usage.equipmentId ?? existing.equipmentId;
       const [equipment] = await tx.select().from(equipmentMaster).where(eq(equipmentMaster.id, equipmentId)).limit(1);
+      usage = applyEquipmentDip(usage, equipment);
+      Object.assign(normalisedUsage, usage);
       
       const entryType = usage.entryType ?? existing.entryType ?? "time_meter";
       const isShifting = entryType.toLowerCase() === "shifting";
@@ -9067,6 +9076,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createGeneratorLog(log: InsertGeneratorLog): Promise<GeneratorLog> {
+    const dipEntry = log.openingDipCm != null || log.closingDipCm != null;
+    if (dipEntry) {
+      const masters = await db.select().from(equipmentMaster).where(sql`lower(trim(${equipmentMaster.name})) = lower(trim(${log.generatorName}))`);
+      log = applyEquipmentDip(log, masters.length === 1 ? masters[0] : undefined, {
+        openingCm: "openingDipCm", closingCm: "closingDipCm", openingLitres: "openingDiesel", closingLitres: "closingDiesel",
+      });
+    }
     const hoursRun = log.hoursRun || 0;
     const openingDiesel = log.openingDiesel || 0;
     const dieselIssued = log.dieselIssued || 0;
@@ -9087,7 +9103,7 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Validation: diesel consumed cannot be negative
-    if (dieselConsumed < 0) {
+    if (dieselConsumed < 0 && !dipEntry) {
       dieselConsumed = 0;
     }
     
@@ -28316,6 +28332,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertBitumenHeatingSession(input: UpsertBitumenHeatingSessionInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<BitumenHeatingSession> {
+    const dipEntry = input.dgMode === "inline" && (input.dgOpeningDipCm != null || input.dgClosingDipCm != null);
+    if (dipEntry) {
+      const masters = await db.select().from(equipmentMaster).where(sql`lower(trim(${equipmentMaster.name})) = lower(trim(${input.dgGeneratorName ?? ""}))`);
+      input = applyEquipmentDip(input, masters.length === 1 ? masters[0] : undefined, {
+        openingCm: "dgOpeningDipCm", closingCm: "dgClosingDipCm", openingLitres: "dgOpeningDiesel", closingLitres: "dgClosingDiesel",
+      });
+    }
     const { id, pin: _pin, editedBy: _e, ...rest } = input;
     const payload: Partial<InsertBitumenHeatingSession> = { ...rest };
 
@@ -28332,7 +28355,7 @@ export class DatabaseStorage implements IStorage {
       const op = payload.dgOpeningDiesel;
       const cl = payload.dgClosingDiesel;
       const iss = payload.dgIssuedDiesel ?? 0;
-      if (cl > op + iss) {
+      if (cl > op + iss && !dipEntry) {
         const err: any = new Error("DG closing diesel cannot exceed opening + issued");
         err.code = "DG_DIESEL_INCONSISTENT";
         throw err;
@@ -28385,7 +28408,7 @@ export class DatabaseStorage implements IStorage {
         const op = payload.dgOpeningDiesel ?? null;
         const cl = payload.dgClosingDiesel ?? null;
         const iss = payload.dgIssuedDiesel ?? 0;
-        if (op != null && cl != null) payload.dgDieselConsumed = Math.max(0, op + iss - cl);
+        if (op != null && cl != null) payload.dgDieselConsumed = dipEntry ? op + iss - cl : Math.max(0, op + iss - cl);
       }
     }
     if (payload.dgMode === "link" && payload.generatorLogId == null) {
@@ -28477,6 +28500,8 @@ export class DatabaseStorage implements IStorage {
           endTime: saved.dgEndTime,
           hoursRun: saved.dgHoursRun,
           openingDiesel: saved.dgOpeningDiesel,
+          openingDipCm: saved.dgOpeningDipCm,
+          closingDipCm: saved.dgClosingDipCm,
           dieselIssued: saved.dgIssuedDiesel,
           closingDiesel: saved.dgClosingDiesel,
           dieselConsumed: saved.dgDieselConsumed,
@@ -28561,6 +28586,8 @@ export class DatabaseStorage implements IStorage {
             openingReading: saved.dgOpeningHourMeter ?? null,
             closingReading: saved.dgClosingHourMeter ?? null,
             openingDiesel: opening ?? 0,
+            openingDipCm: saved.dgOpeningDipCm,
+            closingDipCm: saved.dgClosingDipCm,
             dieselIssued: issued ?? 0,
             closingDiesel: closing,
             expectedDiesel: expected,

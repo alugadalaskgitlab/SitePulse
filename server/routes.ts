@@ -80,6 +80,7 @@ import { equipmentVendorIdentities, EQUIPMENT_VENDOR_LINK, ownerNameKey } from "
 import { buildEquipmentVendorOptions } from "./equipmentVendorOptions";
 import { equipmentHireTermsError } from "@shared/equipmentMasterRules";
 import { equipmentTankDipSettingsSchema } from "@shared/equipmentTankDip";
+import { lastEquipmentDieselDip } from "./equipmentTankDip";
 import { equipmentMaster as hireIdentityEquipment } from "@shared/schema";
 import { vendors as billingIdentityVendors } from "@shared/schema";
 import { siteMaterialTrips } from "@shared/schema";
@@ -496,6 +497,8 @@ const generatorLogCreateBodySchema = insertGeneratorLogSchema
     openingDiesel: true,
     dieselIssued: true,
     closingDiesel: true,
+    openingDipCm: true,
+    closingDipCm: true,
   })
   .strict();
 
@@ -8040,6 +8043,30 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/equipment/:equipmentId/last-diesel-dip", requireAuth, async (req, res) => {
+    try {
+      const equipmentId = z.coerce.number().int().positive().parse(req.params.equipmentId);
+      const beforeDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(req.query.beforeDate);
+      const site = typeof req.query.site === "string" ? req.query.site.trim() : "";
+      const plant = site ? undefined : (typeof req.query.plant === "string" && req.query.plant.trim()) || await storage.getDefaultPlantName();
+      if (site) {
+        if (!assertView(req, res, "site_dprs") || !await assertTripSiteAccess(req, res, site)) return;
+      } else {
+        if (!assertView(req, res, "plant_equipment") || !await assertReportPlant(req, res, plant!)) return;
+      }
+      const [master] = await db.select({ name: equipmentMasterTable.name }).from(equipmentMasterTable).where(eq(equipmentMasterTable.id, equipmentId));
+      if (!master) return res.status(404).json({ message: "Equipment not found" });
+      const permittedSites = site ? await getPermittedSiteNames(req) : null;
+      res.json(await lastEquipmentDieselDip(db, {
+        equipmentId, equipmentName: master.name, beforeDate, site: site || undefined, plant,
+        permittedSites, excludeSource: typeof req.query.excludeSource === "string" ? req.query.excludeSource : "",
+        excludeId: req.query.excludeId ? z.coerce.number().int().positive().parse(req.query.excludeId) : undefined,
+      }));
+    } catch (error) {
+      res.status(error instanceof z.ZodError ? 400 : 500).json({ message: "Could not load the last closing dip" });
+    }
+  });
+
   // Get previous diesel balance and closing reading for equipment (for new entry creation)
   app.get("/api/plant-module/equipment-usage/previous-balance/:equipmentId", async (req, res) => {
     try {
@@ -8359,6 +8386,8 @@ export async function registerRoutes(
         startTime: completion.startTime,
         endTime: completion.endTime,
         openingDiesel: completion.openingDiesel,
+        openingDipCm: completion.openingDipCm,
+        closingDipCm: completion.closingDipCm,
         dieselIssued: completion.dieselIssued,
         dieselIncluded: completion.dieselIncluded,
         dieselSource: completion.dieselSource,

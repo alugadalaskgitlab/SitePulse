@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { EquipmentTankDipInput } from "@/components/EquipmentTankDipInput";
 import { DieselDirectFillReview } from "@/components/DieselDirectFillReview";
 import type { DieselDirectFillView } from "@shared/schema";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
@@ -83,6 +84,8 @@ export default function PlantEquipmentUsage() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [openingDiesel, setOpeningDiesel] = useState("");
+  const [openingDipCm, setOpeningDipCm] = useState<number | null>(null);
+  const [closingDipCm, setClosingDipCm] = useState<number | null>(null);
   const [dieselIssued, setDieselIssued] = useState("");
   const [dieselIncluded, setDieselIncluded] = useState(false);
   const [dieselSource, setDieselSource] = useState<string>("");
@@ -123,6 +126,8 @@ export default function PlantEquipmentUsage() {
     startTime: string;
     endTime: string;
     openingDiesel: string;
+    openingDipCm?: number | null;
+    closingDipCm?: number | null;
     dieselIssued: string;
     dieselIncluded: boolean;
     dieselSource: string;
@@ -146,8 +151,8 @@ export default function PlantEquipmentUsage() {
   }
 
   const formData = useMemo<EquipmentFormData>(() => ({
-    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, workingPlant, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, hireAmount, shiftFrom, shiftTo, transportEquipmentId, transportDistance
-  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, workingPlant, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, hireAmount, shiftFrom, shiftTo, transportEquipmentId, transportDistance]);
+    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, openingDipCm, closingDipCm, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, workingPlant, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, hireAmount, shiftFrom, shiftTo, transportEquipmentId, transportDistance
+  }), [openingDipCm, closingDipCm, date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, workingPlant, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, hireAmount, shiftFrom, shiftTo, transportEquipmentId, transportDistance]);
 
   const [draftRestored, setDraftRestored] = useState(false);
 
@@ -159,6 +164,8 @@ export default function PlantEquipmentUsage() {
     setStartTime(data.startTime);
     setEndTime(data.endTime);
     setOpeningDiesel(data.openingDiesel);
+    setOpeningDipCm(data.openingDipCm ?? null);
+    setClosingDipCm(data.closingDipCm ?? null);
     setDieselIssued(data.dieselIssued);
     setDieselIncluded(data.dieselIncluded || false);
     setDieselSource(data.dieselSource ?? "");
@@ -372,8 +379,13 @@ export default function PlantEquipmentUsage() {
     queryClient.invalidateQueries({ queryKey: ["/api/maintenance/logs"] });
   };
 
+  const withDip = (data: any) => ({
+    ...data,
+    openingDipCm: data.dieselSource === "contractor" || data.entryType === "shifting" ? null : openingDipCm,
+    closingDipCm: data.dieselSource === "contractor" || data.entryType === "shifting" ? null : closingDipCm,
+  });
   const createMutation = useMutation({
-    mutationFn: async (data: any) => (await apiRequest("POST", "/api/plant-module/equipment-usage", data)).json() as Promise<EquipmentUsage>,
+    mutationFn: async (data: any) => (await apiRequest("POST", "/api/plant-module/equipment-usage", withDip(data))).json() as Promise<EquipmentUsage>,
     onSuccess: async (created) => {
       await persistPlantUsageBreakdowns(created);
       clearDraft();
@@ -396,7 +408,7 @@ export default function PlantEquipmentUsage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) =>
-      apiRequest("PUT", `/api/plant-module/equipment-usage/${id}`, data),
+      apiRequest("PUT", `/api/plant-module/equipment-usage/${id}`, withDip(data)),
     onSuccess: async () => {
       if (editingUsage) await persistPlantUsageBreakdowns(editingUsage);
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage"] });
@@ -426,7 +438,7 @@ export default function PlantEquipmentUsage() {
 
   const completeIncomingMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) =>
-      apiRequest("POST", `/api/plant-module/equipment-usage/${id}/complete-incoming`, data),
+      apiRequest("POST", `/api/plant-module/equipment-usage/${id}/complete-incoming`, withDip(data)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage/incoming"] });
@@ -452,6 +464,8 @@ export default function PlantEquipmentUsage() {
   });
 
   const resetForm = () => {
+    setOpeningDipCm(null);
+    setClosingDipCm(null);
     setDate(format(new Date(), "yyyy-MM-dd"));
     setEquipmentId("");
     setOpeningReading("");
@@ -490,6 +504,8 @@ export default function PlantEquipmentUsage() {
   };
 
   const adoptIncomingUsage = (entry: EquipmentUsage) => {
+    setOpeningDipCm(entry.openingDipCm ?? null);
+    setClosingDipCm(null);
     setReceivingUsage(entry);
     setEditingUsage(null);
     setDate(entry.date);
@@ -524,6 +540,8 @@ export default function PlantEquipmentUsage() {
     setStartTime((entry as any).startTime || "");
     setEndTime((entry as any).endTime || "");
     setOpeningDiesel((entry as any).openingDiesel ? String((entry as any).openingDiesel) : "0");
+    setOpeningDipCm(entry.openingDipCm ?? null);
+    setClosingDipCm(entry.closingDipCm ?? null);
     setDieselIssued((entry.usageDieselIssued ?? entry.dieselIssued) ? String(entry.usageDieselIssued ?? entry.dieselIssued) : "");
     setDieselIncluded((entry as any).dieselIncluded || false);
     setDieselSource((entry as any).dieselSource ?? "");
@@ -567,6 +585,8 @@ export default function PlantEquipmentUsage() {
     setEquipmentId(value);
     setUserModifiedOpening(false);
     const selectedEquip = activeEquipment.find(e => e.id === Number(value));
+    setOpeningDipCm(null);
+    setClosingDipCm(null);
     const hireTermsConfigured = selectedEquip != null &&
       (selectedEquip as any).ownership === "hired" &&
       ["monthly", "daily", "hourly", "trip"].includes((selectedEquip as any).hireBillingBasis) &&
@@ -1684,6 +1704,11 @@ export default function PlantEquipmentUsage() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
+                      <EquipmentTankDipInput equipment={selectedEquipment} kind="opening" cm={openingDipCm}
+                        litres={openingDiesel === "" ? null : Number(openingDiesel)} date={date}
+                        isNew={!editingUsage && !receivingUsage} excludeSource="usage" excludeId={editingUsage?.id}
+                        onChange={(cm, litres) => { setOpeningDipCm(cm); handleOpeningDieselChange(litres == null ? "" : String(litres)); }}
+                        testId="input-opening-diesel">
                       <Label>Opening diesel tank (L)</Label>
                       <div className="relative">
                         <Input 
@@ -1702,6 +1727,7 @@ export default function PlantEquipmentUsage() {
                       {previousDieselBalance !== null && !editingUsage && (
                         <p className="text-sm text-muted-foreground mt-1">Auto-filled from previous: {previousDieselBalance.toFixed(3)} L</p>
                       )}
+                      </EquipmentTankDipInput>
                     </div>
                     <div>
                       <Label>Diesel issued (L)</Label>
@@ -1722,6 +1748,11 @@ export default function PlantEquipmentUsage() {
                     <div className="border rounded-md p-3 space-y-3 bg-blue-50/50 dark:bg-blue-900/10">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
+                          <EquipmentTankDipInput equipment={selectedEquipment} kind="closing" cm={closingDipCm}
+                            litres={dieselBalanceInTank === "" ? null : Number(dieselBalanceInTank)}
+                            openingLitres={openingDiesel === "" ? null : Number(openingDiesel)} issuedLitres={Number(dieselIssued || 0) + directFillLitres}
+                            onChange={(cm, litres) => { setClosingDipCm(cm); setDieselBalanceInTank(litres == null ? "" : String(litres)); }}
+                            testId="input-diesel-balance">
                           <Label>Diesel balance in tank (L)</Label>
                           <Input
                             type="number"
@@ -1731,6 +1762,7 @@ export default function PlantEquipmentUsage() {
                             placeholder="Closing dip (L) — enter even if no diesel issued"
                             data-testid="input-diesel-balance"
                           />
+                          </EquipmentTankDipInput>
                         </div>
                         <div className="flex items-end pb-2">
                           <div className="flex items-center gap-2">

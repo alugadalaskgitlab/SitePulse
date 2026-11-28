@@ -1,14 +1,21 @@
 import { Input } from "@/components/ui/input";
+import { EquipmentTankDipInput } from "@/components/EquipmentTankDipInput";
+import type { EquipmentTankDipSettings } from "@shared/equipmentTankDip";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 
 export interface EquipmentTankBalancePatch {
+  openingDipCm?: number | null;
+  closingDipCm?: number | null;
   openingDiesel?: number | null;
   dieselBalanceInTank?: number | null;
   dieselBalanceConfirmed?: boolean | null;
 }
 
 interface EquipmentTankBalanceInputsProps {
+  equipment?: (EquipmentTankDipSettings & { id?: number }) | null;
+  openingDipCm?: number | null;
+  closingDipCm?: number | null;
   index: number;
   /** Require physical tank confirmation before showing actual consumption. */
   requireConfirmationForConsumption?: boolean;
@@ -30,6 +37,7 @@ const finite = (value: unknown): value is number =>
  * users can record zero and the confirmation checkbox independently.
  */
 export function EquipmentTankBalanceInputs({
+  equipment, openingDipCm, closingDipCm,
   index,
   requireConfirmationForConsumption = false,
   openingDiesel,
@@ -62,6 +70,8 @@ export function EquipmentTankBalanceInputs({
     >
       <div className="grid grid-cols-2 gap-4">
         <div>
+          <EquipmentTankDipInput equipment={equipment ?? null} kind="opening" cm={openingDipCm} litres={openingDiesel}
+            onChange={(cm, litres) => onChange({ openingDipCm: cm, openingDiesel: litres })} testId={`input-opening-diesel-${index}`}>
           <Label>Opening diesel tank (L)</Label>
           <Input
             type="number"
@@ -71,8 +81,12 @@ export function EquipmentTankBalanceInputs({
             placeholder="Previous balance"
             data-testid={`input-opening-diesel-${index}`}
           />
+          </EquipmentTankDipInput>
         </div>
         <div>
+          <EquipmentTankDipInput equipment={equipment ?? null} kind="closing" cm={closingDipCm} litres={dieselBalanceInTank}
+            openingLitres={openingDiesel} issuedLitres={dieselIssued}
+            onChange={(cm, litres) => onChange({ closingDipCm: cm, dieselBalanceInTank: litres })} testId={`input-diesel-balance-${index}`}>
           <Label>Diesel balance in tank (L)</Label>
           <Input
             type="number"
@@ -82,6 +96,7 @@ export function EquipmentTankBalanceInputs({
             placeholder="Closing dip (L) — enter even if no diesel issued"
             data-testid={`input-diesel-balance-${index}`}
           />
+          </EquipmentTankDipInput>
         </div>
       </div>
 

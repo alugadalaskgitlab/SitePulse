@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { EquipmentTankDipInput } from "@/components/EquipmentTankDipInput";
+import { hasDipCalibration, type EquipmentTankDipSettings } from "@shared/equipmentTankDip";
 import { resourceSuggestion, suggestedEquipmentSegment, type SuggestionRow } from "@/lib/resourceSuggestions";
 import { Check, ChevronDown, ChevronUp, CircleAlert, Droplets, Fuel, Gauge } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -23,6 +25,7 @@ export type DprEquipmentFields = SuggestionRow & {
   openingReading?: number | null; closingReading?: number | null; numberOfTrips?: number | null;
   tripDistance?: number | null; diesel?: number | null; openingDiesel?: number | null;
   dieselBalanceInTank?: number | null; dieselBalanceConfirmed?: boolean | null; dieselNorm?: number | null;
+  openingDipCm?: number | null; closingDipCm?: number | null;
   expectedDiesel?: number | null; hoursWorked?: number | null; totalKm?: number | null;
   equipmentId?: number | null; plantUsageId?: number | null; dieselSource?: string | null; breakdowns?: Array<{
     clientKey?: string; id?: number; fromTime?: string; toTime?: string; downtimeHours?: number | null;
@@ -81,7 +84,7 @@ const statusLabel = (status: DprEquipmentFields["usageStatus"], editable = false
 
 export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignmentChange, activityIds = [], suggestNewRow = false, editable = true, index = 0, beforeDate, site, boqItems, programmeBars, showTankBalance = true, enableTankContinuity = true, historicalCorrection = false, hideIdentity = false, allowLinkedSourceEdit = false, sectionPresentation = false, equipmentPickerSlot, ownerTypeSlot, dieselSourceSlot, stoppageSlot, headerActionSlot, headerConfirmationSlot, onToggle }: {
   row: DprEquipmentFields;
-  equipment?: { meterType?: string | null; consumptionNorm?: number | null; ownership?: string | null; vendorName?: string | null; entryType?: string | null; hireBillingBasis?: string | null } | null;
+  equipment?: (EquipmentTankDipSettings & { id?: number; meterType?: string | null; consumptionNorm?: number | null; ownership?: string | null; vendorName?: string | null; entryType?: string | null; hireBillingBasis?: string | null }) | null;
   onChange?: (patch: Partial<DprEquipmentFields>) => void;
   onWorkAssignmentChange?: (activitySegments: EquipmentActivitySegment[], source?: "suggestion" | "manual") => void;
   activityIds?: number[];
@@ -233,7 +236,7 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
 
   useEffect(() => {
     let cancelled = false;
-    if (historicalCorrection || !editable || !onChange || !isPlantStock || !enableTankContinuity || row.openingDiesel != null || row.equipmentId == null || !beforeDate || !site) return;
+    if (hasDipCalibration(equipment) || historicalCorrection || !editable || !onChange || !isPlantStock || !enableTankContinuity || row.openingDiesel != null || row.equipmentId == null || !beforeDate || !site) return;
     const requestKey = `${row.equipmentId}:${beforeDate}:${site}`;
     fetch(`/api/equipment/${row.equipmentId}/latest-confirmed-diesel-tank?beforeDate=${encodeURIComponent(beforeDate)}&site=${encodeURIComponent(site)}`, { credentials: "include" })
       .then(res => res.ok ? res.json() : null)
@@ -419,8 +422,18 @@ export function DprEquipmentCompact({ row, equipment, onChange, onWorkAssignment
         <SectionHeading><span className="flex items-center gap-2"><Fuel className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Fuel</span></SectionHeading>
           {historicalCorrection && <p className="mb-3 text-xs text-muted-foreground">Historical readings may be left blank when not recorded. Zero is a known empty tank. Actual consumption is unavailable unless both tank readings and diesel issued are recorded.</p>}
           {editable && onChange ? <><div className="mb-2 text-[11px] text-slate-500">Diesel source: <strong className="text-slate-700 dark:text-slate-200">{dash(row.dieselSource).replaceAll("_", " ")}</strong></div><div className={`grid grid-cols-2 gap-2 ${isPlantStock ? "lg:grid-cols-[140px_160px_140px_minmax(190px,1fr)]" : "lg:grid-cols-[140px]"} lg:items-end`}>
-           {isPlantStock && <><div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Opening tank (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.openingDiesel ?? ""} onChange={e => setNumber("openingDiesel", e.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-opening-tank-${index}`} /></div>
-            <div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Closing / physical dip (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.dieselBalanceInTank ?? ""} onChange={e => { closingTankEdited.current = true; setNumber("dieselBalanceInTank", e.target.value); }} placeholder="Not recorded" data-testid={`equipment-compact-closing-tank-${index}`} /></div></>}
+           {isPlantStock && <><EquipmentTankDipInput equipment={equipment ?? null} equipmentId={row.equipmentId} kind="opening"
+             cm={row.openingDipCm} litres={row.openingDiesel} date={beforeDate} site={site}
+             isNew={!historicalCorrection && row.openingDiesel == null} testId={`equipment-compact-opening-tank-${index}`}
+             onChange={(cm, litres) => onChange?.({ openingDipCm: cm, openingDiesel: litres })}>
+             <div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Opening tank (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.openingDiesel ?? ""} onChange={e => setNumber("openingDiesel", e.target.value)} placeholder="Not recorded" data-testid={`equipment-compact-opening-tank-${index}`} /></div>
+            </EquipmentTankDipInput>
+            <EquipmentTankDipInput equipment={equipment ?? null} equipmentId={row.equipmentId} kind="closing"
+              cm={row.closingDipCm} litres={row.dieselBalanceInTank} openingLitres={row.openingDiesel} issuedLitres={row.diesel}
+              testId={`equipment-compact-closing-tank-${index}`}
+              onChange={(cm, litres) => { closingTankEdited.current = true; onChange?.({ closingDipCm: cm, dieselBalanceInTank: litres }); }}>
+            <div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Closing / physical dip (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.dieselBalanceInTank ?? ""} onChange={e => { closingTankEdited.current = true; setNumber("dieselBalanceInTank", e.target.value); }} placeholder="Not recorded" data-testid={`equipment-compact-closing-tank-${index}`} /></div>
+            </EquipmentTankDipInput></>}
              <div><Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">Diesel issued / added (L)</Label><Input className="mt-1 h-11 bg-white px-2 text-sm font-semibold tabular-nums sm:h-9 dark:bg-slate-950/50" type="number" step="0.1" value={row.diesel ?? ""} disabled={row.plantUsageId != null && isPlantStock && !allowLinkedSourceEdit} onChange={e => { dieselIssuedEdited.current = true; setNumber("diesel", e.target.value); }} placeholder="0" data-testid={`equipment-compact-diesel-${index}`} /></div>
            {isPlantStock && <label className={`col-span-2 flex h-11 items-center gap-2 rounded-md border px-2.5 text-xs font-semibold sm:h-9 lg:col-span-1 ${row.dieselBalanceConfirmed ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300"}`}><Checkbox checked={!!row.dieselBalanceConfirmed} onCheckedChange={checked => onChange({ dieselBalanceConfirmed: checked === true })} data-testid={`equipment-compact-tank-confirmed-${index}`} /><span>{row.dieselBalanceConfirmed && <Check className="mr-1 inline h-4 w-4 text-emerald-600" />}Physical tank balance confirmed</span></label>}
          </div></> : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"><Detail label="Diesel issued / added" value={`${number(row.diesel)} L`} /><Detail label="Diesel source" value={dash(row.dieselSource).replace("_", " ")} />{isPlantStock && <><Detail label="Opening tank (L)" value={`${number(row.openingDiesel)} L`} /><Detail label="Closing tank / physical dip (L)" value={`${number(row.dieselBalanceInTank)} L`} /><Detail label="Physical tank balance" value={row.dieselBalanceConfirmed ? "Confirmed" : tankKnown ? "Pending confirmation" : "—"} emphasis /></>}</div>}

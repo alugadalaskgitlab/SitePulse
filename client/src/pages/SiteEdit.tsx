@@ -157,6 +157,8 @@ interface EquipmentEntry extends SuggestionRow {
   closingReading: number | null;
   diesel: number | null;
   openingDiesel?: number | null;
+  openingDipCm?: number | null;
+  closingDipCm?: number | null;
   dieselBalanceInTank?: number | null;
   dieselBalanceConfirmed?: boolean | null;
   dieselNorm?: number | null;
@@ -192,6 +194,8 @@ const contractorDieselTankFieldsCleared = (row: EquipmentEntry): EquipmentEntry 
     ? {
         ...row,
         openingDiesel: null,
+        openingDipCm: null,
+        closingDipCm: null,
         dieselBalanceInTank: null,
         dieselBalanceConfirmed: null,
       }
@@ -340,6 +344,8 @@ export function mapDprToFormState(dpr: any) {
         closingReading: e.closingReading ?? null,
         diesel: e.diesel ?? null,
         openingDiesel: e.openingDiesel ?? null,
+        openingDipCm: e.openingDipCm ?? null,
+        closingDipCm: e.closingDipCm ?? null,
         dieselBalanceInTank: e.dieselBalanceInTank ?? null,
         dieselBalanceConfirmed: e.dieselBalanceConfirmed ?? null,
         dieselNorm: e.dieselNorm ?? null,

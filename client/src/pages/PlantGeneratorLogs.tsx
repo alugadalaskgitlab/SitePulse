@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { EquipmentTankDipInput } from "@/components/EquipmentTankDipInput";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +38,11 @@ export default function PlantGeneratorLogs() {
   const [openingDiesel, setOpeningDiesel] = useState("");
   const [dieselIssued, setDieselIssued] = useState("");
   const [closingDiesel, setClosingDiesel] = useState("");
+  const [openingDipCm, setOpeningDipCm] = useState<number | null>(null);
+  const [closingDipCm, setClosingDipCm] = useState<number | null>(null);
+  const { data: generatorMasters = [] } = useQuery<{ id: number | null; name: string }[]>({
+    queryKey: ["/api/plant-module/generators"],
+  });
 
   const { data: logs, isLoading } = useQuery<GeneratorLog[]>({
     queryKey: ["/api/plant-module/generator-logs"],
@@ -62,6 +68,8 @@ export default function PlantGeneratorLogs() {
     setOpeningDiesel("");
     setDieselIssued("");
     setClosingDiesel("");
+    setOpeningDipCm(null);
+    setClosingDipCm(null);
   };
 
   const calculateHours = () => {
@@ -88,6 +96,8 @@ export default function PlantGeneratorLogs() {
       openingDiesel: openingDiesel ? parseFloat(openingDiesel) : null,
       dieselIssued: dieselIssued ? parseFloat(dieselIssued) : null,
       closingDiesel: closingDiesel ? parseFloat(closingDiesel) : null,
+      openingDipCm,
+      closingDipCm,
     });
   };
 
@@ -352,13 +362,18 @@ export default function PlantGeneratorLogs() {
 
               <div>
                 <Label>Generator</Label>
-                <Select value={generatorName} onValueChange={setGeneratorName}>
+                <Select value={generatorName} onValueChange={value => {
+                  setGeneratorName(value); setOpeningDipCm(null); setClosingDipCm(null);
+                  setOpeningDiesel(""); setClosingDiesel("");
+                }}>
                   <SelectTrigger data-testid="select-generator">
                     <SelectValue placeholder="Select generator" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="600 KVA">600 KVA Generator</SelectItem>
                     <SelectItem value="40-30 KVA">40-30 KVA Generator</SelectItem>
+                    {generatorMasters.filter(row => !["600 KVA", "40-30 KVA"].includes(row.name)).map(row =>
+                      <SelectItem key={row.name} value={row.name}>{row.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -385,16 +400,27 @@ export default function PlantGeneratorLogs() {
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
+                  <EquipmentTankDipInput equipmentName={generatorName} kind="opening" cm={openingDipCm}
+                    litres={openingDiesel === "" ? null : Number(openingDiesel)} date={date} isNew
+                    onChange={(cm, litres) => { setOpeningDipCm(cm); setOpeningDiesel(litres == null ? "" : String(litres)); }}
+                    testId="input-opening-diesel">
                   <Label>Opening (L)</Label>
                   <Input type="number" step="0.1" value={openingDiesel} onChange={(e) => setOpeningDiesel(e.target.value)} placeholder="0" data-testid="input-opening-diesel" />
+                  </EquipmentTankDipInput>
                 </div>
                 <div>
                   <Label>Issued (L)</Label>
                   <Input type="number" step="0.1" value={dieselIssued} onChange={(e) => setDieselIssued(e.target.value)} placeholder="0" data-testid="input-diesel-issued-gen" />
                 </div>
                 <div>
+                  <EquipmentTankDipInput equipmentName={generatorName} kind="closing" cm={closingDipCm}
+                    litres={closingDiesel === "" ? null : Number(closingDiesel)}
+                    openingLitres={openingDiesel === "" ? null : Number(openingDiesel)} issuedLitres={Number(dieselIssued || 0)}
+                    onChange={(cm, litres) => { setClosingDipCm(cm); setClosingDiesel(litres == null ? "" : String(litres)); }}
+                    testId="input-closing-diesel">
                   <Label>Closing (L)</Label>
                   <Input type="number" step="0.1" value={closingDiesel} onChange={(e) => setClosingDiesel(e.target.value)} placeholder="0" data-testid="input-closing-diesel" />
+                  </EquipmentTankDipInput>
                 </div>
               </div>
 
