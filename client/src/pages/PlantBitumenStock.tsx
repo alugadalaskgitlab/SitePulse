@@ -20,6 +20,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
 import { TankAssignmentButton } from "@/components/TankAssignmentButton";
+import { TankBookStock } from "@/components/TankBookStock";
 import { format, parseISO } from "date-fns";
 import type { BitumenDipReading, Party, MixTemplate, TruckDispatch } from "@shared/schema";
 import { formatQty, toFiniteNumber } from "@shared/stockReconciliation";
@@ -929,6 +930,7 @@ export default function PlantBitumenStock() {
         Tank: 250cm dia x 1060cm length | Capacity: {TANK_CAPACITY_LITERS.toFixed(3)} L | Dead stock at {DEFAULT_DEAD_STOCK_DEPTH} cm = ~{Math.round(deadStockVolume).toFixed(3)} L/tank | Bitumen: {BITUMEN_DENSITY_KG_PER_LITER} kg/L
       </div>
 
+      <TankBookStock kind="bitumen" plantName={urlPlant} defaultPlantName={defaultPlantName} positions={packedStockPositions?.rows} readings={readings} />
       <NegativeBalanceBanner
         balances={bitumenPartyBalances}
         parties={parties}

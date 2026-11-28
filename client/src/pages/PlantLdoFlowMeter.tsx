@@ -23,6 +23,7 @@ import { normalizeWeightUnit } from "@shared/stockUnits";
 import { formatPackedUnitLabel } from "@shared/packedStock";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
 import { TankAssignmentButton } from "@/components/TankAssignmentButton";
+import { TankBookStock } from "@/components/TankBookStock";
 import { format, parseISO } from "date-fns";
 import type { LdoFlowReading, LdoDipReading, TruckDispatch, Party, MixTemplate } from "@shared/schema";
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -1200,6 +1201,7 @@ export default function PlantLdoFlowMeter() {
         tank2AsOf={latestDipTank2 ? { date: latestDipTank2.date, time: latestDipTank2.time || undefined } : undefined}
       />
 
+      <TankBookStock kind="ldo" plantName={urlPlant} defaultPlantName={defaultPlantName} positions={packedStockPositions?.rows} readings={dipReadings} />
       <NegativeBalanceBanner
         balances={ldoPartyBalances}
         parties={parties}

@@ -214,6 +214,7 @@ import { suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendPushToUser, sendTestPush } from "./push";
+import { preserveDipWatchConfig } from "@shared/tankBookStock";
 import {
   activeSupplyOrderAlertLines,
   changeSupplyOrderMix,
@@ -10149,6 +10150,31 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/plant-module/plant-settings/:plantName/dip-watch", async (req, res) => {
+    if (!req.authUser?.isOwner) return res.status(403).json({ message: "Only the Owner can change tank dip settings." });
+    const parsed = z.object({
+      bitumenAllowedDifferenceMt: z.number().finite().min(0),
+      ldoAllowedDifferenceL: z.number().finite().min(0),
+      firstReminder: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+      repeatHours: z.number().int().min(1).max(10),
+      lastReminder: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+    }).strict().refine(value => value.firstReminder <= value.lastReminder).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Enter valid non-negative limits, India times in order and a repeat interval of 1–10 hours." });
+    try {
+      const plantName = req.params.plantName.trim();
+      if (!plantName) return res.status(400).json({ message: "Plant name is required." });
+      const current = await storage.getPlantSettings(plantName);
+      const config = JSON.parse(current?.tankConfig || "{}");
+      if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("Fix the tank calibration configuration before saving dip settings.");
+      const saved = await storage.upsertPlantSettings({
+        ...current, plantName, tankConfig: JSON.stringify({ ...config, dipWatch: parsed.data }),
+      });
+      res.json(saved);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message || "Could not save tank dip settings." });
+    }
+  });
+
   app.put("/api/plant-module/plant-settings/:plantName", async (req, res) => {
     try {
       if (!assertFeatureAction(req, res, "hmp_rmc", "edit")) return;
@@ -10177,6 +10203,7 @@ export async function registerRoutes(
         }
         dgProductionEquipmentIds = JSON.stringify(ids);
       }
+      const previousPlantSettings = await storage.getPlantSettings(plantName);
       const input: Record<string, unknown> = {
         plantName,
         plantType: req.body?.plantType ?? "hma",
@@ -10185,7 +10212,7 @@ export async function registerRoutes(
         bitumenTank1LitresPerCm: req.body?.bitumenTank1LitresPerCm ?? null,
         bitumenTank2LitresPerCm: req.body?.bitumenTank2LitresPerCm ?? null,
         bitumenDensityKgPerL: req.body?.bitumenDensityKgPerL ?? null,
-        tankConfig: req.body?.tankConfig ?? null,
+        tankConfig: preserveDipWatchConfig(req.body?.tankConfig, previousPlantSettings?.tankConfig),
       };
       if (dgProductionEquipmentIds !== undefined) input.dgProductionEquipmentIds = dgProductionEquipmentIds;
       const parsed = insertPlantSettingsSchema.parse(input as any);
