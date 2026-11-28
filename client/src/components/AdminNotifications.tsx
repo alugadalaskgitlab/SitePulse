@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
 import { PushNotificationSetup } from "./PushNotificationSetup";
+import { tankDipAlertHref } from "@shared/tankBookStock";
 
 interface Notification {
   id: number;
@@ -28,6 +29,7 @@ interface Notification {
 
 export function plantSupplyNotificationHref(notification: Pick<Notification, "source" | "alertType" | "orderId">) {
   if (notification.source !== "supply") return null;
+  if (notification.alertType?.startsWith("tank_dip:")) return tankDipAlertHref(notification.alertType);
   if (notification.alertType === "morning_summary") return "/plant/hub#hmp-open-order-material-alerts";
   return notification.orderId
     ? `/plant/supply-orders?orderId=${notification.orderId}&section=material-status#order-material-status`
@@ -265,7 +267,7 @@ export function AdminNotifications({ compact = false }: { compact?: boolean } = 
                           className="mt-2 h-8"
                           onClick={() => void openOrder(notification, openHref)}
                           data-testid={`button-open-order-notification-${notificationKey}`}
-                        >Open order</Button>
+                        >{notification.alertType?.startsWith("tank_dip:") ? "Open tank dips" : "Open order"}</Button>
                       )}
                       <p className="text-sm text-muted-foreground mt-1">
                         {format(new Date(notification.createdAt), "MMM d, h:mm a")}

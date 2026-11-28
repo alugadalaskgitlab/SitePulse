@@ -10,6 +10,14 @@ Focused tests: **36 passed, 5 files**. Build passed. No migration or real data c
 
 Extra supporting files/sections and reasons are listed in `reports/TANK-01.md`, as requested.
 
+## Part 2 — confirmation at plant-log start
+
+A new log first offers **Confirm tank stock**. Actual dips save through the existing reading routes; blank tanks, failed loading/saving and missing entry permission never prevent **Skip for now**. Existing opening dips are retained, not recreated. Previous closing values are not silently counted as confirmation after Skip.
+
+After a new log is actually saved, missing-opening and over-limit alerts go to active Owners and plant-scoped users with shift-log verification permission. Delivery is recipient-private and deduplicated in the existing operational notification table; in-app and push links open the right tracker/dip form. Alerts cannot fail the log save.
+
+Focused checks: **84 passed across 7 files**, including real PGlite creation of four opening dips with no stock posting. Build passed. No real readings or other data were changed.
+
 ## Migration and safety
 
 **No migration; SQL: none.** Neither development database was altered. No production database access, historical repair or publishing. New settings save only after an explicit Owner action; no settings were saved to real data during verification.

@@ -91,7 +91,7 @@ export default function PlantBitumenStock() {
     next.set("plant", newPlant);
     setLocation(`/plant/bitumen-stock?${next.toString()}`);
   };
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(sp.get("dipEntry") === "1");
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [editingReading, setEditingReading] = useState<BitumenDipReading | null>(null);
 
@@ -114,10 +114,10 @@ export default function PlantBitumenStock() {
   const [corrNotes, setCorrNotes] = useState("");
   const [showCorrForm, setShowCorrForm] = useState(false);
 
-  const [tankNumber, setTankNumber] = useState("1");
+  const [tankNumber, setTankNumber] = useState(sp.get("tank") === "2" ? "2" : "1");
   const [depthCm, setDepthCm] = useState("");
-  const [readingType, setReadingType] = useState("adhoc");
-  const [readingDate, setReadingDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [readingType, setReadingType] = useState(sp.get("readingType") === "opening" ? "opening" : "adhoc");
+  const [readingDate, setReadingDate] = useState(sp.get("dipDate") || format(new Date(), "yyyy-MM-dd"));
   const [readingTime, setReadingTime] = useState(format(new Date(), "HH:mm"));
   const [notes, setNotes] = useState("");
 

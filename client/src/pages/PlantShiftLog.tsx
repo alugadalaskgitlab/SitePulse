@@ -46,6 +46,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { personnelNameOptions } from "@/lib/personnelNameOptions";
 import { PlantNormActualDaySummary } from "@/components/PlantNormActualSummary";
+import { ConfirmTankStock } from "@/components/ConfirmTankStock";
 
 export default function PlantShiftLog() {
   const { toast } = useToast();
@@ -77,6 +78,8 @@ export default function PlantShiftLog() {
   const [weather, setWeather] = useState("");
   const [ambientTemp, setAmbientTemp] = useState("");
   const [operatorName, setOperatorName] = useState("");
+  const [tankReviewKey, setTankReviewKey] = useState("");
+  const tankReviewDoneRef = useRef("");
   const operatorPrefillRef = useRef<{ date: string; applied: boolean }>({ date: "", applied: false });
   const [supervisorName, setSupervisorName] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -607,6 +610,7 @@ export default function PlantShiftLog() {
     setViewMode("edit");
   };
   const openNew = () => {
+    setTankReviewKey(""); tankReviewDoneRef.current = "";
     setDate(today);
     setPlantName(defaultPlantName);
     resetForNew();
@@ -1155,7 +1159,7 @@ export default function PlantShiftLog() {
 
   // Carry-forward: auto-fill opening dip readings from previous day's closing dip
   useEffect(() => {
-    if (!date || existing || !previousShiftLog) return;
+    if (!date || existing || !previousShiftLog || tankReviewDoneRef.current === `${plantName}:${date}`) return;
         const prev = previousShiftLog;
         const previousDate = String(prev.date || "");
         if (prev.bitumenTank1ClosingDip != null) {
@@ -1546,6 +1550,17 @@ export default function PlantShiftLog() {
 
   return (
     <>
+    {viewMode === "edit" && !isLoading && !existing && canEditPlantDay && tankReviewKey !== `${plantName}:${date}` &&
+      <ConfirmTankStock key={`${plantName}:${date}`} date={date} plantName={plantName} onComplete={dips => {
+        tankReviewDoneRef.current = `${plantName}:${date}`;
+        setTankReviewKey(`${plantName}:${date}`);
+        setBitumenTank1OpeningDip(dips.bitumen1 == null ? "" : String(dips.bitumen1));
+        setBitumenTank2OpeningDip(dips.bitumen2 == null ? "" : String(dips.bitumen2));
+        setLdoTank1OpeningDip(dips.ldo1 == null ? "" : String(dips.ldo1));
+        setLdoTank2OpeningDip(dips.ldo2 == null ? "" : String(dips.ldo2));
+        setAutoFillBitumenT1Source(""); setAutoFillBitumenT2Source("");
+        setAutoFillLdoDipT1Source(""); setAutoFillLdoDipT2Source("");
+      }} />}
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">

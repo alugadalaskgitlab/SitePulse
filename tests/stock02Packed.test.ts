@@ -319,6 +319,19 @@ describe("FIX-BIT-01 Owner tank assignments", () => {
   });
 });
 
+it("TANK-02 persists four normal opening dip readings without posting stock", async () => {
+  const physicalBefore = (await pg.query("SELECT * FROM stock_balances ORDER BY id")).rows;
+  for (const tankNumber of [1, 2]) {
+    const common = { date: "2026-11-28", time: "08:00", tankNumber, depthCm: 100, volumeLiters: 1000, readingType: "opening", plantName: "Fixture plant", notes: "Opening dip confirmed at plant log start" };
+    await storage.createBitumenDipReading({ ...common, weightKg: 1030 });
+    await storage.createLdoDipReading({ ...common, weightKg: 840 });
+  }
+  expect((await storage.getBitumenDipReadings({ plantName: "Fixture plant", dateFrom: "2026-11-28", dateTo: "2026-11-28" })).map((row: any) => row.readingType)).toEqual(["opening", "opening"]);
+  expect((await storage.getLdoDipReadings({ plant: "Fixture plant", dateFrom: "2026-11-28", dateTo: "2026-11-28" })).map((row: any) => row.readingType)).toEqual(["opening", "opening"]);
+  expect((await pg.query("SELECT * FROM stock_balances ORDER BY id")).rows).toEqual(physicalBefore);
+  expect((await pg.query("SELECT * FROM stock_ledger")).rows).toHaveLength(0);
+});
+
 describe("DIESEL-02 store receipts (real PGlite transactions)", () => {
   it.each(["DIESEL", "HSD"])("receives %s in Liters without a tank or packed stock", async name => {
     await pg.exec(`INSERT INTO plant_materials (id, name, category, default_uom) VALUES (41, '${name}', 'Diesel', 'Liters')`);

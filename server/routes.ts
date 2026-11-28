@@ -215,6 +215,7 @@ import { canonicalizeUnit } from "@shared/boqNormalise";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendPushToUser, sendTestPush } from "./push";
 import { preserveDipWatchConfig } from "@shared/tankBookStock";
+import { notifyPlantLogStart } from "./tankDipNotifications";
 import {
   activeSupplyOrderAlertLines,
   changeSupplyOrderMix,
@@ -10390,6 +10391,10 @@ export async function registerRoutes(
       const authorizedRole: "admin" | "manager" | null = canBypassFinalizedLock ? "admin" : null;
       try {
         const saved = await storage.upsertPlantShiftLog(parsed, editedBy, authorizedRole);
+        if (!existingRow || (!existingRow.plantStartTime && saved.plantStartTime)) {
+          void notifyPlantLogStart({ id: saved.id, date: saved.date, plantName: saved.plantName })
+            .catch(error => console.warn("[TankDip] Start alert failed:", error?.message || error));
+        }
         if (existingRow?.isFinalized === 1 && canBypassFinalizedLock && u) {
           await storage.logAudit({
             module: "plant_shift_log",

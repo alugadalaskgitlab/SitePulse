@@ -164,13 +164,13 @@ export default function PlantLdoFlowMeter() {
   const [notes, setNotes] = useState("");
   const [dryerFedFrom, setDryerFedFrom] = useState("TANK_2");
 
-  const [dipDialogOpen, setDipDialogOpen] = useState(false);
+  const [dipDialogOpen, setDipDialogOpen] = useState(sp.get("dipEntry") === "1");
   const [dipEditingReading, setDipEditingReading] = useState<LdoDipReading | null>(null);
   const [dipDeleteConfirmId, setDipDeleteConfirmId] = useState<number | null>(null);
-  const [dipTankNumber, setDipTankNumber] = useState("1");
-  const [dipDate, setDipDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [dipTankNumber, setDipTankNumber] = useState(sp.get("tank") === "2" ? "2" : "1");
+  const [dipDate, setDipDate] = useState(sp.get("dipDate") || format(new Date(), "yyyy-MM-dd"));
   const [dipTime, setDipTime] = useState(format(new Date(), "HH:mm"));
-  const [dipReadingType, setDipReadingType] = useState("opening");
+  const [dipReadingType, setDipReadingType] = useState(sp.get("readingType") === "adhoc" ? "adhoc" : "opening");
   const [dipDepthCm, setDipDepthCm] = useState("");
   const [dipNotes, setDipNotes] = useState("");
 

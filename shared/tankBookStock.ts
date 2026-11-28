@@ -13,7 +13,33 @@ export const DEFAULT_DIP_WATCH: Readonly<DipWatchSettings> = {
 export type TankPlantSettings = {
   tankConfig?: string | null; bitumenDensityKgPerL?: number | null;
   bitumenTank1LitresPerCm?: number | null; bitumenTank2LitresPerCm?: number | null;
+  plantType?: string | null; siteId?: number | null;
 };
+export type TankSlotSpec = { kind: TankKind; tank: 1 | 2 };
+export function requiredDipTanks(settings?: TankPlantSettings | null): TankSlotSpec[] {
+  const all: TankSlotSpec[] = [{ kind: "bitumen", tank: 1 }, { kind: "bitumen", tank: 2 }, { kind: "ldo", tank: 1 }, { kind: "ldo", tank: 2 }];
+  const config = tankConfigObject(settings?.tankConfig);
+  const configured = all.filter(({ kind, tank }) => config[`${kind}${tank}`] ||
+    (kind === "bitumen" && positive(tank === 1 ? settings?.bitumenTank1LitresPerCm : settings?.bitumenTank2LitresPerCm)));
+  return settings?.plantType === "rmc" ? configured.filter(row => row.kind === "ldo") :
+    all.some(({ kind, tank }) => config[`${kind}${tank}`]) ? configured : all;
+}
+export function tankDipAlertType(kind: TankKind, tank: 1 | 2, mode: "opening" | "adhoc" | "tracker", plant: string, date: string) {
+  return `tank_dip:${kind}:${tank}:${mode}:${encodeURIComponent(plant)}:${date}`;
+}
+export function tankDipAlertHref(type?: string): string | null {
+  if (!type?.startsWith("tank_dip:")) return null;
+  const [, kind, tank, mode, plant, date] = type.split(":");
+  if (!["bitumen", "ldo"].includes(kind) || !["1", "2"].includes(tank) || !["opening", "adhoc", "tracker"].includes(mode)) return null;
+  try {
+    const query = new URLSearchParams({ plant: decodeURIComponent(plant) });
+    if (mode !== "tracker") {
+      query.set("dipEntry", "1"); query.set("tank", tank); query.set("readingType", mode);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(date)) query.set("dipDate", date);
+    }
+    return `/plant/${kind === "bitumen" ? "bitumen-stock" : "ldo-flow-meter"}?${query}`;
+  } catch { return null; }
+}
 export function tankConfigObject(json: string | null | undefined): Record<string, any> {
   try {
     const value = JSON.parse(json || "{}");
