@@ -51,7 +51,7 @@ describe("FIX-BIT-01 packed stock response", () => {
       tank1: 1000, tank1Mt: 1, tank2Mt: 2, packedMt: 3, packedCount: 20, totalMt: 6,
     }], canDecant: false };
     render(<PlantBitumenStock />);
-    expect(screen.getByText("Bitumen stock positions from the ledger")).toBeTruthy();
+    expect(screen.getByText("Whose bitumen")).toBeTruthy();
     expect(screen.getByText("1.000 MT")).toBeTruthy();
     expect(screen.getByText("6.000 MT")).toBeTruthy();
     fireEvent.click(screen.getByTestId("button-export-excel"));
@@ -64,7 +64,8 @@ describe("FIX-BIT-01 packed stock response", () => {
   it.each([{ rows: [], canDecant: true }, {}, undefined])("renders safely when rows are empty or missing (%s)", positions => {
     fx.positions = positions;
     render(<PlantBitumenStock />);
-    expect(screen.queryByText("Bitumen stock positions from the ledger")).toBeNull();
+    expect(screen.getByText("Whose bitumen")).toBeTruthy();
+    expect(screen.getByText("No non-zero stock positions.")).toBeTruthy();
   });
   it("shows dashes for non-numbers, including numeric strings, NaN and infinity", () => {
     fx.positions = { rows: [{
@@ -90,7 +91,7 @@ describe("FIX-BIT-01 packed stock response", () => {
       Material:"LDO",Party:"Fixture party","Tank 1":"4,500 L","Tank 2":"0 L",Barrels:"10 (2,000 L)","Not in a tank":"0 L",Total:"6,500 L",
     }]);
   });
-  it.each(["BITUMEN", "LDO"])("places the Owner action on a non-zero %s tracker row", materialName => {
+  it.each(["BITUMEN", "LDO"])("keeps the expected stock actions on a non-zero %s tracker row", materialName => {
     fx.owner = true;
     fx.positions = { rows: [{
       materialId: 1, materialName, partyId: 7, partyName: "Fixture party", stockUom: "Liters",
@@ -98,6 +99,7 @@ describe("FIX-BIT-01 packed stock response", () => {
       tank1Mt: -1, tank2Mt: 0, packedMt: 0, packedCount: 0, packed: 0, totalMt: 0,
     }], canDecant: true };
     render(materialName === "LDO" ? <PlantLdoFlowMeter /> : <PlantBitumenStock />);
-    expect(screen.getByRole("button", { name: "Correct tank stock" })).toBeTruthy();
+    if (materialName === "LDO") expect(screen.getByRole("button", { name: "Correct tank stock" })).toBeTruthy();
+    else expect(screen.queryByRole("button", { name: "Correct tank stock" })).toBeNull();
   });
 });
